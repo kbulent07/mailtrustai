@@ -78,6 +78,18 @@ initThreatIntelFeed();
 })();
 
 // ============================================================
+// SAĞLIK KONTROLÜ (auth gerektirmez — Docker/k8s probe için)
+// ============================================================
+router.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        uptime: Math.floor(process.uptime()),
+        version: require('../../package.json').version,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// ============================================================
 // ANALİZ ENDPOINT'LERİ
 // ============================================================
 router.post('/analyze/eml', upload.single('file'), async (req, res) => {

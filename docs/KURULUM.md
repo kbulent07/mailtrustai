@@ -18,6 +18,7 @@
 10. [Online Lisans Sunucusu Altyapısı](#10-online-lisans-sunucusu-altyapısı)
 11. [Güncelleme Prosedürü](#11-güncelleme-prosedürü)
 12. [Sorun Giderme](#12-sorun-giderme)
+13. [Docker ile Kurulum](#13-docker-ile-kurulum)
 
 ---
 
@@ -847,6 +848,235 @@ data/
 
 > ⚠️ **Yedekleme:** `data/` klasörünü düzenli olarak yedekleyin.
 > `credentials.enc` ve `settings.json` kritik dosyalardır.
+
+---
+
+## 13. Docker ile Kurulum
+
+Docker, MailTrustAI'ı tüm bağımlılıklarıyla birlikte izole bir kapsayıcı içinde çalıştırmanızı sağlar. Linux, Windows ve macOS'ta aynı şekilde çalışır.
+
+### 13.1 Gereksinimler
+
+| Bileşen | Minimum Versiyon |
+|---|---|
+| Docker Engine | 24.x |
+| Docker Compose (plugin) | v2.20+ |
+| RAM | 512 MB serbest bellek |
+| Disk | 2 GB (imaj + veri) |
+
+```bash
+# Docker kurulumu (Ubuntu)
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER   # yeniden giriş gerekir
+docker --version
+docker compose version
+```
+
+---
+
+### 13.2 Geliştirme Ortamı (Hızlı Başlangıç)
+
+```bash
+# 1. Repoyu klonla
+git clone https://github.com/kbulent07/mailtrustai.git
+cd mailtrustai
+
+# 2. Ortam dosyasını oluştur
+cp .env.example .env
+nano .env    # zorunlu değişkenleri doldur (bkz. Bölüm 5)
+
+# 3. Veri dizinini hazırla
+mkdir -p data logs
+
+# 4. İmajı oluştur ve başlat
+docker compose up --build -d
+
+# 5. Logları izle
+docker compose logs -f
+
+# 6. Sağlık kontrolü
+curl http://localhost:3000/api/health
+```
+
+Uygulama `http://localhost:3000` adresinde erişilebilir olacaktır.
+
+---
+
+### 13.3 Üretim Ortamı (Nginx + SSL)
+
+#### 13.3.1 SSL Sertifikası Hazırlama
+
+**Seçenek A — Let's Encrypt (Önerilen):**
+```bash
+# certbot ile sertifika al (henüz nginx çalışmıyorsa standalone mod)
+sudo apt install certbot
+sudo certbot certonly --standalone -d mailtrustai.sirketiniz.com
+
+# Nginx sertifika dizinine kopyala
+mkdir -p nginx/certs
+sudo cp /etc/letsencrypt/live/mailtrustai.sirketiniz.com/fullchain.pem nginx/certs/
+sudo cp /etc/letsencrypt/live/mailtrustai.sirketiniz.com/privkey.pem  nginx/certs/
+sudo chown $USER:$USER nginx/certs/*
+```
+
+**Seçenek B — Kurumsal / Satın Alınan Sertifika:**
+```bash
+mkdir -p nginx/certs
+cp /path/to/fullchain.pem nginx/certs/fullchain.pem
+cp /path/to/privkey.pem  nginx/certs/privkey.pem
+```
+
+#### 13.3.2 Nginx Yapılandırması
+
+`nginx/nginx.conf` dosyasında `server_name` satırını kendi alan adınızla güncelleyin:
+
+```nginx
+server_name mailtrustai.sirketiniz.com;
+```
+
+#### 13.3.3 Üretim Stack'ini Başlatma
+
+```bash
+# Üretim ortamını başlat (nginx + uygulama)
+docker compose -f docker-compose.prod.yml up -d --build
+
+# Durumu kontrol et
+docker compose -f docker-compose.prod.yml ps
+
+# Sağlık kontrolü (nginx üzerinden)
+curl https://mailtrustai.sirketiniz.com/api/health
+```
+
+---
+
+### 13.4 SSL Sertifikası Otomatik Yenileme
+
+```bash
+# Crontab'a ekle (her gün gece 3'te kontrol)
+(crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet && \
+  cp /etc/letsencrypt/live/mailtrustai.sirketiniz.com/fullchain.pem \
+     /path/to/mailtrustai/nginx/certs/fullchain.pem && \
+  cp /etc/letsencrypt/live/mailtrustai.sirketiniz.com/privkey.pem \
+     /path/to/mailtrustai/nginx/certs/privkey.pem && \
+  docker compose -f /path/to/mailtrustai/docker-compose.prod.yml exec nginx \
+     nginx -s reload") | crontab -
+```
+
+---
+
+### 13.5 Veri Yönetimi
+
+#### Volume Yapısı
+
+| Volume | İçerik |
+|---|---|
+| `mailtrustai_data` | Tüm `data/` içeriği (DB, ayarlar, kimlik bilgileri) |
+| `mailtrustai_logs` | Uygulama log dosyaları |
+
+**Geliştirme ortamında** bu dizinler doğrudan host üzerindeki `./data/` ve `./logs/` klasörlerine bağlanır.
+
+**Üretim ortamında** Docker named volume kullanılır.
+
+#### Veri Yedeği (Üretim)
+
+```bash
+# data volume'unu yedekle
+docker run --rm \
+  -v mailtrustai_data:/data \
+  -v $(pwd)/backups:/backups \
+  alpine tar czf /backups/mailtrustai-data-$(date +%Y%m%d).tar.gz -C /data .
+
+# Geri yükle
+docker run --rm \
+  -v mailtrustai_data:/data \
+  -v $(pwd)/backups:/backups \
+  alpine tar xzf /backups/mailtrustai-data-20260508.tar.gz -C /data
+```
+
+---
+
+### 13.6 Güncelleme (Docker)
+
+```bash
+cd /path/to/mailtrustai
+
+# Yeni kodu çek
+git pull
+
+# İmajı yeniden derle ve servisi yeniden başlat (sıfır kesinti)
+docker compose -f docker-compose.prod.yml up -d --build --no-deps mailtrustai
+
+# Eski imajları temizle
+docker image prune -f
+```
+
+---
+
+### 13.7 Yararlı Komutlar
+
+```bash
+# Konteyner logları (canlı)
+docker compose logs -f mailtrustai
+
+# Konteynere bağlan (shell)
+docker compose exec mailtrustai sh
+
+# Konteyner istatistikleri
+docker stats mailtrustai-app
+
+# Servisi durdur
+docker compose down
+
+# Servisi durdur ve volumeleri sil (DİKKAT: veri silinir)
+docker compose down -v
+
+# İmajı manuel oluştur
+docker build -t mailtrustai:latest .
+
+# Imaj boyutunu kontrol et
+docker images mailtrustai
+```
+
+---
+
+### 13.8 Docker Sorun Giderme
+
+**`better-sqlite3` derleme hatası:**
+```
+Error: Could not locate the bindings file
+```
+Çözüm: `Dockerfile`'da `python3 make g++` paketlerinin kurulduğundan emin olun. İmajı `--no-cache` ile yeniden derleyin:
+```bash
+docker compose build --no-cache
+```
+
+**Port zaten kullanımda:**
+```
+Error: bind: address already in use
+```
+Çözüm:
+```bash
+# Hangi işlem 3000 portunu kullanıyor?
+sudo lsof -i :3000
+# docker-compose.yml'de port değiştir: "3001:3000"
+```
+
+**Konteyner sürekli yeniden başlıyor:**
+```bash
+# Son logları incele
+docker compose logs --tail=50 mailtrustai
+# Sağlık kontrolü başarısız mı?
+docker inspect mailtrustai-app | grep -A5 Health
+```
+
+**Volume izin hatası:**
+```
+EACCES: permission denied, open '/app/data/settings.json'
+```
+Çözüm: Geliştirme ortamında host dizin sahipliğini kontrol edin:
+```bash
+sudo chown -R 1001:1001 ./data ./logs
+```
 
 ---
 

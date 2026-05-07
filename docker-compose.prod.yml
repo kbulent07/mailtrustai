@@ -1,0 +1,90 @@
+# ============================================================
+# MailTrustAI — Docker Compose (Üretim)
+# Nginx ters proxy + SSL ile tam üretim kurulumu
+#
+# Kullanım:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# SSL sertifikaları:
+#   ./nginx/certs/fullchain.pem
+#   ./nginx/certs/privkey.pem
+# ============================================================
+
+services:
+  mailtrustai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: mailtrustai-app
+    restart: always
+
+    env_file:
+      - .env
+
+    environment:
+      - NODE_ENV=production
+
+    # Üretimde port dışarı açılmaz — sadece nginx erişir
+    expose:
+      - "3000"
+
+    volumes:
+      - mailtrustai_data:/app/data
+      - mailtrustai_logs:/app/logs
+
+    networks:
+      - mailtrustai_net
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: mailtrustai-nginx
+    restart: always
+    depends_on:
+      mailtrustai:
+        condition: service_healthy
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      # Let's Encrypt webroot doğrulaması için
+      - ./nginx/webroot:/var/www/certbot:ro
+
+    networks:
+      - mailtrustai_net
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# ── Volumes ─────────────────────────────────────────────────
+volumes:
+  mailtrustai_data:
+    driver: local
+  mailtrustai_logs:
+    driver: local
+
+# ── Networks ────────────────────────────────────────────────
+networks:
+  mailtrustai_net:
+    driver: bridge

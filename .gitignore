@@ -54,6 +54,11 @@ build/
 # Claude AI geliştirme ortamı ayarları
 .claude/
 
+# SSL sertifikaları (hassas)
+nginx/certs/*.pem
+nginx/certs/*.crt
+nginx/certs/*.key
+
 # Geçici veri ve test dosyaları
 data/curl-msg-debug.txt
 data/curl-msg-response.txt
