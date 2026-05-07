@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MailTrustAI Admin & Keygen</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        body { background: var(--bg-secondary); }
+        .admin-nav { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; gap: 20px; }
+        .admin-nav a { color: var(--text-secondary); text-decoration: none; font-weight: 500; }
+        .admin-nav a.active { color: var(--accent); }
+    </style>
+</head>
+<body>
+    <div class="admin-nav" style="align-items:center;justify-content:space-between">
+        <div style="display:flex;gap:20px;align-items:center">
+            <div class="navbar-brand">🛡️ MailTrustAI Admin</div>
+            <a href="#" class="active" onclick="showTab('keygen')">Lisans Üretici</a>
+            <a href="#" onclick="showTab('dealers')">👥 Bayiler</a>
+            <a href="#" onclick="showTab('revoke')">🚫 Lisans İptal</a>
+            <a href="/">← Uygulamaya Dön</a>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+            <label style="font-size:12px;color:var(--text-secondary)">🔒 Admin Şifresi:</label>
+            <input class="form-input" type="password" id="adminPwd" placeholder="Admin şifresi" style="max-width:220px;height:32px;padding:4px 10px">
+        </div>
+    </div>
+
+    <!-- DEALERS TAB -->
+    <div id="tabDealers" class="main-content" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h2>👥 Bayi Yönetimi</h2>
+            <button class="btn btn-primary btn-sm" onclick="showDealerForm()">➕ Yeni Bayi</button>
+        </div>
+        <div class="form-group">
+            <button class="btn btn-ghost btn-sm" onclick="loadDealers()">🔄 Bayileri Yükle</button>
+            <span style="font-size:11px;color:var(--text-secondary);margin-left:8px">Üst sağ köşedeki Admin Şifresini kullanır.</span>
+        </div>
+        <div id="dealerList" class="mt-16"></div>
+
+        <!-- Dealer form -->
+        <div id="dealerForm" class="card mt-16" style="display:none">
+            <div class="card-header"><span class="card-title" id="dealerFormTitle">Yeni Bayi</span></div>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label class="form-label">Bayi Kodu</label>
+                    <input class="form-input" id="dfCode" placeholder="BAY001">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">PIN (Şifre)</label>
+                    <input class="form-input" id="dfPin" type="password" placeholder="••••">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Bayi Adı</label>
+                    <input class="form-input" id="dfName" placeholder="Örnek Bilişim">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Yetkili Kişi</label>
+                    <input class="form-input" id="dfContact" placeholder="Ali Veli">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">E-posta</label>
+                    <input class="form-input" id="dfEmail" placeholder="ali@ornek.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">İndirim %</label>
+                    <input class="form-input" id="dfDiscount" type="number" value="0" min="0" max="100">
+                </div>
+            </div>
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="checkbox" id="dfActive" checked>
+                    <span>Aktif</span>
+                </label>
+            </div>
+            <div class="flex gap-16">
+                <button class="btn btn-primary" onclick="saveDealer()">💾 Kaydet</button>
+                <button class="btn btn-ghost" onclick="document.getElementById('dealerForm').style.display='none'">❌ İptal</button>
+            </div>
+        </div>
+
+        <!-- Sales history -->
+        <div class="card mt-24">
+            <div class="card-header">
+                <span class="card-title">📊 Tüm Satışlar</span>
+                <button class="btn btn-ghost btn-sm" onclick="loadAllSales()">🔄</button>
+                <button class="btn btn-ghost btn-sm" onclick="exportSalesCSV()">⬇️ CSV</button>
+            </div>
+            <div id="salesList" class="mt-16"><p class="text-muted">Admin şifresi ile yükleyin</p></div>
+        </div>
+    </div>
+
+    <!-- KREDİ MODAL -->
+    <div id="creditModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:none;align-items:center;justify-content:center">
+        <div class="card" style="width:420px;max-width:95vw">
+            <div class="card-header">
+                <span class="card-title">💳 Kredi Yönetimi — <span id="creditModalTitle"></span></span>
+                <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="closeCreditModal()">✕</button>
+            </div>
+            <div style="margin-bottom:16px">
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px">Mevcut Bakiye</div>
+                <div id="creditModalBalance" style="font-size:28px;font-weight:800;color:var(--green)">—</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Yüklenecek Miktar</label>
+                <input class="form-input" type="number" id="creditAmount" placeholder="100" min="1">
+                <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">Eksiltmek için eksi değer girin (örn: -50)</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Not (opsiyonel)</label>
+                <input class="form-input" id="creditNote" placeholder="Ödeme alındı / Kasım bakiyesi...">
+            </div>
+            <div id="creditModalStatus" style="margin-bottom:12px;font-size:13px;min-height:18px"></div>
+            <div class="flex gap-16">
+                <button class="btn btn-primary" onclick="submitCredit()">💳 Uygula</button>
+                <button class="btn btn-ghost" onclick="closeCreditModal()">İptal</button>
+            </div>
+            <div style="margin-top:20px">
+                <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">Son İşlemler</div>
+                <div id="creditTxList" style="font-size:12px;max-height:200px;overflow-y:auto"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tabKeygen" class="main-content">
+        <div class="grid-2">
+            <!-- Keygen Form -->
+            <div class="card">
+                <div class="card-header"><span class="card-title">🔑 Lisans Anahtarı Üret</span></div>
+                <div class="form-group">
+                    <label class="form-label">Plan Tipi</label>
+                    <select class="form-select" id="plan">
+                        <option value="PRO" selected>Pro Plan (Tarama Posta Kutusu)</option>
+                        <option value="ENT">Enterprise Plan (IMAP Tarama + Anlık Rapor)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tarama Limiti (Tier)</label>
+                    <select class="form-select" id="tier">
+                        <option value="T1">T1: 50 tarama/ay</option>
+                        <option value="T2" selected>T2: 100 tarama/ay</option>
+                        <option value="T3">T3: 250 tarama/ay</option>
+                        <option value="T4">T4: 500 tarama/ay</option>
+                        <option value="T5">T5: 1.000 tarama/ay</option>
+                        <option value="T6">T6: 2.000 tarama/ay</option>
+                        <option value="T7">T7: 5.000 tarama/ay</option>
+                        <option value="T8">T8: 10.000 tarama/ay</option>
+                        <option value="T9">T9: 10.000+ Sınırsız</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Süre</label>
+                    <select class="form-select" id="duration">
+                        <option value="M" selected>1 Ay (Aylık)</option>
+                        <option value="Y">1 Yıl (Yıllık)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Bayi Kodu (Reseller)</label>
+                    <input class="form-input" id="reseller" value="DIRECT" placeholder="DIRECT">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Adet (Toplu Üretim)</label>
+                    <input class="form-input" type="number" id="count" value="1" min="1" max="1000">
+                </div>
+                <button class="btn btn-primary" style="width: 100%; justify-content: center" onclick="generateKeys()">
+                    ⚡ Anahtar(lar)ı Üret
+                </button>
+            </div>
+
+            <!-- Result -->
+            <div class="card">
+                <div class="card-header"><span class="card-title">📄 Sonuç</span></div>
+                <textarea class="form-textarea" id="result" readonly style="height: 250px; margin-bottom: 16px;" placeholder="Üretilen anahtarlar burada görünecek..."></textarea>
+                <div class="flex gap-16">
+                    <button class="btn btn-ghost" onclick="copyResult()">📋 Kopyala</button>
+                    <button class="btn btn-ghost" onclick="downloadCSV()">⬇️ CSV İndir</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div><!-- /tabKeygen -->
+
+    <!-- LİSANS İPTAL SEKMESİ -->
+    <div id="tabRevoke" class="main-content" style="display:none">
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header"><span class="card-title">🚫 Lisans İptal Et</span></div>
+                <div class="form-group">
+                    <label class="form-label">Lisans Anahtarı</label>
+                    <input class="form-input" id="revokeKeyInput" placeholder="MSA-ENT-T3-M-DIRECT-20260503-XXXXXXXX" style="font-family:monospace">
+                </div>
+                <div class="flex gap-16">
+                    <button class="btn btn-danger" onclick="revokeKey()">🚫 İptal Et</button>
+                    <button class="btn btn-ghost" onclick="unRevokeKey()">✅ İptali Kaldır</button>
+                </div>
+                <div id="revokeResult" class="mt-16"></div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">📋 İptal Edilmiş Lisanslar</span>
+                    <button class="btn btn-ghost btn-sm" onclick="loadRevokedList()">🔄 Yükle</button>
+                </div>
+                <div id="revokedList" class="mt-16"><p class="text-muted">Admin şifresi ile yükleyin</p></div>
+            </div>
+        </div>
+    </div><!-- /tabRevoke -->
+
+    <script>
+        async function generateKeys() {
+            const adminPwd = document.getElementById('adminPwd').value;
+            if (!adminPwd) {
+                alert('Üst sağ köşedeki Admin Şifresini girin.');
+                document.getElementById('adminPwd').focus();
+                return;
+            }
+
+            const data = {
+                plan:     document.getElementById('plan').value,
+                tier:     document.getElementById('tier').value,
+                duration: document.getElementById('duration').value,
+                reseller: document.getElementById('reseller').value || 'DIRECT',
+                count:    parseInt(document.getElementById('count').value) || 1
+            };
+
+            const ta = document.getElementById('result');
+            try {
+                const res = await fetch('/api/license/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPwd },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+
+                if (!res.ok) {
+                    ta.value = '';
+                    alert(`Hata (HTTP ${res.status}): ${result.error || 'Bilinmeyen hata'}`);
+                    return;
+                }
+
+                if (result.key) {
+                    ta.value = result.key;
+                } else if (result.keys) {
+                    ta.value = result.keys.join('\n');
+                } else {
+                    ta.value = '';
+                    alert('Sunucu boş yanıt döndü.');
+                }
+
+
+            } catch (err) {
+                ta.value = '';
+                alert('Bağlantı hatası: ' + err.message);
+            }
+        }
+
+        function copyResult() {
+            const ta = document.getElementById('result');
+            ta.select(); document.execCommand('copy');
+            alert('Kopyalandı!');
+        }
+
+        function downloadCSV() {
+            const ta = document.getElementById('result').value;
+            if (!ta) return;
+            const blob = new Blob([ta], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'msa-licenses.csv';
+            document.body.appendChild(a); a.click(); a.remove();
+        }
+
+        function showTab(tab) {
+            document.getElementById('tabKeygen').style.display  = tab === 'keygen'  ? '' : 'none';
+            document.getElementById('tabDealers').style.display = tab === 'dealers' ? '' : 'none';
+            document.getElementById('tabRevoke').style.display  = tab === 'revoke'  ? '' : 'none';
+            document.querySelectorAll('.admin-nav a').forEach(a => a.classList.remove('active'));
+            event.target.classList.add('active');
+            if (tab === 'revoke') loadRevokedList();
+        }
+
+        async function revokeKey() {
+            const key = document.getElementById('revokeKeyInput').value.trim();
+            const adminPwd = document.getElementById('adminPwd').value;
+            if (!key) { alert('Lisans anahtarı girin.'); return; }
+            if (!adminPwd) { alert('Admin şifresi gerekli.'); return; }
+            const res = await fetch('/api/license/revoke', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPwd },
+                body: JSON.stringify({ key })
+            });
+            const data = await res.json();
+            const el = document.getElementById('revokeResult');
+            el.innerHTML = res.ok
+                ? `<div style="color:#34d399">✅ ${esc(data.message)}</div>`
+                : `<div style="color:#f87171">❌ ${esc(data.error)}</div>`;
+            loadRevokedList();
+        }
+
+        async function unRevokeKey() {
+            const key = document.getElementById('revokeKeyInput').value.trim();
+            const adminPwd = document.getElementById('adminPwd').value;
+            if (!key) { alert('Lisans anahtarı girin.'); return; }
+            if (!adminPwd) { alert('Admin şifresi gerekli.'); return; }
+            const res = await fetch('/api/license/unrevoke', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPwd },
+                body: JSON.stringify({ key })
+            });
+            const data = await res.json();
+            const el = document.getElementById('revokeResult');
+            el.innerHTML = res.ok
+                ? `<div style="color:#34d399">✅ ${esc(data.message)}</div>`
+                : `<div style="color:#f87171">❌ ${esc(data.error)}</div>`;
+            loadRevokedList();
+        }
+
+        async function loadRevokedList() {
+            const adminPwd = document.getElementById('adminPwd').value;
+            if (!adminPwd) { document.getElementById('revokedList').innerHTML = '<p class="text-muted">Admin şifresi ile yükleyin.</p>'; return; }
+            try {
+                const res = await fetch('/api/license/revoked', { headers: { 'x-admin-password': adminPwd } });
+                const list = await res.json();
+                if (!res.ok) { document.getElementById('revokedList').innerHTML = `<p style="color:#f87171">${esc(list.error)}</p>`; return; }
+                document.getElementById('revokedList').innerHTML = list.length
+                    ? list.map((k, i) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;font-family:monospace">
+                            <span style="flex:1;color:#94a3b8">${esc(k)}</span>
+                            <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="document.getElementById('revokeKeyInput').value='${esc(k)}';unRevokeKey()">✅ İptali Kaldır</button>
+                        </div>`).join('')
+                    : '<p class="text-muted">İptal edilmiş lisans yok.</p>';
+            } catch(e) {
+                document.getElementById('revokedList').innerHTML = `<p style="color:#f87171">Hata: ${esc(e.message)}</p>`;
+            }
+        }
+
+        function adminHeaders() {
+            return { 'Content-Type': 'application/json', 'x-admin-password': document.getElementById('adminPwd').value };
+        }
+
+        function esc(v) { const d = document.createElement('span'); d.textContent = v || ''; return d.innerHTML; }
+
+        async function loadDealers() {
+            const res = await fetch('/api/dealer/admin/dealers', { headers: adminHeaders() });
+            const dealers = await res.json();
+            if (!res.ok) { document.getElementById('dealerList').innerHTML = `<p class="text-red">${esc(dealers.error)}</p>`; return; }
+            document.getElementById('dealerList').innerHTML = dealers.length ? `
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead><tr style="color:var(--text-secondary)">
+                        <th style="text-align:left;padding:6px">Kod</th><th style="text-align:left;padding:6px">Ad</th>
+                        <th style="padding:6px">İndirim</th><th style="padding:6px">Satış</th>
+                        <th style="padding:6px">Kredi</th>
+                        <th style="padding:6px">Durum</th><th style="padding:6px">İşlem</th>
+                    </tr></thead>
+                    <tbody>${dealers.map(d => `<tr style="border-top:1px solid var(--border)">
+                        <td style="padding:6px;font-family:monospace">${esc(d.code)}</td>
+                        <td style="padding:6px">${esc(d.name)}</td>
+                        <td style="text-align:center;padding:6px">%${d.discountPct}</td>
+                        <td style="text-align:center;padding:6px">${d.salesCount}</td>
+                        <td style="text-align:center;padding:6px;font-weight:700;color:${(d.credits||0)>0?'var(--green)':'#f87171'}">${d.credits||0}</td>
+                        <td style="text-align:center;padding:6px">${d.active ? '✅' : '❌'}</td>
+                        <td style="text-align:center;padding:6px;display:flex;gap:4px">
+                            <button class="btn btn-primary btn-sm" style="font-size:11px" onclick="openCreditModal('${esc(d.code)}','${esc(d.name)}')">💳 Kredi</button>
+                            <button class="btn btn-ghost btn-sm" onclick="deleteDealer('${esc(d.code)}')">🗑️</button>
+                        </td>
+                    </tr>`).join('')}</tbody>
+                </table>` : '<p class="text-muted">Henüz bayi eklenmedi</p>';
+        }
+
+        function showDealerForm() {
+            document.getElementById('dealerForm').style.display = '';
+            document.getElementById('dfCode').value = '';
+            document.getElementById('dfPin').value = '';
+            document.getElementById('dfName').value = '';
+            document.getElementById('dfContact').value = '';
+            document.getElementById('dfEmail').value = '';
+            document.getElementById('dfDiscount').value = '0';
+            document.getElementById('dfActive').checked = true;
+        }
+
+        async function saveDealer() {
+            const data = {
+                code: document.getElementById('dfCode').value.trim().toUpperCase(),
+                pin: document.getElementById('dfPin').value,
+                name: document.getElementById('dfName').value.trim(),
+                contactPerson: document.getElementById('dfContact').value.trim(),
+                email: document.getElementById('dfEmail').value.trim(),
+                discountPct: parseInt(document.getElementById('dfDiscount').value) || 0,
+                active: document.getElementById('dfActive').checked
+            };
+            if (!data.code || !data.name || !data.pin) { alert('Kod, ad ve PIN zorunludur'); return; }
+            const res = await fetch('/api/dealer/admin/dealers', { method: 'POST', headers: adminHeaders(), body: JSON.stringify(data) });
+            const result = await res.json();
+            if (result.success) { document.getElementById('dealerForm').style.display = 'none'; loadDealers(); }
+            else alert(result.error || 'Hata');
+        }
+
+        async function deleteDealer(code) {
+            if (!confirm(`${code} silinsin mi?`)) return;
+            const res = await fetch(`/api/dealer/admin/dealers/${code}`, { method: 'DELETE', headers: adminHeaders() });
+            if (res.ok) loadDealers(); else alert('Silme başarısız');
+        }
+
+        let allSalesData = [];
+        async function loadAllSales() {
+            const res = await fetch('/api/dealer/admin/sales?limit=500', { headers: adminHeaders() });
+            if (!res.ok) { document.getElementById('salesList').innerHTML = '<p class="text-red">Yetkilendirme hatası</p>'; return; }
+            allSalesData = await res.json();
+            document.getElementById('salesList').innerHTML = allSalesData.length ? `
+                <table style="width:100%;border-collapse:collapse;font-size:12px">
+                    <thead><tr style="color:var(--text-secondary)">
+                        <th style="text-align:left;padding:4px">Tarih</th><th style="text-align:left;padding:4px">Bayi</th>
+                        <th style="padding:4px">Plan</th><th style="padding:4px">Tier</th>
+                        <th style="text-align:left;padding:4px">Lisans</th><th style="text-align:left;padding:4px">Not</th>
+                    </tr></thead>
+                    <tbody>${allSalesData.map(s => `<tr style="border-top:1px solid var(--border)">
+                        <td style="padding:4px;color:var(--text-secondary)">${new Date(s.createdAt).toLocaleDateString('tr')}</td>
+                        <td style="padding:4px">${esc(s.dealerCode)}</td>
+                        <td style="text-align:center;padding:4px">${esc(s.plan)}</td>
+                        <td style="text-align:center;padding:4px">${esc(s.tier)}</td>
+                        <td style="padding:4px;font-family:monospace;font-size:10px">${esc(s.licenseKey)}</td>
+                        <td style="padding:4px">${esc(s.customerNote)}</td>
+                    </tr>`).join('')}</tbody>
+                </table>` : '<p class="text-muted">Satış bulunamadı</p>';
+        }
+
+        function exportSalesCSV() {
+            if (!allSalesData.length) { alert('Önce verileri yükleyin'); return; }
+            const header = 'Tarih,Bayi,Plan,Tier,Süre,Lisans,Not\n';
+            const rows = allSalesData.map(s =>
+                `"${s.createdAt}","${s.dealerCode}","${s.plan}","${s.tier}","${s.duration}","${s.licenseKey}","${(s.customerNote||'').replace(/"/g,'""')}"`
+            ).join('\n');
+            const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+            a.download = 'satislar.csv'; document.body.appendChild(a); a.click(); a.remove();
+        }
+
+        // ─── KREDİ MODAL ────────────────────────────────────────
+        let _creditModalCode = '';
+
+        async function openCreditModal(code, name) {
+            _creditModalCode = code;
+            document.getElementById('creditModalTitle').textContent = name + ' (' + code + ')';
+            document.getElementById('creditModal').style.display = 'flex';
+            document.getElementById('creditAmount').value = '';
+            document.getElementById('creditNote').value = '';
+            document.getElementById('creditModalStatus').textContent = '';
+            await loadCreditInfo(code);
+        }
+
+        function closeCreditModal() {
+            document.getElementById('creditModal').style.display = 'none';
+        }
+
+        async function loadCreditInfo(code) {
+            const res = await fetch(`/api/dealer/admin/dealers/${code}/credits`, { headers: adminHeaders() });
+            if (!res.ok) { document.getElementById('creditModalBalance').textContent = 'Hata'; return; }
+            const data = await res.json();
+            document.getElementById('creditModalBalance').textContent = (data.credits || 0) + ' kredi';
+            const txEl = document.getElementById('creditTxList');
+            if (!data.transactions || !data.transactions.length) {
+                txEl.innerHTML = '<p style="color:var(--text-secondary);padding:4px 0">Henüz işlem yok</p>';
+                return;
+            }
+            txEl.innerHTML = data.transactions.map(t => {
+                const sign = t.amount > 0 ? '+' : '';
+                const color = t.amount > 0 ? 'var(--green)' : '#f87171';
+                const date = new Date(t.createdAt).toLocaleDateString('tr') + ' ' + new Date(t.createdAt).toLocaleTimeString('tr', {hour:'2-digit',minute:'2-digit'});
+                return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
+                    <span style="color:var(--text-secondary);white-space:nowrap">${date}</span>
+                    <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${esc(t.note)}</span>
+                    <span style="font-weight:700;color:${color};white-space:nowrap">${sign}${t.amount}</span>
+                    <span style="color:var(--text-secondary);white-space:nowrap">= ${t.balanceAfter}</span>
+                </div>`;
+            }).join('');
+        }
+
+        async function submitCredit() {
+            const amount = parseFloat(document.getElementById('creditAmount').value);
+            const note = document.getElementById('creditNote').value.trim();
+            const statusEl = document.getElementById('creditModalStatus');
+            if (!amount || isNaN(amount)) {
+                statusEl.style.color = '#f87171';
+                statusEl.textContent = 'Geçerli bir miktar girin';
+                return;
+            }
+            statusEl.style.color = 'var(--text-secondary)';
+            statusEl.textContent = 'İşleniyor...';
+            try {
+                const res = await fetch(`/api/dealer/admin/dealers/${_creditModalCode}/credits`, {
+                    method: 'POST',
+                    headers: adminHeaders(),
+                    body: JSON.stringify({ amount, note })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    statusEl.style.color = '#f87171';
+                    statusEl.textContent = '❌ ' + (data.error || 'Hata');
+                    return;
+                }
+                statusEl.style.color = 'var(--green)';
+                statusEl.textContent = '✅ Tamamlandı. Yeni bakiye: ' + data.credits + ' kredi';
+                document.getElementById('creditAmount').value = '';
+                document.getElementById('creditNote').value = '';
+                await loadCreditInfo(_creditModalCode);
+                loadDealers();
+            } catch (e) {
+                statusEl.style.color = '#f87171';
+                statusEl.textContent = '❌ ' + e.message;
+            }
+        }
+    </script>
+</body>
+</html>

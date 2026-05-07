@@ -1,0 +1,853 @@
+# MailTrustAI — Kurulum ve Yapılandırma Kılavuzu
+
+> **Versiyon:** 1.0 · **Güncelleme:** 2026-05
+
+---
+
+## İçindekiler
+
+1. [Sistem Gereksinimleri](#1-sistem-gereksinimleri)
+2. [Linux Kurulumu (Ubuntu / Debian)](#2-linux-kurulumu-ubuntu--debian)
+3. [Linux Kurulumu (RHEL / CentOS / AlmaLinux)](#3-linux-kurulumu-rhel--centos--almalinux)
+4. [Windows Kurulumu](#4-windows-kurulumu)
+5. [Ortam Değişkenleri (.env)](#5-ortam-değişkenleri-env)
+6. [İlk Yapılandırma](#6-i̇lk-yapılandırma)
+7. [Nginx Reverse Proxy (Linux)](#7-nginx-reverse-proxy-linux)
+8. [IIS Reverse Proxy (Windows)](#8-iis-reverse-proxy-windows)
+9. [SSL / TLS Sertifikası](#9-ssl--tls-sertifikası)
+10. [Online Lisans Sunucusu Altyapısı](#10-online-lisans-sunucusu-altyapısı)
+11. [Güncelleme Prosedürü](#11-güncelleme-prosedürü)
+12. [Sorun Giderme](#12-sorun-giderme)
+
+---
+
+## 1. Sistem Gereksinimleri
+
+| Bileşen | Minimum | Önerilen |
+|---|---|---|
+| CPU | 2 vCore | 4 vCore |
+| RAM | 1 GB | 2 GB |
+| Disk | 10 GB | 50 GB |
+| Node.js | v18 LTS | v20 LTS veya v22 LTS |
+| İşletim Sistemi | Ubuntu 20.04 / Windows Server 2019 | Ubuntu 22.04 / Windows Server 2022 |
+| İnternet | IMAP/SMTP portları açık | — |
+
+**Açık olması gereken portlar (uygulama sunucusu):**
+
+| Port | Yön | Açıklama |
+|---|---|---|
+| 3000 (veya PORT) | Gelen | MailTrustAI web arayüzü |
+| 80 / 443 | Gelen | Nginx/IIS reverse proxy |
+| 993 | Giden | IMAP SSL (posta sunucusuna) |
+| 465 / 587 | Giden | SMTP (rapor gönderimi) |
+
+---
+
+## 2. Linux Kurulumu (Ubuntu / Debian)
+
+### 2.1 Sistem Güncelleme
+
+```bash
+sudo apt update && sudo apt upgrade -y
+```
+
+### 2.2 Node.js Kurulumu (v20 LTS)
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+node --version   # v20.x.x olmalı
+npm --version
+```
+
+### 2.3 Bağımlılıklar
+
+```bash
+# better-sqlite3 için derleme araçları
+sudo apt install -y build-essential python3 git curl
+```
+
+### 2.4 Uygulama Kullanıcısı Oluşturma (Güvenlik)
+
+```bash
+sudo useradd -r -m -d /opt/mailtrustai -s /bin/bash mailtrustai
+sudo su - mailtrustai
+```
+
+### 2.5 Proje Dosyalarını Kopyalama
+
+```bash
+# Eğer Git ile klonluyorsanız:
+git clone https://github.com/sirketiniz/mailtrustai.git /opt/mailtrustai/app
+
+# Eğer ZIP/dosya transferi ile kuruyorsanız:
+# scp veya rsync ile dosyaları /opt/mailtrustai/app klasörüne kopyalayın
+mkdir -p /opt/mailtrustai/app
+# ... dosyaları buraya kopyalayın ...
+```
+
+### 2.6 Bağımlılıkları Yükleme
+
+```bash
+cd /opt/mailtrustai/app
+npm install --production
+```
+
+### 2.7 Data Klasörü ve İzinler
+
+```bash
+mkdir -p /opt/mailtrustai/app/data
+chmod 750 /opt/mailtrustai/app/data
+```
+
+### 2.8 Ortam Değişkenleri (.env)
+
+```bash
+cp /opt/mailtrustai/app/.env.example /opt/mailtrustai/app/.env
+# (örnek dosya yoksa aşağıdaki Bölüm 5'e bakın ve elle oluşturun)
+nano /opt/mailtrustai/app/.env
+```
+
+> **Bölüm 5'teki tüm değişkenleri doldurun.**
+
+### 2.9 PM2 ile Süreç Yönetimi (Önerilen)
+
+```bash
+# PM2'yi global olarak yükle
+sudo npm install -g pm2
+
+# Uygulamayı başlat
+cd /opt/mailtrustai/app
+pm2 start server.js --name mailtrustai --env production
+
+# Sistem yeniden başladığında otomatik çalıştır
+pm2 startup systemd -u mailtrustai --hp /opt/mailtrustai
+# (Çıktıdaki sudo komutunu kopyalayıp çalıştırın)
+
+pm2 save
+```
+
+**PM2 Yönetim Komutları:**
+
+```bash
+pm2 status                  # Durum göster
+pm2 logs mailtrustai        # Canlı log
+pm2 restart mailtrustai     # Yeniden başlat
+pm2 stop mailtrustai        # Durdur
+pm2 delete mailtrustai      # PM2'den sil
+```
+
+### 2.10 Systemd ile Servis (PM2 Alternatifi)
+
+```bash
+sudo nano /etc/systemd/system/mailtrustai.service
+```
+
+```ini
+[Unit]
+Description=MailTrustAI Email Security Platform
+After=network.target
+
+[Service]
+Type=simple
+User=mailtrustai
+WorkingDirectory=/opt/mailtrustai/app
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=mailtrustai
+EnvironmentFile=/opt/mailtrustai/app/.env
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable mailtrustai
+sudo systemctl start mailtrustai
+sudo systemctl status mailtrustai
+```
+
+**Log görüntüleme:**
+
+```bash
+sudo journalctl -u mailtrustai -f
+```
+
+### 2.11 Güvenlik Duvarı (ufw)
+
+```bash
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+# 3000 portunu dışarıya açmayın — nginx üzerinden erişim sağlayın
+sudo ufw enable
+sudo ufw status
+```
+
+---
+
+## 3. Linux Kurulumu (RHEL / CentOS / AlmaLinux)
+
+### 3.1 Sistem Güncelleme
+
+```bash
+sudo dnf update -y
+```
+
+### 3.2 Node.js Kurulumu
+
+```bash
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+sudo dnf install -y nodejs
+sudo dnf install -y gcc-c++ make python3 git
+```
+
+### 3.3 Kullanıcı ve Dizin
+
+```bash
+sudo useradd -r -m -d /opt/mailtrustai -s /bin/bash mailtrustai
+sudo mkdir -p /opt/mailtrustai/app
+sudo chown -R mailtrustai:mailtrustai /opt/mailtrustai
+```
+
+### 3.4 Bağımlılıklar ve PM2
+
+```bash
+sudo su - mailtrustai
+cd /opt/mailtrustai/app
+npm install --production
+
+sudo npm install -g pm2
+pm2 start server.js --name mailtrustai --env production
+pm2 startup systemd -u mailtrustai --hp /opt/mailtrustai
+pm2 save
+```
+
+### 3.5 SELinux Ayarı (Gerekirse)
+
+```bash
+# Node.js'in 3000 portunu dinlemesine izin ver
+sudo semanage port -a -t http_port_t -p tcp 3000
+
+# Nginx'in proxy bağlantısına izin ver
+sudo setsebool -P httpd_can_network_connect 1
+```
+
+### 3.6 Güvenlik Duvarı (firewalld)
+
+```bash
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
+```
+
+---
+
+## 4. Windows Kurulumu
+
+### 4.1 Node.js Kurulumu
+
+1. [https://nodejs.org](https://nodejs.org) adresinden **Node.js 20 LTS** indirin
+2. Kurucuyu çalıştırın — "Add to PATH" seçeneğini işaretleyin
+3. Kurulum sırasında **"Automatically install necessary tools"** seçeneğini işaretleyin (build tools)
+4. Doğrulama:
+
+```powershell
+node --version   # v20.x.x
+npm --version
+```
+
+### 4.2 Proje Dosyaları
+
+```powershell
+# Hedef klasör oluştur
+New-Item -ItemType Directory -Force -Path "C:\MailTrustAI"
+
+# Dosyaları buraya kopyalayın veya:
+# git clone https://github.com/sirketiniz/mailtrustai.git C:\MailTrustAI
+```
+
+### 4.3 Bağımlılıkları Yükleme
+
+```powershell
+cd C:\MailTrustAI
+npm install --production
+```
+
+> **Not:** `better-sqlite3` native modülü derleme gerektirir.
+> Hata alırsanız: `npm install --global windows-build-tools` (yönetici olarak)
+> veya Visual Studio Build Tools kurulu olduğundan emin olun.
+
+### 4.4 Ortam Değişkenleri (.env)
+
+```powershell
+# .env dosyası oluştur
+Copy-Item .env.example .env
+notepad .env
+```
+
+> **Bölüm 5'teki tüm değişkenleri doldurun.**
+
+### 4.5 Manuel Başlatma (Test)
+
+```powershell
+cd C:\MailTrustAI
+node server.js
+# Tarayıcıda: http://localhost:3000
+```
+
+### 4.6 Windows Servisi Olarak Kurulum (PM2)
+
+```powershell
+# PM2 ve PM2 Windows servisi yükle (Yönetici olarak)
+npm install -g pm2
+npm install -g pm2-windows-startup
+
+# Servisi yapılandır
+cd C:\MailTrustAI
+pm2 start server.js --name mailtrustai
+pm2-startup install
+pm2 save
+```
+
+### 4.7 Windows Servisi Olarak Kurulum (NSSM — Alternatif)
+
+```powershell
+# NSSM indirme: https://nssm.cc/download
+# nssm.exe'yi C:\Windows\System32'ye kopyalayın
+
+nssm install MailTrustAI "C:\Program Files\nodejs\node.exe" "C:\MailTrustAI\server.js"
+nssm set MailTrustAI AppDirectory "C:\MailTrustAI"
+nssm set MailTrustAI AppEnvironmentExtra NODE_ENV=production
+nssm set MailTrustAI DisplayName "MailTrustAI Email Security"
+nssm set MailTrustAI Description "MailTrustAI yapay zeka destekli e-posta güvenlik platformu"
+nssm set MailTrustAI Start SERVICE_AUTO_START
+nssm set MailTrustAI AppStdout "C:\MailTrustAI\logs\stdout.log"
+nssm set MailTrustAI AppStderr "C:\MailTrustAI\logs\stderr.log"
+
+nssm start MailTrustAI
+```
+
+**Servis yönetimi:**
+
+```powershell
+nssm start MailTrustAI
+nssm stop MailTrustAI
+nssm restart MailTrustAI
+nssm status MailTrustAI
+```
+
+### 4.8 Windows Güvenlik Duvarı
+
+```powershell
+# Yönetici olarak çalıştırın
+New-NetFirewallRule -DisplayName "MailTrustAI HTTP" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow
+New-NetFirewallRule -DisplayName "MailTrustAI HTTPS" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow
+# Port 3000'i dışarıya açmayın (IIS üzerinden yönlendirme kullanın)
+```
+
+---
+
+## 5. Ortam Değişkenleri (.env)
+
+Proje kök dizininde `.env` dosyası oluşturun:
+
+```env
+# ============================================================
+# MailTrustAI — Ortam Değişkenleri
+# ============================================================
+
+# ── Sunucu ──────────────────────────────────────────────────
+PORT=3000
+NODE_ENV=production
+
+# ── Güvenlik (ZORUNLU — Production'da boş bırakılamaz) ──────
+
+# IMAP kimlik bilgisi şifreleme anahtarı (en az 32 karakter)
+MSA_ENC_PASSWORD=GUCLU_RASTGELE_SIFRE_BURAYA_YAZIN_MIN32KARAKTER
+
+# IMAP şifreleme tuzu (en az 16 karakter)
+MSA_ENC_SALT=RASTGELE_TUZ_BURAYA_YAZIN
+
+# Lisans anahtarı HMAC sırrı (en az 32 karakter)
+# Tüm kurulumlarınızda AYNI değeri kullanın
+MSA_LICENSE_SECRET=LISANS_HMAC_SIRRI_BURAYA_YAZIN_MIN32KARAKTER
+
+# ── Admin ────────────────────────────────────────────────────
+# Admin şifresi sıfırlama e-postası (güvenlik için zorunlu)
+MSA_RECOVERY_EMAIL=admin@sirketiniz.com
+
+# ── Online Lisans Doğrulama (İsteğe Bağlı) ──────────────────
+# Kendi lisans sunucunuzun URL'i (Bölüm 10'a bakın)
+# Tanımlanmazsa offline modda çalışır
+MSA_LICENSE_REMOTE_URL=https://license.sirketiniz.com/api/license/check
+
+# Lisans yenileme aralığı (ms) — varsayılan: 6 saat
+MSA_LICENSE_REFRESH_MS=21600000
+
+# Sunucu erişilemezse tolerans süresi (ms) — varsayılan: 72 saat
+MSA_LICENSE_GRACE_MS=259200000
+```
+
+**Güvenli rastgele değer üretme:**
+
+```bash
+# Linux
+openssl rand -hex 32
+
+# Node.js (her platformda)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# PowerShell (Windows)
+[System.Web.Security.Membership]::GeneratePassword(48, 8)
+```
+
+> ⚠️ **Kritik:** `MSA_LICENSE_SECRET` tüm kurulumlarınızda **aynı** olmalıdır.
+> Farklı olursa ürettiğiniz lisans anahtarları doğrulanamaz.
+
+---
+
+## 6. İlk Yapılandırma
+
+Uygulama başladıktan sonra:
+
+1. **Admin Paneli:** `http://localhost:3000/keygen.html`
+2. **Admin şifresi:** İlk girişte `.env`'de belirtilen varsayılan şifre olmadığından,
+   keygen sayfasından "Admin Şifre Sıfırla" ile `MSA_RECOVERY_EMAIL` adresine kod gönderin.
+3. **Lisans üret:** Keygen panelinden `MSA-PRO-T2-M-DIRECT-...` formatında lisans oluşturun.
+4. **Ana arayüze gidin:** `http://localhost:3000` → Lisans Ekle (🔑)
+5. **VirusTotal API** (İsteğe bağlı): Ayarlar → VirusTotal API Key
+
+---
+
+## 7. Nginx Reverse Proxy (Linux)
+
+### 7.1 Nginx Kurulumu
+
+```bash
+# Ubuntu/Debian
+sudo apt install -y nginx
+
+# RHEL/AlmaLinux
+sudo dnf install -y nginx
+```
+
+### 7.2 Site Yapılandırması
+
+```bash
+sudo nano /etc/nginx/sites-available/mailtrustai
+```
+
+```nginx
+# HTTP → HTTPS yönlendirme
+server {
+    listen 80;
+    server_name mailtrustai.sirketiniz.com;
+    return 301 https://$host$request_uri;
+}
+
+# HTTPS
+server {
+    listen 443 ssl http2;
+    server_name mailtrustai.sirketiniz.com;
+
+    # SSL sertifikaları (Bölüm 9'a bakın)
+    ssl_certificate     /etc/letsencrypt/live/mailtrustai.sirketiniz.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mailtrustai.sirketiniz.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:SSL:10m;
+
+    # Güvenlik başlıkları
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options SAMEORIGIN;
+    add_header X-Content-Type-Options nosniff;
+
+    # Yükleme limiti (e-posta .eml/.msg dosyaları için)
+    client_max_body_size 60M;
+
+    # WebSocket desteği
+    location /ws {
+        proxy_pass         http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host $host;
+        proxy_read_timeout 86400;
+    }
+
+    # API ve statik dosyalar
+    location / {
+        proxy_pass         http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 10s;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/mailtrustai /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+---
+
+## 8. IIS Reverse Proxy (Windows)
+
+### 8.1 Gereksinimler
+
+1. **IIS** → Windows Özellikler → Internet Information Services ✓
+2. **URL Rewrite Module:** [https://www.iis.net/downloads/microsoft/url-rewrite](https://www.iis.net/downloads/microsoft/url-rewrite)
+3. **Application Request Routing (ARR):** [https://www.iis.net/downloads/microsoft/application-request-routing](https://www.iis.net/downloads/microsoft/application-request-routing)
+
+### 8.2 ARR Proxy Aktifleştirme
+
+IIS Manager → Sunucu Düzeyi → **Application Request Routing Cache** → **Server Proxy Settings** → **Enable proxy** ✓
+
+### 8.3 web.config
+
+`C:\inetpub\wwwroot\mailtrustai\web.config`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <system.webServer>
+        <rewrite>
+            <rules>
+                <!-- WebSocket -->
+                <rule name="MailTrustAI WebSocket" stopProcessing="true">
+                    <match url="^ws(.*)" />
+                    <action type="Rewrite" url="http://localhost:3000/ws{R:1}" />
+                </rule>
+                <!-- HTTP trafiği -->
+                <rule name="MailTrustAI Proxy" stopProcessing="true">
+                    <match url="(.*)" />
+                    <action type="Rewrite" url="http://localhost:3000/{R:1}" />
+                </rule>
+            </rules>
+        </rewrite>
+        <security>
+            <requestFiltering>
+                <!-- 60MB yükleme limiti -->
+                <requestLimits maxAllowedContentLength="62914560" />
+            </requestFiltering>
+        </security>
+    </system.webServer>
+</configuration>
+```
+
+---
+
+## 9. SSL / TLS Sertifikası
+
+### 9.1 Linux — Let's Encrypt (Ücretsiz)
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+
+# Sertifika al
+sudo certbot --nginx -d mailtrustai.sirketiniz.com
+
+# Otomatik yenileme (her 90 günde bir)
+sudo systemctl enable certbot.timer
+sudo systemctl start certbot.timer
+```
+
+### 9.2 Windows — Let's Encrypt (win-acme)
+
+1. [https://www.win-acme.com](https://www.win-acme.com) adresinden **win-acme** indirin
+2. Yönetici olarak çalıştırın:
+
+```powershell
+wacs.exe --target iis --host mailtrustai.sirketiniz.com --installation iis --store pemfiles --pemfilespath C:\ssl\mailtrustai
+```
+
+### 9.3 Kurumsal / Ücretli Sertifika
+
+Elinizde PEM formatında sertifika varsa nginx yapılandırmasında:
+
+```nginx
+ssl_certificate     /etc/ssl/mailtrustai/fullchain.pem;
+ssl_certificate_key /etc/ssl/mailtrustai/privkey.pem;
+```
+
+---
+
+## 10. Online Lisans Sunucusu Altyapısı
+
+### 10.1 Mimari Genel Bakış
+
+```
+Müşteri Sunucusu (MailTrustAI)
+        │
+        │  POST /api/license/check
+        │  { key: "MSA-PRO-T2-M-..." }
+        ▼
+license.sirketiniz.com  ←──── Siz yönetirsiniz
+  (Merkezi Lisans Sunucusu)
+        │
+        ├── { valid: true }   → Lisans aktif
+        └── { valid: false }  → Lisans iptal / geçersiz
+```
+
+**Güvenlik katmanları (otomatik):**
+- Uzak sunucuya erişilemezse **72 saatlik grace period** (önbellekten devam)
+- Önbellek **HMAC imzalı** (müşteri tarafında değiştirilemez)
+- Grace period dolduktan sonra lisans engellenir
+
+### 10.2 Altyapı Gereksinimleri
+
+| Bileşen | Seçenek |
+|---|---|
+| Sunucu | VPS (1 vCore / 512 MB RAM yeterli), shared hosting çalışmaz |
+| İşletim Sistemi | Ubuntu 22.04 LTS önerilir |
+| Runtime | Node.js 20 LTS |
+| Web Sunucu | Nginx + SSL (Let's Encrypt) |
+| Domain | `license.sirketiniz.com` (veya subdomain) |
+| Veritabanı | JSON dosya (küçük ölçek) → SQLite (orta ölçek) → PostgreSQL (büyük ölçek) |
+| Uptime | Kritik değil — 72 saatlik grace period sayesinde geçici kesintiler sorunsuz |
+
+### 10.3 Lisans Sunucusu Kurulumu
+
+**Adım 1 — Sunucuya Node.js kur (Ubuntu):**
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs build-essential
+sudo npm install -g pm2
+```
+
+**Adım 2 — Lisans sunucusu dosyalarını kopyala:**
+
+```bash
+mkdir -p /opt/license-server
+cd /opt/license-server
+
+# docs/license-server-example.js dosyasını bu dizine kopyalayın
+cp /path/to/mailtrustai/docs/license-server-example.js server.js
+npm init -y
+npm install express
+```
+
+**Adım 3 — `.env` dosyası:**
+
+```bash
+cat > /opt/license-server/.env << 'EOF'
+PORT=4000
+NODE_ENV=production
+
+# MailTrustAI kurulumlarındaki MSA_LICENSE_SECRET ile AYNI olmalı
+MSA_LICENSE_SECRET=LISANS_HMAC_SIRRI_BURAYA_YAZIN_MIN32KARAKTER
+
+# Admin endpoint koruma şifresi (ayrı, güçlü bir şifre)
+ADMIN_SECRET=ADMIN_PANELI_ICIN_GUCLU_SIFRE
+EOF
+```
+
+**Adım 4 — PM2 ile başlat:**
+
+```bash
+cd /opt/license-server
+pm2 start server.js --name license-server --env production
+pm2 startup
+pm2 save
+```
+
+**Adım 5 — Nginx yapılandırması:**
+
+```bash
+sudo nano /etc/nginx/sites-available/license-server
+```
+
+```nginx
+server {
+    listen 80;
+    server_name license.sirketiniz.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name license.sirketiniz.com;
+
+    ssl_certificate     /etc/letsencrypt/live/license.sirketiniz.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/license.sirketiniz.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    # Yalnızca /api/license/check herkese açık
+    # /api/admin/* güçlü şifre ile korumalı
+    location / {
+        proxy_pass         http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_read_timeout 15s;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/license-server /etc/nginx/sites-enabled/
+sudo certbot --nginx -d license.sirketiniz.com
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### 10.4 MailTrustAI'ı Lisans Sunucusuna Bağlama
+
+Her müşteri kurulumunun `.env` dosyasına ekleyin:
+
+```env
+MSA_LICENSE_REMOTE_URL=https://license.sirketiniz.com/api/license/check
+MSA_LICENSE_SECRET=LISANS_HMAC_SIRRI_BURAYA_YAZIN_MIN32KARAKTER
+```
+
+Uygulamayı yeniden başlatın:
+
+```bash
+pm2 restart mailtrustai
+```
+
+### 10.5 Lisans Yönetimi (Admin API)
+
+**Lisans iptal etme:**
+
+```bash
+curl -X POST https://license.sirketiniz.com/api/admin/revoke \
+  -H "Content-Type: application/json" \
+  -H "x-admin-secret: ADMIN_SIFRENIZ" \
+  -d '{"key": "MSA-PRO-T2-M-DIRECT-20260505-XXXXXXXX", "reason": "Ödeme alınmadı"}'
+```
+
+**İptal kaldırma:**
+
+```bash
+curl -X DELETE https://license.sirketiniz.com/api/admin/revoke/MSA-PRO-T2-M-DIRECT-20260505-XXXXXXXX \
+  -H "x-admin-secret: ADMIN_SIFRENIZ"
+```
+
+**İptal listesini görüntüleme:**
+
+```bash
+curl https://license.sirketiniz.com/api/admin/revoked \
+  -H "x-admin-secret: ADMIN_SIFRENIZ"
+```
+
+### 10.6 Lisans Sunucusu Geliştirme (İsteğe Bağlı)
+
+Müşteri sayısı arttıkça JSON dosya yerine SQLite kullanabilirsiniz:
+
+```bash
+npm install better-sqlite3
+```
+
+`server.js`'deki `loadRevoked()`/`saveRevoked()` fonksiyonlarını SQLite'a taşıyın.
+Ayrıca şu özellikler eklenebilir:
+
+- **Aktivasyon sayısı sınırı** — bir lisans kaç cihazda kullanılabilir
+- **IP kısıtlaması** — lisansı belirli IP aralığına bağlama
+- **Kullanım istatistikleri** — hangi lisanslar aktif, ne zaman kontrol etti
+- **E-posta bildirimi** — sona erme öncesi müşteriye hatırlatma
+
+---
+
+## 11. Güncelleme Prosedürü
+
+```bash
+# 1. Yedek al
+cp -r /opt/mailtrustai/app/data /opt/mailtrustai/data-backup-$(date +%Y%m%d)
+
+# 2. Uygulamayı durdur
+pm2 stop mailtrustai
+
+# 3. Yeni dosyaları kopyala (data/ klasörüne dokunma)
+rsync -av --exclude='data/' --exclude='.env' --exclude='node_modules/' \
+  /path/to/new-version/ /opt/mailtrustai/app/
+
+# 4. Bağımlılıkları güncelle
+cd /opt/mailtrustai/app
+npm install --production
+
+# 5. Başlat
+pm2 start mailtrustai
+pm2 logs mailtrustai --lines 50
+```
+
+---
+
+## 12. Sorun Giderme
+
+### "MSA_ENC_PASSWORD / MSA_ENC_SALT zorunludur" hatası
+
+`.env` dosyasında bu değişkenlerin tanımlı ve boş olmadığını kontrol edin.
+
+### "MSA_LICENSE_SECRET tanımlı değil" hatası
+
+`NODE_ENV=production` ile `.env`'de `MSA_LICENSE_SECRET` tanımlı olmalı.
+
+### Port 3000 zaten kullanımda
+
+```bash
+# Linux
+lsof -i :3000
+kill -9 <PID>
+
+# Windows
+netstat -ano | findstr :3000
+taskkill /PID <PID> /F
+```
+
+### better-sqlite3 derleme hatası (Windows)
+
+```powershell
+# Yönetici olarak:
+npm install --global --production windows-build-tools
+# Sonra:
+npm install
+```
+
+### IMAP bağlantısı kurulamıyor
+
+- Posta sunucusunun 993 portuna erişilebildiğini kontrol edin: `telnet mail.sirket.com 993`
+- SSL sertifikası hatası için: arayüzde "SSL/TLS gerektirir" seçeneğini kapatıp test edin
+- Güvenlik duvarı kurallarını kontrol edin
+
+### Lisans geçersiz sayılıyor (Remote URL yapılandırıldıysa)
+
+- Lisans sunucusunun erişilebilir olduğunu doğrulayın: `curl https://license.sirketiniz.com/api/license/check -X POST -H "Content-Type: application/json" -d '{"key":"test"}'`
+- `MSA_LICENSE_SECRET` her iki sunucuda da aynı mı?
+- Grace period süresi: `data/license-remote-cache.json` dosyasını inceleyin
+
+---
+
+## Veri Dizini Yapısı
+
+```
+data/
+├── credentials.enc          # Şifreli IMAP kimlik bilgileri
+├── settings.json            # Uygulama ayarları (API key, raporlama)
+├── scan-history.json        # Tarama geçmişi
+├── domain-lists.json        # Güvenilir / engellenen listesi
+├── revoked-licenses.json    # İptal edilen lisanslar (offline)
+├── license-remote-cache.json # Uzak lisans önbelleği (HMAC imzalı)
+├── daily-scans.json         # Günlük tarama sayaçları
+├── scan-mailbox-state.json  # Merkezi raporlama kutusu durumu
+├── auto-monitor-state.json  # IMAP otomatik izleme durumu
+└── msa.db                   # SQLite veritabanı (bayi sistemi)
+```
+
+> ⚠️ **Yedekleme:** `data/` klasörünü düzenli olarak yedekleyin.
+> `credentials.enc` ve `settings.json` kritik dosyalardır.
+
+---
+
+*MailTrustAI © 2026 CW-Enerji — Tüm hakları saklıdır*

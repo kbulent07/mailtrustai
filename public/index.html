@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Advanced Email Security Analysis Tool — Phishing detection, attachment scanning, IMAP monitoring">
+    <title>MailTrustAI — E-Posta Güvenlik Analizi</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar" id="navbar">
+    <div class="navbar-brand">
+        <span class="shield">🛡️</span>
+        <span>MailTrustAI</span>
+    </div>
+    <div class="navbar-tabs">
+        <button class="nav-tab" id="navTabHome" onclick="showPage('home')">🏠 Ana Sayfa</button>
+        <button class="nav-tab active" id="navTabScan" onclick="showPage('scan')">🔍 Tarama</button>
+    </div>
+    <div class="navbar-actions">
+        <span class="license-badge free" id="licenseBadge">🆓 Free</span>
+        <span class="text-muted hidden" id="usageCounter" title="Aylık tarama kullanımı" style="font-size:12px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.05)">0 / ∞</span>
+        <button class="btn btn-ghost btn-sm" id="btnLang" onclick="toggleLang()">🌐 EN</button>
+        <button class="btn btn-ghost btn-sm" id="btnSettings" onclick="showSettings()">⚙️</button>
+        <button class="btn btn-ghost btn-sm" id="btnLicense" onclick="showLicenseModal()">🔑</button>
+    </div>
+</nav>
+
+<!-- MAIN CONTENT -->
+<div class="main-content" id="mainContent">
+
+    <!-- ═══════════════════════════════════════════════════════
+         ANA SAYFA PANELİ
+    ═══════════════════════════════════════════════════════ -->
+    <div id="homePanel" style="display:none">
+
+        <!-- Karşılama başlığı -->
+        <div class="home-hero">
+            <div class="home-hero-icon">🛡️</div>
+            <div>
+                <h1 class="home-hero-title">MailTrustAI</h1>
+                <p class="home-hero-sub">Gelişmiş E-posta Güvenlik Analiz Platformu — Kimlik avı, zararlı ek ve kötü amaçlı bağlantı tespiti</p>
+            </div>
+            <div style="margin-left:auto">
+                <span class="home-status-dot" id="homeStatusDot"></span>
+                <span id="homeStatusLabel" style="font-size:12px;color:var(--green)">Sistem Çalışıyor</span>
+            </div>
+        </div>
+
+        <!-- İstatistik kartları -->
+        <div class="home-stat-grid" id="homeStatGrid">
+            <div class="home-stat-card">
+                <div class="home-stat-icon" style="background:rgba(99,102,241,0.15);color:#818cf8">📊</div>
+                <div class="home-stat-body">
+                    <div class="home-stat-val" id="hsTotalScans">—</div>
+                    <div class="home-stat-lbl">Toplam Tarama</div>
+                </div>
+            </div>
+            <div class="home-stat-card">
+                <div class="home-stat-icon" style="background:var(--red-bg);color:var(--red)">🔴</div>
+                <div class="home-stat-body">
+                    <div class="home-stat-val" id="hsHighRisk" style="color:var(--red)">—</div>
+                    <div class="home-stat-lbl">Yüksek Risk</div>
+                </div>
+            </div>
+            <div class="home-stat-card">
+                <div class="home-stat-icon" style="background:var(--orange-bg);color:var(--orange)">🟠</div>
+                <div class="home-stat-body">
+                    <div class="home-stat-val" id="hsMediumRisk" style="color:var(--orange)">—</div>
+                    <div class="home-stat-lbl">Orta Risk</div>
+                </div>
+            </div>
+            <div class="home-stat-card">
+                <div class="home-stat-icon" style="background:var(--green-bg);color:var(--green)">🟢</div>
+                <div class="home-stat-body">
+                    <div class="home-stat-val" id="hsSafe" style="color:var(--green)">—</div>
+                    <div class="home-stat-lbl">Güvenli</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alt bölüm: Son taramalar + Durum paneli -->
+        <div class="home-bottom-grid">
+
+            <!-- Son taramalar -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">🕒 Son Taramalar</span>
+                    <button class="btn btn-ghost btn-sm" onclick="showPage('scan')" style="margin-left:auto">Tümünü Gör →</button>
+                </div>
+                <div id="homeRecentList" style="display:flex;flex-direction:column;gap:8px">
+                    <p class="text-muted" style="font-size:13px">Yükleniyor...</p>
+                </div>
+            </div>
+
+            <!-- Durum + Hızlı Eylemler -->
+            <div style="display:flex;flex-direction:column;gap:16px">
+
+                <!-- Tehdit İstihbaratı -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🌐 Tehdit İstihbaratı</span>
+                    </div>
+                    <div id="homeThreatIntelStatus" style="font-size:13px;display:flex;flex-direction:column;gap:6px">
+                        <p class="text-muted">Yükleniyor...</p>
+                    </div>
+                </div>
+
+                <!-- Hızlı Eylemler -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">⚡ Hızlı Eylemler</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                        <button class="btn btn-primary" style="justify-content:flex-start" onclick="showPage('scan');selectMode('upload')">
+                            📁 EML Dosyası Tara
+                        </button>
+                        <button class="btn btn-ghost" style="justify-content:flex-start" onclick="showPage('scan');selectMode('imap')">
+                            📡 IMAP Gelen Kutusunu Aç
+                        </button>
+                        <button class="btn btn-ghost" style="justify-content:flex-start" onclick="openListsPanel()">
+                            🛡️ Allowlist / Blocklist Yönet
+                        </button>
+                        <button class="btn btn-ghost" style="justify-content:flex-start" onclick="exportHistoryCsv()">
+                            ⬇️ Geçmişi CSV İndir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONNECTION BAR (IMAP) -->
+    <div class="connection-bar hidden" id="connectionBar">
+        <span class="status-dot disconnected" id="statusDot"></span>
+        <span id="connectionText">Bağlı değil</span>
+        <span style="flex:1"></span>
+        <span class="text-muted" id="connectionStats"></span>
+        <button class="btn btn-ghost btn-sm" onclick="showImapModal()">📡 Hesap Ekle</button>
+    </div>
+
+    <!-- SCAN MODE SELECTOR -->
+    <div class="scan-modes" id="scanModes">
+        <div class="scan-mode active" data-mode="upload" onclick="selectMode('upload')">
+            <div class="mode-icon">📁</div>
+            <div class="mode-title" data-i18n="mode_upload">EML Dosya Yükle</div>
+            <div class="mode-desc" data-i18n="mode_upload_desc">Sürükle-bırak veya dosya seç</div>
+            <span class="mode-badge badge-free">Free+</span>
+        </div>
+        <div class="scan-mode" data-mode="paste" onclick="selectMode('paste')">
+            <div class="mode-icon">📋</div>
+            <div class="mode-title" data-i18n="mode_paste">Ham Kaynak Yapıştır</div>
+            <div class="mode-desc" data-i18n="mode_paste_desc">E-posta kaynağını yapıştırın</div>
+            <span class="mode-badge badge-free">Free+</span>
+        </div>
+        <div class="scan-mode" data-mode="imap" onclick="selectMode('imap')">
+            <div class="mode-icon">📡</div>
+            <div class="mode-title" data-i18n="mode_imap">IMAP Tarama</div>
+            <div class="mode-desc" data-i18n="mode_imap_desc">Gelen kutusunu tara ve izle</div>
+            <span class="mode-badge badge-ent">Enterprise</span>
+        </div>
+        <div class="scan-mode" data-mode="scan-mailbox" onclick="selectMode('scan-mailbox')">
+            <div class="mode-icon">📬</div>
+            <div class="mode-title" data-i18n="mode_scanmailbox">Tarama Posta Kutusu</div>
+            <div class="mode-desc" data-i18n="mode_scanmailbox_desc">Gelen mail → otomatik rapor</div>
+            <span class="mode-badge badge-pro">Pro+</span>
+        </div>
+    </div>
+
+    <!-- UPLOAD PANEL -->
+    <div id="panelUpload" class="card">
+        <div class="upload-zone" id="uploadZone">
+            <div class="icon">📧</div>
+            <h3 data-i18n="upload_title">EML Dosyasını Sürükleyin veya Tıklayın</h3>
+            <p data-i18n="upload_desc">.eml dosyası veya şüpheli eki yükleyin</p>
+            <input type="file" id="fileInput" accept=".eml,.msg,.txt,*/*">
+        </div>
+    </div>
+
+    <!-- PASTE PANEL -->
+    <div id="panelPaste" class="card hidden">
+        <div class="card-header">
+            <span class="card-title">📋 <span data-i18n="paste_title">Ham E-posta Kaynağı</span></span>
+        </div>
+        <textarea class="form-textarea" id="sourceInput" placeholder="E-posta kaynağını buraya yapıştırın..." rows="10"></textarea>
+        <div class="mt-16">
+            <button class="btn btn-primary" onclick="analyzePaste()">
+                🔍 <span data-i18n="btn_analyze">Analiz Et</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- IMAP PANEL -->
+    <div id="panelImap" class="card hidden">
+        <div class="card-header">
+            <span class="card-title">📡 <span data-i18n="imap_title">IMAP Gelen Kutusu</span></span>
+            <div class="flex gap-16">
+                <button class="btn btn-ghost btn-sm" onclick="showImapModal()">➕ Hesap Ekle</button>
+                <button class="btn btn-primary btn-sm" onclick="refreshInbox()">🔄 Yenile</button>
+            </div>
+        </div>
+        <div id="imapAccountSelect" class="mb-16"></div>
+        <div class="imap-workspace">
+            <div class="imap-mail-column">
+                <div class="imap-section-title">Mail Listesi</div>
+        <div id="emailList" class="email-list">
+            <p class="text-muted" data-i18n="imap_no_account">Henüz IMAP hesabı eklenmedi</p>
+        </div>
+                <div class="mt-16">
+                    <button class="btn btn-ghost btn-sm hidden" onclick="loadMoreInbox()" id="btnLoadMoreImap">
+                        ⬇️ <span>Daha Fazla Yükle</span>
+                    </button>
+                </div>
+                <div class="mt-16 flex gap-16">
+            <button class="btn btn-primary" onclick="scanSelected()" id="btnScanSelected" disabled>
+                ✅ <span data-i18n="btn_scan_selected">Seçilenleri Tara</span>
+            </button>
+            <button class="btn btn-ghost" onclick="startMonitor()" id="btnMonitor">
+                📡 <span data-i18n="btn_monitor">Otomatik İzle</span>
+            </button>
+                </div>
+            </div>
+            <div class="imap-report-column">
+                <div class="imap-section-title">Mail Saglik Raporu</div>
+                <div id="imapReportPane" class="imap-report-pane">
+                    <div class="imap-report-empty">
+                        Ilgili e-postaya tikladiginizda saglik raporu burada gosterilecek.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCAN MAILBOX PANEL -->
+    <div id="panelScanMailbox" class="hidden">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📬 <span data-i18n="scanmailbox_title">Tarama Posta Kutuları</span> <span style="font-size:11px;color:var(--green);font-weight:600;margin-left:6px">[Pro+]</span></span>
+                <button class="btn btn-primary btn-sm" onclick="showScanMailboxModal()">➕ <span data-i18n="scanmailbox_add">Ekle</span></button>
+            </div>
+            <div id="scanMailboxList"><p class="text-muted" data-i18n="scanmailbox_no_items">Henüz tarama posta kutusu eklenmedi</p></div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+            <div class="card-header">
+                <span class="card-title">📡 IMAP Otomatik Tarama Posta Kutuları <span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:6px">[Enterprise]</span></span>
+                <span style="font-size:11px;color:var(--text-secondary)">IMAP hesabı ekran düzenlemesinden anlık rapor açılır</span>
+            </div>
+            <div id="scanMailboxRealtimeList"><p class="text-muted">Henüz IMAP otomatik izleme yok. IMAP Tarama → hesap düzenle → "Yeni mail geldiğinde anlık güvenlik raporu gönder" seçeneği ile ekleyin.</p></div>
+        </div>
+    </div>
+
+    <!-- SCAN PROGRESS -->
+    <div id="scanProgress" class="card hidden">
+        <div class="scan-progress">
+            <div class="spinner"></div>
+            <h3 data-i18n="scanning">Analiz ediliyor...</h3>
+            <p class="text-muted" data-i18n="scanning_desc">E-posta güvenlik kontrolleri yapılıyor</p>
+        </div>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="resultsPanel" class="hidden">
+        <!-- Risk Banner -->
+        <div class="risk-banner" id="riskBanner">
+            <div class="risk-score" id="riskScore">0</div>
+            <div class="risk-text">
+                <h2 id="riskLevel"></h2>
+                <p id="riskDescription"></p>
+            </div>
+            <span style="flex:1"></span>
+            <button class="btn btn-ghost btn-sm" onclick="exportPDF()">📄 PDF</button>
+            <button class="btn btn-ghost btn-sm" onclick="exportJSON()">📋 JSON</button>
+            <button class="btn btn-ghost btn-sm" onclick="resetView()">🔄 <span data-i18n="btn_new">Yeni</span></button>
+        </div>
+
+        <!-- Email Meta -->
+        <div class="card mb-16" id="emailMeta"></div>
+
+        <!-- Stat Cards -->
+        <div class="stat-grid" id="statGrid"></div>
+
+        <!-- ChatGPT AI Değerlendirme (stat grid'in hemen altı) -->
+        <div class="card mt-16" id="openaiResults" style="border-color:rgba(99,102,241,0.5)">
+            <div class="card-header" style="cursor:pointer;user-select:none" onclick="toggleOpenaiCard()">
+                <span class="card-title">🤖 ChatGPT AI Tehdit Değerlendirmesi</span>
+                <span id="openaiCollapseIcon" style="margin-left:auto;font-size:18px;color:var(--text-secondary)">▾</span>
+            </div>
+            <div id="openaiContent"></div>
+        </div>
+
+        <!-- Structured Report -->
+        <div class="card mt-16 mb-24" id="structuredReport">
+            <div id="structuredReportContent"></div>
+        </div>
+
+        <!-- Findings Tabs -->
+        <div class="card">
+            <div class="tabs mb-16" id="findingTabs">
+                <button class="tab active" data-tab="all" onclick="filterFindings('all')">📊 Tümü</button>
+                <button class="tab" data-tab="header" onclick="filterFindings('header')">📧 Header</button>
+                <button class="tab" data-tab="content" onclick="filterFindings('content')">📝 İçerik</button>
+                <button class="tab" data-tab="link" onclick="filterFindings('link')">🔗 Link</button>
+                <button class="tab" data-tab="attachment" onclick="filterFindings('attachment')">📎 Ekler</button>
+            </div>
+            <div class="findings-list" id="findingsList"></div>
+        </div>
+
+        <div class="card mt-24 hidden" id="attachmentResults">
+            <div class="card-header">
+                <span class="card-title">Attachment Scan Details</span>
+            </div>
+            <div id="attachmentContent" class="findings-list"></div>
+        </div>
+
+        <!-- Claude AI Results -->
+        <div class="card mt-24 hidden" id="claudeResults" style="border-color: rgba(217, 119, 87, 0.5)">
+            <div class="card-header">
+                <span class="card-title">🤖 Claude AI Semantik Analiz</span>
+            </div>
+            <div id="claudeContent"></div>
+        </div>
+
+        <!-- Virüs Tarama Sonuçları -->
+        <div class="card mt-24 hidden" id="vtResults">
+            <div class="card-header">
+                <span class="card-title">🦠 Virüs Kontrolleri</span>
+            </div>
+            <div id="vtContent"></div>
+        </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="card mt-24" id="historyPanel">
+        <div class="card-header">
+            <span class="card-title">📋 <span data-i18n="history">Son Taramalar</span></span>
+            <button class="btn btn-ghost btn-sm" onclick="exportHistoryCsv()" title="Tarama geçmişini CSV olarak indir" style="margin-left:auto">⬇️ CSV</button>
+        </div>
+        <div id="historyList" class="flex flex-col gap-16"></div>
+    </div>
+
+    <!-- ALLOWLIST / BLOCKLIST PANELİ -->
+    <div class="card mt-24" id="listsPanel" style="display:none">
+        <div class="card-header">
+            <span class="card-title">🛡️ Allowlist / Blocklist Yönetimi</span>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('listsPanel').style.display='none'" style="margin-left:auto">✕</button>
+        </div>
+        <div class="grid-2" style="gap:20px">
+            <div>
+                <div style="font-weight:700;color:#2ee59d;margin-bottom:8px">✅ Güvenilir Domainler (Allowlist)</div>
+                <div style="display:flex;gap:8px;margin-bottom:8px">
+                    <input class="form-input" id="allowlistInput" placeholder="ornek.com" style="flex:1">
+                    <button class="btn btn-primary btn-sm" onclick="addListEntry('allowlist')">Ekle</button>
+                </div>
+                <div id="allowlistItems" class="flex flex-col gap-8"></div>
+            </div>
+            <div>
+                <div style="font-weight:700;color:#ff5c7a;margin-bottom:8px">🚫 Engellenen Domainler (Blocklist)</div>
+                <div style="display:flex;gap:8px;margin-bottom:8px">
+                    <input class="form-input" id="blocklistInput" placeholder="tehdit.com" style="flex:1">
+                    <button class="btn btn-primary btn-sm" onclick="addListEntry('blocklist')">Ekle</button>
+                </div>
+                <div id="blocklistItems" class="flex flex-col gap-8"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- LICENSE MODAL -->
+<div class="modal-overlay hidden" id="licenseModal">
+    <div class="modal">
+        <h2>🔑 <span data-i18n="license_title">Lisans Anahtarı</span></h2>
+        <div class="form-group">
+            <label class="form-label" data-i18n="license_key">Lisans Anahtarı</label>
+            <input class="form-input" id="licenseKeyInput" placeholder="MSA-PRO-T2-M-DIRECT-20260503-A7B3C1D2">
+        </div>
+        <div id="licenseResult" class="mb-16"></div>
+        <div class="flex gap-16">
+            <button class="btn btn-primary" onclick="activateLicense()">✅ <span data-i18n="btn_activate">Etkinleştir</span></button>
+            <button class="btn btn-ghost" onclick="closeLicenseModal()">❌ <span data-i18n="btn_close">Kapat</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- IMAP MODAL -->
+<div class="modal-overlay hidden" id="imapModal">
+    <div class="modal">
+        <h2>📡 <span data-i18n="imap_add">IMAP Hesabı Ekle</span></h2>
+        <div class="form-group">
+            <label class="form-label">E-posta</label>
+            <input class="form-input" id="imapEmail" placeholder="user@gmail.com">
+        </div>
+        <div class="form-group">
+            <label class="form-label" data-i18n="imap_password">Şifre / Uygulama Şifresi</label>
+            <input class="form-input" id="imapPassword" type="password" placeholder="••••••••">
+        </div>
+        <div class="grid-2">
+            <div class="form-group">
+                <label class="form-label">IMAP Sunucu</label>
+                <input class="form-input" id="imapHost" placeholder="imap.gmail.com">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Port</label>
+                <input class="form-input" id="imapPort" value="993" type="number">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="imapIgnoreSSL">
+                <span>Sertifika Hatalarını Yoksay (Güvenli olmayan SSL)</span>
+            </label>
+        </div>
+        <div class="form-group">
+            <label class="form-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="imapAutoSummaryReport">
+                <span>Bu mail adresi günlük/haftalık/aylık özet raporları alsın</span>
+            </label>
+        </div>
+
+        <!-- Anlık Güvenlik Raporu -->
+        <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:14px;margin-top:4px">
+            <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
+                <input type="checkbox" id="imapRealTimeAlert" onchange="toggleImapRealTimeAlertSection(this.checked)">
+                <span>🔔 Yeni mail geldiğinde anlık güvenlik raporu gönder <span style="color:#f59e0b;font-size:11px;font-weight:600">[Enterprise]</span></span>
+            </label>
+
+            <div id="imapRealTimeAlertSection" style="display:none;padding-left:10px;border-left:2px solid rgba(96,165,250,0.3)">
+                <div class="form-group">
+                    <label class="form-label">Rapor Politikası</label>
+                    <select class="form-input" id="imapAlertMode" onchange="onImapAlertModeChange(this)">
+                        <option value="risky">⚠️ Sadece riskli mailler</option>
+                        <option value="all">📬 Tüm mailler [Enterprise]</option>
+                    </select>
+                    <div id="imapAlertModeWarning" style="font-size:11px;color:#f59e0b;display:none;margin-top:4px">
+                        ⚠️ "Tüm mailler" modu Enterprise lisansı gerektirir.
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">📨 Rapor Alıcısı</label>
+                    <div id="imapAlertReportToBox" onclick="document.getElementById('imapAlertReportToInput').focus()" style="background:var(--surface2);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:40px;cursor:text">
+                        <span id="imapAlertReportToTags" style="display:contents"></span>
+                        <input type="text" id="imapAlertReportToInput" placeholder="e-posta ekle, Enter ile onayla" onkeydown="onAlertEmailKeydown(event)" onblur="tryAddAlertEmail()" style="background:transparent;border:none;outline:none;color:inherit;font-size:13px;min-width:180px;flex:1">
+                    </div>
+                    <input type="hidden" id="imapAlertReportTo">
+                    <div id="imapAlertDefaultHint" style="font-size:11px;margin-top:4px;opacity:0.6"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">📤 Gönderen Hesap (SMTP)</label>
+                    <select class="form-input" id="imapAlertSenderAccount">
+                        <option value="">— Bu hesabın kimlik bilgileriyle gönder —</option>
+                    </select>
+                    <div style="font-size:11px;opacity:0.55;margin-top:4px">Tarama Posta Kutularından biri seçilirse o hesabın SMTP ayarları kullanılır.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Rapor Dili</label>
+                    <select class="form-input" id="imapAlertLang">
+                        <option value="tr">Türkçe</option>
+                        <option value="en">English</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div id="imapTestResult" class="mb-16"></div>
+        <div class="flex gap-16">
+            <button class="btn btn-ghost" onclick="testImapConnection()">🔄 <span data-i18n="btn_test">Test Et</span></button>
+            <button class="btn btn-primary" onclick="saveImapAccount()">💾 <span data-i18n="btn_save">Kaydet</span></button>
+            <button class="btn btn-ghost" onclick="closeImapModal()">❌</button>
+        </div>
+    </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal">
+        <h2>⚙️ <span data-i18n="settings">Ayarlar</span></h2>
+        <div class="form-group">
+            <label class="form-label">Virüs Tarama API Anahtarı</label>
+            <input class="form-input" id="vtApiKeyInput" placeholder="Ücretsiz API anahtarınızı girin">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Anthropic Claude API Key</label>
+            <input class="form-input" id="claudeApiKeyInput" placeholder="sk-ant-api03-...">
+        </div>
+        <div class="form-group">
+            <label class="form-label">OpenAI / ChatGPT API Key</label>
+            <input class="form-input" id="openaiApiKeyInput" placeholder="sk-proj-...">
+            <div class="text-muted" style="font-size:12px; margin-top:6px;">
+                Yapay zeka ile spam, phishing ve dolandiricilik analizini etkinlestirir.
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">ChatGPT Modeli</label>
+            <select class="form-input" id="openaiModelSelect"
+                    style="appearance:auto;-webkit-appearance:auto"
+                    onchange="syncOpenaiModelInput()">
+                <option value="">— Sunucu varsayılanı (gpt-4o-mini) —</option>
+                <optgroup label="── GPT-5 Serisi ──">
+                    <option value="gpt-5">gpt-5  (En güçlü)</option>
+                    <option value="gpt-5-mini">gpt-5-mini  (Hızlı)</option>
+                </optgroup>
+                <optgroup label="── GPT-4o Serisi ──">
+                    <option value="gpt-4o-mini">gpt-4o-mini  (Hızlı · Ekonomik ✓ Önerilen)</option>
+                    <option value="gpt-4o">gpt-4o  (Dengeli)</option>
+                </optgroup>
+                <optgroup label="── GPT-4.1 Serisi ──">
+                    <option value="gpt-4.1-nano">gpt-4.1-nano  (En hızlı)</option>
+                    <option value="gpt-4.1-mini">gpt-4.1-mini  (Hızlı)</option>
+                    <option value="gpt-4.1">gpt-4.1  (Güçlü)</option>
+                </optgroup>
+                <optgroup label="── Akıl Yürütme (o-serisi) ──">
+                    <option value="o4-mini">o4-mini  (Hızlı akıl yürütme)</option>
+                    <option value="o3-mini">o3-mini</option>
+                    <option value="o1-mini">o1-mini</option>
+                    <option value="o3">o3  (En gelişmiş)</option>
+                </optgroup>
+                <optgroup label="── Özel ──">
+                    <option value="__custom__">Özel model adı gir →</option>
+                </optgroup>
+            </select>
+            <input class="form-input" id="openaiModelCustom" placeholder="Özel model adı (ör. gpt-4o-2024-11-20)"
+                   style="margin-top:6px;display:none">
+            <div class="text-muted" style="font-size:11px;margin-top:5px;">
+                Not: Seçilen model OpenAI Responses API ile uyumlu olmalıdır.
+                ⚠️ Bu ayarı yalnızca admin değiştirebilir.
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">🔒 Admin Şifresi <span style="font-size:11px;color:var(--text-secondary);font-weight:400">(/keygen.html ve /bayi.html için)</span></label>
+            <input class="form-input" id="adminPasswordInput" type="password" placeholder="Mevcut şifre (ayarları kaydetmek için)">
+            <div style="margin-top:6px">
+                <button type="button" class="btn btn-ghost btn-sm" onclick="toggleResetPanel()" style="font-size:11px;padding:4px 10px;opacity:.8">
+                    🔑 Şifremi Unuttum (e-posta ile sıfırla)
+                </button>
+            </div>
+
+            <!-- OTP SIFIRLAMA PANELİ -->
+            <div id="resetPanel" style="display:none;margin-top:12px;background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.2);border-radius:10px;padding:14px">
+                <div style="font-size:13px;font-weight:700;color:#38bdf8;margin-bottom:10px">🔐 E-posta ile Şifre Sıfırlama</div>
+
+                <!-- Adım 1: Kod gönder -->
+                <div id="resetStep1">
+                    <div class="text-muted" style="font-size:12px;margin-bottom:10px">
+                        Kayıtlı kurtarma adresine 6 haneli doğrulama kodu gönderilecek.
+                    </div>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="sendAdminResetCode()" style="border-color:#38bdf8;color:#38bdf8">
+                        📨 Doğrulama Kodu Gönder
+                    </button>
+                    <div id="resetStep1Status" class="text-muted" style="font-size:12px;margin-top:8px"></div>
+                </div>
+
+                <!-- Adım 2: Kodu ve yeni şifreyi gir (başta gizli) -->
+                <div id="resetStep2" style="display:none;margin-top:12px">
+                    <div class="form-group" style="margin-bottom:8px">
+                        <label class="form-label" style="font-size:12px">Doğrulama Kodu</label>
+                        <input class="form-input" id="resetCodeInput" placeholder="6 haneli kod" maxlength="6"
+                               style="font-size:20px;letter-spacing:8px;font-weight:700;max-width:180px"
+                               oninput="this.value=this.value.replace(/\D/g,'')">
+                    </div>
+                    <div class="form-group" style="margin-bottom:10px">
+                        <label class="form-label" style="font-size:12px">Yeni Admin Şifresi</label>
+                        <input class="form-input" id="resetNewPassword" type="password" placeholder="En az 6 karakter" style="max-width:260px">
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="verifyAdminResetCode()">✅ Onayla ve Şifreyi Değiştir</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="sendAdminResetCode()" style="font-size:11px">🔄 Yeni Kod İste</button>
+                    </div>
+                    <div id="resetStep2Status" class="text-muted" style="font-size:12px;margin-top:8px"></div>
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Firma Adi</label>
+            <input class="form-input" id="companyNameInput" placeholder="CW-Enerji">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Firma Bilgisi</label>
+            <input class="form-input" id="companyDetailsInput" placeholder="Bilgi Islem Birimi / Siber Guvenlik">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Iletisim / Alt Bilgi</label>
+            <textarea class="form-textarea" id="companyContactInfoInput" rows="3" placeholder="Adres, telefon, e-posta veya rapor alt notu"></textarea>
+        </div>
+        <div class="text-muted" style="font-size:12px; margin-bottom:12px;">
+            Otomatik rapor alacak mail adresleri IMAP Gelen Kutusu ekranindaki hesap satirlarindan isaretlenir.
+        </div>
+        <div class="grid-3" style="gap:10px;margin-bottom:12px;">
+            <label class="report-toggle"><input type="checkbox" id="periodicDaily"> Gunluk</label>
+            <label class="report-toggle"><input type="checkbox" id="periodicWeekly"> Haftalik</label>
+            <label class="report-toggle"><input type="checkbox" id="periodicMonthly"> Aylik</label>
+        </div>
+        <div class="flex gap-16 mb-16" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" onclick="triggerPeriodicReport('daily')">Gunluk Rapor Gonder</button>
+            <button class="btn btn-ghost btn-sm" onclick="triggerPeriodicReport('weekly')">Haftalik Rapor Gonder</button>
+            <button class="btn btn-ghost btn-sm" onclick="triggerPeriodicReport('monthly')">Aylik Rapor Gonder</button>
+            <button class="btn btn-ghost btn-sm" onclick="triggerPeriodicReport('yearly')">Yillik Rapor Gonder</button>
+        </div>
+        <div id="periodicReportStatus" class="text-muted" style="font-size:12px; margin-bottom:12px;"></div>
+
+        <!-- WEBHOOK / SIEM AYARLARI -->
+        <div style="border-top:1px solid rgba(255,255,255,0.1);margin-top:16px;padding-top:14px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:#f8fafc">🔔 Webhook / SIEM Entegrasyonu</div>
+            <div class="form-group">
+                <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="webhookEnabled" onchange="toggleWebhookSection(this.checked)">
+                    <span>Webhook bildirimlerini etkinleştir</span>
+                </label>
+            </div>
+            <div id="webhookSection" style="display:none;padding-left:10px;border-left:2px solid rgba(96,165,250,0.3)">
+                <div class="form-group">
+                    <label class="form-label">Webhook URL</label>
+                    <input class="form-input" id="webhookUrl" placeholder="https://hooks.slack.com/... veya özel SIEM URL">
+                    <div class="text-muted" style="font-size:11px;margin-top:4px">Slack, Teams, Elastic, Splunk veya özel HTTP endpoint</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Minimum Risk Seviyesi</label>
+                    <select class="form-input" id="webhookMinLevel" style="appearance:auto">
+                        <option value="safe">Hepsi (Güvenli dahil)</option>
+                        <option value="low" selected>Düşük Risk ve üzeri</option>
+                        <option value="medium">Orta Risk ve üzeri</option>
+                        <option value="high">Yalnızca Yüksek Risk</option>
+                    </select>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                    <button class="btn btn-ghost btn-sm" onclick="testWebhookConnection()">🔄 Bağlantıyı Test Et</button>
+                    <button class="btn btn-ghost btn-sm" onclick="openListsPanel()">🛡️ Allowlist/Blocklist Yönet</button>
+                </div>
+                <div id="webhookTestStatus" class="text-muted" style="font-size:12px;margin-top:8px"></div>
+            </div>
+            <div id="listsShortcut" style="margin-top:10px" class="hidden">
+                <button class="btn btn-ghost btn-sm" onclick="openListsPanel()">🛡️ Allowlist / Blocklist Yönet</button>
+            </div>
+        </div>
+
+        <div id="settingsStatus" class="text-muted" style="font-size:12px; margin-bottom:12px;"></div>
+        <div class="flex gap-16 mt-16">
+            <button class="btn btn-primary" onclick="saveSettings()">💾 Kaydet</button>
+            <button class="btn btn-ghost" onclick="closeSettings()">❌</button>
+        </div>
+
+        <!-- SERVİS YÖNETİMİ -->
+        <div style="border-top:1px solid rgba(255,255,255,0.1);margin-top:20px;padding-top:16px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:#f8fafc">🖥️ Servis Yönetimi</div>
+            <div id="serviceStatusInfo" class="text-muted" style="font-size:12px;margin-bottom:12px;background:rgba(255,255,255,0.03);border-radius:8px;padding:10px">
+                Yükleniyor...
+            </div>
+            <div class="flex gap-16" style="flex-wrap:wrap;margin-bottom:8px">
+                <button class="btn btn-ghost btn-sm" onclick="serviceAction('restart')" style="border-color:#60a5fa;color:#60a5fa">🔄 Yeniden Başlat</button>
+                <button class="btn btn-ghost btn-sm" onclick="serviceAction('stop')" style="border-color:#f87171;color:#f87171">⏹️ Durdur</button>
+                <button class="btn btn-ghost btn-sm" onclick="loadServiceStatus()">📊 Durumu Yenile</button>
+            </div>
+            <div id="serviceActionStatus" class="text-muted" style="font-size:12px"></div>
+        </div>
+    </div>
+</div>
+
+<!-- SCAN MAILBOX MODAL -->
+<div class="modal-overlay hidden" id="scanMailboxModal">
+    <div class="modal" style="max-width:520px">
+        <h2>📬 Merkezi Raporlama Mail Hesabı</h2>
+
+        <!-- Bilgi bandı -->
+        <div id="smProInfo" style="background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.25);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#94a3b8;">
+            ℹ️ Sistemde yalnızca <strong>1</strong> merkezi raporlama mail hesabı kurulabilir.
+            Bu hesap kendisine <strong>iletilen</strong> mailleri tarar ve gönderene rapor gönderir.
+        </div>
+        <!-- Limit doldu bandı -->
+        <div id="smProLimitBanner" class="hidden" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#fca5a5;">
+            🚫 Zaten bir merkezi raporlama mail hesabı tanımlı.
+            Yenisini eklemek için önce mevcut hesabı silin.
+        </div>
+
+        <div id="smFormBody">
+
+            <!-- ── IMAP Bağlantı ── -->
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📡 IMAP Bağlantı</div>
+
+            <div style="display:grid;grid-template-columns:1fr 90px;gap:10px">
+                <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label">Sunucu (host)</label>
+                    <input class="form-input" id="smImapHost" type="text" placeholder="mail.sirket.com" oninput="onSmImapHostChange(this.value)">
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label">Port</label>
+                    <input class="form-input" id="smImapPort" type="number" value="993" min="1" max="65535">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-top:10px">
+                <label class="form-label">E-posta / Kullanıcı adı</label>
+                <input class="form-input" id="smImapEmail" type="email" placeholder="tarama@sirket.com">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">IMAP Şifresi</label>
+                <input class="form-input" id="smImapPassword" type="password" placeholder="••••••••" autocomplete="new-password">
+            </div>
+
+            <div class="form-group" style="margin-bottom:4px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+                    <input type="checkbox" id="smImapTls" checked>
+                    <span>SSL/TLS kullan (port 993 için önerilen)</span>
+                </label>
+            </div>
+
+            <!-- ── SMTP Rapor Gönderimi ── -->
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 10px">📤 SMTP Rapor Gönderimi</div>
+
+            <div style="display:grid;grid-template-columns:1fr 90px;gap:10px">
+                <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label">SMTP Sunucu</label>
+                    <input class="form-input" id="smSmtpHost" type="text" placeholder="mail.sirket.com" oninput="this.dataset.userEdited='true'">
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label">Port</label>
+                    <input class="form-input" id="smSmtpPort" type="number" value="587" min="1" max="65535">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-top:10px;margin-bottom:4px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+                    <input type="checkbox" id="smSmtpSamePass" checked onchange="onSmSmtpSamePassChange()">
+                    <span>SMTP şifresi IMAP şifresi ile aynı</span>
+                </label>
+            </div>
+            <div id="smSmtpPassWrap" class="hidden">
+                <div class="form-group">
+                    <label class="form-label">SMTP Şifresi</label>
+                    <input class="form-input" id="smSmtpPassword" type="password" placeholder="••••••••" autocomplete="new-password">
+                </div>
+            </div>
+
+            <!-- ── Rapor Ayarları ── -->
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 10px">📋 Rapor Ayarları</div>
+
+            <div class="form-group">
+                <label class="form-label">📨 Rapor Alıcısı</label>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+                        <input type="radio" name="smReportTarget" id="smReportTargetForwarder" value="forwarder" onchange="onSmReportTargetChange()" checked>
+                        <span>📤 <strong>İletilen adrese</strong> gönder — maili ileten kişiye otomatik rapor</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+                        <input type="radio" name="smReportTarget" id="smReportTargetFixed" value="fixed" onchange="onSmReportTargetChange()">
+                        <span>✉️ <strong>Belirli adres</strong> — aşağıdaki adrese gönder</span>
+                    </label>
+                </div>
+                <div id="smReportToWrap" class="hidden">
+                    <input class="form-input" id="smReportTo" type="email" placeholder="admin@sirket.com">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Rapor Dili</label>
+                <select class="form-input" id="smReportLang">
+                    <option value="tr">Türkçe</option>
+                    <option value="en">English</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Otomatik Rapor Politikası</label>
+                <select class="form-input" id="smReportMode" onchange="onScanMailboxReportModeChange(this)">
+                    <option value="risky">⚠️ Sadece riskli mailler için rapor al</option>
+                    <option value="all">📬 Tüm mailler için rapor al [Enterprise]</option>
+                </select>
+                <div id="smReportModeWarning" class="text-muted" style="font-size:11px;margin-top:4px;display:none;color:#f59e0b">
+                    ⚠️ "Tüm mailler" modu Enterprise lisansı gerektirir.
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+                    <input type="checkbox" id="smEnabled" checked>
+                    <span>Aktif</span>
+                </label>
+            </div>
+
+            <div id="smTestResult" style="margin-bottom:12px"></div>
+            <div class="flex gap-16">
+                <button class="btn btn-ghost" onclick="testScanMailboxImap()">🔌 Bağlantı Test Et</button>
+                <button class="btn btn-primary" id="smSaveBtn" onclick="saveScanMailbox()">💾 Kaydet</button>
+                <button class="btn btn-ghost" onclick="closeScanMailboxModal()">❌</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/js/i18n.js"></script>
+<script src="/js/history-state.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

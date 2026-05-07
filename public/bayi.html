@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MailTrustAI Bayi Portalı</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .bayi-nav { display:flex; align-items:center; gap:20px; padding:14px 24px; border-bottom:1px solid var(--border); background:var(--surface); }
+        .bayi-nav .brand { font-weight:700; font-size:16px; }
+        .bayi-nav a { color:var(--text-secondary); text-decoration:none; font-size:14px; cursor:pointer; padding:6px 12px; border-radius:6px; }
+        .bayi-nav a.active, .bayi-nav a:hover { color:var(--text-primary); background:var(--surface2); }
+        .bayi-nav .spacer { flex:1; }
+        .bayi-nav .dealer-info { font-size:13px; color:var(--text-secondary); }
+        #loginWrap { display:flex; justify-content:center; align-items:center; min-height:80vh; }
+        .login-card { width:100%; max-width:380px; }
+        .tab-content { display:none; }
+        .tab-content.active { display:block; }
+        .key-box { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:16px; font-family:monospace; font-size:13px; word-break:break-all; }
+        .copy-btn { cursor:pointer; }
+        .plan-radio { display:flex; gap:12px; }
+        .plan-radio label { flex:1; border:2px solid var(--border); border-radius:8px; padding:12px; cursor:pointer; text-align:center; }
+        .plan-radio input[type=radio]:checked + span { color:var(--accent); }
+        .plan-radio label:has(input:checked) { border-color:var(--accent); background:rgba(99,102,241,0.08); }
+        .price-preview { font-size:22px; font-weight:bold; color:var(--accent); }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginWrap">
+    <div class="card login-card">
+        <div style="text-align:center;margin-bottom:24px">
+            <div style="font-size:40px">🛡️</div>
+            <h2>MailTrustAI Bayi Portalı</h2>
+            <p class="text-muted">Bayi hesabınızla giriş yapın</p>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Bayi Kodu</label>
+            <input class="form-input" id="loginCode" placeholder="BAY001" style="text-transform:uppercase">
+        </div>
+        <div class="form-group">
+            <label class="form-label">PIN</label>
+            <input class="form-input" id="loginPin" type="password" placeholder="••••" onkeydown="if(event.key==='Enter')doLogin()">
+        </div>
+        <div id="loginError" class="text-red mb-16" style="display:none"></div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">🔐 Giriş Yap</button>
+    </div>
+</div>
+
+<!-- PORTAL (after login) -->
+<div id="portalWrap" style="display:none">
+    <!-- Oturum süresi dolma uyarısı -->
+    <div id="sessionWarningBar" style="display:none;padding:10px 24px;background:#f59e0b1a;border-bottom:2px solid #f59e0b;font-size:13px;color:#f59e0b;display:none;align-items:center;justify-content:space-between">
+        <span>⚠️ Oturumunuz <strong id="sessionMinLeft">—</strong> dakika içinde sona erecek.</span>
+        <button onclick="doLogout()" style="border:1px solid #f59e0b;color:#f59e0b;background:transparent;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px">Çıkış Yap / Yeniden Giriş</button>
+    </div>
+    <div class="bayi-nav">
+        <span class="brand">🛡️ Bayi Portalı</span>
+        <a class="active" onclick="showSection('dashboard')">📊 Dashboard</a>
+        <a onclick="showSection('generate')">🔑 Yeni Lisans</a>
+        <a onclick="showSection('sales')">📋 Satışlarım</a>
+        <a onclick="showSection('prices')">💰 Fiyatlar</a>
+        <span class="spacer"></span>
+        <span class="dealer-info" id="dealerNameDisplay"></span>
+        <span id="creditDisplay" style="display:none;font-size:13px;font-weight:700;padding:4px 12px;background:rgba(99,102,241,0.12);border-radius:6px">💳 <span id="creditBalance">0</span> kredi</span>
+        <a onclick="doLogout()" style="color:var(--text-secondary)">Çıkış</a>
+    </div>
+
+    <div class="main-content">
+
+        <!-- DASHBOARD -->
+        <div id="sectionDashboard" class="tab-content active">
+            <h2 style="margin-bottom:20px">📊 Dashboard</h2>
+            <div class="stat-grid" id="dashStats" style="margin-bottom:24px"></div>
+            <div class="card">
+                <div class="card-header"><span class="card-title">Son Lisanslar</span></div>
+                <div id="recentSales"></div>
+            </div>
+        </div>
+
+        <!-- GENERATE LICENSE -->
+        <div id="sectionGenerate" class="tab-content">
+            <h2 style="margin-bottom:20px">🔑 Yeni Lisans Üret</h2>
+            <div style="max-width:600px">
+                <div class="card">
+                    <div class="form-group">
+                        <label class="form-label">Plan</label>
+                        <div class="plan-radio">
+                            <label><input type="radio" name="genPlan" value="PRO" checked onchange="updatePricePreview()"> <span>Pro (Tarama Posta Kutusu)</span></label>
+                            <label><input type="radio" name="genPlan" value="ENT" onchange="updatePricePreview()"> <span>Enterprise (IMAP Tarama + Anlık Rapor)</span></label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tarama Limiti (Tier)</label>
+                        <select class="form-input" id="genTier" onchange="updatePricePreview()">
+                            <option value="T1">T1 — 50 tarama/ay</option>
+                            <option value="T2" selected>T2 — 100 tarama/ay</option>
+                            <option value="T3">T3 — 250 tarama/ay</option>
+                            <option value="T4">T4 — 500 tarama/ay</option>
+                            <option value="T5">T5 — 1.000 tarama/ay</option>
+                            <option value="T6">T6 — 2.000 tarama/ay</option>
+                            <option value="T7">T7 — 5.000 tarama/ay</option>
+                            <option value="T8">T8 — 10.000 tarama/ay</option>
+                            <option value="T9">T9 — 10.000+ Sınırsız</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Süre</label>
+                        <div class="plan-radio">
+                            <label><input type="radio" name="genDuration" value="M" checked onchange="updatePricePreview()"> <span>Aylık</span></label>
+                            <label><input type="radio" name="genDuration" value="Y" onchange="updatePricePreview()"> <span>Yıllık</span></label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Müşteri Notu (opsiyonel)</label>
+                        <input class="form-input" id="genNote" placeholder="Müşteri adı / proje...">
+                    </div>
+                    <div class="form-group" id="pricePreviewWrap">
+                        <div class="text-muted" style="font-size:12px;margin-bottom:4px">Tahmini Fiyat (size özel)</div>
+                        <div class="price-preview" id="pricePreview">—</div>
+                    </div>
+                    <div id="creditInfoWrap" style="display:none;margin-bottom:16px">
+                        <div id="creditInfo" style="font-size:13px;border-radius:6px;padding:10px 14px;border:1px solid var(--border)"></div>
+                    </div>
+                    <button class="btn btn-primary" style="width:100%;justify-content:center" id="genBtn" onclick="generateLicense()">⚡ Lisans Üret</button>
+                </div>
+                <!-- Result -->
+                <div id="genResult" style="display:none" class="card mt-16">
+                    <div class="card-header"><span class="card-title">✅ Lisans Üretildi</span></div>
+                    <div class="key-box" id="genKeyBox"></div>
+                    <div class="mt-16 flex gap-16">
+                        <button class="btn btn-ghost copy-btn" onclick="copyKey()">📋 Kopyala</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SALES -->
+        <div id="sectionSales" class="tab-content">
+            <h2 style="margin-bottom:20px">📋 Satışlarım</h2>
+            <div id="salesTable"></div>
+        </div>
+
+        <!-- PRICES -->
+        <div id="sectionPrices" class="tab-content">
+            <h2 style="margin-bottom:20px">💰 Fiyat Tablosu</h2>
+            <div id="priceTable"></div>
+        </div>
+
+    </div>
+</div>
+
+<script src="/js/bayi-app.js"></script>
+</body>
+</html>

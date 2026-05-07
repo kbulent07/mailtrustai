@@ -1,0 +1,71 @@
+# Bağımlılıklar
+node_modules/
+
+# Ortam değişkenleri (hassas bilgiler)
+.env
+.env.local
+.env.*.local
+
+# Şifreli kimlik bilgileri ve hassas veri dosyaları
+data/credentials.enc
+data/scan-history.json
+data/dealer-sales.json
+data/license-remote-cache.json
+data/auto-monitor-state.json
+data/scan-mailbox-state.json
+data/daily-scans.json
+data/domain-lists.json
+data/revoked-licenses.json
+data/msa.db
+data/msa.db-shm
+data/msa.db-wal
+
+# Ayarlar (API key ve şifre içerir)
+data/settings.json
+
+# Log dosyaları
+logs/
+*.log
+npm-debug.log*
+
+# OS dosyaları
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Geçici dosyalar
+tmp/
+temp/
+*.tmp
+
+# PM2
+.pm2/
+
+# Build çıktıları
+dist/
+build/
+
+# Claude AI geliştirme ortamı ayarları
+.claude/
+
+# Geçici veri ve test dosyaları
+data/curl-msg-debug.txt
+data/curl-msg-response.txt
+data/tmp-*.js
+data/uid-*.eml
+data/sample-*.eml
+data/msg-extract/
+data/threat-intel-cache.json
+data/monthly-counts.json
+data/*.exe
+data/*.dll
+data/*.bin
+
+# Bayi verileri (üretim verisi)
+data/dealers.json
