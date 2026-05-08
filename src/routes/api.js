@@ -694,12 +694,64 @@ router.get('/history', (req, res) => {
 router.get('/stats', (req, res) => {
     state.scanHistory = loadScanHistory();
     const today = new Date().toISOString().slice(0, 10);
+    const history = state.scanHistory;
+
+    // Risk seviyesi dağılımı
+    const byLevel = { high: 0, medium: 0, low: 0, safe: 0 };
+    for (const s of history) {
+        const lvl = s.level || 'safe';
+        if (byLevel[lvl] !== undefined) byLevel[lvl]++;
+        else byLevel.safe++;
+    }
+
+    // Tarama kaynağı dağılımı
+    const bySource = {};
+    for (const s of history) {
+        const src = s.scanSource || 'unknown';
+        bySource[src] = (bySource[src] || 0) + 1;
+    }
+
+    // Son 7 günlük tarama trendi
+    const trend7 = [];
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().slice(0, 10);
+        const count = history.filter(s => (s.timestamp || s.scanTime || '').slice(0, 10) === dateStr).length;
+        trend7.push({ date: dateStr, count });
+    }
+
+    // Tehdit kategorileri (son 200 taramadan en sık findings kategorileri)
+    const catCount = {};
+    for (const s of history.slice(0, 200)) {
+        for (const f of (s.findings || [])) {
+            if (f.severity === 'critical' || f.severity === 'warning') {
+                const cat = f.category || 'other';
+                catCount[cat] = (catCount[cat] || 0) + 1;
+            }
+        }
+    }
+    const topCategories = Object.entries(catCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([category, count]) => ({ category, count }));
+
+    // VirusTotal & OTX isabet oranları
+    const vtHits  = history.filter(s => s.vtStatus?.checked && (s.findings || []).some(f => f.category === 'virusTotal' && f.severity === 'critical')).length;
+    const otxHits = history.filter(s => (s.findings || []).some(f => f.category === 'otx')).length;
+
     res.json({
-        totalScans:   state.scanHistory.length,
-        todayScans:   getDailyCount(today),
-        monthlyScans: getMonthlyCount(),
-        threats:      state.scanHistory.filter(s => s.level === 'high').length,
-        accounts:     loadCredentials().length
+        totalScans:    history.length,
+        todayScans:    getDailyCount(today),
+        monthlyScans:  getMonthlyCount(),
+        threats:       byLevel.high,
+        accounts:      loadCredentials().length,
+        byLevel,
+        bySource,
+        trend7,
+        topCategories,
+        vtHits,
+        otxHits
     });
 });
 

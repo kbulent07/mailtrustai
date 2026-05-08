@@ -35,7 +35,12 @@ app.use('/api/dealer', dealerRoutes);
 // WebSocket
 setupWebSocket(wss);
 
-// SPA fallback
+// API 404 — eşleşmeyen /api/* isteklerini JSON ile yanıtla (SPA HTML fallback'e düşmesin)
+app.use('/api', (req, res) => {
+    res.status(404).json({ error: `API endpoint bulunamadı: ${req.method} ${req.path}` });
+});
+
+// SPA fallback — sadece GET isteklerine index.html döndür
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

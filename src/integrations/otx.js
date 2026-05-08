@@ -46,7 +46,9 @@ async function queryIndicator(type, value, apiKey) {
 
     const endpoint = type === 'IPv4'
         ? `${OTX_BASE}/IPv4/${encodeURIComponent(value)}/general`
-        : `${OTX_BASE}/domain/${encodeURIComponent(value)}/general`;
+        : type === 'url'
+            ? `${OTX_BASE}/url/${encodeURIComponent(value)}/general`
+            : `${OTX_BASE}/domain/${encodeURIComponent(value)}/general`;
 
     try {
         const res = await fetch(endpoint, {
@@ -142,15 +144,16 @@ function scoreFromVerdict(v) {
 
 // ─── E-POSTA GÖSTERGELERİNİ ÇIKAR ──────────────────────────
 /**
- * E-posta parse verisinden sorgulanacak IP ve domain listesi çıkarır.
+ * E-posta parse verisinden sorgulanacak IP, domain ve URL listesi çıkarır.
  * - receivedHeaders: aktarım zincirindeki genel IP'ler
  * - from[0].address: gönderici domaini
- * - links: içerikteki link domainleri (ilk 5)
+ * - links: içerikteki linklerin domainleri (domain tipi) + tam URL'ler (url tipi, ilk 3)
  */
 function extractIndicators(parsedData, linkUrls = []) {
     const indicators = [];
-    const seenIps    = new Set();
-    const seenDomains= new Set();
+    const seenIps     = new Set();
+    const seenDomains = new Set();
+    const seenUrls    = new Set();
 
     // 1) Received header IP'leri
     for (const header of (parsedData.receivedHeaders || [])) {
@@ -172,7 +175,7 @@ function extractIndicators(parsedData, linkUrls = []) {
         indicators.push({ type: 'domain', value: senderDomain });
     }
 
-    // 3) Link domainleri (ilk 5, harici)
+    // 3a) Link domain'leri (domain tipi — ilk 5)
     for (const url of (linkUrls || []).slice(0, 5)) {
         try {
             const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
@@ -183,8 +186,22 @@ function extractIndicators(parsedData, linkUrls = []) {
         } catch { /* geçersiz URL */ }
     }
 
-    // Toplam IP + domain sınırı: 8
-    return indicators.slice(0, 8);
+    // 3b) Tam URL sorgusu (url tipi — ilk 3, OTX URL gösterge veritabanı için)
+    for (const url of (linkUrls || []).slice(0, 3)) {
+        try {
+            const clean = url.trim();
+            // Sadece http/https URL'leri; veri URL'leri ve mailto'ları atla
+            if (!clean || !/^https?:\/\//i.test(clean)) continue;
+            const normalised = clean.split('#')[0].replace(/\/+$/, ''); // fragment ve trailing slash sil
+            if (!seenUrls.has(normalised)) {
+                seenUrls.add(normalised);
+                indicators.push({ type: 'url', value: normalised });
+            }
+        } catch { /* geçersiz URL */ }
+    }
+
+    // Toplam sınır: 10 gösterge (IP + domain + url)
+    return indicators.slice(0, 10);
 }
 
 // ─── ANA TARAMA FONKSİYONU ──────────────────────────────────
@@ -226,7 +243,7 @@ async function checkEmailIndicators(parsedData, apiKey, linkUrls = []) {
         unknown:    indicators.filter(i => i.verdict === 'unknown').length
     };
 
-    return { indicators, summary, totalScore: Math.min(totalScore, 25) };
+    return { indicators, summary, totalScore: Math.min(totalScore, 30) };
 }
 
 module.exports = {
