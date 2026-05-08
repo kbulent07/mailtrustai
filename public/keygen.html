@@ -311,6 +311,57 @@
             <div class="card-header"><span class="card-title">🚨 En Sık Tehdit Kategorileri</span></div>
             <div id="statsCategories" style="padding:4px 0"></div>
         </div>
+
+        <!-- ─── AYRINTILI RAPOR ───────────────────────────── -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:32px 0 16px">
+            <h3 style="margin:0">📋 Ayrıntılı Rapor</h3>
+            <div style="display:flex;align-items:center;gap:8px">
+                <label style="font-size:12px;color:var(--text-secondary)">Dönem:</label>
+                <select id="statsDays" onchange="loadDetailedStats()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text-primary);font-size:13px">
+                    <option value="7">Son 7 gün</option>
+                    <option value="30" selected>Son 30 gün</option>
+                    <option value="90">Son 90 gün</option>
+                </select>
+                <button class="btn btn-ghost btn-sm" onclick="exportDetailedCsv()" title="CSV indir">⬇️ CSV</button>
+            </div>
+        </div>
+
+        <!-- Özet bandı -->
+        <div id="detailedSummary" style="margin-bottom:20px"></div>
+
+        <!-- Kullanıcı bazlı tarama tablosu -->
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">
+                <span class="card-title">👥 Kim Kaç Tarama Yaptırdı?</span>
+            </div>
+            <div id="detailedByUserWrap" style="overflow-x:auto"></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+            <!-- Saatlik dağılım -->
+            <div class="card">
+                <div class="card-header"><span class="card-title">🕐 Saatlik Dağılım (0–23)</span></div>
+                <div id="detailedHourly" style="padding:4px 0"></div>
+            </div>
+            <!-- Hafta günü dağılımı -->
+            <div class="card">
+                <div class="card-header"><span class="card-title">📅 Hafta Günü Dağılımı</span></div>
+                <div id="detailedWeekday" style="padding:4px 0"></div>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+            <!-- En çok taranan göndericiler -->
+            <div class="card">
+                <div class="card-header"><span class="card-title">📨 En Çok Taranan Göndericiler</span></div>
+                <div id="detailedTopSenders" style="padding:4px 0"></div>
+            </div>
+            <!-- En riskli göndericiler -->
+            <div class="card">
+                <div class="card-header"><span class="card-title">⚠️ En Riskli Göndericiler</span></div>
+                <div id="detailedRiskySenders" style="padding:4px 0"></div>
+            </div>
+        </div>
     </div><!-- /tabStats -->
 
     <script>
@@ -392,7 +443,7 @@
             document.querySelectorAll('.admin-nav a').forEach(a => a.classList.remove('active'));
             if (event && event.target) event.target.classList.add('active');
             if (tab === 'revoke') loadRevokedList();
-            if (tab === 'stats')  loadStats();
+            if (tab === 'stats')  { loadStats(); loadDetailedStats(); }
         }
 
         // ─── LİSANS ÜRETİCİ ─────────────────────────────────────
@@ -794,6 +845,179 @@
                     _bar(catLabels[category] || category, count, maxCnt, 'var(--accent)')
                 ).join('') +
                 `</div>`;
+        }
+
+        // ─── AYRINTILI RAPOR ──────────────────────────────────────
+        let _lastDetailed = null;
+
+        async function loadDetailedStats() {
+            const daysEl = document.getElementById('statsDays');
+            const days   = daysEl ? Number(daysEl.value) || 30 : 30;
+            try {
+                const res  = await fetch('/api/stats/detailed?days=' + days, { headers: adminHeaders() });
+                if (handle403(res)) return;
+                if (!res.ok) { console.error('detailed stats error:', res.status); return; }
+                const d = await res.json();
+                _lastDetailed = d;
+                renderDetailedSummary(d);
+                renderDetailedByUser(d);
+                renderDetailedHourly(d.hourly || []);
+                renderDetailedWeekday(d.weekday || []);
+                renderDetailedTopSenders(d.topSenders || []);
+                renderDetailedRiskySenders(d.topRiskySenders || []);
+            } catch (e) {
+                console.error('loadDetailedStats error:', e);
+            }
+        }
+
+        function renderDetailedSummary(d) {
+            const el = document.getElementById('detailedSummary');
+            const riskyPct = d.totalScans > 0 ? Math.round(d.riskyTotal / d.totalScans * 100) : 0;
+            el.innerHTML = `
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+                    <div class="stat-card"><div class="stat-value">${d.totalScans}</div><div class="stat-label">Toplam Tarama (${d.days}g)</div></div>
+                    <div class="stat-card"><div class="stat-value" style="color:#f87171">${d.riskyTotal}</div><div class="stat-label">Riskli (high+medium)</div></div>
+                    <div class="stat-card"><div class="stat-value">${d.avgScore || 0}</div><div class="stat-label">Ortalama Skor</div></div>
+                    <div class="stat-card"><div class="stat-value">%${riskyPct}</div><div class="stat-label">Risk Oranı</div></div>
+                </div>
+            `;
+        }
+
+        function renderDetailedByUser(d) {
+            const wrap = document.getElementById('detailedByUserWrap');
+            const users = d.byUser || [];
+            if (!users.length) {
+                wrap.innerHTML = '<p class="text-muted" style="padding:12px">Bu dönemde tarama yapılmamış.</p>';
+                return;
+            }
+            const totalAll = users.reduce((s, u) => s + u.scanCount, 0);
+            const rows = users.map(u => {
+                const pct = totalAll > 0 ? Math.round(u.scanCount / totalAll * 100) : 0;
+                const lastDate = u.lastScanAt ? new Date(u.lastScanAt).toLocaleString('tr-TR', {dateStyle:'short', timeStyle:'short'}) : '-';
+                const riskyCount = u.highCount + u.mediumCount;
+                const riskyColor = riskyCount > 0 ? '#f87171' : 'var(--text-secondary)';
+                return `<tr style="border-top:1px solid var(--border)">
+                    <td style="padding:8px;font-size:13px">${esc(u.label)}</td>
+                    <td style="padding:8px;text-align:right;font-weight:700">${u.scanCount} <span style="color:var(--text-secondary);font-weight:400;font-size:11px">(%${pct})</span></td>
+                    <td style="padding:8px;text-align:center"><span style="color:#f87171;font-weight:600">${u.highCount}</span></td>
+                    <td style="padding:8px;text-align:center"><span style="color:#fb923c;font-weight:600">${u.mediumCount}</span></td>
+                    <td style="padding:8px;text-align:center"><span style="color:#fbbf24">${u.lowCount}</span></td>
+                    <td style="padding:8px;text-align:center"><span style="color:#34d399">${u.safeCount}</span></td>
+                    <td style="padding:8px;text-align:center;color:${riskyColor};font-weight:600">${riskyCount}</td>
+                    <td style="padding:8px;text-align:right">${u.avgScore || '-'}</td>
+                    <td style="padding:8px;color:var(--text-secondary);font-size:12px">${esc(lastDate)}</td>
+                </tr>`;
+            }).join('');
+            wrap.innerHTML = `
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead>
+                        <tr style="color:var(--text-secondary);font-size:12px;background:var(--surface2)">
+                            <th style="text-align:left;padding:10px">Kullanıcı / Kaynak</th>
+                            <th style="text-align:right;padding:10px">Tarama</th>
+                            <th style="text-align:center;padding:10px" title="Yüksek Risk">🔴</th>
+                            <th style="text-align:center;padding:10px" title="Orta Risk">🟠</th>
+                            <th style="text-align:center;padding:10px" title="Düşük Risk">🟡</th>
+                            <th style="text-align:center;padding:10px" title="Güvenli">🟢</th>
+                            <th style="text-align:center;padding:10px">Riskli</th>
+                            <th style="text-align:right;padding:10px">Ort. Skor</th>
+                            <th style="text-align:left;padding:10px">Son Tarama</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        function renderDetailedHourly(hourly) {
+            const max = Math.max(...hourly.map(h => h.count), 1);
+            const bars = hourly.map(h => {
+                const height = Math.max(2, Math.round(h.count / max * 70));
+                const colorIntensity = h.count > 0 ? 1 : 0.15;
+                return `<div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:0">
+                    <div style="font-size:9px;color:var(--text-secondary);margin-bottom:2px;height:12px">${h.count > 0 ? h.count : ''}</div>
+                    <div style="width:100%;height:70px;display:flex;align-items:flex-end;background:var(--surface2);border-radius:2px">
+                        <div style="width:100%;height:${height}px;background:var(--accent);opacity:${colorIntensity};border-radius:2px"></div>
+                    </div>
+                    <div style="font-size:9px;color:var(--text-secondary);margin-top:3px">${String(h.hour).padStart(2,'0')}</div>
+                </div>`;
+            }).join('');
+            document.getElementById('detailedHourly').innerHTML =
+                `<div style="display:flex;gap:2px;align-items:flex-end;padding:4px 0">${bars}</div>`;
+        }
+
+        function renderDetailedWeekday(weekday) {
+            const max = Math.max(...weekday.map(w => w.count), 1);
+            const bars = weekday.map(w => {
+                const height = Math.max(2, Math.round(w.count / max * 80));
+                return `<div style="display:flex;flex-direction:column;align-items:center;flex:1">
+                    <div style="font-size:11px;font-weight:600;color:${w.count > 0 ? 'var(--accent)' : 'var(--text-secondary)'};margin-bottom:4px">${w.count}</div>
+                    <div style="width:100%;background:var(--surface2);border-radius:3px;height:80px;display:flex;align-items:flex-end">
+                        <div style="width:100%;height:${height}px;background:var(--accent);border-radius:3px;opacity:${w.count > 0 ? 1 : 0.2}"></div>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">${esc(w.weekday)}</div>
+                </div>`;
+            }).join('');
+            document.getElementById('detailedWeekday').innerHTML =
+                `<div style="display:flex;gap:6px;align-items:flex-end;padding:4px 0">${bars}</div>`;
+        }
+
+        function renderDetailedTopSenders(senders) {
+            const el = document.getElementById('detailedTopSenders');
+            if (!senders.length) { el.innerHTML = '<p class="text-muted" style="padding:8px">Veri yok.</p>'; return; }
+            const max = senders[0].count || 1;
+            el.innerHTML = senders.map(s => {
+                const pct = Math.round(s.count / max * 100);
+                return `<div style="margin-bottom:8px">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+                        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${esc(s.email)}</span>
+                        <span style="font-weight:600;margin-left:8px">${s.count}</span>
+                    </div>
+                    <div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden">
+                        <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:3px"></div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderDetailedRiskySenders(senders) {
+            const el = document.getElementById('detailedRiskySenders');
+            if (!senders.length) { el.innerHTML = '<p class="text-muted" style="padding:8px">Riskli gönderici tespit edilmedi.</p>'; return; }
+            el.innerHTML = senders.map(s => {
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+                    <div style="flex:1;overflow:hidden">
+                        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.email)}</div>
+                        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Ortalama skor: ${s.avgScore}</div>
+                    </div>
+                    <div style="display:flex;gap:6px;font-size:11px;font-weight:700">
+                        ${s.high   ? `<span style="background:rgba(248,113,113,0.15);color:#f87171;padding:3px 8px;border-radius:6px">🔴 ${s.high}</span>` : ''}
+                        ${s.medium ? `<span style="background:rgba(251,146,60,0.15);color:#fb923c;padding:3px 8px;border-radius:6px">🟠 ${s.medium}</span>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function exportDetailedCsv() {
+            if (!_lastDetailed) { alert('Önce raporu yükleyin.'); return; }
+            const d = _lastDetailed;
+            const lines = [];
+            lines.push('# Ayrıntılı İstatistik Raporu');
+            lines.push(`# Dönem: Son ${d.days} gün`);
+            lines.push(`# Toplam: ${d.totalScans} tarama, ${d.riskyTotal} riskli, ortalama skor ${d.avgScore}`);
+            lines.push('');
+            lines.push('Kullanıcı/Kaynak,Tarama,Yüksek,Orta,Düşük,Güvenli,Ortalama Skor,Son Tarama');
+            for (const u of (d.byUser || [])) {
+                const row = [u.label, u.scanCount, u.highCount, u.mediumCount, u.lowCount, u.safeCount, u.avgScore, u.lastScanAt || '']
+                    .map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
+                lines.push(row);
+            }
+            const csv  = '﻿' + lines.join('\n'); // UTF-8 BOM (Excel TR uyumu)
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href     = url;
+            a.download = `mailtrustai-rapor-${d.days}gun-${new Date().toISOString().slice(0,10)}.csv`;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
 
         // ─── YARDIMCI ─────────────────────────────────────────────

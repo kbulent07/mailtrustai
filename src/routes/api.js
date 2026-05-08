@@ -49,7 +49,7 @@ const { testConnection, addAccount, removeAccount, updateAccount, loadCredential
 const { listEmails, fetchAndParseEmail } = require('../imap/scanner');
 
 // ─── Storage ──────────────────────────────────────────────
-const { loadScanHistory, recordScan } = require('../storage/scanHistory');
+const { loadScanHistory, recordScan, getDetailedStats } = require('../storage/scanHistory');
 const { loadSettings, saveSettings }  = require('../storage/settingsStore');
 const { loadResellers, addReseller, removeReseller } = require('../storage/resellerStore');
 const { listAutoMonitors, removeAutoMonitor } = require('../storage/autoMonitorState');
@@ -273,6 +273,7 @@ router.post('/analyze/eml', upload.single('file'), async (req, res) => {
 
         const result = await buildEmailAnalysisResult(parsed.data, license);
         result.scanSource = 'upload';
+        result.licenseKey = license.licenseKey || '';
         state.scanHistory = recordScan(result);
         incrementScanCounts();
         res.json(result);
@@ -294,6 +295,7 @@ router.post('/analyze/file', upload.single('file'), async (req, res) => {
             if (!parsed.success) return res.status(400).json({ error: parsed.error });
             const result = await buildEmailAnalysisResult(parsed.data, license);
             result.scanSource = 'upload';
+        result.licenseKey = license.licenseKey || '';
             state.scanHistory = recordScan(result);
             incrementScanCounts();
             return res.json(result);
@@ -303,6 +305,7 @@ router.post('/analyze/file', upload.single('file'), async (req, res) => {
         const attachmentResult = analyzeAttachments([att]);
         const result = buildAttachmentOnlyResult(att, attachmentResult);
         result.scanSource = 'upload';
+        result.licenseKey = license.licenseKey || '';
 
         const vtCandidates = (attachmentResult.results || []).filter(item => item.vtEligible !== false);
         if (state.vtApiKey && vtCandidates.length) {
@@ -390,6 +393,8 @@ router.post('/imap/scan', async (req, res) => {
 
     const result = await buildEmailAnalysisResult(parsed.data, license);
     result.scanSource = 'imap-manual';
+    result.licenseKey = license.licenseKey || '';
+    result.account    = account.email;
 
     const riskAlert = await sendEnterpriseRiskAlert({ result, license, to: account.email, reason: 'manual-imap-scan' });
     if (riskAlert) result.riskAlert = riskAlert;
@@ -842,6 +847,12 @@ router.get('/reports/preview/:period', (req, res) => {
 router.get('/history', (req, res) => {
     state.scanHistory = loadScanHistory();
     res.json(state.scanHistory.slice(0, 50));
+});
+
+// Ayrıntılı istatistik raporu — kim/kaynak/saat/risk dağılımı
+router.get('/stats/detailed', (req, res) => {
+    const days = Math.max(1, Math.min(parseInt(req.query.days, 10) || 30, 90));
+    res.json(getDetailedStats(days));
 });
 
 router.get('/stats', (req, res) => {

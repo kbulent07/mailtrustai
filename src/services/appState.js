@@ -24,7 +24,7 @@ const state = {
 // ─── LİSANS KONTROL FONKSİYONLARI ───────────────────────
 function checkLicense(req) {
     const key = req.headers['x-license-key'] || req.body?.licenseKey || '';
-    const fallback = { valid: false, features: { ...UNLICENSED_FEATURES }, monthlyLimit: UNLICENSED_MONTHLY_LIMIT };
+    const fallback = { valid: false, features: { ...UNLICENSED_FEATURES }, monthlyLimit: UNLICENSED_MONTHLY_LIMIT, licenseKey: '' };
     if (!key) return fallback;
 
     const result = validateLicenseKey(key);
@@ -36,7 +36,8 @@ function checkLicense(req) {
         return fallback;
     }
 
-    return result;
+    // İstatistik/audit için kullanıcı kimlik bilgisi olarak licenseKey'i sonuçla birlikte taşı
+    return { ...result, licenseKey: key };
 }
 
 function checkDailyLimit(license) {

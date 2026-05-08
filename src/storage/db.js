@@ -80,6 +80,16 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_history_source ON scan_history(scan_source);
 `);
 
+// scan_history'e sonradan user_key kolonunu güvenli ekleme (migration)
+(function ensureUserKeyColumn() {
+    const cols = db.prepare(`PRAGMA table_info(scan_history)`).all();
+    if (!cols.find(c => c.name === 'user_key')) {
+        db.exec(`ALTER TABLE scan_history ADD COLUMN user_key TEXT`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_history_user ON scan_history(user_key)`);
+        console.log('[DB] scan_history.user_key kolonu eklendi.');
+    }
+})();
+
 // ─── TEHDİT PATERNI VE MARKA DOMAIN TABLOLARI ────────────
 db.exec(`
     CREATE TABLE IF NOT EXISTS brand_domains (
