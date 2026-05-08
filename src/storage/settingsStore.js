@@ -40,6 +40,7 @@ function defaultSettings() {
         openaiModel: '',   // boşsa openai.js'teki OPENAI_MODEL sabiti kullanılır
         otxApiKey: '',     // AlienVault OTX tehdit itibar sorgulama
         adminPassword: '',
+        customerPassword: '', // Müşteri yönetim paneli (index.html) erişim şifresi — bcrypt hash
         companyProfile: {
             name: '',
             details: '',

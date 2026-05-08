@@ -10,6 +10,171 @@
 </head>
 <body>
 
+<!-- ─── MÜŞTERİ YÖNETİMİ GİRİŞ / KURULUM OVERLAY'I ─── -->
+<div id="customerAuthOverlay" style="position:fixed;inset:0;z-index:99999;background:rgba(10,14,23,0.97);display:flex;align-items:center;justify-content:center">
+    <div style="background:#111827;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:36px 32px;width:380px;max-width:95vw;box-shadow:0 24px 64px rgba(0,0,0,0.6)">
+        <div style="text-align:center;margin-bottom:18px">
+            <div style="font-size:40px">🛡️</div>
+            <h2 id="customerAuthTitle" style="margin:8px 0 4px;font-size:20px;font-weight:700;color:#f1f5f9">Müşteri Yönetimi</h2>
+            <p id="customerAuthSubtitle" style="margin:0;font-size:13px;color:#94a3b8">Devam etmek için giriş yapın.</p>
+        </div>
+
+        <!-- Giriş Formu -->
+        <div id="customerAuthLoginForm" style="display:none">
+            <div style="margin-bottom:14px">
+                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yönetim Şifresi</label>
+                <input id="customerAuthPwd" type="password" placeholder="••••••••"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
+                    onkeydown="if(event.key==='Enter')customerAuthLogin()">
+            </div>
+            <button onclick="customerAuthLogin()" id="customerAuthLoginBtn"
+                style="width:100%;padding:11px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+                🔓 Giriş Yap
+            </button>
+        </div>
+
+        <!-- İlk Kurulum Formu -->
+        <div id="customerAuthSetupForm" style="display:none">
+            <div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#c7d2fe">
+                ℹ️ İlk kurulum: Müşteri yönetim paneline erişim için bir şifre oluşturun. Bu şifreyi unutmayın.
+            </div>
+            <div style="margin-bottom:12px">
+                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yeni Şifre <span style="color:#94a3b8;font-size:11px">(en az 6 karakter)</span></label>
+                <input id="customerAuthSetupPwd" type="password" placeholder="••••••••"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px">
+            </div>
+            <div style="margin-bottom:14px">
+                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Şifre Tekrar</label>
+                <input id="customerAuthSetupPwd2" type="password" placeholder="••••••••"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
+                    onkeydown="if(event.key==='Enter')customerAuthSetup()">
+            </div>
+            <button onclick="customerAuthSetup()" id="customerAuthSetupBtn"
+                style="width:100%;padding:11px;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+                ✨ Şifre Oluştur ve Devam Et
+            </button>
+        </div>
+
+        <div id="customerAuthError" style="margin-top:12px;color:#f87171;font-size:13px;text-align:center;min-height:18px"></div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const SESSION_KEY = 'msa_customer_token';
+    const overlay     = document.getElementById('customerAuthOverlay');
+    const loginForm   = document.getElementById('customerAuthLoginForm');
+    const setupForm   = document.getElementById('customerAuthSetupForm');
+    const titleEl     = document.getElementById('customerAuthTitle');
+    const subEl       = document.getElementById('customerAuthSubtitle');
+    const errEl       = document.getElementById('customerAuthError');
+
+    function getToken() { return sessionStorage.getItem(SESSION_KEY) || ''; }
+    function setToken(t) { sessionStorage.setItem(SESSION_KEY, t); }
+    function clearToken() { sessionStorage.removeItem(SESSION_KEY); }
+
+    function showLogin() {
+        titleEl.textContent = 'Müşteri Yönetimi';
+        subEl.textContent   = 'Devam etmek için giriş yapın.';
+        loginForm.style.display = '';
+        setupForm.style.display = 'none';
+        setTimeout(() => document.getElementById('customerAuthPwd')?.focus(), 50);
+    }
+
+    function showSetup() {
+        titleEl.textContent = 'İlk Kurulum';
+        subEl.textContent   = 'Yönetim paneli için şifre oluşturun.';
+        loginForm.style.display = 'none';
+        setupForm.style.display = '';
+        setTimeout(() => document.getElementById('customerAuthSetupPwd')?.focus(), 50);
+    }
+
+    function unlockApp() {
+        overlay.style.display = 'none';
+        // Token'ı global olarak app.js'in erişebileceği yerde bırak
+        window.__msaCustomerToken = getToken();
+    }
+
+    async function checkStatus() {
+        try {
+            const headers = {};
+            const t = getToken();
+            if (t) headers['Authorization'] = 'Bearer ' + t;
+            const res = await fetch('/api/customer/status', { headers });
+            const data = await res.json();
+            if (data.sessionValid) { unlockApp(); return; }
+            if (data.passwordSet) { showLogin(); }
+            else { showSetup(); }
+        } catch (e) {
+            showLogin();
+            errEl.textContent = 'Sunucuya bağlanılamadı. Sayfayı yenileyin.';
+        }
+    }
+
+    window.customerAuthLogin = async function() {
+        errEl.textContent = '';
+        const password = document.getElementById('customerAuthPwd').value;
+        if (!password) { errEl.textContent = 'Şifre zorunludur.'; return; }
+        const btn = document.getElementById('customerAuthLoginBtn');
+        btn.disabled = true; btn.textContent = '⏳ Giriş yapılıyor...';
+        try {
+            const res = await fetch('/api/customer/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                errEl.textContent = data.error || 'Giriş başarısız.';
+                return;
+            }
+            setToken(data.token);
+            unlockApp();
+        } catch (e) {
+            errEl.textContent = 'Bağlantı hatası: ' + e.message;
+        } finally {
+            btn.disabled = false; btn.textContent = '🔓 Giriş Yap';
+        }
+    };
+
+    window.customerAuthSetup = async function() {
+        errEl.textContent = '';
+        const p1 = document.getElementById('customerAuthSetupPwd').value;
+        const p2 = document.getElementById('customerAuthSetupPwd2').value;
+        if (p1.length < 6) { errEl.textContent = 'Şifre en az 6 karakter olmalıdır.'; return; }
+        if (p1 !== p2) { errEl.textContent = 'Şifreler uyuşmuyor.'; return; }
+        const btn = document.getElementById('customerAuthSetupBtn');
+        btn.disabled = true; btn.textContent = '⏳ Oluşturuluyor...';
+        try {
+            const res = await fetch('/api/customer/setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: p1 })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                errEl.textContent = data.error || 'Kurulum başarısız.';
+                return;
+            }
+            setToken(data.token);
+            unlockApp();
+        } catch (e) {
+            errEl.textContent = 'Bağlantı hatası: ' + e.message;
+        } finally {
+            btn.disabled = false; btn.textContent = '✨ Şifre Oluştur ve Devam Et';
+        }
+    };
+
+    window.customerAuthLogout = function() {
+        clearToken();
+        location.reload();
+    };
+
+    // Sayfa yüklendiğinde otomatik kontrol
+    checkStatus();
+})();
+</script>
+
 <!-- NAVBAR -->
 <nav class="navbar" id="navbar">
     <div class="navbar-brand">
@@ -26,6 +191,7 @@
         <button class="btn btn-ghost btn-sm" id="btnLang" onclick="toggleLang()">🌐 EN</button>
         <button class="btn btn-ghost btn-sm" id="btnSettings" onclick="showSettings()">⚙️</button>
         <button class="btn btn-ghost btn-sm" id="btnLicense" onclick="showLicenseModal()">🔑</button>
+        <button class="btn btn-ghost btn-sm" id="btnLogout" onclick="customerAuthLogout()" title="Müşteri yönetiminden çık">🚪</button>
     </div>
 </nav>
 
