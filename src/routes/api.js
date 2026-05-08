@@ -6,7 +6,7 @@ const multer  = require('multer');
 const bcrypt  = require('bcrypt');
 const router  = express.Router();
 
-const { requireAdminAuth } = require('../middleware/adminAuth');
+const { requireAdminAuth, verifyAdminPassword, createAdminToken } = require('../middleware/adminAuth');
 
 // ─── Analizörler ve Ayrıştırıcılar ───────────────────────
 const { parseEmail, parseUploadedEmail } = require('../analysis/parser');
@@ -76,6 +76,22 @@ initThreatIntelFeed();
         }, 60 * 1000);
     }, 20 * 1000);
 })();
+
+// ============================================================
+// ADMIN SESSION (JWT-like token üretimi — auth gerektirmez)
+// ============================================================
+router.post('/admin/session', async (req, res) => {
+    try {
+        const { adminPassword } = req.body || {};
+        if (!adminPassword) return res.status(400).json({ error: 'adminPassword zorunludur' });
+        const valid = await verifyAdminPassword(adminPassword);
+        if (!valid) return res.status(403).json({ error: 'Geçersiz admin şifresi' });
+        const token = createAdminToken();
+        res.json({ token, expiresIn: 8 * 3600 });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
 
 // ============================================================
 // SAĞLIK KONTROLÜ (auth gerektirmez — Docker/k8s probe için)

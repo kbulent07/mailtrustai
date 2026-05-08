@@ -2,6 +2,7 @@
 // VIRUSTOTAL API INTEGRATION
 // ============================================================
 const VT_BASE = 'https://www.virustotal.com/api/v3';
+const { getCachedResult, setCachedResult } = require('../storage/vtCacheStore');
 
 // Polling ayarları
 // Ücretsiz API: dakikada 4 istek, analiz genellikle 60–180s sürer.
@@ -73,6 +74,14 @@ async function scanAttachments(attachments, apiKey) {
         const att = attachments[i];
         if (!att.hash) continue;
 
+        // ── Önbellek kontrolü: aynı hash daha önce sorgulanmış mı? ──
+        const cached = getCachedResult(att.hash);
+        if (cached) {
+            console.log(`[VT] Önbellekten döndü: ${att.filename} (${att.hash.slice(0, 12)}...)`);
+            results.push({ filename: att.filename, hash: att.hash, fromCache: true, ...cached });
+            continue; // API çağrısı yok, bekleme yok
+        }
+
         let vtResult = await lookupHash(att.hash, apiKey);
 
         // VT'de kayıt yoksa ve içerik varsa yükle + analiz et
@@ -80,10 +89,17 @@ async function scanAttachments(attachments, apiKey) {
             vtResult = await uploadAndAnalyze(att, apiKey);
         }
 
+        // Başarılı sonucu önbelleğe kaydet
+        if (vtResult.checked && !vtResult.error) {
+            setCachedResult(att.hash, vtResult);
+        }
+
         results.push({ filename: att.filename, hash: att.hash, ...vtResult });
 
         // Son dosya değilse dosyalar arası bekleme (rate limit)
-        if (i < attachments.length - 1) {
+        // Önbellekten gelen sonuçlar sayılmaz; sadece gerçek API çağrılarında bekle
+        const hasMore = attachments.slice(i + 1).some(a => a.hash && !getCachedResult(a.hash));
+        if (hasMore) {
             await delay(VT_INTER_FILE_DELAY_MS);
         }
     }

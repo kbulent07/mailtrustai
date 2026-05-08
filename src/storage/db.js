@@ -62,6 +62,171 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tx_created ON credit_transactions(created_at DESC);
 `);
 
+// ─── TEHDİT PATERNI VE MARKA DOMAIN TABLOLARI ────────────
+db.exec(`
+    CREATE TABLE IF NOT EXISTS brand_domains (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain    TEXT NOT NULL UNIQUE,
+        alias     TEXT NOT NULL,
+        enabled   INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS threat_patterns (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        category   TEXT NOT NULL,   -- 'urgency'|'credential'|'threat'|'reward'|'sextortion'|'bec_content'|'bec_subject'|'bec_body'
+        pattern    TEXT NOT NULL,   -- RegExp source (flags ayrı saklanır)
+        flags      TEXT NOT NULL DEFAULT 'i',
+        lang       TEXT NOT NULL DEFAULT 'any',  -- 'tr'|'en'|'any'
+        severity   TEXT NOT NULL DEFAULT 'warning',
+        enabled    INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_patterns_category ON threat_patterns(category, enabled);
+`);
+
+// ─── BAŞLANGIÇ VERİSİ (SEED) ─────────────────────────────
+(function seedStaticData() {
+    const brandCount = db.prepare('SELECT COUNT(*) AS n FROM brand_domains').get().n;
+    if (brandCount === 0) {
+        const ins = db.prepare('INSERT OR IGNORE INTO brand_domains (domain, alias) VALUES (?, ?)');
+        const brands = [
+            ['paypal.com','paypal'],['amazon.com','amazon'],['microsoft.com','microsoft'],
+            ['apple.com','apple'],['google.com','google'],['netflix.com','netflix'],
+            ['facebook.com','facebook'],['instagram.com','instagram'],['twitter.com','twitter'],
+            ['linkedin.com','linkedin'],['dropbox.com','dropbox'],['ebay.com','ebay'],
+            ['fedex.com','fedex'],['dhl.com','dhl'],['ups.com','ups'],
+            ['turkiye.gov.tr','turkiye'],['gib.gov.tr','gib'],['sgk.gov.tr','sgk'],
+            ['ziraatbank.com.tr','ziraat'],['isbank.com.tr','isbank'],['garantibbva.com.tr','garanti'],
+            ['akbank.com','akbank'],['yapikredi.com.tr','yapikredi'],['halkbank.com.tr','halkbank'],
+            ['vakifbank.com.tr','vakifbank'],['pttsepet.com','ptt'],['ptt.gov.tr','ptt'],
+            ['trendyol.com','trendyol'],['hepsiburada.com','hepsiburada'],['n11.com','n11'],
+            ['vodafone.com.tr','vodafone'],['turkcell.com.tr','turkcell'],['turktelekom.com.tr','turktelekom']
+        ];
+        db.transaction(() => { for (const [d, a] of brands) ins.run(d, a); })();
+        console.log(`[DB] ${brands.length} marka domain seed edildi.`);
+    }
+
+    const patternCount = db.prepare('SELECT COUNT(*) AS n FROM threat_patterns').get().n;
+    if (patternCount === 0) {
+        const ins = db.prepare(
+            'INSERT INTO threat_patterns (category, pattern, flags, lang, severity) VALUES (?,?,?,?,?)'
+        );
+        const patterns = [
+            // Türkçe aciliyet
+            ['urgency', 'hemen\\s+işlem', 'i', 'tr', 'warning'],
+            ['urgency', 'acil', 'i', 'tr', 'warning'],
+            ['urgency', 'derhal', 'i', 'tr', 'warning'],
+            ['urgency', 'son\\s+şans', 'i', 'tr', 'warning'],
+            ['urgency', 'süreniz\\s+dol', 'i', 'tr', 'warning'],
+            ['urgency', 'hesabınız\\s+(askıya|kapatıl)', 'i', 'tr', 'warning'],
+            ['urgency', 'şifrenizi\\s+değiştir', 'i', 'tr', 'warning'],
+            ['urgency', 'güncelle', 'i', 'tr', 'warning'],
+            ['urgency', 'doğrula', 'i', 'tr', 'warning'],
+            ['urgency', '24\\s*saat', 'i', 'tr', 'warning'],
+            ['urgency', '48\\s*saat', 'i', 'tr', 'warning'],
+            ['urgency', 'sınırlı\\s+süre', 'i', 'tr', 'warning'],
+            // İngilizce aciliyet
+            ['urgency', 'immediate\\s+action', 'i', 'en', 'warning'],
+            ['urgency', 'urgent', 'i', 'en', 'warning'],
+            ['urgency', 'act\\s+now', 'i', 'en', 'warning'],
+            ['urgency', 'expires?\\s+soon', 'i', 'en', 'warning'],
+            ['urgency', 'account\\s+(suspend|clos|deactivat|restrict)', 'i', 'en', 'warning'],
+            ['urgency', 'verify\\s+your', 'i', 'en', 'warning'],
+            ['urgency', 'confirm\\s+your\\s+(identity|account|payment)', 'i', 'en', 'warning'],
+            ['urgency', 'last\\s+chance', 'i', 'en', 'warning'],
+            ['urgency', 'within\\s+\\d+\\s*hours?', 'i', 'en', 'warning'],
+            ['urgency', 'limited\\s+time', 'i', 'en', 'warning'],
+            ['urgency', 'failure\\s+to', 'i', 'en', 'warning'],
+            // Kimlik bilgisi
+            ['credential', 'password', 'i', 'en', 'critical'],
+            ['credential', 'şifre', 'i', 'tr', 'critical'],
+            ['credential', 'parola', 'i', 'tr', 'critical'],
+            ['credential', 'credit\\s*card', 'i', 'en', 'critical'],
+            ['credential', 'kredi\\s*kart', 'i', 'tr', 'critical'],
+            ['credential', 'social\\s*security', 'i', 'en', 'critical'],
+            ['credential', 'ssn', 'i', 'en', 'critical'],
+            ['credential', 'tc\\s*kimlik', 'i', 'tr', 'critical'],
+            ['credential', 'bank\\s*account', 'i', 'en', 'critical'],
+            ['credential', 'banka\\s*hesab', 'i', 'tr', 'critical'],
+            ['credential', 'pin\\s*(code|kodu)', 'i', 'any', 'critical'],
+            ['credential', 'cvv', 'i', 'any', 'critical'],
+            ['credential', 'expire?\\s*date', 'i', 'en', 'critical'],
+            ['credential', 'son\\s*kullanma', 'i', 'tr', 'critical'],
+            // Tehdit
+            ['threat', 'legal\\s*action', 'i', 'en', 'warning'],
+            ['threat', 'yasal\\s*işlem', 'i', 'tr', 'warning'],
+            ['threat', 'law\\s*enforcement', 'i', 'en', 'warning'],
+            ['threat', 'police', 'i', 'en', 'warning'],
+            ['threat', 'polis', 'i', 'tr', 'warning'],
+            ['threat', 'mahkeme', 'i', 'tr', 'warning'],
+            ['threat', 'court', 'i', 'en', 'warning'],
+            ['threat', 'arrest', 'i', 'en', 'warning'],
+            ['threat', 'fine\\s*of', 'i', 'en', 'warning'],
+            ['threat', 'ceza', 'i', 'tr', 'warning'],
+            ['threat', 'dava', 'i', 'tr', 'warning'],
+            // Ödül / dolandırıcılık
+            ['reward', 'congratulations', 'i', 'en', 'warning'],
+            ['reward', 'tebrikler', 'i', 'tr', 'warning'],
+            ['reward', 'you\\s*(have\\s+)?won', 'i', 'en', 'warning'],
+            ['reward', 'kazandınız', 'i', 'tr', 'warning'],
+            ['reward', 'prize', 'i', 'en', 'warning'],
+            ['reward', 'ödül', 'i', 'tr', 'warning'],
+            ['reward', 'lottery', 'i', 'en', 'warning'],
+            ['reward', 'piyango', 'i', 'tr', 'warning'],
+            ['reward', 'million\\s*dollar', 'i', 'en', 'warning'],
+            ['reward', 'free\\s*gift', 'i', 'en', 'warning'],
+            ['reward', 'hediye', 'i', 'tr', 'warning'],
+            ['reward', 'inheritance', 'i', 'en', 'warning'],
+            ['reward', 'miras', 'i', 'tr', 'warning'],
+            // Sextortion TR
+            ['sextortion', 'şifren[ei]\\s+(ele\\s+geçir|çaldım|bildim)', 'i', 'tr', 'critical'],
+            ['sextortion', 'kamera\\s*(kaydın[ıi]|görüntün[üu])', 'i', 'tr', 'critical'],
+            ['sextortion', 'bitcoin\\s*(gönder|öde|transfer)', 'i', 'tr', 'critical'],
+            ['sextortion', 'web\\s*kameras[ıi]', 'i', 'tr', 'critical'],
+            ['sextortion', 'müstehcen\\s*(video|görüntü)', 'i', 'tr', 'critical'],
+            ['sextortion', '\\d+\\s*bitcoin\\s*gönder', 'i', 'tr', 'critical'],
+            // Sextortion EN
+            ['sextortion', 'i\\s+have\\s+(hacked|access\\s+to)\\s+your', 'i', 'en', 'critical'],
+            ['sextortion', 'your\\s+password\\s+is', 'i', 'en', 'critical'],
+            ['sextortion', 'i\\s+recorded\\s+you', 'i', 'en', 'critical'],
+            ['sextortion', 'your\\s+webcam\\s+(was\\s+)?(hacked|activated)', 'i', 'en', 'critical'],
+            ['sextortion', 'send\\s+\\d+\\s*bitcoin', 'i', 'en', 'critical'],
+            ['sextortion', 'malware\\s*(installed|on\\s+your)', 'i', 'en', 'critical'],
+            ['sextortion', 'adult\\s*(content|website|video)', 'i', 'en', 'critical'],
+            // BEC içerik
+            ['bec_content', '\\biban\\b.*değiş', 'i', 'tr', 'critical'],
+            ['bec_content', '\\biban\\b.*update', 'i', 'en', 'critical'],
+            ['bec_content', '\\biban\\b.*new\\b', 'i', 'en', 'critical'],
+            ['bec_content', 'hesap\\s*numarası.*değiş', 'i', 'tr', 'critical'],
+            ['bec_content', 'account.*number.*change', 'i', 'en', 'critical'],
+            ['bec_content', 'yeni\\s*banka\\s*bilgi', 'i', 'tr', 'critical'],
+            ['bec_content', 'new\\s*bank\\s*(detail|account)', 'i', 'en', 'critical'],
+            ['bec_content', 'ödemeyi?\\s+.*bu\\s+hesab', 'i', 'tr', 'critical'],
+            ['bec_content', 'payment.*this\\s+(account|iban)', 'i', 'en', 'critical'],
+            ['bec_content', 'tedarikçi.*hesab.*değiş', 'i', 'tr', 'critical'],
+            ['bec_content', 'vendor.*account.*change', 'i', 'en', 'critical'],
+            // BEC konu
+            ['bec_subject', '\\b(CEO|CFO|COO|CTO|genel\\s*müdür|yönetim\\s*kurulu|direktör)\\b', 'i', 'any', 'warning'],
+            ['bec_subject', '\\bacil\\s*(havale|ödeme|transfer)\\b', 'i', 'tr', 'warning'],
+            ['bec_subject', '\\b(wire\\s*transfer|bank\\s*transfer|swift)\\b', 'i', 'en', 'warning'],
+            ['bec_subject', '\\b(fatura|invoice)\\s*(değişikliği|güncelleme|update|change)\\b', 'i', 'any', 'warning'],
+            ['bec_subject', '\\b(tedarikçi|vendor|supplier)\\s*(hesap|account)\\s*(değişikliği|change|update)\\b', 'i', 'any', 'warning'],
+            // BEC gövde
+            ['bec_body', '\\b(banka\\s*hesabı|hesap\\s*numarası|iban)\\s*(değişti|değişiyor|güncellendi)\\b', 'i', 'tr', 'warning'],
+            ['bec_body', '\\b(bank\\s*account|account\\s*number)\\s*(has\\s*)?(changed|updated)\\b', 'i', 'en', 'warning'],
+            ['bec_body', '\\b(lütfen|please)\\s+.{0,30}\\s*(havale|transfer|gönder|send)\\b', 'i', 'any', 'warning'],
+            ['bec_body', '\\b(gizli\\s*tut|confidential|strictly\\s*private)\\b', 'i', 'any', 'warning'],
+            ['bec_body', '\\b(bu\\s*işlemi|this\\s*transaction)\\s+.{0,20}\\s*(kimseye|nobody|anyone)\\b', 'i', 'any', 'warning']
+        ];
+        db.transaction(() => {
+            for (const [cat, pat, flags, lang, sev] of patterns) {
+                ins.run(cat, pat, flags, lang, sev);
+            }
+        })();
+        console.log(`[DB] ${patterns.length} tehdit kalıbı seed edildi.`);
+    }
+})();
+
 // ─── JSON → SQLite TEK SEFERLİK GEÇİŞ ──────────────────
 (function migrateFromJson() {
     const counts = {

@@ -10,7 +10,7 @@ const PERIODS = {
 
 function buildPeriodicReportHtml({ period, history, generatedAt = new Date(), targetMailbox = '' }) {
     const companyProfile = loadSettings().companyProfile || {};
-    const companyName = companyProfile.name || 'CW-Enerji';
+    const companyName = companyProfile.name || 'MailTrustAI';
     const companyDetails = companyProfile.details || '';
     const companyContactInfo = companyProfile.contactInfo || '';
     const periodMeta = PERIODS[period] || PERIODS.daily;
@@ -24,7 +24,7 @@ function buildPeriodicReportHtml({ period, history, generatedAt = new Date(), ta
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>CW-Enerji Mail Tarama Ozeti</title>
+    <title>MailTrustAI Tarama Özeti</title>
 </head>
 <body style="margin:0;background:#08111f;color:#e5eefb;font-family:Arial,Helvetica,sans-serif;">
     <div style="max-width:980px;margin:0 auto;padding:28px;">

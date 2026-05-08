@@ -1,20 +1,11 @@
 // ============================================================
 // HEADER SECURITY ANALYZER
 // ============================================================
+const { getBrandDomains, getPatterns } = require('../storage/patternStore');
 
-// Bilinen markalar: [canonicalDomain, displayAlias]
-const BRAND_DOMAINS = [
-    ['paypal.com', 'paypal'], ['amazon.com', 'amazon'], ['microsoft.com', 'microsoft'],
-    ['apple.com', 'apple'], ['google.com', 'google'], ['netflix.com', 'netflix'],
-    ['facebook.com', 'facebook'], ['instagram.com', 'instagram'], ['twitter.com', 'twitter'],
-    ['linkedin.com', 'linkedin'], ['dropbox.com', 'dropbox'], ['ebay.com', 'ebay'],
-    ['fedex.com', 'fedex'], ['dhl.com', 'dhl'], ['ups.com', 'ups'],
-    ['turkiye.gov.tr', 'turkiye'], ['gib.gov.tr', 'gib'], ['sgk.gov.tr', 'sgk'],
-    ['ziraatbank.com.tr', 'ziraat'], ['isbank.com.tr', 'isbank'], ['garantibbva.com.tr', 'garanti'],
-    ['akbank.com', 'akbank'], ['yapikredi.com.tr', 'yapikredi'], ['halkbank.com.tr', 'halkbank'],
-    ['vakifbank.com.tr', 'vakifbank'], ['pttsepet.com', 'ptt'], ['ptt.gov.tr', 'ptt'],
-    ['trendyol.com', 'trendyol'], ['hepsiburada.com', 'hepsiburada'], ['n11.com', 'n11']
-];
+// BRAND_DOMAINS ve BEC kalıpları artık SQLite'tan yükleniyor.
+// getBrandDomains() → [[domain, alias], ...] (önbellekli)
+// getPatterns('bec_subject') / getPatterns('bec_body') → RegExp[]
 
 // Unicode → ASCII lookalike haritası (en yaygın karakterler)
 const UNICODE_MAP = {
@@ -162,6 +153,7 @@ function analyzeLookalikeDomain(emailData) {
     if (!domain) return { findings, score };
 
     const domainBase = stripTld(domain);
+    const BRAND_DOMAINS = getBrandDomains(); // DB'den önbellekli yükleme
 
     for (const [brandDomain, brandAlias] of BRAND_DOMAINS) {
         // Skip if it IS the real domain
@@ -222,6 +214,7 @@ function analyzeUnicodeSpoofing(emailData) {
     // Normalize edince bilinen bir marka domain'ine mi dönüşüyor?
     const normalized = normalizeUnicode(domain);
     if (normalized !== domain) {
+        const BRAND_DOMAINS = getBrandDomains();
         for (const [brandDomain] of BRAND_DOMAINS) {
             if (normalized === brandDomain || normalized.endsWith('.' + brandDomain)) {
                 findings.push({
@@ -331,21 +324,7 @@ function analyzeThreadHijacking(emailData) {
 
 // ─── YENİ: BEC (Business Email Compromise) LOKAL SİNYALLER ──
 
-const BEC_SUBJECT_PATTERNS = [
-    /\b(CEO|CFO|COO|CTO|genel\s*müdür|yönetim\s*kurulu|direktör)\b/i,
-    /\bacil\s*(havale|ödeme|transfer)\b/i,
-    /\b(wire\s*transfer|bank\s*transfer|swift)\b/i,
-    /\b(fatura|invoice)\s*(değişikliği|güncelleme|update|change)\b/i,
-    /\b(tedarikçi|vendor|supplier)\s*(hesap|account)\s*(değişikliği|change|update)\b/i
-];
-
-const BEC_BODY_PATTERNS = [
-    /\b(banka\s*hesabı|hesap\s*numarası|iban)\s*(değişti|değişiyor|güncellendi)\b/i,
-    /\b(bank\s*account|account\s*number)\s*(has\s*)?(changed|updated)\b/i,
-    /\b(lütfen|please)\s+.{0,30}\s*(havale|transfer|gönder|send)\b/i,
-    /\b(gizli\s*tut|confidential|strictly\s*private)\b/i,
-    /\b(bu\s*işlemi|this\s*transaction)\s+.{0,20}\s*(kimseye|nobody|anyone)\b/i
-];
+// BEC kalıpları DB'den dinamik olarak yüklenir (patternStore aracılığıyla)
 
 function analyzeBecSignals(emailData) {
     const findings = []; let score = 0;
@@ -356,6 +335,10 @@ function analyzeBecSignals(emailData) {
     const fromDomain = fromAddr.split('@')[1]?.toLowerCase() || '';
     const replyAddr = emailData.replyTo?.[0]?.address || '';
     const replyDomain = replyAddr.split('@')[1]?.toLowerCase() || '';
+
+    // DB'den önbellekli kalıpları yükle
+    const BEC_SUBJECT_PATTERNS = getPatterns('bec_subject');
+    const BEC_BODY_PATTERNS    = getPatterns('bec_body');
 
     const subjectHits = BEC_SUBJECT_PATTERNS.filter(p => p.test(subject));
     const bodyHits = BEC_BODY_PATTERNS.filter(p => p.test(text));

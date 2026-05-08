@@ -79,7 +79,7 @@ async function sendEnterpriseRiskAlert({ result, license, to, reason }) {
     }
 
     const riskIcon = { high: '🔴', medium: '🟠', low: '🟡', safe: '🟢' }[result.level] || '⚠️';
-    const subject  = `${riskIcon} [CW-Enerji Mail Guvenlik Raporu] ${result.labelTR || 'Riskli'} - ${result.emailMeta?.subject || '(Konu yok)'}`;
+    const subject  = `${riskIcon} [MailTrustAI Güvenlik Raporu] ${result.labelTR || 'Riskli'} - ${result.emailMeta?.subject || '(Konu yok)'}`;
     const fromName = smtpConfig.smtpFromName || 'MailTrustAI';
     const from     = `"${fromName}" <${smtpConfig.smtpUser}>`;
     const htmlBody = buildReportHtml(result, smtpConfig.reportLang || 'tr');
@@ -115,7 +115,7 @@ async function sendPeriodicSummaryReport({ period, recipients, targetMailbox = '
     const subjectTarget = targetMailbox ? ` - ${targetMailbox}` : '';
     const riskRatio   = stats.total > 0 ? stats.risky / stats.total : 0;
     const summaryIcon = riskRatio >= 0.3 ? '🔴' : riskRatio >= 0.1 ? '🟠' : stats.risky > 0 ? '🟡' : '🟢';
-    const subject     = `${summaryIcon} [CW-Enerji Mail Tarama Ozeti] ${periodLabel}${subjectTarget} - ${new Date().toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' })}`;
+    const subject     = `${summaryIcon} [MailTrustAI Tarama Özeti] ${periodLabel}${subjectTarget} - ${new Date().toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' })}`;
     const htmlBody    = buildPeriodicReportHtml({ period, history, generatedAt: new Date(), targetMailbox });
 
     const sendResult = await sendReportEmail({ smtpConfig, to: normalizedRecipients, from, subject, htmlBody });

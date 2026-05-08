@@ -40,7 +40,7 @@ function defaultSettings() {
         openaiModel: '',   // boşsa openai.js'teki OPENAI_MODEL sabiti kullanılır
         adminPassword: '',
         companyProfile: {
-            name: 'CW-Enerji',
+            name: '',
             details: '',
             contactInfo: ''
         },

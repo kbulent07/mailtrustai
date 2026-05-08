@@ -2,6 +2,7 @@
 // IMAP INBOX SCANNER — Scan existing emails
 // ============================================================
 const { createConnection } = require('./connection');
+const pool = require('./connectionPool');
 const { parseEmail } = require('../analysis/parser');
 
 const imapCooldowns = new Map();
@@ -12,9 +13,18 @@ async function listEmails(account, folder = 'INBOX', limit = 50) {
 }
 
 async function listEmailsOnce(account, folder = 'INBOX', limit = 50) {
-    const client = await createConnection(account);
+    let client = null;
+    let usedPool = false;
     try {
-        await client.connect();
+        // Havuzdan bağlantı almayı dene; başarısız olursa yeni bağlantı aç
+        try {
+            client = await pool.acquire(account);
+            usedPool = true;
+        } catch {
+            client = await createConnection(account);
+            await client.connect();
+        }
+
         const lock = await client.getMailboxLock(folder);
         const messages = [];
         try {
@@ -47,9 +57,14 @@ async function listEmailsOnce(account, folder = 'INBOX', limit = 50) {
                 loaded,
                 hasMore
             };
-        } finally { lock.release(); }
-        await client.logout();
+        } finally {
+            lock.release();
+            if (usedPool) pool.release(account);
+            else await client.logout().catch(() => {});
+        }
     } catch (e) {
+        if (usedPool && client) await pool.invalidate(account).catch(() => {});
+        else if (client) await client.logout().catch(() => {});
         const errorMsg = e.responseText || e.response || e.message;
         return { success: false, error: `Sunucu Reddi: ${errorMsg}` };
     }
@@ -73,9 +88,18 @@ async function fetchAndParseEmail(account, uid, folder = 'INBOX') {
 }
 
 async function fetchAndParseEmailOnce(account, uid, folder = 'INBOX') {
-    const client = await createConnection(account);
+    let client = null;
+    let usedPool = false;
     try {
-        await client.connect();
+        // Havuzdan bağlantı almayı dene
+        try {
+            client = await pool.acquire(account);
+            usedPool = true;
+        } catch {
+            client = await createConnection(account);
+            await client.connect();
+        }
+
         const lock = await client.getMailboxLock(folder);
         try {
             const msg = await client.fetchOne(uid, { source: true, bodyStructure: true }, { uid: true });
@@ -91,12 +115,16 @@ async function fetchAndParseEmailOnce(account, uid, folder = 'INBOX') {
                 return parsed;
             }
             return { success: false, error: 'Message not found' };
-        } finally { lock.release(); }
+        } finally {
+            lock.release();
+            if (usedPool) pool.release(account);
+            else await client.logout().catch(() => {});
+        }
     } catch (e) {
+        if (usedPool && client) await pool.invalidate(account).catch(() => {});
+        else if (client) await client.logout().catch(() => {});
         const errorMsg = e.responseText || e.response || e.message;
         return { success: false, error: `Hata: ${errorMsg}` };
-    } finally {
-        await client.logout().catch(() => {});
     }
 }
 

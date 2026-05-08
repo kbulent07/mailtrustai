@@ -44,7 +44,7 @@ function analyzeAttachments(attachments) {
             findings.push({
                 severity: 'critical',
                 category: 'attachment',
-                message: `Mail gateway flagged attachment: ${att.filename} (${att.gatewayDetection}${att.gatewayAction ? `, ${att.gatewayAction}` : ''})`
+                message: `Mail güvenlik geçidi ek dosyayı zararlı olarak işaretledi: ${att.filename} (${att.gatewayDetection}${att.gatewayAction ? `, ${att.gatewayAction}` : ''})`
             });
             r.issues.push('gateway-quarantine-header');
             score += 18;
@@ -54,7 +54,7 @@ function analyzeAttachments(attachments) {
             findings.push({
                 severity: 'warning',
                 category: 'attachment',
-                message: `Attachment body part could not be downloaded over IMAP after alternate fetch attempts: ${att.filename} (${att.imapDownloadError})`
+                message: `Ek dosya IMAP üzerinden indirilemedi (alternatif yöntemler denendi): ${att.filename} (${att.imapDownloadError})`
             });
             r.issues.push('imap-part-unavailable');
             r.vtEligible = false;
@@ -67,17 +67,17 @@ function analyzeAttachments(attachments) {
 
         // Double extension
         if (exts.length > 1 && DANGEROUS_EXTENSIONS.includes(exts[exts.length - 1])) {
-            findings.push({ severity: 'critical', category: 'attachment', message: `Double extension trick: ${att.filename}` });
+            findings.push({ severity: 'critical', category: 'attachment', message: `Çift uzantı saldırısı tespit edildi: ${att.filename}` });
             r.issues.push('double-extension'); score += 15;
         }
         // Dangerous extension
         else if (DANGEROUS_EXTENSIONS.includes(ext)) {
-            findings.push({ severity: 'critical', category: 'attachment', message: `Dangerous file type: ${att.filename}` });
+            findings.push({ severity: 'critical', category: 'attachment', message: `Tehlikeli dosya türü: ${att.filename}` });
             r.issues.push('dangerous-extension'); score += 12;
         }
         // Suspicious archive/macro
         else if (SUSPICIOUS_EXTENSIONS.includes(ext)) {
-            findings.push({ severity: 'warning', category: 'attachment', message: `Suspicious file type: ${att.filename}` });
+            findings.push({ severity: 'warning', category: 'attachment', message: `Şüpheli dosya türü: ${att.filename}` });
             r.issues.push('suspicious-extension'); score += 5;
         }
 
@@ -85,14 +85,14 @@ function analyzeAttachments(attachments) {
         if (ext && att.contentType) {
             const mismatch = checkMimeMismatch(ext, att.contentType);
             if (mismatch) {
-                findings.push({ severity: 'critical', category: 'attachment', message: `Extension/MIME mismatch: ${att.filename} (${att.contentType})` });
+                findings.push({ severity: 'critical', category: 'attachment', message: `Uzantı/MIME türü uyuşmazlığı: ${att.filename} (${att.contentType})` });
                 r.issues.push('mime-mismatch'); score += 10;
             }
         }
 
         // Macro-enabled documents
         if (MACRO_MIMES.some(m => att.contentType?.includes(m)) || ['.docm','.xlsm','.pptm'].includes(ext)) {
-            findings.push({ severity: 'warning', category: 'attachment', message: `Macro-enabled document: ${att.filename}` });
+            findings.push({ severity: 'warning', category: 'attachment', message: `Makro içeren belge tespit edildi: ${att.filename}` });
             r.issues.push('macro-enabled'); score += 8;
         }
 
@@ -106,7 +106,7 @@ function analyzeAttachments(attachments) {
                 findings.push({
                     severity: 'warning',
                     category: 'attachment',
-                    message: `Image signature mismatch: ${att.filename}`
+                    message: `Görüntü dosya imzası uyuşmuyor (bozuk veya sahte format): ${att.filename}`
                 });
                 r.issues.push('image-signature-mismatch');
                 score += 6;
@@ -116,7 +116,7 @@ function analyzeAttachments(attachments) {
                 findings.push({
                     severity: 'critical',
                     category: 'attachment',
-                    message: `Image contains suspicious trailing payload: ${att.filename}`
+                    message: `Görüntü dosyası sonunda şüpheli gizli yük tespit edildi (steganografi?): ${att.filename}`
                 });
                 r.issues.push('image-trailing-payload');
                 score += 18;
@@ -126,7 +126,7 @@ function analyzeAttachments(attachments) {
                 findings.push({
                     severity: 'critical',
                     category: 'attachment',
-                    message: `Image contains suspicious embedded marker(s): ${att.filename} -> ${r.imageAnalysis.suspiciousMarkers.join(', ')}`
+                    message: `Görüntü içinde şüpheli gömülü belirteç tespit edildi: ${att.filename} → ${r.imageAnalysis.suspiciousMarkers.join(', ')}`
                 });
                 r.issues.push('image-embedded-marker');
                 score += 12;
@@ -174,7 +174,7 @@ function analyzeAttachments(attachments) {
                 findings.push({
                     severity: 'warning',
                     category: 'attachment',
-                    message: `Archive contents could not be inspected: ${att.filename}`
+                    message: `Arşiv içeriği incelenemedi: ${att.filename}`
                 });
                 r.issues.push('archive-uninspectable');
                 score += 6;
@@ -186,7 +186,7 @@ function analyzeAttachments(attachments) {
                     findings.push({
                         severity: 'critical',
                         category: 'attachment',
-                        message: `Archive contains dangerous file(s): ${att.filename} -> ${dangerousEntries.map((entry) => entry.name).join(', ')}`
+                        message: `Arşivde tehlikeli dosya tespit edildi: ${att.filename} → ${dangerousEntries.map((entry) => entry.name).join(', ')}`
                     });
                     r.issues.push('archive-contains-dangerous-file');
                     score += 18;
@@ -194,7 +194,7 @@ function analyzeAttachments(attachments) {
                     findings.push({
                         severity: 'warning',
                         category: 'attachment',
-                        message: `Archive contains suspicious file(s): ${att.filename} -> ${suspiciousEntries.map((entry) => entry.name).join(', ')}`
+                        message: `Arşivde şüpheli dosya tespit edildi: ${att.filename} → ${suspiciousEntries.map((entry) => entry.name).join(', ')}`
                     });
                     r.issues.push('archive-contains-suspicious-file');
                     score += 8;
@@ -204,7 +204,7 @@ function analyzeAttachments(attachments) {
 
         // Unusually large
         if (att.size > 25 * 1024 * 1024) {
-            findings.push({ severity: 'info', category: 'attachment', message: `Large attachment: ${att.filename} (${(att.size/1024/1024).toFixed(1)}MB)` });
+            findings.push({ severity: 'info', category: 'attachment', message: `Büyük ek dosya: ${att.filename} (${(att.size/1024/1024).toFixed(1)}MB)` });
             r.issues.push('large-file');
         }
 
@@ -213,9 +213,9 @@ function analyzeAttachments(attachments) {
     }
 
     if (attachments.length === 0) {
-        findings.push({ severity: 'safe', category: 'attachment', message: 'No attachments' });
+        findings.push({ severity: 'safe', category: 'attachment', message: 'Ek dosya bulunmuyor' });
     } else if (score === 0) {
-        findings.push({ severity: 'safe', category: 'attachment', message: `${attachments.length} attachment(s) — no issues found` });
+        findings.push({ severity: 'safe', category: 'attachment', message: `${attachments.length} ek dosya incelendi — sorun tespit edilmedi` });
     }
 
     return { findings, score: Math.min(score, 30), results };
@@ -277,7 +277,7 @@ function inspectArchiveContents(filename, content) {
     if (!archiveCmd) {
         return {
             inspected: false,
-            error: `No inspection tool available for ${ext} archives`,
+            error: `Bu arşiv türü için inceleme aracı mevcut değil: ${ext}`,
             entries: []
         };
     }

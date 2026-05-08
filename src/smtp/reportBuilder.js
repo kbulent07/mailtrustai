@@ -5,7 +5,7 @@ const { loadSettings } = require('../storage/settingsStore');
 
 function buildReportHtml(result, lang = 'tr') {
     const companyProfile = loadSettings().companyProfile || {};
-    const companyName = companyProfile.name || 'CW-Enerji';
+    const companyName = companyProfile.name || 'MailTrustAI';
     const companyDetails = companyProfile.details || '';
     const companyContactInfo = companyProfile.contactInfo || '';
     const isTR = lang === 'tr';
