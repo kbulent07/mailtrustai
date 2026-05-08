@@ -36,8 +36,29 @@ function buildReportHtml(result, lang = 'tr') {
         .map((finding) => finding.message);
     const summary = buildExecutiveSummary(result, isTR);
 
+    // E-postanın hemen üstüne yerleştirilen verdict ayracı
+    const levelIcon = { high: '&#128308;', medium: '&#128992;', low: '&#128993;', safe: '&#128994;' }[level] || '&#9888;&#65039;';
+    const verdictBadgeText = risky ? (isTR ? '&#9888; RISKLI' : '&#9888; RISKY') : (isTR ? '&#10003; GUVENLI' : '&#10003; SAFE');
+    const topTagsHtml = (threatTags || []).slice(0, 4).map((tag) =>
+        `<span style="display:inline-block;margin:3px 5px 3px 0;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,0.14);color:#f8fafc;font-size:11px;font-weight:700">${escapeHtml(tag)}</span>`
+    ).join('');
+    const verdictDivider =
+        `<tr><td style="padding:6px 30px 0">` +
+        `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border:2px solid ${color};border-radius:12px;background:linear-gradient(90deg,${color}33,${color}10);overflow:hidden">` +
+        `<tr>` +
+        `<td style="padding:12px 16px;font-size:24px;width:1%;white-space:nowrap">${levelIcon}</td>` +
+        `<td style="padding:12px 8px">` +
+        `<div style="font-size:11px;color:#cbd5e1;font-weight:700;letter-spacing:1px">${isTR ? '&#128235; BU E-POSTA ICIN TARAMA SONUCU' : '&#128235; SCAN RESULT FOR THIS EMAIL'}</div>` +
+        `<div style="font-size:18px;font-weight:800;color:${color};margin-top:2px">${escapeHtml(levelText)} <span style="font-size:13px;color:#94a3b8;font-weight:600;margin-left:6px">${isTR ? 'Skor' : 'Score'} ${score}/100</span></div>` +
+        `</td>` +
+        `<td align="right" style="padding:12px 16px;width:1%;white-space:nowrap"><span style="display:inline-block;padding:6px 14px;border-radius:8px;background:${color};color:#0f172a;font-size:11px;font-weight:800;letter-spacing:1.5px">${verdictBadgeText}</span></td>` +
+        `</tr>` +
+        (topTagsHtml ? `<tr><td colspan="3" style="padding:0 16px 12px;border-top:1px dashed ${color}55">${topTagsHtml}</td></tr>` : '') +
+        `</table></td></tr>`;
+
     // Tüm bölümleri birleştir — tek satır (Zimbra whitespace sorununu önler)
     const sections = [
+        verdictDivider,
         section('&#128231; Incelenen E-posta', [
             kv('Gonderen', from || '-'),
             kv('Alici', to || '-'),

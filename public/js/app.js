@@ -312,7 +312,30 @@ function renderStructuredReport(data) {
     const linkSummary = buildLinkSummary(data);
     const recommendations = buildRecommendations(data);
 
+    // ─── E-POSTA ÜSTÜ VERDICT BANDI ─────────────────────────────
+    const levelIcon = { high: '🔴', medium: '🟠', low: '🟡', safe: '🟢' }[data.level] || '⚠️';
+    const levelText = (currentLang === 'tr' ? data.labelTR : data.labelEN) || data.level || '';
+    const verdictColor = data.color || '#94a3b8';
+    const isRisky = data.level === 'high' || data.level === 'medium';
+    const topTagsHtml = threatTags.slice(0, 4).map(tag =>
+        `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,0.12);color:#fff;font-size:11px;font-weight:700;margin:0 4px 4px 0">${esc(tag.label)}</span>`
+    ).join('');
+    const verdictBanner = `
+        <div style="position:relative;margin-bottom:14px;border-radius:10px;overflow:hidden;border:2px solid ${verdictColor};background:linear-gradient(90deg,${verdictColor}28,${verdictColor}10)">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px">
+                <div style="font-size:28px;line-height:1">${levelIcon}</div>
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:1px">📩 BU E-POSTA İÇİN TARAMA SONUCU</div>
+                    <div style="font-size:18px;font-weight:800;color:${verdictColor};margin-top:2px">${esc(levelText)} <span style="font-size:13px;color:var(--text-secondary);font-weight:600;margin-left:6px">· Skor ${data.score ?? '-'}/100</span></div>
+                </div>
+                <div style="font-size:11px;font-weight:800;letter-spacing:1.5px;padding:6px 14px;border-radius:8px;background:${verdictColor};color:#0f172a">${isRisky ? '⚠ RİSKLİ' : '✓ GÜVENLİ'}</div>
+            </div>
+            ${topTagsHtml ? `<div style="padding:0 16px 12px;border-top:1px dashed ${verdictColor}55;padding-top:10px">${topTagsHtml}</div>` : ''}
+        </div>
+    `;
+
     container.innerHTML = `
+        ${verdictBanner}
         <div class="report-section">
             <div class="report-section-title">Incelenen E-posta</div>
             <div class="report-kv-grid">
