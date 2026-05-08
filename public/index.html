@@ -477,21 +477,44 @@
 <div class="modal-overlay hidden" id="settingsModal">
     <div class="modal">
         <h2>⚙️ <span data-i18n="settings">Ayarlar</span></h2>
-        <div class="form-group">
-            <label class="form-label">Virüs Tarama API Anahtarı</label>
-            <input class="form-input" id="vtApiKeyInput" placeholder="Ücretsiz API anahtarınızı girin">
-        </div>
-        <div class="form-group">
-            <label class="form-label">Anthropic Claude API Key</label>
-            <input class="form-input" id="claudeApiKeyInput" placeholder="sk-ant-api03-...">
-        </div>
-        <div class="form-group">
-            <label class="form-label">OpenAI / ChatGPT API Key</label>
-            <input class="form-input" id="openaiApiKeyInput" placeholder="sk-proj-...">
-            <div class="text-muted" style="font-size:12px; margin-top:6px;">
-                Yapay zeka ile spam, phishing ve dolandiricilik analizini etkinlestirir.
+        <!-- ── Entegrasyon API Anahtarları ── -->
+        <div style="border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:16px;padding-bottom:4px">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">🔌 Entegrasyon API Anahtarları</div>
+
+            <div class="form-group">
+                <label class="form-label">🦠 VirusTotal API Anahtarı</label>
+                <input class="form-input" id="vtApiKeyInput" placeholder="Ücretsiz API anahtarınızı girin">
+                <div class="text-muted" style="font-size:11px;margin-top:4px">
+                    Ek dosya hash taraması — <a href="https://www.virustotal.com/gui/my-apikey" target="_blank" style="color:#60a5fa">virustotal.com</a>
+                </div>
             </div>
-        </div>
+
+            <div class="form-group">
+                <label class="form-label">🛰️ AlienVault OTX API Anahtarı</label>
+                <div style="display:flex;gap:8px;align-items:flex-start">
+                    <input class="form-input" id="otxApiKeyInput" placeholder="AlienVault OTX API anahtarı" style="flex:1">
+                    <button class="btn btn-ghost btn-sm" onclick="testOtxConnection()" style="white-space:nowrap;margin-top:0;height:38px">🔗 Test</button>
+                </div>
+                <div class="text-muted" style="font-size:11px;margin-top:4px">
+                    IP ve domain itibar sorgulama — <a href="https://otx.alienvault.com/api" target="_blank" style="color:#60a5fa">otx.alienvault.com</a> (ücretsiz)
+                </div>
+                <div id="otxTestStatus" style="font-size:12px;margin-top:6px;min-height:16px"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">🤖 Anthropic Claude API Key</label>
+                <input class="form-input" id="claudeApiKeyInput" placeholder="sk-ant-api03-...">
+            </div>
+            <div class="form-group">
+                <label class="form-label">🧠 OpenAI / ChatGPT API Key</label>
+                <input class="form-input" id="openaiApiKeyInput" placeholder="sk-proj-...">
+                <div class="text-muted" style="font-size:11px;margin-top:4px">
+                    Yapay zeka ile spam, phishing ve dolandiricilik analizini etkinlestirir.
+                </div>
+            </div>
+
+        </div><!-- /entegrasyon API anahtarları -->
+
         <div class="form-group">
             <label class="form-label">ChatGPT Modeli</label>
             <select class="form-input" id="openaiModelSelect"

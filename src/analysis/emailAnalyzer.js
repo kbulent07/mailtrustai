@@ -12,6 +12,7 @@ const { calculateScore, resolveLevel, levelMeta } = require('./scorer');
 const { scanAttachments: vtScan } = require('../integrations/virustotal');
 const { analyzeWithClaude } = require('../integrations/claude');
 const { analyzeWithOpenAI, OPENAI_MODEL } = require('../integrations/openai');
+const { checkEmailIndicators, severityFromVerdict, scoreFromVerdict } = require('../integrations/otx');
 const { isAllowlisted, isBlocklisted } = require('../storage/allowlistStore');
 const { isThreatDomain, isThreatUrl } = require('../integrations/threatIntel');
 const { sendWebhook } = require('../integrations/webhook');
@@ -88,6 +89,80 @@ function applyVirusTotalInsights(result, entries = []) {
             });
         }
     });
+
+    recalculateResultMeta(result);
+}
+
+// ─── OTX BULGULARI UYGULA ────────────────────────────────────
+/**
+ * OTX itibar sorgulama sonuçlarını analiz raporuna ekler.
+ * Her tehditli gösterge için ayrı bir finding üretir ve skoru artırır.
+ * Çakışma önlemi: Statik tehdit istihbaratı (threatIntel) aynı URL'yi
+ * zaten critical olarak işaretlediyse OTX skoru %50 azaltılır.
+ */
+function applyOtxInsights(result, otxData) {
+    if (!otxData || !otxData.indicators || !otxData.indicators.length) return;
+
+    const { indicators, summary, totalScore } = otxData;
+
+    // Hiç tehdit yok mu? Kısa özet finding ekle
+    const hasThreats = indicators.some(i => i.verdict === 'malicious' || i.verdict === 'suspicious');
+
+    if (!hasThreats) {
+        const queriedCount = indicators.filter(i => i.verdict !== 'unknown').length;
+        if (queriedCount > 0) {
+            result.findings.push({
+                severity: 'safe',
+                category: 'otx',
+                message: `OTX itibar: ${queriedCount} gösterge sorgulandı — tehdit istihbaratı kaydı bulunamadı`
+            });
+        }
+        return;
+    }
+
+    // Her tehditli gösterge için finding
+    for (const ind of indicators) {
+        if (ind.error || ind.found === false || ind.verdict === 'clean' || ind.verdict === 'unknown') continue;
+
+        const severity = severityFromVerdict(ind.verdict);
+        const typeLabel = ind.type === 'IPv4' ? 'IP' : 'Domain';
+        const pulseText = ind.pulseCount ? ` (${ind.pulseCount} tehdit pulse'u)` : '';
+        const malwareText = ind.malwareFamilies?.length
+            ? ` — Malware: ${ind.malwareFamilies.join(', ')}`
+            : '';
+        const tagText = ind.tags?.length
+            ? ` [${ind.tags.slice(0, 3).join(', ')}]`
+            : '';
+
+        result.findings.push({
+            severity,
+            category: 'otx',
+            message: `OTX İtibar (${typeLabel}): ${ind.value}${pulseText}${malwareText}${tagText}`,
+            otxLink: ind.otxLink || null
+        });
+    }
+
+    // Tehdit istihbaratı (threatIntel modülü) zaten bu domain/URL'yi yakaladıysa
+    // OTX puanı çift sayılmaması için %50 indirimle uygula
+    const existingTiCritical = result.findings.some(
+        f => f.category === 'link' && f.severity === 'critical' && /tehdit istihbaratı/i.test(f.message || '')
+    );
+    const scoreToApply = existingTiCritical
+        ? Math.round(totalScore * 0.5)
+        : totalScore;
+
+    if (scoreToApply > 0) {
+        result.score = Math.min(100, result.score + scoreToApply);
+    }
+
+    // Özet finding (summary) — listenin başına ekle
+    if (summary.malicious > 0 || summary.suspicious > 0) {
+        result.findings.unshift({
+            severity: summary.malicious > 0 ? 'critical' : 'warning',
+            category: 'otx',
+            message: `OTX Tehdit Özeti: ${summary.malicious} zararlı, ${summary.suspicious} şüpheli gösterge tespit edildi (${summary.total} sorgu)`
+        });
+    }
 
     recalculateResultMeta(result);
 }
@@ -387,6 +462,27 @@ async function buildEmailAnalysisResult(parsedData, license) {
         if (resolved.length > 0) applyResolvedUrlFindings(result.findings, resolved);
     }
 
+    // ─── AlienVault OTX İtibar Sorgulama ─────────────────
+    result.otxStatus = {
+        configured: !!state.otxApiKey,
+        checked:    false,
+        reason:     state.otxApiKey ? 'ready' : 'missing-api-key'
+    };
+    if (state.otxApiKey) {
+        try {
+            const otxData = await checkEmailIndicators(parsedData, state.otxApiKey, linkResult.urls || []);
+            result.otxData   = otxData;
+            result.otxStatus.checked = true;
+            result.otxStatus.reason  = 'completed';
+            result.otxStatus.summary = otxData.summary;
+            applyOtxInsights(result, otxData);
+        } catch (e) {
+            console.error('[OTX] Sorgu hatası:', e.message);
+            result.otxStatus.reason = 'error';
+            result.otxStatus.error  = e.message;
+        }
+    }
+
     // ─── Webhook ─────────────────────────────────────────
     sendWebhook(result).catch(() => {});
 
@@ -444,6 +540,7 @@ module.exports = {
     buildEmailAnalysisResult,
     buildAttachmentOnlyResult,
     applyVirusTotalInsights,
+    applyOtxInsights,
     applyOpenAIInsights,
     recalculateResultMeta
 };

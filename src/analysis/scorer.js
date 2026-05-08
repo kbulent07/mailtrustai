@@ -39,11 +39,18 @@ function resolveLevel(score, findings = []) {
 
 function forcedLevelFromFindings(findings = []) {
     const criticalAttachment = findings.some(f => f.category === 'attachment' && f.severity === 'critical');
-    const warningAttachment = findings.some(f => f.category === 'attachment' && f.severity === 'warning');
-    const criticalLink = findings.some(f => f.category === 'link' && f.severity === 'critical');
-    const warningLink = findings.some(f => f.category === 'link' && f.severity === 'warning');
-    const vtCritical = findings.some(f => f.category === 'virusTotal' && f.severity === 'critical');
-    const vtWarning = findings.some(f => f.category === 'virusTotal' && f.severity === 'warning');
+    const warningAttachment  = findings.some(f => f.category === 'attachment' && f.severity === 'warning');
+    const criticalLink       = findings.some(f => f.category === 'link'       && f.severity === 'critical');
+    const warningLink        = findings.some(f => f.category === 'link'       && f.severity === 'warning');
+    const vtCritical         = findings.some(f => f.category === 'virusTotal' && f.severity === 'critical');
+    const vtWarning          = findings.some(f => f.category === 'virusTotal' && f.severity === 'warning');
+
+    // ── OTX itibar sinyalleri ─────────────────────────────
+    // OTX "malicious" verdict → yüksek risk (high) seviyesine zorla
+    // OTX "suspicious" verdict → orta risk (medium) seviyesine zorla
+    const otxCritical = findings.some(f => f.category === 'otx' && f.severity === 'critical');
+    const otxWarning  = findings.some(f => f.category === 'otx' && f.severity === 'warning');
+
     const gatewayMalware = findings.some((finding) =>
         finding.category === 'attachment'
         && finding.severity === 'critical'
@@ -60,12 +67,12 @@ function forcedLevelFromFindings(findings = []) {
         && /(phishing|bec|invoice_fraud|credential_theft|malware_delivery|extortion)/i.test(aiVerdict.message || '');
     const aiRedFlags = findings.filter((finding) => finding.category === 'ai' && /AI uyarı:/i.test(finding.message || '')).length;
 
-    if (gatewayMalware) return 'high';
-    if (aiIndicatesCriticalFraud && aiConfidence >= 70) return 'high';
+    if (gatewayMalware)                                      return 'high';
+    if (aiIndicatesCriticalFraud && aiConfidence >= 70)      return 'high';
     if (aiIndicatesMediumFraud && aiConfidence >= 75 && aiRedFlags >= 2) return 'medium';
-    if (vtCritical) return 'high';
-    if (criticalAttachment || criticalLink) return 'medium';
-    if (vtWarning || warningAttachment || warningLink) return 'low';
+    if (vtCritical || otxCritical)                           return 'high';
+    if (criticalAttachment || criticalLink)                  return 'medium';
+    if (vtWarning || otxWarning || warningAttachment || warningLink) return 'low';
     return 'safe';
 }
 

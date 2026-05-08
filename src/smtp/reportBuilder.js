@@ -28,6 +28,7 @@ function buildReportHtml(result, lang = 'tr') {
     const attachmentNames = attachments.length ? attachments.map((item) => item.filename).filter(Boolean) : [];
     const authRows = buildAuthRows(result);
     const vtRows = buildVirusTotalRows(vtEntries, attachments);
+    const otxSection = buildOtxSection(result);
     const threatTags = buildThreatTags(result);
     const detailedFindings = buildDetailedFindingRows(result);
     const suspiciousLinks = findings
@@ -52,6 +53,8 @@ function buildReportHtml(result, lang = 'tr') {
         ].join('')),
 
         section('&#128737;&#65039; Virüs Kontrolleri', buildVirusTotalTable(vtRows)),
+
+        otxSection,
 
         section('&#128269; Tespit Edilen Tehdit Tipleri',
             '<div style="padding-top:4px">' +
@@ -221,6 +224,39 @@ function buildVirusTotalRows(vtEntries, attachments) {
     return rows;
 }
 
+// ─── OTX İTİBAR BÖLÜMÜ ──────────────────────────────────────
+function buildOtxSection(result) {
+    const indicators = result.otxData?.indicators;
+    if (!indicators || !indicators.length) return '';
+
+    const hasThreats = indicators.some(i => i.verdict === 'malicious' || i.verdict === 'suspicious');
+    if (!hasThreats) return '';  // Temiz ise raporda bölüm gösterme
+
+    const rows = indicators
+        .filter(i => i.verdict === 'malicious' || i.verdict === 'suspicious')
+        .map(ind => {
+            const typeLabel = ind.type === 'IPv4' ? 'IP' : 'Domain';
+            const color = ind.verdict === 'malicious' ? '#fb7185' : '#fbbf24';
+            const pulseText = ind.pulseCount ? ` — ${ind.pulseCount} pulse` : '';
+            const malwareText = ind.malwareFamilies?.length ? ` | Malware: ${ind.malwareFamilies.join(', ')}` : '';
+            const tagText = ind.tags?.length ? ` | [${ind.tags.slice(0, 3).join(', ')}]` : '';
+            return `<tr style="border-top:1px solid #263244">` +
+                `<td style="color:#e5e7eb">${escapeHtml(typeLabel)}</td>` +
+                `<td style="color:#e5e7eb;font-family:monospace">${escapeHtml(ind.value)}</td>` +
+                `<td style="color:${color};font-size:12px">${escapeHtml(pulseText + malwareText + tagText)}</td>` +
+                `<td style="color:${color};font-weight:800">${ind.verdict === 'malicious' ? 'ZARARLII' : 'SUPHELI'}</td>` +
+                `</tr>`;
+        });
+
+    if (!rows.length) return '';
+
+    const table = `<table width="100%" cellpadding="8" cellspacing="0" border="0" style="border-collapse:collapse;font-size:13px">` +
+        `<thead><tr style="background:#172033;color:#cbd5e1"><th align="left">Tip</th><th align="left">Gosterge</th><th align="left">Detay</th><th align="left">Sonuc</th></tr></thead>` +
+        `<tbody>${rows.join('')}</tbody></table>`;
+
+    return section('&#128225; AlienVault OTX — IP/Domain Itibar', table);
+}
+
 function buildThreatTags(result) {
     const tags = new Set();
     for (const finding of result.findings || []) {
@@ -228,6 +264,8 @@ function buildThreatTags(result) {
         if (finding.category === 'attachment' && finding.severity === 'critical') tags.add('Potansiyel malware');
         if (finding.category === 'link' && finding.severity !== 'safe') tags.add('Supheli baglanti');
         if (finding.category === 'ai' && /phishing|credential|fraud|bec/i.test(finding.message || '')) tags.add('Spear phishing');
+        if (finding.category === 'otx' && finding.severity === 'critical') tags.add('Kotu itibarli altyapi');
+        if (finding.category === 'otx' && finding.severity === 'warning') tags.add('Supheli IP/domain');
     }
     if (result.openaiAnalysis?.category) tags.add(result.openaiAnalysis.category);
     return [...tags].slice(0, 8);
@@ -271,8 +309,16 @@ function effectiveReportLevel(result) {
     const findingLevel = levelFromFindings(result.findings || []);
     const aiLevel = levelFromAi(result.openaiAnalysis);
     const vtLevel = levelFromVirusTotal(result.virusTotal || []);
-    const maxRank = Math.max(baseRank, levelRank(findingLevel), levelRank(aiLevel), levelRank(vtLevel));
+    const otxLevel = levelFromOtx(result.otxData);
+    const maxRank = Math.max(baseRank, levelRank(findingLevel), levelRank(aiLevel), levelRank(vtLevel), levelRank(otxLevel));
     return ['safe', 'low', 'medium', 'high'][maxRank] || 'safe';
+}
+
+function levelFromOtx(otxData) {
+    if (!otxData?.indicators) return 'safe';
+    if (otxData.indicators.some(i => i.verdict === 'malicious')) return 'high';
+    if (otxData.indicators.some(i => i.verdict === 'suspicious')) return 'medium';
+    return 'safe';
 }
 
 function levelFromFindings(findings) {
@@ -325,7 +371,8 @@ function localCategory(category) {
         header: 'Kimlik dogrulama',
         content: 'Icerik',
         link: 'Baglantilar',
-        ai: 'Yapay zeka'
+        ai: 'Yapay zeka',
+        otx: 'OTX IP/Domain'
     }[category] || category || 'Genel';
 }
 

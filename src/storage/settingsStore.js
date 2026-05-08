@@ -38,6 +38,7 @@ function defaultSettings() {
         claudeApiKey: '',
         openaiApiKey: '',
         openaiModel: '',   // boşsa openai.js'teki OPENAI_MODEL sabiti kullanılır
+        otxApiKey: '',     // AlienVault OTX tehdit itibar sorgulama
         adminPassword: '',
         companyProfile: {
             name: '',

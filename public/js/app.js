@@ -2504,6 +2504,7 @@ async function verifyAdminResetCode() {
 
 async function saveSettings() {
     const vtKey     = document.getElementById('vtApiKeyInput').value.trim();
+    const otxKey    = document.getElementById('otxApiKeyInput')?.value.trim() || '';
     const claudeKey = document.getElementById('claudeApiKeyInput').value.trim();
     const openaiKey = document.getElementById('openaiApiKeyInput').value.trim();
     const adminPwd  = document.getElementById('adminPasswordInput')?.value || '';
@@ -2537,6 +2538,7 @@ async function saveSettings() {
 
     const payload = {
         vtApiKey: vtKey, claudeApiKey: claudeKey, openaiApiKey: openaiKey,
+        otxApiKey: otxKey,
         openaiModel,
         adminPassword: adminPwd,
         companyProfile
@@ -2621,6 +2623,7 @@ async function loadSettingsStatus() {
             if (!el.dataset.defaultPlaceholder) el.dataset.defaultPlaceholder = el.placeholder;
         };
         setKeyPlaceholder('vtApiKeyInput', status.vtConfigured);
+        setKeyPlaceholder('otxApiKeyInput', status.otxConfigured);
         setKeyPlaceholder('claudeApiKeyInput', status.claudeConfigured);
         setKeyPlaceholder('openaiApiKeyInput', status.openaiConfigured);
 
@@ -2640,16 +2643,44 @@ async function loadSettingsStatus() {
         }
 
         statusEl.textContent = [
-            `Virüs Tarama: ${status.vtConfigured ? 'tanımlı' : 'tanımlı değil'}`,
-            `Claude: ${status.claudeConfigured ? 'configured' : 'not configured'}`,
-            `OpenAI: ${status.openaiConfigured ? `configured (${status.openaiModel || 'default'})` : 'not configured'}`,
-            `Firma: ${profile.name || 'tanimsiz'}`
+            `VirusTotal: ${status.vtConfigured ? '✅' : '—'}`,
+            `OTX: ${status.otxConfigured ? '✅' : '—'}`,
+            `Claude: ${status.claudeConfigured ? '✅' : '—'}`,
+            `OpenAI: ${status.openaiConfigured ? `✅ (${status.openaiModel || 'default'})` : '—'}`,
+            `Firma: ${profile.name || 'tanımsız'}`
         ].join(' | ');
     } catch (error) {
         const statusEl = document.getElementById('settingsStatus');
         if (statusEl) {
             statusEl.textContent = `Settings status unavailable: ${error.message}`;
         }
+    }
+}
+
+async function testOtxConnection() {
+    const apiKey = document.getElementById('otxApiKeyInput')?.value.trim();
+    const statusEl = document.getElementById('otxTestStatus');
+    if (!statusEl) return;
+    if (!apiKey) {
+        statusEl.innerHTML = '<span style="color:#f59e0b">⚠️ Önce OTX API anahtarını girin.</span>';
+        return;
+    }
+    statusEl.innerHTML = '<span style="color:var(--text-secondary)">⏳ Test ediliyor...</span>';
+    try {
+        const adminPwd = document.getElementById('adminPasswordInput')?.value || '';
+        const res = await fetch('/api/settings/otx/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPwd },
+            body: JSON.stringify({ otxApiKey: apiKey })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            statusEl.innerHTML = `<span style="color:var(--green,#00e676)">✅ ${esc(data.message)}</span>`;
+        } else {
+            statusEl.innerHTML = `<span style="color:#f87171">❌ ${esc(data.error)}</span>`;
+        }
+    } catch (e) {
+        statusEl.innerHTML = `<span style="color:#f87171">❌ Bağlantı hatası: ${esc(e.message)}</span>`;
     }
 }
 

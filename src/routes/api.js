@@ -554,9 +554,10 @@ router.post('/settings/keys', requireAdminAuth, async (req, res) => {
         if (typeof incoming === 'string' && incoming.trim() === '') return current;
         return incoming;
     };
-    state.vtApiKey    = updateKey(state.vtApiKey,    req.body.vtApiKey);
+    state.vtApiKey     = updateKey(state.vtApiKey,     req.body.vtApiKey);
     state.claudeApiKey = updateKey(state.claudeApiKey, req.body.claudeApiKey);
     state.openaiApiKey = updateKey(state.openaiApiKey, req.body.openaiApiKey);
+    state.otxApiKey    = updateKey(state.otxApiKey,    req.body.otxApiKey);
 
     if (req.body.openaiModel !== undefined) {
         state.openaiModel = req.body.openaiModel === ':clear'
@@ -572,6 +573,7 @@ router.post('/settings/keys', requireAdminAuth, async (req, res) => {
     saveSettings({ ...current,
         vtApiKey: state.vtApiKey, claudeApiKey: state.claudeApiKey,
         openaiApiKey: state.openaiApiKey, openaiModel: state.openaiModel,
+        otxApiKey: state.otxApiKey,
         companyProfile: { ...(current.companyProfile || {}), ...(req.body.companyProfile || {}) },
         adminPassword
     });
@@ -581,8 +583,20 @@ router.post('/settings/keys', requireAdminAuth, async (req, res) => {
         claudeConfigured:!!state.claudeApiKey,
         openaiConfigured:!!state.openaiApiKey,
         openaiModel:     state.openaiModel || OPENAI_MODEL,
+        otxConfigured:   !!state.otxApiKey,
         companyProfile:  loadSettings().companyProfile || {}
     });
+});
+
+// ─── OTX bağlantı testi ──────────────────────────────────────
+router.post('/settings/otx/test', requireAdminAuth, async (req, res) => {
+    const { queryIndicator } = require('../integrations/otx');
+    const apiKey = req.body.otxApiKey || state.otxApiKey;
+    if (!apiKey) return res.status(400).json({ error: 'OTX API anahtarı tanımlı değil' });
+    // Bilinen temiz IP ile test sorgusu: Google DNS
+    const result = await queryIndicator('IPv4', '8.8.8.8', apiKey);
+    if (result.error) return res.status(400).json({ error: result.error });
+    res.json({ success: true, message: `OTX API bağlantısı başarılı — pulse sayısı: ${result.pulseCount ?? '?'}` });
 });
 
 router.get('/settings/status', (req, res) => {
@@ -593,6 +607,7 @@ router.get('/settings/status', (req, res) => {
         openaiConfigured:!!state.openaiApiKey,
         openaiModel:     state.openaiModel || OPENAI_MODEL,
         availableModels: AVAILABLE_OPENAI_MODELS,
+        otxConfigured:   !!state.otxApiKey,
         companyProfile:  settings.companyProfile || {}
     });
 });
