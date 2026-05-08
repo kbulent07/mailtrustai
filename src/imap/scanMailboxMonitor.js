@@ -163,20 +163,43 @@ class ScanMailboxMonitor {
         }
     }
 
+    // ─── UID izleme ──────────────────────────────────────
+    // IMAP UID'leri kutu içinde monoton artar, dolayısıyla "lastProcessedUid"
+    // tek bir sayı ile son işlenen mesajı izlemek yeterlidir.
+    // Eski formatla geriye uyumluluk: state[email].processed array'i de
+    // okunmaya devam edilir (geçiş döneminde tekrar tarama olmasın).
     isProcessed(uid) {
         if (!uid) return false;
         const state = loadState();
-        const key = this.account.email;
-        return (state[key]?.processed || []).includes(String(uid));
+        const entry = state[this.account.email];
+        if (!entry) return false;
+        const numericUid = Number(uid);
+        if (!Number.isNaN(numericUid) && typeof entry.lastProcessedUid === 'number' && numericUid <= entry.lastProcessedUid) {
+            return true;
+        }
+        // Geriye uyumluluk: eski "processed" array
+        if (Array.isArray(entry.processed) && entry.processed.includes(String(uid))) return true;
+        return false;
     }
 
     markProcessed(uid) {
         if (!uid) return;
         const state = loadState();
         const key = this.account.email;
-        const current = state[key]?.processed || [];
-        const next = [String(uid), ...current.filter((item) => item !== String(uid))].slice(0, 300);
-        state[key] = { processed: next, updatedAt: new Date().toISOString() };
+        const numericUid = Number(uid);
+        const entry = state[key] || {};
+        const prevMax = typeof entry.lastProcessedUid === 'number' ? entry.lastProcessedUid : 0;
+        const newMax = Number.isNaN(numericUid) ? prevMax : Math.max(prevMax, numericUid);
+
+        // Son 50 UID'yi de tut (yeniden işleme korumasının tamamen UID-monoton'a güvenmemesi için)
+        const recent = Array.isArray(entry.processed) ? entry.processed : [];
+        const next = [String(uid), ...recent.filter(x => x !== String(uid))].slice(0, 50);
+
+        state[key] = {
+            lastProcessedUid: newMax,
+            processed: next,
+            updatedAt: new Date().toISOString()
+        };
         saveState(state);
     }
 }

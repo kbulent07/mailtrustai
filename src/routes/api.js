@@ -6,8 +6,33 @@ const multer  = require('multer');
 const bcrypt  = require('bcrypt');
 const router  = express.Router();
 
-const { requireAdminAuth, verifyAdminPassword, createAdminToken } = require('../middleware/adminAuth');
+const { requireAdminAuth, verifyAdminPassword, verifyAdminToken, createAdminToken } = require('../middleware/adminAuth');
 const customerAuth = require('../middleware/customerAuth');
+
+// ─── GLOBAL CUSTOMER AUTH GUARD ──────────────────────────
+// Tüm /api/* uç noktaları müşteri yönetim oturumu (veya admin token) gerektirir.
+// Aşağıdaki PUBLIC_PATHS bu kuralın dışındadır (login, kurulum, recovery vb.)
+const PUBLIC_PATHS = new Set([
+    '/health',
+    '/admin/session',
+    '/admin/send-reset-code',
+    '/admin/verify-reset-code',
+    '/customer/status',
+    '/customer/setup',
+    '/customer/login'
+]);
+
+router.use((req, res, next) => {
+    if (PUBLIC_PATHS.has(req.path)) return next();
+
+    const auth = req.headers['authorization'] || '';
+    if (auth.startsWith('Bearer ')) {
+        const token = auth.slice(7).trim();
+        if (verifyAdminToken(token)) return next();
+        if (customerAuth.verifyCustomerToken(token)) return next();
+    }
+    return res.status(401).json({ error: 'Müşteri yönetim oturumu gerekli. Lütfen giriş yapın.' });
+});
 
 // ─── Analizörler ve Ayrıştırıcılar ───────────────────────
 const { parseEmail, parseUploadedEmail } = require('../analysis/parser');
@@ -81,12 +106,48 @@ initThreatIntelFeed();
 // ============================================================
 // ADMIN SESSION (JWT-like token üretimi — auth gerektirmez)
 // ============================================================
+// ─── Admin login rate limit (IP başına) ──────────────────
+const _adminAttempts = new Map();
+const ADMIN_MAX_ATTEMPTS = 8;
+const ADMIN_WINDOW_MS = 15 * 60 * 1000;
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, rec] of _adminAttempts.entries()) {
+        if (now > rec.resetAt) _adminAttempts.delete(ip);
+    }
+}, 5 * 60 * 1000).unref();
+
+function _checkAdminLoginRate(ip) {
+    const now = Date.now();
+    const rec = _adminAttempts.get(ip);
+    if (!rec || now > rec.resetAt) {
+        _adminAttempts.set(ip, { count: 1, resetAt: now + ADMIN_WINDOW_MS });
+        return { allowed: true };
+    }
+    rec.count++;
+    if (rec.count > ADMIN_MAX_ATTEMPTS) {
+        return { allowed: false, retryAfter: Math.ceil((rec.resetAt - now) / 1000) };
+    }
+    return { allowed: true };
+}
+
 router.post('/admin/session', async (req, res) => {
     try {
+        const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+        const rate = _checkAdminLoginRate(ip);
+        if (!rate.allowed) {
+            return res.status(429).json({
+                error: `Çok fazla hatalı giriş. ${Math.ceil(rate.retryAfter / 60)} dakika sonra deneyin.`,
+                retryAfter: rate.retryAfter
+            });
+        }
+
         const { adminPassword } = req.body || {};
         if (!adminPassword) return res.status(400).json({ error: 'adminPassword zorunludur' });
         const valid = await verifyAdminPassword(adminPassword);
         if (!valid) return res.status(403).json({ error: 'Geçersiz admin şifresi' });
+        // Başarılı giriş — saymayı sıfırla
+        _adminAttempts.delete(ip);
         const token = createAdminToken();
         res.json({ token, expiresIn: 8 * 3600 });
     } catch (e) {
@@ -110,12 +171,31 @@ router.post('/customer/setup', async (req, res) => {
         if (customerAuth.isCustomerPasswordSet()) {
             return res.status(409).json({ error: 'Müşteri şifresi zaten ayarlanmış. Sıfırlamak için admin panelini kullanın.' });
         }
+
+        // ─── İlk kurulum hijack koruması ──────────────────
+        // Sunucu internete açıkken ilk gelen kullanıcının "sahip" olmasını engellemek için:
+        //   • Localhost (127.0.0.1 / ::1) izinli
+        //   • MSA_SETUP_TOKEN env tanımlıysa header ile gönderilmeli
+        const ipRaw = String(req.ip || req.connection?.remoteAddress || '');
+        const isLocal = /^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1|localhost)$/i.test(ipRaw);
+        const expectedToken = process.env.MSA_SETUP_TOKEN || '';
+        const providedToken = String(req.headers['x-setup-token'] || '');
+        const tokenMatch = expectedToken && providedToken && providedToken === expectedToken;
+
+        if (!isLocal && !tokenMatch) {
+            return res.status(403).json({
+                error: 'İlk kurulum yalnızca sunucuya yerel (localhost) erişimden veya MSA_SETUP_TOKEN env değeri ile yapılabilir.',
+                hint: 'Sunucu konsolundaki "ilk kurulum URL"sini kullanın veya .env dosyasına MSA_SETUP_TOKEN ekleyip x-setup-token header ile çağırın.'
+            });
+        }
+
         const password = String(req.body?.password || '');
         if (password.length < 6) {
             return res.status(400).json({ error: 'Şifre en az 6 karakter olmalıdır.' });
         }
         await customerAuth.setCustomerPassword(password);
         const token = customerAuth.createCustomerToken();
+        console.log(`[Setup] Müşteri yönetim şifresi oluşturuldu (kaynak: ${isLocal ? 'localhost' : 'setup-token'}).`);
         res.json({ success: true, token, expiresIn: 12 * 3600 });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -539,6 +619,12 @@ router.post('/admin/restart', requireAdminAuth, (req, res) => {
 });
 
 router.post('/admin/stop', requireAdminAuth, (req, res) => {
+    // Uzaktan kapatma yalnızca açıkça etkinleştirilmişse çalışır (DoS riski).
+    if (process.env.MSA_ALLOW_REMOTE_SHUTDOWN !== 'true') {
+        return res.status(403).json({
+            error: 'Uzaktan kapatma devre dışı. Etkinleştirmek için .env dosyasında MSA_ALLOW_REMOTE_SHUTDOWN=true yapın.'
+        });
+    }
     res.json({ success: true, message: 'Servis durduruluyor...' });
     res.on('finish', () => setTimeout(() => {
         console.log('[Admin] Servis durdurma komutu alındı. Çıkılıyor...');

@@ -62,6 +62,24 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tx_created ON credit_transactions(created_at DESC);
 `);
 
+// ─── SCAN HISTORY (e-posta tarama geçmişi) ──────────────
+db.exec(`
+    CREATE TABLE IF NOT EXISTS scan_history (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        scan_id     TEXT,
+        timestamp   TEXT NOT NULL,
+        level       TEXT,
+        score       INTEGER,
+        scan_source TEXT,
+        from_email  TEXT,
+        subject     TEXT,
+        payload     TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_history_ts     ON scan_history(timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_history_level  ON scan_history(level);
+    CREATE INDEX IF NOT EXISTS idx_history_source ON scan_history(scan_source);
+`);
+
 // ─── TEHDİT PATERNI VE MARKA DOMAIN TABLOLARI ────────────
 db.exec(`
     CREATE TABLE IF NOT EXISTS brand_domains (

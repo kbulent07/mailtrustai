@@ -95,6 +95,39 @@
         window.__msaCustomerToken = getToken();
     }
 
+    // ─── fetch wrapper: tüm /api/* isteklerine otomatik Bearer token ekle ─
+    // (Halihazırda Authorization gönderen istekler korunur — admin/dealer override yapabilir)
+    if (!window.__msaFetchWrapped) {
+        window.__msaFetchWrapped = true;
+        const _origFetch = window.fetch.bind(window);
+        window.fetch = function(input, init) {
+            try {
+                const url = typeof input === 'string' ? input : (input && input.url) || '';
+                const token = window.__msaCustomerToken || getToken();
+                if (url.startsWith('/api/') && token) {
+                    init = init || {};
+                    const headers = new Headers(init.headers || (typeof input !== 'string' && input.headers) || {});
+                    if (!headers.has('Authorization')) {
+                        headers.set('Authorization', 'Bearer ' + token);
+                        init.headers = headers;
+                    }
+                }
+            } catch { /* sessizce devam */ }
+            return _origFetch(input, init).then(res => {
+                // 401 → oturum sona ermiş; overlay'i göster ama dealer/admin login isteklerini bypass et
+                try {
+                    const url = typeof input === 'string' ? input : (input && input.url) || '';
+                    const SKIP_401 = ['/api/admin/session', '/api/dealer/login', '/api/customer/login', '/api/customer/setup', '/api/customer/status'];
+                    if (res.status === 401 && url.startsWith('/api/') && !SKIP_401.some(p => url.startsWith(p))) {
+                        clearToken();
+                        location.reload();
+                    }
+                } catch {}
+                return res;
+            });
+        };
+    }
+
     async function checkStatus() {
         try {
             const headers = {};

@@ -8,11 +8,17 @@ const apiRoutes = require('./src/routes/api');
 const dealerRoutes = require('./src/routes/dealerApi');
 const { setupWebSocket } = require('./src/routes/websocket');
 const { startBackgroundRefresh } = require('./src/license/remoteValidator');
-const { loadSettings } = require('./src/storage/settingsStore');
+const { loadSettings, migrateToEncrypted } = require('./src/storage/settingsStore');
+
+// İlk açılışta düz metin API anahtarlarını AES'le şifreli formata yükselt
+migrateToEncrypted();
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+
+// Reverse proxy arkasında doğru IP'yi alabilmek için (X-Forwarded-For). Localhost gate'i için kritik.
+app.set('trust proxy', 'loopback, linklocal, uniquelocal');
 
 // Security headers
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -20,13 +26,24 @@ app.use(helmet({ contentSecurityPolicy: false }));
 // Middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// no-cache yalnızca dinamik içerik (API + HTML sayfaları) için. Static asset'ler
+// (CSS/JS/PNG) tarayıcı tarafından önbelleklenebilsin → bandwidth ve hız.
 app.use((req, res, next) => {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
+    const url = req.path || req.url || '';
+    const isStaticAsset = /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|map)$/i.test(url);
+    if (!isStaticAsset) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+    }
     next();
 });
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+    etag: true,
+    lastModified: true,
+    maxAge: '1h' // ~1 saat tarayıcı önbelleği; release'lerde URL versionlama yapılırsa daha uzun olabilir
+}));
 
 // API Routes
 app.use('/api', apiRoutes);

@@ -44,19 +44,25 @@ class ImapMonitor {
 
             this.client.on('exists', async (data) => {
                 try {
-                    if (typeof data?.count === 'number' && typeof data?.prevCount === 'number' && data.count <= data.prevCount) {
-                        return;
-                    }
+                    const curr = typeof data?.count === 'number' ? data.count : (this.client.mailbox?.exists || 0);
+                    const prev = typeof data?.prevCount === 'number' ? data.prevCount : Math.max(curr - 1, 0);
+                    if (curr <= prev) return;
 
-                    const sequence = typeof data?.count === 'number'
-                        ? data.count
-                        : this.client.mailbox?.exists || '*';
-
-                    const msg = await this.client.fetchOne(sequence, { source: true, envelope: true, uid: true });
-                    if (msg && msg.source) {
-                        const parsed = await parseEmail(msg.source);
-                        if (parsed.success && this.onNewEmail) {
-                            await this.onNewEmail({ uid: msg.uid || data?.uid || sequence, email: parsed.data, account: this.account.email });
+                    // Aralıktaki TÜM mesajları sırayla işle (toplu mail almasında atlama olmasın)
+                    const range = `${prev + 1}:${curr}`;
+                    for await (const msg of this.client.fetch(range, { source: true, envelope: true, uid: true })) {
+                        if (!msg || !msg.source) continue;
+                        try {
+                            const parsed = await parseEmail(msg.source);
+                            if (parsed.success && this.onNewEmail) {
+                                await this.onNewEmail({
+                                    uid: msg.uid || msg.seq,
+                                    email: parsed.data,
+                                    account: this.account.email
+                                });
+                            }
+                        } catch (e) {
+                            console.error('[Monitor] mesaj işleme hatası (uid=' + (msg.uid || msg.seq) + '):', e.message);
                         }
                     }
                 } catch (e) {
