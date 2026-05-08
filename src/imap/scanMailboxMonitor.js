@@ -104,7 +104,7 @@ class ScanMailboxMonitor {
             }
 
             const riskIcon = { high: '🔴', medium: '🟠', low: '🟡', safe: '🟢' }[result.level] || '⚠️';
-            const subject = `${riskIcon} [MailTrustAI Güvenlik Raporu] ${result.labelTR || 'Rapor'} - ${email.subject || '(Konu yok)'}`;
+            const reportSubject = `${riskIcon} [MailTrustAI Güvenlik Raporu] ${result.labelTR || 'Rapor'} - ${email.subject || '(Konu yok)'}`;
             const htmlBody = buildReportHtml(result, this.lang);
             const fromName = this.smtpConfig.smtpFromName || 'MailTrustAI';
             const from = `"${fromName}" <${this.smtpConfig.smtpUser}>`;
@@ -113,7 +113,7 @@ class ScanMailboxMonitor {
                 smtpConfig: this.smtpConfig,
                 to: recipient,
                 from,
-                subject,
+                subject: reportSubject,
                 htmlBody
             });
 
