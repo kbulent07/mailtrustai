@@ -78,6 +78,7 @@ data/dealers.json
 # Tüm runtime data klasörü — yukarıda eklenmemiş yeni dosyalar için kapsayıcı kural
 data/*.json
 data/*.cache
+data/*.bak
 data/otx-cache.json
 data/credit-transactions.json
 data/issued-licenses.json
