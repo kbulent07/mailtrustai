@@ -3,6 +3,7 @@
 // ============================================================
 const express = require('express');
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
 
@@ -39,26 +40,75 @@ function checkLoginRate(ip) {
     return { allowed: true };
 }
 
-// ─── OTURUM YÖNETİMİ ─────────────────────────────────────
-const dealerSessions = new Map();
+// ─── OTURUM YÖNETİMİ (HMAC-imzalı stateless token) ──────
+// Restart/upgrade sonrası bayi oturumları kaybolmaz; token kendi imzasıyla
+// doğrulandığı için sunucu state'i tutmaya gerek yoktur.
+const DEALER_TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 saat
 
+function _getDealerSecret() {
+    return (process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#') + '|dealer';
+}
+
+function createDealerToken(code) {
+    const payload    = JSON.stringify({ exp: Date.now() + DEALER_TOKEN_TTL_MS, c: String(code).toUpperCase(), r: 'dealer' });
+    const payloadB64 = Buffer.from(payload).toString('base64url');
+    const sig        = crypto.createHmac('sha256', _getDealerSecret()).update(payloadB64).digest('hex');
+    return `${payloadB64}.${sig}`;
+}
+
+function verifyDealerToken(token) {
+    if (!token || typeof token !== 'string') return null;
+    const dot = token.lastIndexOf('.');
+    if (dot < 1) return null;
+    const payloadB64 = token.slice(0, dot);
+    const sig        = token.slice(dot + 1);
+
+    const expectedSig = crypto.createHmac('sha256', _getDealerSecret()).update(payloadB64).digest('hex');
+    try {
+        const eSigBuf = Buffer.from(expectedSig, 'hex');
+        const sSigBuf = Buffer.from(sig,         'hex');
+        if (eSigBuf.length !== sSigBuf.length) return null;
+        if (!crypto.timingSafeEqual(eSigBuf, sSigBuf)) return null;
+    } catch { return null; }
+
+    try {
+        const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+        if (parsed.r !== 'dealer' || typeof parsed.exp !== 'number' || parsed.exp <= Date.now() || !parsed.c) {
+            return null;
+        }
+        return { code: parsed.c, exp: parsed.exp };
+    } catch { return null; }
+}
+
+// İptal edilen token'ları takip etmek için (logout) — bellekte tutulur,
+// restart'ta sıfırlanır. Token süresi 8 saat olduğundan worst-case bir
+// kullanıcı eski token ile 8 saat boyunca işlem yapabilir; pratikte
+// sorun değil — gerçekten gerekli ise DB tabanlı revocation eklenebilir.
+const _revokedTokens = new Set();
 setInterval(() => {
-    const now = Date.now();
-    for (const [token, s] of dealerSessions.entries()) {
-        if (now > s.expiresAt) dealerSessions.delete(token);
+    // Süresi dolanları temizle (token zaten kendi içinde TTL'i kontrol eder)
+    for (const t of _revokedTokens) {
+        const v = verifyDealerToken(t);
+        if (!v) _revokedTokens.delete(t);
     }
-}, 15 * 60 * 1000);
+}, 60 * 60 * 1000).unref();
 
 function requireDealerAuth(req, res, next) {
     const auth = req.headers['authorization'] || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
-    const session = dealerSessions.get(token);
-    if (!session || Date.now() > session.expiresAt) {
-        dealerSessions.delete(token);
-        return res.status(401).json({ error: 'Session expired' });
+    if (_revokedTokens.has(token)) return res.status(401).json({ error: 'Session revoked' });
+
+    const verified = verifyDealerToken(token);
+    if (!verified) return res.status(401).json({ error: 'Session expired' });
+
+    // Bayi hala aktif mi (admin pasifleştirebilir)
+    const dealer = findDealer(verified.code);
+    if (!dealer || !dealer.active) {
+        return res.status(403).json({ error: 'Bayi pasifleştirilmiş.' });
     }
-    req.dealerCode = session.code;
+
+    req.dealerCode = verified.code;
     next();
 }
 
@@ -84,11 +134,12 @@ router.post('/login', async (req, res) => {
 
     loginAttempts.delete(clientIp);
 
-    const token = uuidv4();
-    dealerSessions.set(token, { code: dealer.code, expiresAt: Date.now() + 8 * 60 * 60 * 1000 });
+    // HMAC-imzalı stateless token — sunucu restart'ları arasında geçerli kalır
+    const token = createDealerToken(dealer.code);
 
     res.json({
         success: true, token,
+        expiresIn: Math.floor(DEALER_TOKEN_TTL_MS / 1000),
         dealer: { name: dealer.name, code: dealer.code, discountPct: dealer.discountPct || 0 }
     });
 });
@@ -96,7 +147,7 @@ router.post('/login', async (req, res) => {
 // ─── DEALER AUTH GEREKTİREN ENDPOINTLER ──────────────────
 router.post('/logout', requireDealerAuth, (req, res) => {
     const token = (req.headers['authorization'] || '').slice(7);
-    dealerSessions.delete(token);
+    if (token) _revokedTokens.add(token);
     res.json({ success: true });
 });
 

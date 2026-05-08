@@ -89,7 +89,8 @@ const TIERS = {
     T8: { monthlyLimit: 10000,    label: 'T8 (10.000/ay)' },
     T9: { monthlyLimit: Infinity, label: 'T9 (10.000+ Sınırsız)' }
 };
-const DURATIONS = { M: 'monthly', Y: 'yearly' };
+const DURATIONS = { M: 'monthly', Y: 'yearly', T: 'trial-7day' };
+const TRIAL_DAYS = 7;
 
 // Default price table (configurable via /api/prices)
 const DEFAULT_PRICES = {
@@ -188,7 +189,7 @@ function generateChecksum(data) {
 function generateLicenseKey(plan, tier, duration, resellerCode = 'DIRECT', startDate = null) {
     if (!['PRO', 'ENT'].includes(plan)) plan = 'PRO';
     if (!TIERS[tier]) tier = 'T1';
-    if (!['M', 'Y'].includes(duration)) duration = 'M';
+    if (!['M', 'Y', 'T'].includes(duration)) duration = 'M';
 
     const start = startDate || new Date().toISOString().slice(0, 10).replace(/-/g, '');
     // 6-char hex nonce — aynı gün üretilen toplu anahtarların çakışmasını önler
@@ -239,6 +240,8 @@ function validateLicenseKey(key) {
         const expiryDate = new Date(startDate);
         if (duration === 'M') {
             expiryDate.setMonth(expiryDate.getMonth() + 1);
+        } else if (duration === 'T') {
+            expiryDate.setDate(expiryDate.getDate() + TRIAL_DAYS);
         } else {
             expiryDate.setFullYear(expiryDate.getFullYear() + 1);
         }
@@ -291,6 +294,6 @@ function getPriceTable(customPrices = null) {
 module.exports = {
     generateLicenseKey, validateLicenseKey, generateBatchKeys,
     getPriceTable, PLANS, TIERS, DURATIONS, FEATURES, DEFAULT_PRICES,
-    UNLICENSED_FEATURES, UNLICENSED_MONTHLY_LIMIT,
+    UNLICENSED_FEATURES, UNLICENSED_MONTHLY_LIMIT, TRIAL_DAYS,
     revokeKey, unRevokeKey, isRevoked, loadRevocationList
 };

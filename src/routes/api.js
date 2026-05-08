@@ -24,6 +24,8 @@ const PUBLIC_PATHS = new Set([
 
 router.use((req, res, next) => {
     if (PUBLIC_PATHS.has(req.path)) return next();
+    // Bayi (dealer) router'ı kendi auth mekanizmasını kullanır — bypass et
+    if (req.path.startsWith('/dealer/') || req.path === '/dealer') return next();
 
     const auth = req.headers['authorization'] || '';
     if (auth.startsWith('Bearer ')) {
@@ -625,6 +627,55 @@ router.post('/license/activate', async (req, res) => {
         message: 'Lisans sunucuya kaydedildi. Yeniden başlatma ve versiyon geçişlerinde otomatik korunacak.',
         validation: result,
         maskedKey:  _maskKey(key)
+    });
+});
+
+// POST /api/license/trial — 7 günlük ücretsiz deneme lisansı (sunucu başına 1 kez)
+router.post('/license/trial', async (req, res) => {
+    const settings = loadSettings();
+    if (settings.trialUsedAt) {
+        return res.status(409).json({
+            error: 'Bu sunucu için ücretsiz deneme zaten kullanılmış.',
+            usedAt: settings.trialUsedAt
+        });
+    }
+
+    // Trial: PRO planı + T3 tier (250 tarama/ay) + 7 gün
+    const plan = 'PRO', tier = 'T3', duration = 'T';
+    const key = generateLicenseKey(plan, tier, duration, 'TRIAL');
+    const validation = validateLicenseKey(key);
+    if (!validation.valid) {
+        return res.status(500).json({ error: 'Trial lisans üretilemedi.' });
+    }
+
+    saveSettings({
+        ...settings,
+        trialUsedAt:        new Date().toISOString(),
+        activeLicenseKey:   key,
+        activeLicenseSetAt: new Date().toISOString()
+    });
+
+    console.log(`[License] Trial lisans aktifleştirildi: ${_maskKey(key)} — 7 gün, PRO T3`);
+    res.json({
+        success:   true,
+        message:   '7 günlük ücretsiz deneme aktifleştirildi. Sunucuya kalıcı olarak kaydedildi.',
+        key,
+        maskedKey: _maskKey(key),
+        validation,
+        expiresAt: validation.expiryDate
+    });
+});
+
+// GET /api/license/trial-status — trial daha önce kullanıldı mı?
+router.get('/license/trial-status', (req, res) => {
+    const s = loadSettings();
+    res.json({
+        used:    Boolean(s.trialUsedAt),
+        usedAt:  s.trialUsedAt || null,
+        days:    7,
+        plan:    'PRO',
+        tier:    'T3',
+        tierLabel: 'T3 (250/ay)'
     });
 });
 

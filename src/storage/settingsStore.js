@@ -116,6 +116,7 @@ function defaultSettings() {
         otxApiKey: '',
         activeLicenseKey: '',           // Sunucu tarafında kalıcı saklanan aktif lisans (şifreli)
         activeLicenseSetAt: '',         // ISO tarih
+        trialUsedAt: '',                // 7 günlük deneme kullanıldı mı? (sunucu başına 1 kez)
         adminPassword: '',
         customerPassword: '',
         companyProfile: {
