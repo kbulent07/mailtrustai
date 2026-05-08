@@ -550,6 +550,95 @@ router.post('/license/validate', async (req, res) => {
     res.json(result);
 });
 
+// ─── KALICI LİSANS (sunucu tarafında saklanan aktif lisans) ──────
+// Lisans bilgisi yeni cihaz/restart/versiyon geçişi sonrası korunur.
+// Saklanan değer ayar dosyasında AES ile şifrelenir (settingsStore SECRET_FIELDS).
+
+function _maskKey(k) {
+    if (!k) return '';
+    const s = String(k);
+    if (s.length <= 12) return s;
+    return s.slice(0, 8) + '…' + s.slice(-4);
+}
+
+// GET /api/license — sunucuda kayıtlı lisans (varsa) + doğrulama durumu
+router.get('/license', (req, res) => {
+    try {
+        const settings = loadSettings();
+        const key = (settings.activeLicenseKey || '').trim();
+        if (!key) return res.json({ active: false });
+
+        const result = validateLicenseKey(key);
+        const remote = require('../license/remoteValidator').getCachedStatus(key);
+        const remoteAllowed = !remote || remote.allowed !== false;
+
+        res.json({
+            active:        result.valid && remoteAllowed,
+            licenseKey:    key,                          // tam anahtar (auth zaten gerekli)
+            maskedKey:     _maskKey(key),
+            setAt:         settings.activeLicenseSetAt || null,
+            validation:    result,
+            remoteAllowed: remoteAllowed,
+            remoteSource:  remote?.source || null
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// POST /api/license/activate — lisansı sunucuya kalıcı olarak kaydet
+router.post('/license/activate', async (req, res) => {
+    const key = String(req.body?.key || '').trim();
+    if (!key) return res.status(400).json({ error: 'Lisans anahtarı zorunludur.' });
+
+    // 1) Yerel doğrulama (HMAC + format + expiry)
+    const result = validateLicenseKey(key);
+    if (!result.valid) return res.status(400).json({ error: result.error || 'Geçersiz lisans anahtarı.' });
+
+    // 2) Uzak doğrulama (varsa) — iptal/engel kontrolü
+    try {
+        const remote = await checkRemoteLicense(key);
+        if (!remote.allowed) {
+            return res.status(403).json({
+                error: remote.revokedAt
+                    ? `Lisans iptal edilmiş (${new Date(remote.revokedAt).toLocaleDateString('tr-TR')})`
+                    : 'Lisans uzak sunucuda engellenmiş veya iptal edilmiş.',
+                remoteSource: remote.source
+            });
+        }
+    } catch (e) {
+        // Uzak sunucu erişilemezse grace period validator'a bırakılır
+        console.warn('[License/Activate] Uzak doğrulama erişilemez:', e.message);
+    }
+
+    // 3) Settings'e kaydet — şifreli olarak diske yazılır
+    const settings = loadSettings();
+    saveSettings({
+        ...settings,
+        activeLicenseKey:   key,
+        activeLicenseSetAt: new Date().toISOString()
+    });
+
+    console.log(`[License] Aktif lisans sunucuya kaydedildi: ${_maskKey(key)} (plan=${result.plan}, tier=${result.tier})`);
+    res.json({
+        success: true,
+        message: 'Lisans sunucuya kaydedildi. Yeniden başlatma ve versiyon geçişlerinde otomatik korunacak.',
+        validation: result,
+        maskedKey:  _maskKey(key)
+    });
+});
+
+// POST /api/license/deactivate — sunucudaki kayıtlı lisansı kaldır
+router.post('/license/deactivate', (req, res) => {
+    const settings = loadSettings();
+    if (!settings.activeLicenseKey) {
+        return res.status(404).json({ error: 'Sunucuda kayıtlı lisans yok.' });
+    }
+    saveSettings({ ...settings, activeLicenseKey: '', activeLicenseSetAt: '' });
+    console.log('[License] Sunucudaki aktif lisans kaldırıldı.');
+    res.json({ success: true, message: 'Sunucudaki kayıtlı lisans kaldırıldı.' });
+});
+
 router.post('/license/generate', requireAdminAuth, (req, res) => {
     const { plan, tier, duration, reseller, count } = req.body;
     if (count && count > 1) return res.json({ keys: generateBatchKeys(plan, tier, duration, count, reseller) });

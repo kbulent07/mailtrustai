@@ -70,6 +70,23 @@ server.listen(PORT, () => {
     console.log(`   Dealer Portal at http://localhost:${PORT}/bayi.html`);
     console.log(`   Press Ctrl+C to stop\n`);
 
+    // Kayıtlı (kalıcı) lisans varsa duruma göre logla — restart/versiyon geçişi sonrası
+    try {
+        const s = loadSettings();
+        if (s.activeLicenseKey) {
+            const masked = s.activeLicenseKey.slice(0, 8) + '…' + s.activeLicenseKey.slice(-4);
+            const setAt  = s.activeLicenseSetAt ? new Date(s.activeLicenseSetAt).toLocaleString('tr-TR') : 'bilinmiyor';
+            const { validateLicenseKey } = require('./src/license/license');
+            const validation = validateLicenseKey(s.activeLicenseKey);
+            if (validation.valid) {
+                console.log(`   [License] Kayıtlı lisans yüklendi: ${masked} (${validation.plan} ${validation.tier}, ${validation.daysLeft} gün)`);
+                console.log(`   [License] Aktivasyon tarihi: ${setAt}\n`);
+            } else {
+                console.warn(`   [License] UYARI: Kayıtlı lisans geçersiz (${validation.error}). Yeniden aktivasyon gerekebilir.\n`);
+            }
+        }
+    } catch { /* sessiz */ }
+
     // Uzak lisans doğrulama arka plan yenileme
     // MSA_LICENSE_REMOTE_URL .env'de tanımlıysa aktif olur
     if (process.env.MSA_LICENSE_REMOTE_URL) {

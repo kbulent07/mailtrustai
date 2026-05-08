@@ -12,7 +12,7 @@ const { encrypt, decrypt } = require('../imap/connection');
 const SETTINGS_FILE = path.join(__dirname, '..', '..', 'data', 'settings.json');
 
 // Diskte şifreli saklanan alanlar (kök seviye)
-const SECRET_FIELDS = ['vtApiKey', 'claudeApiKey', 'openaiApiKey', 'otxApiKey'];
+const SECRET_FIELDS = ['vtApiKey', 'claudeApiKey', 'openaiApiKey', 'otxApiKey', 'activeLicenseKey'];
 
 // Şifreli string formatı: "iv_hex:ciphertext_hex"
 function isEncrypted(v) {
@@ -114,6 +114,8 @@ function defaultSettings() {
         openaiApiKey: '',
         openaiModel: '',
         otxApiKey: '',
+        activeLicenseKey: '',           // Sunucu tarafında kalıcı saklanan aktif lisans (şifreli)
+        activeLicenseSetAt: '',         // ISO tarih
         adminPassword: '',
         customerPassword: '',
         companyProfile: {

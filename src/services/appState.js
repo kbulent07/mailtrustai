@@ -23,7 +23,19 @@ const state = {
 
 // ─── LİSANS KONTROL FONKSİYONLARI ───────────────────────
 function checkLicense(req) {
-    const key = req.headers['x-license-key'] || req.body?.licenseKey || '';
+    // 1) Header/body'den gelen lisans (öncelik)
+    // 2) Server tarafında kalıcı olarak saklanan aktif lisans (fallback)
+    //    → Versiyon geçişi/restart sonrası lisans bilgisi otomatik korunur,
+    //      kullanıcı her cihazdan tekrar girmek zorunda kalmaz.
+    let key = req.headers['x-license-key'] || req.body?.licenseKey || '';
+    let fromServer = false;
+    if (!key) {
+        try {
+            const persisted = (loadSettings().activeLicenseKey || '').trim();
+            if (persisted) { key = persisted; fromServer = true; }
+        } catch { /* sessiz */ }
+    }
+
     const fallback = { valid: false, features: { ...UNLICENSED_FEATURES }, monthlyLimit: UNLICENSED_MONTHLY_LIMIT, licenseKey: '' };
     if (!key) return fallback;
 
@@ -37,7 +49,7 @@ function checkLicense(req) {
     }
 
     // İstatistik/audit için kullanıcı kimlik bilgisi olarak licenseKey'i sonuçla birlikte taşı
-    return { ...result, licenseKey: key };
+    return { ...result, licenseKey: key, source: fromServer ? 'server-persisted' : 'request' };
 }
 
 function checkDailyLimit(license) {

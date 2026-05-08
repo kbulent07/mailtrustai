@@ -26,13 +26,36 @@ document.addEventListener('DOMContentLoaded', () => {
     applyLang();
     setupUploadZone();
     loadHistory();
-    if (licenseKey) validateStoredLicense();
+    // Lisans önceliği: localStorage → server'da kayıtlı (restart/yeni cihaz korumalı)
+    syncLicenseFromServer().then(() => {
+        if (licenseKey) validateStoredLicense();
+    });
     connectWebSocket();
     loadImapAccounts();
     initializeNavigationState();
     renderImapReportPlaceholder(t('imap_no_account'));
     updateScanSelectedButton();
 });
+
+// Servisteki kalıcı (kayıtlı) lisansı al; localStorage boşsa veya farklıysa eşitle.
+// Versiyon geçişi / yeni cihaz / sekmeler arası tutarlılığı sağlar.
+async function syncLicenseFromServer() {
+    try {
+        const res = await fetch('/api/license');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.active && data.licenseKey) {
+            // Yerelde lisans yoksa veya farklıysa server'dakini benimse
+            if (!licenseKey || licenseKey !== data.licenseKey) {
+                licenseKey = data.licenseKey;
+                localStorage.setItem('msa_license', licenseKey);
+                console.log('[License] Server\'daki kayıtlı lisans yüklendi:', data.maskedKey);
+            }
+        }
+    } catch (e) {
+        // Sunucu erişilemezse sessizce devam et
+    }
+}
 
 // ============================================================
 // MODE SWITCHING
@@ -2283,14 +2306,17 @@ function closeLicenseModal() {
 
 async function activateLicense() {
     const key = document.getElementById('licenseKeyInput').value.trim();
-    const res = await fetch('/api/license/validate', {
+    // Activate endpoint hem doğrulama hem de sunucuya kalıcı kayıt yapar.
+    // Bu sayede yeni cihaz/restart/versiyon geçişlerinde lisans korunur.
+    const res = await fetch('/api/license/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key })
     });
-    const data = await res.json();
+    const payload = await res.json();
+    const data = payload.validation || payload; // hata durumunda direkt cevap
 
-    if (data.valid) {
+    if (res.ok && payload.success && data.valid) {
         const previousPlan = licenseInfo?.plan;
         licenseKey = key;
         licenseInfo = data;
@@ -2314,13 +2340,19 @@ async function activateLicense() {
                 ${currentLang === 'tr' ? 'Aylık limit' : 'Monthly limit'}: ${limitLabel}
                 <br>
                 ${currentLang === 'tr' ? 'Son kullanma' : 'Expires'}: ${formatDate(data.expiryDate, true)}
+                <div style="font-size:11px;margin-top:8px;color:var(--green)">
+                    ✓ ${currentLang === 'tr'
+                        ? 'Lisans sunucuya kaydedildi — restart ve versiyon geçişlerinde otomatik korunur.'
+                        : 'License saved on server — preserved across restarts and upgrades.'}
+                </div>
             </div>
         `;
     } else {
+        const errMsg = payload.error || data.error || '';
         document.getElementById('licenseResult').innerHTML = `
             <div class="text-red mt-16">
-                ${data.error === 'License expired' ? t('license_expired') : t('license_invalid')}<br>
-                ${esc(data.error)}
+                ${errMsg === 'License expired' ? t('license_expired') : t('license_invalid')}<br>
+                ${esc(errMsg)}
             </div>
         `;
     }
@@ -2351,6 +2383,8 @@ async function validateStoredLicense() {
         licenseKey = '';
         licenseInfo = null;
         localStorage.removeItem('msa_license');
+        // Server'daki kalıcı kaydı da temizle (yeniden yüklenmesin)
+        fetch('/api/license/deactivate', { method: 'POST' }).catch(() => {});
 
         // Badge'i Free'ye döndür
         const badge = document.getElementById('licenseBadge');
