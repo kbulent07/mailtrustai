@@ -16,6 +16,7 @@ const router  = express.Router();
 
 const { verifyAdminToken }  = require('../middleware/adminAuth');
 const customerAuth          = require('../middleware/customerAuth');
+const { validateLicenseKey } = require('../license/license');
 const { loadSettings }      = require('../storage/settingsStore');
 const { startScanMailboxMonitor }   = require('../services/scanMailboxService');
 const { runScheduledPeriodicReports } = require('../services/reportService');
@@ -36,12 +37,21 @@ router.use((req, res, next) => {
     if (PUBLIC_PATHS.has(req.path)) return next();
     if (req.path.startsWith('/dealer/') || req.path === '/dealer') return next();
 
+    // Bearer token: admin oturumu veya müşteri oturumu
     const auth = req.headers['authorization'] || '';
     if (auth.startsWith('Bearer ')) {
         const token = auth.slice(7).trim();
         if (verifyAdminToken(token)) return next();
         if (customerAuth.verifyCustomerToken(token)) return next();
     }
+
+    // x-license-key: geçerli lisans anahtarı ile doğrudan API erişimi
+    const licKey = req.headers['x-license-key'] || req.body?.licenseKey || '';
+    if (licKey) {
+        const result = validateLicenseKey(licKey);
+        if (result.valid) return next();
+    }
+
     return res.status(401).json({ error: 'Müşteri yönetim oturumu gerekli. Lütfen giriş yapın.' });
 });
 

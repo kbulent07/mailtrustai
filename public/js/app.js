@@ -3981,10 +3981,90 @@ function _cuRenderIntegrations(d) {
             <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">İsabet oranı: ${vtPct}%</div>
         </div>
         <div>
-            ${_cuBar('🌐 AlienVault OTX Tespiti', d.otxHits || 0, total || 1, '#fb923c')}
-            <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">İsabet oranı: ${otxPct}%</div>
+            <div style="cursor:pointer;user-select:none" onclick="toggleOtxDomainList()" title="Tespit edilen domainleri göster/gizle">
+                ${_cuBar('🌐 AlienVault OTX Tespiti  ▾', d.otxHits || 0, total || 1, '#fb923c')}
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">
+                İsabet oranı: ${otxPct}%
+                ${d.otxHits > 0 ? `<span style="margin-left:8px;color:#fb923c;cursor:pointer;text-decoration:underline" onclick="toggleOtxDomainList()">domain listesi →</span>` : ''}
+            </div>
+            <div id="cuOtxDomainList" style="display:none;margin-top:10px"></div>
         </div>
     `;
+}
+
+let _otxDomainListOpen = false;
+async function toggleOtxDomainList() {
+    const panel = document.getElementById('cuOtxDomainList');
+    if (!panel) return;
+    _otxDomainListOpen = !_otxDomainListOpen;
+    if (!_otxDomainListOpen) { panel.style.display = 'none'; return; }
+    panel.style.display = '';
+    panel.innerHTML = '<p style="font-size:12px;color:var(--text-secondary);padding:8px 0">⏳ Yükleniyor…</p>';
+    try {
+        const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
+        const res = await fetch('/api/stats/otx-domains', { headers });
+        if (!res.ok) { panel.innerHTML = '<p style="font-size:12px;color:#f87171">Yüklenemedi.</p>'; return; }
+        const list = await res.json();
+        _cuRenderOtxDomainList(panel, list);
+    } catch (e) {
+        panel.innerHTML = `<p style="font-size:12px;color:#f87171">${esc(e.message)}</p>`;
+    }
+}
+
+function _cuRenderOtxDomainList(panel, list) {
+    if (!list.length) {
+        panel.innerHTML = '<p style="font-size:12px;color:var(--text-secondary);padding:8px 0">OTX tespit kaydı bulunamadı.</p>';
+        return;
+    }
+    const sevColor = { critical: '#f87171', warning: '#fb923c' };
+    const sevIcon  = { critical: '🔴', warning: '🟠' };
+    const rows = list.map(item => {
+        const color   = sevColor[item.severity] || '#94a3b8';
+        const icon    = sevIcon[item.severity]  || '⚠️';
+        const lastDate = item.lastSeen ? new Date(item.lastSeen).toLocaleDateString('tr-TR', { day:'2-digit', month:'short', year:'2-digit' }) : '—';
+        const countBadge = item.count > 1
+            ? `<span style="font-size:10px;background:rgba(251,146,60,0.15);color:#fb923c;border-radius:4px;padding:2px 6px;margin-left:6px">${item.count}×</span>`
+            : '';
+        return `
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;background:var(--surface2);margin-bottom:5px;font-size:12px">
+            <span style="font-size:14px">${icon}</span>
+            <div style="flex:1;min-width:0">
+                <div style="font-weight:600;color:${color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                    ${esc(item.domain)}${countBadge}
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(item.message)}">${esc(item.message)}</div>
+            </div>
+            <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap">${lastDate}</span>
+            <button onclick="reportFpFromStats('${esc(item.domain)}','${esc(item.severity)}','${esc(item.message)}')" title="Yanlış pozitif olarak bildir" style="background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:5px;color:#94a3b8;font-size:10px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0">⚠️ Yanlış pozitif</button>
+        </div>`;
+    }).join('');
+    panel.innerHTML = `
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">
+            ${list.length} benzersiz domain/hostname — en çok tekrarlananlar üstte
+        </div>
+        ${rows}
+    `;
+}
+
+async function reportFpFromStats(domain, severity, message) {
+    if (!domain) return;
+    if (!confirm(`"${domain}" için yanlış pozitif raporu gönderilsin mi?\nAdmin onayından sonra güvenilir listeye eklenir.`)) return;
+    try {
+        const res = await fetch('/api/fp-suggestions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain, findingMsg: message, severity })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            alert(`✅ "${domain}" yanlış pozitif olarak raporlandı. Admin onayını bekliyor.`);
+        } else {
+            alert(`⚠️ ${data.error || 'Gönderilemedi.'}`);
+        }
+    } catch (e) {
+        alert(`Hata: ${e.message}`);
+    }
 }
 
 function _cuRenderCategories(cats) {

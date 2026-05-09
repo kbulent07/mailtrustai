@@ -90,6 +90,40 @@ router.get('/stats', (req, res) => {
     });
 });
 
+// OTX ile tespit edilen domain/hostname listesi — istatistik paneli FP entegrasyonu için
+router.get('/stats/otx-domains', (req, res) => {
+    const history = loadScanHistory();
+    const domainMap = new Map(); // domain → { severity, message, lastSeen, count }
+
+    for (const scan of history) {
+        for (const f of (scan.findings || [])) {
+            if (f.category !== 'otx') continue;
+            if (!f.indicatorValue) continue;
+            if (f.indicatorType === 'IPv4') continue;
+            if (f.severity !== 'critical' && f.severity !== 'warning') continue;
+
+            const key = f.indicatorValue;
+            const ts  = scan.timestamp || scan.scanTime || '';
+            if (!domainMap.has(key)) {
+                domainMap.set(key, { domain: key, severity: f.severity, message: f.message || '', lastSeen: ts, count: 1 });
+            } else {
+                const entry = domainMap.get(key);
+                entry.count++;
+                // En yüksek severity'yi koru
+                if (f.severity === 'critical') entry.severity = 'critical';
+                // En son görülme tarihini güncelle
+                if (ts > entry.lastSeen) { entry.lastSeen = ts; entry.message = f.message || entry.message; }
+            }
+        }
+    }
+
+    const list = Array.from(domainMap.values())
+        .sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen))
+        .slice(0, 100);
+
+    res.json(list);
+});
+
 router.get('/history/export.csv', (req, res) => {
     const history = loadScanHistory();
     const limit   = Math.min(Number(req.query.limit) || 500, 1000);
