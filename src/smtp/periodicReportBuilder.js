@@ -29,7 +29,11 @@ function buildPeriodicReportHtml({ period, history, generatedAt = new Date(), ta
 <body style="margin:0;background:#08111f;color:#e5eefb;font-family:Arial,Helvetica,sans-serif;">
     <div style="max-width:980px;margin:0 auto;padding:28px;">
         <div style="padding:24px;border-radius:18px;background:linear-gradient(135deg,#0f2138,#16213b 55%,#27101c);border:1px solid #243653;">
-            <div style="font-size:22px;font-weight:800;letter-spacing:.04em;">${esc(companyName.toUpperCase())} MAIL TARAMA OZETI</div>
+            <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-bottom:16px"><tr>
+                <td style="background:#1e3a8a;background:linear-gradient(135deg,#1e3a8a,#3b82f6 60%,#8b5cf6);width:44px;height:44px;border-radius:9px;text-align:center;vertical-align:middle;font-size:24px;line-height:44px;color:#ffffff;font-weight:900">&#128737;</td>
+                <td style="padding-left:12px;vertical-align:middle"><div style="font-size:17px;font-weight:800;color:#f8fafc;letter-spacing:.3px">MailTrustAI</div><div style="font-size:10px;color:#9eb0c9;letter-spacing:1px;margin-top:2px">SCAN &middot; ANALYZE &middot; EVALUATE &middot; PROTECT</div></td>
+            </tr></table>
+            <div style="font-size:22px;font-weight:800;letter-spacing:.04em;">${esc(companyName.toUpperCase())} TARAMA OZETI</div>
             ${companyDetails ? `<div style="margin-top:8px;color:#cbd5e1;">${esc(companyDetails)}</div>` : ''}
             <div style="margin-top:8px;color:#9eb0c9;">Rapor turu: <strong>${esc(periodMeta.label)}</strong> | Uretim zamani: ${esc(formatDate(generatedAt))}</div>
             <div style="margin-top:4px;color:#9eb0c9;">Kapsam: ${esc(formatDate(range.start))} - ${esc(formatDate(range.end))}</div>
