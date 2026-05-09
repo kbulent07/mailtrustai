@@ -138,7 +138,9 @@ function applyOtxInsights(result, otxData) {
             severity,
             category: 'otx',
             message: `OTX İtibar (${typeLabel}): ${ind.value}${pulseText}${malwareText}${tagText}`,
-            otxLink: ind.otxLink || null
+            otxLink: ind.otxLink || null,
+            indicatorValue: ind.value,
+            indicatorType:  ind.type
         });
     }
 

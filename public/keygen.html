@@ -403,6 +403,16 @@
             </div>
         </div>
 
+        <!-- Bekleyen FP önerileri -->
+        <div class="card mb-16" id="tdPendingCard">
+            <div class="card-header" style="display:flex;align-items:center;gap:10px">
+                <span class="card-title">📩 Onay Bekleyen Öneriler</span>
+                <span id="tdPendingCount" style="font-size:11px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 8px;border-radius:10px"></span>
+                <button class="btn btn-ghost btn-sm" onclick="loadPendingFp()" style="margin-left:auto;font-size:11px">🔄</button>
+            </div>
+            <div id="tdPendingList" style="font-size:13px"></div>
+        </div>
+
         <!-- Tekli ekleme + toplu ekleme -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
             <div class="card">
@@ -552,7 +562,7 @@
             if (event && event.target) event.target.classList.add('active');
             if (tab === 'revoke')  loadRevokedList();
             if (tab === 'stats')   { loadStats(); loadDetailedStats(); }
-            if (tab === 'trusted') loadTrustedDomains();
+            if (tab === 'trusted') { loadTrustedDomains(); loadPendingFp(); }
         }
 
         // ─── GÜVENİLİR DOMAIN'LER (OTX WHITELIST) ──────────────
@@ -704,6 +714,91 @@
                 });
                 if (!res.ok) { alert(`Hata: ${res.status}`); return; }
                 loadTrustedDomains();
+            } catch (e) { alert(e.message); }
+        }
+
+        // ─── BEKLEYEN FP ÖNERİLERİ ──────────────────────────────
+        async function loadPendingFp() {
+            const list = document.getElementById('tdPendingList');
+            const count = document.getElementById('tdPendingCount');
+            const card = document.getElementById('tdPendingCard');
+            try {
+                const res = await fetch('/api/admin/fp-suggestions', { headers: adminHeaders() });
+                if (!res.ok) {
+                    list.innerHTML = `<div style="padding:10px;color:#f87171">Yüklenemedi: ${res.status}</div>`;
+                    return;
+                }
+                const items = await res.json();
+                count.textContent = items.length ? `${items.length} bekliyor` : '';
+                if (!items.length) {
+                    card.style.opacity = '0.6';
+                    list.innerHTML = '<div style="padding:10px;opacity:0.7">Bekleyen öneri yok. Kullanıcılar tarama raporundan "Yanlış pozitif" işaretledikçe burada görünür.</div>';
+                    return;
+                }
+                card.style.opacity = '';
+                list.innerHTML = items.map(it => {
+                    const lastSeen = it.last_seen_at ? new Date(it.last_seen_at).toLocaleString('tr-TR') : '';
+                    const sevColor = it.finding_severity === 'critical' ? '#f87171' : '#f59e0b';
+                    return `
+                    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-top:1px solid rgba(255,255,255,0.06);flex-wrap:wrap">
+                        <div style="flex:1;min-width:240px">
+                            <div style="font-family:monospace;font-size:14px;font-weight:600">
+                                ${escapeHtml(it.domain)}
+                                ${it.report_count > 1 ? `<span style="font-size:10px;background:rgba(245,158,11,0.2);color:#f59e0b;padding:1px 6px;border-radius:4px;margin-left:6px">${it.report_count}× rapor edildi</span>` : ''}
+                            </div>
+                            <div style="font-size:11px;opacity:0.65;margin-top:3px">
+                                <span style="color:${sevColor}">${escapeHtml(it.finding_severity || '')}</span>
+                                ${it.finding_category ? '· ' + escapeHtml(it.finding_category) : ''}
+                                ${it.finding_message ? '<br>' + escapeHtml(it.finding_message.slice(0, 200)) : ''}
+                            </div>
+                            <div style="font-size:11px;opacity:0.45;margin-top:3px">Son rapor: ${lastSeen}${it.reporter ? ' · ' + escapeHtml(it.reporter.slice(0, 16)) + '…' : ''}</div>
+                        </div>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <select class="form-input" id="fpCat-${escapeAttr(it.domain)}" style="font-size:12px;padding:4px 8px;height:30px;margin:0">
+                                <option value="custom">Custom</option>
+                                <option value="standard">Standard</option>
+                                <option value="tech">Tech</option>
+                                <option value="cloud">Bulut</option>
+                                <option value="ai">AI</option>
+                                <option value="cdn">CDN</option>
+                                <option value="finance">Finans</option>
+                                <option value="social">Sosyal</option>
+                                <option value="tr_service">TR servis</option>
+                            </select>
+                            <button class="btn btn-primary btn-sm" onclick="approveFp('${escapeAttr(it.domain)}')" style="font-size:12px;padding:4px 10px">✅ Onayla</button>
+                            <button class="btn btn-ghost btn-sm" onclick="rejectFp('${escapeAttr(it.domain)}')" style="font-size:12px;padding:4px 10px">🚫 Reddet</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                list.innerHTML = `<div style="padding:10px;color:#f87171">Hata: ${e.message}</div>`;
+            }
+        }
+
+        async function approveFp(domain) {
+            const catEl = document.getElementById(`fpCat-${domain}`);
+            const category = catEl ? catEl.value : 'custom';
+            try {
+                const res = await fetch(`/api/admin/fp-suggestions/${encodeURIComponent(domain)}/approve`, {
+                    method: 'POST',
+                    headers: adminHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ category })
+                });
+                const data = await res.json();
+                if (!res.ok) { alert('Hata: ' + (data.error || res.status)); return; }
+                loadPendingFp();
+                loadTrustedDomains();
+            } catch (e) { alert(e.message); }
+        }
+
+        async function rejectFp(domain) {
+            if (!confirm(`${domain} için yanlış pozitif önerisi reddedilsin mi? Bu domain hala tehdit olarak işaretlenmeye devam edecek.`)) return;
+            try {
+                await fetch(`/api/admin/fp-suggestions/${encodeURIComponent(domain)}/reject`, {
+                    method: 'POST',
+                    headers: adminHeaders()
+                });
+                loadPendingFp();
             } catch (e) { alert(e.message); }
         }
 

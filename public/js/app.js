@@ -467,15 +467,73 @@ function renderFindings(findings, filter = 'all') {
         ? findings.filter(f => f.category !== 'ai')
         : findings.filter((finding) => finding.category === filter);
 
-    list.innerHTML = filtered.map((finding) => `
-        <div class="finding-item">
+    list.innerHTML = filtered.map((finding, idx) => {
+        // FP raporlama butonu — yalnızca OTX kategorisinde domain çıkarılabilir bulgular için
+        // (ind.value finding üzerinde indicatorValue olarak taşınıyor)
+        const canReportFp = finding.category === 'otx'
+            && finding.indicatorValue
+            && finding.indicatorType === 'domain'
+            && (finding.severity === 'critical' || finding.severity === 'warning');
+        const fpBtn = canReportFp
+            ? `<button class="finding-fp-btn" onclick="reportFalsePositive('${esc(finding.indicatorValue)}','${esc(finding.category)}','${esc(finding.severity)}',${idx})" title="Bu domain yanlış pozitif — admin onayına gönder" style="margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#94a3b8;font-size:11px;padding:3px 8px;cursor:pointer;white-space:nowrap">⚠️ Yanlış pozitif</button>`
+            : '';
+        return `
+        <div class="finding-item" data-finding-idx="${idx}" style="display:flex;align-items:flex-start;gap:10px">
             <div class="finding-icon ${finding.severity}">${findingIcon(finding.severity)}</div>
-            <div>
+            <div style="flex:1">
                 <div class="finding-text">${esc(finding.message)}</div>
                 <div class="finding-category">${esc(formatCategory(finding.category))}</div>
             </div>
-        </div>
-    `).join('');
+            ${fpBtn}
+        </div>`;
+    }).join('');
+}
+
+async function reportFalsePositive(domain, category, severity, idx) {
+    if (!domain) return;
+    if (!confirm(`"${domain}" için yanlış pozitif raporu gönderilsin mi?\n\nAdmin onayından sonra bu domain güvenilir listeye eklenir ve bir daha tehdit olarak işaretlenmez.`)) return;
+
+    const item = document.querySelector(`.finding-item[data-finding-idx="${idx}"]`);
+    const btn = item ? item.querySelector('.finding-fp-btn') : null;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Gönderiliyor…'; }
+
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (typeof licenseKey !== 'undefined' && licenseKey) headers['x-license-key'] = licenseKey;
+        const res = await fetch('/api/fp-suggestions', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                domain,
+                category,
+                severity,
+                scanId:  currentResult?.scanId || null,
+                message: (currentResult?.findings || []).find(f => f.indicatorValue === domain)?.message || ''
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            if (btn) { btn.disabled = false; btn.textContent = '⚠️ Yanlış pozitif'; }
+            alert('Hata: ' + (data.error || res.status));
+            return;
+        }
+        if (btn) {
+            btn.disabled = true;
+            if (data.alreadyDecided && data.status === 'approved') {
+                btn.textContent = '✅ Onaylanmış';
+                btn.style.color = '#4ade80';
+            } else if (data.alreadyDecided && data.status === 'rejected') {
+                btn.textContent = '🚫 Reddedilmiş';
+                btn.style.color = '#94a3b8';
+            } else {
+                btn.textContent = data.incremented ? '✓ Sayaç +1' : '✓ Gönderildi';
+                btn.style.color = '#4ade80';
+            }
+        }
+    } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = '⚠️ Yanlış pozitif'; }
+        alert('Bağlantı hatası: ' + e.message);
+    }
 }
 
 function filterFindings(tab) {

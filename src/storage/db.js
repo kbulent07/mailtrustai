@@ -110,6 +110,22 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_trusted_enabled ON trusted_domains(enabled);
     CREATE INDEX IF NOT EXISTS idx_trusted_category ON trusted_domains(category);
 
+    CREATE TABLE IF NOT EXISTS fp_suggestions (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain          TEXT NOT NULL,
+        finding_category TEXT NOT NULL DEFAULT '',
+        finding_severity TEXT NOT NULL DEFAULT '',
+        finding_message  TEXT NOT NULL DEFAULT '',
+        scan_id         TEXT,
+        reporter        TEXT NOT NULL DEFAULT '',
+        report_count    INTEGER NOT NULL DEFAULT 1,
+        status          TEXT NOT NULL DEFAULT 'pending',  -- 'pending'|'approved'|'rejected'
+        first_seen_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        last_seen_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        UNIQUE(domain, status)
+    );
+    CREATE INDEX IF NOT EXISTS idx_fp_status ON fp_suggestions(status, last_seen_at DESC);
+
     CREATE TABLE IF NOT EXISTS threat_patterns (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         category   TEXT NOT NULL,   -- 'urgency'|'credential'|'threat'|'reward'|'sextortion'|'bec_content'|'bec_subject'|'bec_body'

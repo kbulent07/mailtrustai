@@ -49,6 +49,7 @@ router.use((req, res, next) => {
 router.use(require('../interfaces/http/routes/meta.routes'));
 router.use(require('../interfaces/http/routes/admin.routes'));
 router.use(require('../interfaces/http/routes/trustedDomains.routes'));
+router.use(require('../interfaces/http/routes/fpSuggestions.routes'));
 router.use(require('../interfaces/http/routes/customer.routes'));
 router.use(require('../interfaces/http/routes/analyze.routes'));
 router.use(require('../interfaces/http/routes/imap.routes'));
