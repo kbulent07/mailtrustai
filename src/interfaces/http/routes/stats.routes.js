@@ -8,8 +8,68 @@ const { loadCredentials } = require('../../../imap/connection');
 const { getMonthlyCount } = require('../../../storage/monthlyCounter');
 const { getDailyCount } = require('../../../storage/dailyScansStore');
 const { state } = require('../../../services/appState');
+const { loadSettings } = require('../../../storage/settingsStore');
+const { validateLicenseKey } = require('../../../license/license');
+const { buildRiskDashboard } = require('../../../services/riskDashboardService');
+const { getUsageSummary: getLlmUsageSummary } = require('../../../storage/llmUsageStore');
 
 const router = express.Router();
+
+function resolveCurrentLicense(req) {
+    const settings = loadSettings();
+    const key = String(req.headers['x-license-key'] || req.body?.licenseKey || settings.activeLicenseKey || '').trim();
+    if (!key) return null;
+    const validation = validateLicenseKey(key);
+    return validation.valid ? { ...validation, maskedKey: `${key.slice(0, 8)}...${key.slice(-4)}` } : null;
+}
+
+function buildCommercialAlerts(dashboard, license) {
+    const alerts = [];
+    if (license?.daysLeft !== undefined && license.daysLeft <= 7) {
+        alerts.push({
+            type: license.daysLeft <= 3 ? 'critical' : 'warning',
+            title: 'Lisans yenileme firsati',
+            message: `Aktif lisansin bitmesine ${license.daysLeft} gun kaldi. Yenileme/upgrade gorusmesi icin dogru zaman.`
+        });
+    }
+    if (license && license.plan !== 'enterprise') {
+        alerts.push({
+            type: 'upgrade',
+            title: 'Enterprise upgrade onerisi',
+            message: 'Anlik izleme, tum mail raporu ve API erisimi icin Enterprise pakete yukseltme onerilebilir.'
+        });
+    }
+    if (dashboard.stats.high > 0 || dashboard.score < 75) {
+        alerts.push({
+            type: 'risk',
+            title: 'Guvenlik aksiyonu gerekli',
+            message: `Son ${dashboard.periodDays} gunde ${dashboard.stats.high} yuksek riskli mail ve ${dashboard.stats.risky} toplam riskli mail goruldu.`
+        });
+    }
+    return alerts;
+}
+
+function buildExecutiveSummary(req) {
+    const days = Math.max(1, Math.min(parseInt(req.query.days, 10) || 30, 365));
+    const license = resolveCurrentLicense(req);
+    const dashboard = buildRiskDashboard({
+        history: loadScanHistory(),
+        periodDays: days,
+        license
+    });
+    return {
+        ...dashboard,
+        commercialAlerts: buildCommercialAlerts(dashboard, license)
+    };
+}
+
+router.get('/risk-dashboard', (req, res) => {
+    res.json(buildExecutiveSummary(req));
+});
+
+router.get('/reports/executive/summary', (req, res) => {
+    res.json(buildExecutiveSummary(req));
+});
 
 router.get('/history', (req, res) => {
     state.scanHistory = loadScanHistory();
@@ -88,6 +148,12 @@ router.get('/stats', (req, res) => {
         accounts:      loadCredentials().length,
         byLevel, bySource, trend7, topCategories, vtHits, otxHits
     });
+});
+
+// ─── LLM kullanım istatistikleri (provider × model bazında çağrı sayısı) ─
+router.get('/stats/llm-usage', (req, res) => {
+    const days = Math.max(1, Math.min(parseInt(req.query.days, 10) || 30, 90));
+    res.json(getLlmUsageSummary({ days }));
 });
 
 // VirusTotal tespitleri — istatistik paneli için ek/mail detayı

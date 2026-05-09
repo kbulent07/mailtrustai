@@ -9,10 +9,13 @@ const { state } = require('../../../services/appState');
 const { requireAdminAuth } = require('../../../middleware/adminAuth');
 const { OPENAI_MODEL, AVAILABLE_OPENAI_MODELS } = require('../../../integrations/openai');
 const { testWebhook } = require('../../../integrations/webhook');
+const { recordAudit } = require('../../../storage/auditLog');
 
 const router = express.Router();
 
-router.post('/settings/keys', requireAdminAuth, async (req, res) => {
+// Outer api.js guard zaten Bearer token (admin/customer) veya x-license-key
+// gerektirdiğinden, ayrıca admin şifresi sormuyoruz.
+router.post('/settings/keys', async (req, res) => {
     const updateKey = (current, incoming) => {
         if (incoming === undefined) return current;
         if (incoming === ':clear') return '';
@@ -35,12 +38,35 @@ router.post('/settings/keys', requireAdminAuth, async (req, res) => {
         adminPassword = req.body.adminPassword ? await bcrypt.hash(req.body.adminPassword, 10) : '';
     }
 
+    // Risk modu (classic | shadow | ai-judge)
+    let riskMode = current.riskMode || 'classic';
+    if (req.body.riskMode !== undefined) {
+        const valid = ['classic', 'shadow', 'ai-judge'];
+        riskMode = valid.includes(req.body.riskMode) ? req.body.riskMode : 'classic';
+    }
+
     saveSettings({ ...current,
         vtApiKey: state.vtApiKey, claudeApiKey: state.claudeApiKey,
         openaiApiKey: state.openaiApiKey, openaiModel: state.openaiModel,
         otxApiKey: state.otxApiKey,
         companyProfile: { ...(current.companyProfile || {}), ...(req.body.companyProfile || {}) },
-        adminPassword
+        adminPassword,
+        riskMode
+    });
+    recordAudit({
+        req,
+        actorType: 'customer',
+        actorId: 'settings',
+        action: 'settings.keys.update',
+        details: {
+            vtConfigured: !!state.vtApiKey,
+            claudeConfigured: !!state.claudeApiKey,
+            openaiConfigured: !!state.openaiApiKey,
+            otxConfigured: !!state.otxApiKey,
+            openaiModel: state.openaiModel || OPENAI_MODEL,
+            companyProfileUpdated: !!req.body.companyProfile,
+            adminPasswordChanged: req.body.adminPassword !== undefined && !!req.body.adminPassword
+        }
     });
 
     res.json({
@@ -50,12 +76,13 @@ router.post('/settings/keys', requireAdminAuth, async (req, res) => {
         openaiConfigured:!!state.openaiApiKey,
         openaiModel:     state.openaiModel || OPENAI_MODEL,
         otxConfigured:   !!state.otxApiKey,
-        companyProfile:  loadSettings().companyProfile || {}
+        companyProfile:  loadSettings().companyProfile || {},
+        riskMode:        riskMode
     });
 });
 
 // OTX bağlantı testi
-router.post('/settings/otx/test', requireAdminAuth, async (req, res) => {
+router.post('/settings/otx/test', async (req, res) => {
     const { queryIndicator } = require('../../../integrations/otx');
     const apiKey = req.body.otxApiKey || state.otxApiKey;
     if (!apiKey) return res.status(400).json({ error: 'OTX API anahtarı tanımlı değil' });
@@ -73,7 +100,8 @@ router.get('/settings/status', (req, res) => {
         openaiModel:     state.openaiModel || OPENAI_MODEL,
         availableModels: AVAILABLE_OPENAI_MODELS,
         otxConfigured:   !!state.otxApiKey,
-        companyProfile:  settings.companyProfile || {}
+        companyProfile:  settings.companyProfile || {},
+        riskMode:        settings.riskMode || 'classic'
     });
 });
 
@@ -92,6 +120,13 @@ router.post('/settings/webhook', (req, res) => {
         webhookEnabled:  !!req.body.webhookEnabled,
         webhookUrl:      String(req.body.webhookUrl || '').trim(),
         webhookMinLevel: ['safe','low','medium','high'].includes(req.body.webhookMinLevel) ? req.body.webhookMinLevel : 'low'
+    });
+    recordAudit({
+        req,
+        actorType: 'customer',
+        actorId: 'settings',
+        action: 'settings.webhook.update',
+        details: { enabled: !!req.body.webhookEnabled, minLevel: req.body.webhookMinLevel || 'low' }
     });
     res.json({ success: true });
 });

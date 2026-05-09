@@ -5,14 +5,35 @@ const express = require('express');
 
 const customerAuth        = require('../../../middleware/customerAuth');
 const { requireAdminAuth } = require('../../../middleware/adminAuth');
+const { validateLicenseKey } = require('../../../license/license');
 
 const router = express.Router();
 
 router.get('/customer/status', (req, res) => {
     const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+    let valid = token ? customerAuth.verifyCustomerToken(token) : false;
+    let bridgeToken = null;
+
+    // Token yoksa veya geçersizse: x-license-key ile fallback yetkilendirme.
+    // Bu sayede tarayıcı sessionStorage'ı sıfırlansa bile (tab kapanması gibi)
+    // lisans aktif kaldığı sürece kullanıcı tekrar şifre sormakla karşılaşmaz.
+    if (!valid) {
+        const licKey = String(req.headers['x-license-key'] || req.query.licenseKey || '');
+        if (licKey) {
+            const result = validateLicenseKey(licKey);
+            if (result.valid) {
+                valid = true;
+                // Yeni bir kısa süreli müşteri token'ı üret — istemci bunu kullanıp
+                // sonraki isteklerde Authorization header'ı olarak gönderebilir.
+                bridgeToken = customerAuth.createCustomerToken();
+            }
+        }
+    }
+
     res.json({
         passwordSet:    customerAuth.isCustomerPasswordSet(),
-        sessionValid:   token ? customerAuth.verifyCustomerToken(token) : false
+        sessionValid:   valid,
+        bridgeToken                  // null veya yeni token (license bridge)
     });
 });
 

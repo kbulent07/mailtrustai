@@ -10,6 +10,7 @@ const { loadSettings, saveSettings } = require('../../../storage/settingsStore')
 const { generateOtp, verifyOtp } = require('../../../utils/otpStore');
 const { getReportingSmtpConfig } = require('../../../services/reportService');
 const { sendReportEmail } = require('../../../smtp/sender');
+const { loadAuditLog, recordAudit } = require('../../../storage/auditLog');
 
 const RECOVERY_EMAIL = process.env.MSA_RECOVERY_EMAIL || '';
 
@@ -54,9 +55,13 @@ router.post('/admin/session', async (req, res) => {
         const { adminPassword } = req.body || {};
         if (!adminPassword) return res.status(400).json({ error: 'adminPassword zorunludur' });
         const valid = await verifyAdminPassword(adminPassword);
-        if (!valid) return res.status(403).json({ error: 'Geçersiz admin şifresi' });
+        if (!valid) {
+            recordAudit({ req, actorType: 'admin', actorId: 'admin', action: 'admin.login', status: 'failure' });
+            return res.status(403).json({ error: 'Geçersiz admin şifresi' });
+        }
         _adminAttempts.delete(ip);
         const token = createAdminToken();
+        recordAudit({ req, actorType: 'admin', actorId: 'admin', action: 'admin.login', status: 'success' });
         res.json({ token, expiresIn: 8 * 3600 });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -82,11 +87,72 @@ router.get('/admin/status', (req, res) => {
     });
 });
 
-router.post('/admin/restart', requireAdminAuth, (req, res) => {
+router.get('/audit-log', requireAdminAuth, (req, res) => {
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 200, 1000));
+    res.json(loadAuditLog(limit));
+});
+
+// Restart: outer api.js guard (Bearer / x-license-key / x-admin-password)
+// yetkili kişi girişini zaten doğruladığı için burada ek admin auth aranmıyor.
+//
+// İşleyiş: Mevcut süreci sonlandırmadan ÖNCE, aynı argümanlarla bağımsız (detached)
+// bir alt süreç fırlatıyoruz. Bu sayede npm start, doğrudan node, batch wrapper veya
+// Windows Service ile başlatılmış olsa bile yeniden başlatma çalışır.
+router.post('/admin/restart', (req, res) => {
     res.json({ success: true, message: 'Servis yeniden başlatılıyor...' });
     res.on('finish', () => setTimeout(() => {
-        console.log('[Admin] Servis yeniden başlatma komutu alındı. Çıkılıyor...');
-        process.exit(0);
+        try {
+            const { spawn } = require('child_process');
+            const cwd       = process.cwd();
+            const node      = process.execPath;
+            const script    = process.argv[1];
+            const scriptArgs = process.argv.slice(2);
+            const nodeArgs   = [...process.execArgv, script, ...scriptArgs];
+
+            // cmd.exe yerine node-tabanlı wrapper kullanıyoruz — Windows'ta
+            // konsol penceresi açılmasını engellemek için. Wrapper ~3 sn bekleyip
+            // gerçek sunucuyu detached + windowsHide ile fırlatır, sonra çıkar.
+            const wrapperCode = `
+                const { spawn } = require('child_process');
+                setTimeout(() => {
+                    try {
+                        const child = spawn(${JSON.stringify(node)},
+                            ${JSON.stringify(nodeArgs)},
+                            {
+                                detached: true,
+                                stdio: 'ignore',
+                                cwd: ${JSON.stringify(cwd)},
+                                env: process.env,
+                                windowsHide: true
+                            });
+                        child.unref();
+                    } catch (e) { /* sessiz */ }
+                    process.exit(0);
+                }, 3000);
+            `;
+
+            console.log('[Admin] Servis yeniden başlatılıyor — detached wrapper fırlatılıyor...');
+            console.log(`[Admin]   exec: ${node} (wrapper -e ...)`);
+            console.log(`[Admin]   cwd : ${cwd}`);
+
+            const child = spawn(node, ['-e', wrapperCode], {
+                detached:    true,
+                stdio:       'ignore',
+                cwd,
+                env:         process.env,
+                windowsHide: true   // CREATE_NO_WINDOW — konsol penceresi açılmaz
+            });
+            child.unref();
+
+            setTimeout(() => {
+                console.log('[Admin] Eski süreç kapatılıyor.');
+                process.exit(0);
+            }, 500);
+        } catch (e) {
+            console.error('[Admin] Yeniden başlatma alt süreci fırlatılamadı:', e);
+            // Yine de çık — wrapper varsa en azından kapanma davranışı korunur
+            process.exit(0);
+        }
     }, 300));
 });
 

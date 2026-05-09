@@ -21,8 +21,15 @@ data/msa.db
 data/msa.db-shm
 data/msa.db-wal
 
+# LLM kullanım sayacı (runtime)
+data/llm-usage.json
+
 # Ayarlar (API key ve şifre içerir)
 data/settings.json
+
+# Backup ve cache (runtime)
+data/scan-history.json.bak
+data/vt-hash-cache.json
 
 # Log dosyaları
 logs/

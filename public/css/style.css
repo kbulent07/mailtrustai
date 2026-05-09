@@ -147,6 +147,55 @@ body::before {
 .home-stat-val { font-size: 28px; font-weight: 800; line-height: 1; }
 .home-stat-lbl { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
 
+.home-risk-panel {
+    display: grid;
+    grid-template-columns: minmax(180px, 260px) 1fr auto;
+    gap: 18px;
+    align-items: center;
+    margin-bottom: 24px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+}
+.home-risk-score {
+    font-size: 42px;
+    line-height: 1;
+    font-weight: 900;
+}
+.home-risk-grade {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    height: 26px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: rgba(96,165,250,0.14);
+    color: #93c5fd;
+    font-size: 13px;
+    font-weight: 800;
+}
+.home-risk-alerts {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+.home-risk-alert {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    background: var(--bg-glass);
+    font-size: 12px;
+}
+@media (max-width: 900px) {
+    .home-risk-panel { grid-template-columns: 1fr; }
+}
+
 .home-bottom-grid {
     display: grid; grid-template-columns: 1fr 360px; gap: 20px;
 }

@@ -8,10 +8,13 @@ const { analyzeHeaders } = require('./headerAnalyzer');
 const { analyzeContent } = require('./contentAnalyzer');
 const { analyzeLinks, resolveShortUrls, applyResolvedUrlFindings, extractUrls } = require('./linkAnalyzer');
 const { analyzeAttachments } = require('./attachmentAnalyzer');
-const { calculateScore, resolveLevel, levelMeta } = require('./scorer');
+const { calculateScore, resolveLevel, levelMeta, effectiveLevelFromResult, levelEscalationReason } = require('./scorer');
 const { scanAttachments: vtScan } = require('../integrations/virustotal');
 const { analyzeWithClaude } = require('../integrations/claude');
-const { analyzeWithOpenAI, OPENAI_MODEL } = require('../integrations/openai');
+const { analyzeWithOpenAI, adjudicateRisk, OPENAI_MODEL } = require('../integrations/openai');
+const { triage } = require('./triage');
+const { buildEvidencePack } = require('./evidencePack');
+const { loadSettings } = require('../storage/settingsStore');
 const { checkEmailIndicators, severityFromVerdict, scoreFromVerdict } = require('../integrations/otx');
 const { isAllowlisted, isBlocklisted } = require('../storage/allowlistStore');
 const { isThreatDomain, isThreatUrl } = require('../integrations/threatIntel');
@@ -20,7 +23,15 @@ const { state } = require('../services/appState');
 
 // ─── SONUÇ META YENİDEN HESAPLAMA ────────────────────────
 function recalculateResultMeta(result) {
-    result.level = resolveLevel(result.score, result.findings || []);
+    // Önce skor + findings tabanlı seviye, sonra OTX/VT/AI ham sinyalleriyle
+    // birlikte kapsamlı (effective) seviyeyi belirle. Bu sayede web UI ile
+    // e-posta raporu (reportBuilder.effectiveReportLevel) aynı sonucu gösterir.
+    const baseLevel  = resolveLevel(result.score, result.findings || []);
+    result.level     = effectiveLevelFromResult({ ...result, level: baseLevel });
+    // Skor ham haliyle (kural motoru toplamı) bırakılıyor — seviyeye yapay
+    // çekmiyoruz. Eğer seviye skordan yüksekse, "neden" açıklaması üretilir
+    // ve UI'da kullanıcıya açıkça gösterilir.
+    result.levelReason = levelEscalationReason(result);
     const meta = levelMeta(result.level);
     result.color   = meta.color;
     result.labelTR = meta.labelTR;
@@ -513,7 +524,74 @@ async function buildEmailAnalysisResult(parsedData, license) {
         }
     }
 
+    // ─── AI HÂKİM (TRIAGE + ADJUDICATE) ──────────────────
+    // Ayarlardan modu oku:
+    //   'classic'   → eski mantık (default)
+    //   'ai-judge'  → AI hâkim sonucu uygulanır
+    //   'shadow'    → AI hâkim çağrılır ama sonuç UYGULANMAZ; sadece kayıt için
+    await runAiAdjudication(result);
+
     return result;
+}
+
+// ─── AI HÂKİM ÇAĞRISI ─────────────────────────────────────
+// Triage ile karar ver: AI'ya gönderilmeli mi?
+// shadow modda: çağrılır, sonuç result.aiAdjudication'a yazılır ama uygulanmaz
+// ai-judge modda: çağrılır VE result.level/score AI verdict'iyle güncellenir
+async function runAiAdjudication(result) {
+    try {
+        const settings = loadSettings();
+        const mode = String(settings.riskMode || 'classic');
+        if (mode === 'classic') return; // iptal — kapalı
+
+        if (!state.openaiApiKey) {
+            result.aiAdjudicationError = 'no-openai-api-key';
+            return;
+        }
+
+        // Triage: tier 1 veya 2 ise AI'ya gerek yok
+        const triageDecision = triage(result);
+        result.triage = triageDecision;
+        if (!triageDecision.shouldAdjudicate) return;
+
+        const pack    = buildEvidencePack(result);
+        const verdict = await adjudicateRisk(state.openaiApiKey, pack, settings.openaiModel || state.openaiModel);
+
+        if (!verdict.success) {
+            result.aiAdjudicationError = verdict.error;
+            return;
+        }
+
+        result.aiAdjudication = {
+            ...verdict.verdict,
+            modelUsed: verdict.modelUsed,
+            mode,
+            adjudicatedAt: new Date().toISOString()
+        };
+
+        // Sadece 'ai-judge' modunda result.level/score'u override et
+        if (mode === 'ai-judge') {
+            const v = verdict.verdict;
+            result.preAdjudicationLevel = result.level;
+            result.preAdjudicationScore = result.score;
+            result.level = v.verdict;
+            result.score = v.score;
+            const meta = levelMeta(v.verdict);
+            result.color   = meta.color;
+            result.labelTR = meta.labelTR;
+            result.labelEN = meta.labelEN;
+            // Yeni levelReason: AI gerekçesi
+            result.levelReason = {
+                reason:   v.reasoning_tr || 'AI hâkim kararı',
+                sources:  ['ai-adjudicator'],
+                scoreLevel: result.preAdjudicationLevel,
+                finalLevel: v.verdict
+            };
+        }
+    } catch (e) {
+        console.error('[AI Adjudicate] Hata:', e.message);
+        result.aiAdjudicationError = e.message;
+    }
 }
 
 // ─── SADECE EK TARAMA SONUCU ─────────────────────────────

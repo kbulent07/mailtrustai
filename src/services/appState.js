@@ -42,7 +42,7 @@ function checkLicense(req) {
         return fallback;
     }
 
-    return { ...result, usageScope: licenseUsageScope(key) };
+    return { ...result, licenseKey: key, usageScope: licenseUsageScope(key) };
 }
 
 function checkDailyLimit(license) {

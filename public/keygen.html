@@ -82,6 +82,7 @@
             <a href="#" onclick="showTab('stats',event)">📊 İstatistik</a>
             <a href="#" onclick="showTab('trusted',event)">🛡️ Güvenilir Domainler</a>
             <a href="#" onclick="showTab('backup',event)">💾 Yedek</a>
+            <a href="#" onclick="showTab('audit',event)">Audit Log</a>
             <a href="/">← Uygulamaya Dön</a>
         </div>
         <div id="sessionBadge">
@@ -553,6 +554,16 @@
         </div>
     </div><!-- /tabBackup -->
 
+    <div id="tabAudit" class="main-content" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h2>Audit Log</h2>
+            <button class="btn btn-ghost btn-sm" onclick="loadAuditLog()">Yenile</button>
+        </div>
+        <div class="card">
+            <div id="auditLogList" style="overflow-x:auto;font-size:12px">Yukleniyor...</div>
+        </div>
+    </div><!-- /tabAudit -->
+
     <script>
         // ─── TOKEN YÖNETİMİ ─────────────────────────────────────
         const SESSION_KEY = 'msa_admin_token';
@@ -631,11 +642,52 @@
             document.getElementById('tabStats').style.display   = tab === 'stats'   ? '' : 'none';
             document.getElementById('tabTrusted').style.display = tab === 'trusted' ? '' : 'none';
             document.getElementById('tabBackup').style.display  = tab === 'backup'  ? '' : 'none';
+            document.getElementById('tabAudit').style.display   = tab === 'audit'   ? '' : 'none';
             document.querySelectorAll('.admin-nav a').forEach(a => a.classList.remove('active'));
             if (event && event.target) event.target.classList.add('active');
             if (tab === 'revoke')  loadRevokedList();
             if (tab === 'stats')   { loadStats(); loadDetailedStats(); }
             if (tab === 'trusted') { loadTrustedDomains(); loadPendingFp(); }
+            if (tab === 'audit')   loadAuditLog();
+        }
+
+        async function loadAuditLog() {
+            const list = document.getElementById('auditLogList');
+            if (!list) return;
+            list.innerHTML = '<div style="padding:14px;opacity:.7">Yukleniyor...</div>';
+            try {
+                const res = await fetch('/api/audit-log?limit=300', { headers: adminHeaders() });
+                if (handle403(res)) return;
+                const rows = await res.json();
+                if (!res.ok) throw new Error(rows.error || 'Audit log alinamadi');
+                if (!rows.length) {
+                    list.innerHTML = '<div style="padding:14px;opacity:.7">Kayit yok.</div>';
+                    return;
+                }
+                list.innerHTML = `
+                    <table style="width:100%;border-collapse:collapse">
+                        <thead><tr style="text-align:left;color:var(--text-secondary)">
+                            <th style="padding:8px">Tarih</th>
+                            <th style="padding:8px">Actor</th>
+                            <th style="padding:8px">Action</th>
+                            <th style="padding:8px">Status</th>
+                            <th style="padding:8px">Target</th>
+                            <th style="padding:8px">IP</th>
+                        </tr></thead>
+                        <tbody>${rows.map(row => `
+                            <tr style="border-top:1px solid rgba(255,255,255,.06)">
+                                <td style="padding:8px;white-space:nowrap">${escapeHtml(new Date(row.timestamp).toLocaleString('tr-TR'))}</td>
+                                <td style="padding:8px">${escapeHtml((row.actorType || '') + ':' + (row.actorId || ''))}</td>
+                                <td style="padding:8px;font-family:monospace">${escapeHtml(row.action || '')}</td>
+                                <td style="padding:8px">${escapeHtml(row.status || '')}</td>
+                                <td style="padding:8px;font-family:monospace">${escapeHtml(row.target || '')}</td>
+                                <td style="padding:8px">${escapeHtml(row.ip || '')}</td>
+                            </tr>
+                        `).join('')}</tbody>
+                    </table>`;
+            } catch (e) {
+                list.innerHTML = `<div style="padding:14px;color:#f87171">Hata: ${escapeHtml(e.message)}</div>`;
+            }
         }
 
         // ─── GÜVENİLİR DOMAIN'LER (OTX WHITELIST) ──────────────

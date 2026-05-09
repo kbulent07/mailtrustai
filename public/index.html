@@ -99,7 +99,12 @@
     }
 
     // ─── fetch wrapper: tüm /api/* isteklerine otomatik Bearer token ekle ─
-    // (Halihazırda Authorization gönderen istekler korunur — admin/dealer override yapabilir)
+    // Öncelik sırası:
+    //   1) Authorization header zaten varsa dokunma (admin/dealer override edebilir)
+    //   2) Müşteri Bearer token varsa onu gönder
+    //   3) Token yoksa AMA localStorage'da lisans varsa x-license-key gönder
+    //      (Tarayıcı tab kapanması sessionStorage'ı silse bile lisans aktif kaldığı
+    //       sürece kullanıcı yeniden giriş yapmak zorunda kalmasın.)
     if (!window.__msaFetchWrapped) {
         window.__msaFetchWrapped = true;
         const _origFetch = window.fetch.bind(window);
@@ -107,11 +112,16 @@
             try {
                 const url = typeof input === 'string' ? input : (input && input.url) || '';
                 const token = window.__msaCustomerToken || getToken();
-                if (url.startsWith('/api/') && token) {
+                const lic = (typeof localStorage !== 'undefined') ? (localStorage.getItem('msa_license') || '') : '';
+                if (url.startsWith('/api/')) {
                     init = init || {};
                     const headers = new Headers(init.headers || (typeof input !== 'string' && input.headers) || {});
-                    if (!headers.has('Authorization')) {
+                    if (token && !headers.has('Authorization')) {
                         headers.set('Authorization', 'Bearer ' + token);
+                        init.headers = headers;
+                    } else if (!token && lic && !headers.has('x-license-key') && !headers.has('Authorization')) {
+                        // Token yok ama lisans var → lisansla yetkilen
+                        headers.set('x-license-key', lic);
                         init.headers = headers;
                     }
                 }
@@ -138,8 +148,16 @@
             const headers = {};
             const t = getToken();
             if (t) headers['Authorization'] = 'Bearer ' + t;
+            // Token yoksa lisans key'ini fallback olarak gönder
+            const lic = (typeof localStorage !== 'undefined') ? (localStorage.getItem('msa_license') || '') : '';
+            if (!t && lic) headers['x-license-key'] = lic;
+
             const res = await fetch('/api/customer/status', { headers });
             const data = await res.json();
+
+            // Sunucu lisans bridge ile yeni bir token döndürdüyse onu kaydet
+            if (data.bridgeToken) setToken(data.bridgeToken);
+
             if (data.sessionValid) { unlockApp(); return; }
             if (data.passwordSet) { showLogin(); }
             else { showSetup(); }
@@ -292,6 +310,21 @@
         </div>
 
         <!-- Alt bölüm: Son taramalar + Durum paneli -->
+        <div class="home-risk-panel" id="homeRiskPanel">
+            <div>
+                <div style="font-size:12px;color:var(--text-secondary);font-weight:700;letter-spacing:.4px">30 GUNLUK RISK SKORU</div>
+                <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+                    <div class="home-risk-score" id="homeRiskScore">--</div>
+                    <span class="home-risk-grade" id="homeRiskGrade">-</span>
+                </div>
+                <div id="homeRiskTrend" style="font-size:12px;color:var(--text-secondary);margin-top:6px">Yukleniyor...</div>
+            </div>
+            <div class="home-risk-alerts" id="homeRiskAlerts">
+                <div class="home-risk-alert"><span>Risk verisi yukleniyor...</span></div>
+            </div>
+            <button class="btn btn-primary" onclick="exportExecutivePDF()" id="btnExecutivePdf">Executive PDF</button>
+        </div>
+
         <div class="home-bottom-grid">
 
             <!-- Son taramalar -->
@@ -406,6 +439,17 @@
         <div class="card" style="margin-bottom:20px">
             <div class="card-header"><span class="card-title">🚨 En Sık Tehdit Kategorileri</span></div>
             <div id="cuStatsCategories" style="padding:4px 0"></div>
+        </div>
+
+        <!-- ─── LLM KULLANIM İSTATİSTİKLERİ ───────────────── -->
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+                <span class="card-title">🤖 LLM (Yapay Zekâ) Çağrı İstatistikleri</span>
+                <span id="llmUsageRange" style="font-size:11px;color:var(--text-secondary)">Son 30 gün</span>
+            </div>
+            <div id="llmUsageContent" style="padding:8px 0">
+                <div style="color:var(--text-secondary);font-size:13px">Yükleniyor…</div>
+            </div>
         </div>
 
         <!-- Ayrıntılı Rapor -->
@@ -924,9 +968,26 @@
                 ⚠️ Bu ayarı yalnızca admin değiştirebilir.
             </div>
         </div>
+
+        <!-- ─── RİSK HESAPLAMA MODU ───────────────────── -->
+        <div class="form-group" style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.25);border-radius:10px;padding:14px">
+            <label class="form-label" style="color:#a5b4fc">⚖️ Risk Hesaplama Modu</label>
+            <select class="form-input" id="riskModeSelect" style="appearance:auto;-webkit-appearance:auto;margin-top:6px">
+                <option value="classic">Klasik — Kural motoru + ağırlıklı toplam (varsayılan)</option>
+                <option value="shadow">Shadow Mode — AI hâkim arka planda çalışır (sonuç uygulanmaz, sadece kayıt)</option>
+                <option value="ai-judge">AI Hâkim — Yapay zekâ tüm delilleri değerlendirip karar verir</option>
+            </select>
+            <div class="text-muted" style="font-size:11px;margin-top:8px;line-height:1.55">
+                <b>Klasik:</b> Mevcut kural motoru. Hızlı ve ücretsiz.<br>
+                <b>Shadow:</b> AI hâkim çağrılır ve kararı kaydedilir, ama kullanıcıya gösterilen sonuç <b>klasik</b>'tir. Veri toplamak için ideal.<br>
+                <b>AI Hâkim:</b> Kararsız mailler için AI son kararı verir. Skor/seviye/sebep AI'dan gelir. Ek LLM çağrı maliyeti vardır.<br>
+                ⚠️ Shadow ve AI Hâkim modları için OpenAI API anahtarı tanımlı olmalıdır.
+            </div>
+        </div>
+
         <div class="form-group">
-            <label class="form-label">🔒 Admin Şifresi <span style="font-size:11px;color:var(--text-secondary);font-weight:400">(/keygen.html ve /bayi.html için)</span></label>
-            <input class="form-input" id="adminPasswordInput" type="password" placeholder="Mevcut şifre (ayarları kaydetmek için)">
+            <label class="form-label">🔒 Admin Şifresi <span style="font-size:11px;color:var(--text-secondary);font-weight:400">(opsiyonel — yeni şifre belirlemek için, /keygen.html ve /bayi.html'de kullanılır)</span></label>
+            <input class="form-input" id="adminPasswordInput" type="password" placeholder="Yeni şifre (boş bırakılırsa değişmez)">
             <div style="margin-top:6px">
                 <button type="button" class="btn btn-ghost btn-sm" onclick="toggleResetPanel()" style="font-size:11px;padding:4px 10px;opacity:.8">
                     🔑 Şifremi Unuttum (e-posta ile sıfırla)

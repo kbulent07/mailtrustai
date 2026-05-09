@@ -2,6 +2,7 @@
 // CLAUDE AI INTEGRATION — Semantic Email Analysis
 // ============================================================
 const Anthropic = require('@anthropic-ai/sdk');
+const { recordCall } = require('../storage/llmUsageStore');
 
 const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 const MAX_EMAIL_CHARS = 10000;
@@ -63,12 +64,25 @@ Provide your analysis in EXACTLY the following JSON format (return raw JSON only
                 responseText.lastIndexOf('}') + 1
             );
             const data = JSON.parse(jsonStr);
+            recordCall({
+                provider: 'anthropic',
+                model: CLAUDE_MODEL,
+                purpose: 'analysis',
+                success: true,
+                usage: msg.usage ? {
+                    promptTokens:     msg.usage.input_tokens,
+                    completionTokens: msg.usage.output_tokens,
+                    totalTokens:      (msg.usage.input_tokens || 0) + (msg.usage.output_tokens || 0)
+                } : null
+            });
             return { success: true, findings: data };
         } catch (e) {
+            recordCall({ provider: 'anthropic', model: CLAUDE_MODEL, purpose: 'analysis', success: false });
             console.error('Claude JSON Parse Error. Raw response:', responseText);
             return { success: false, error: 'Failed to parse AI response' };
         }
     } catch (e) {
+        recordCall({ provider: 'anthropic', model: CLAUDE_MODEL, purpose: 'analysis', success: false });
         return { success: false, error: e.message };
     }
 }

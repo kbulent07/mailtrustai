@@ -21,6 +21,7 @@ let resetFallbackTimer = null;
 let activeReportMenuEmail = null;
 const imapReportCache = new Map();
 const inFlightImapScans = new Set();
+let currentExecutiveDashboard = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     applyLang();
@@ -248,6 +249,78 @@ function renderMainRiskBanner(data) {
     riskLevel.style.color = data.color;
 
     document.getElementById('riskDescription').textContent = riskDescriptionFor(data);
+
+    // Skor ↔ Seviye uyumsuzluk açıklaması (data.levelReason analizör tarafından üretilir)
+    renderLevelEscalationBanner(data);
+}
+
+// Skor düşük ama seviye yüksekse "neden" açıklaması göster.
+// Eski kayıtlarda data.levelReason olmayabilir — o zaman client tarafında türet.
+function renderLevelEscalationBanner(data) {
+    let host = document.getElementById('levelEscalationBanner');
+    if (!host) {
+        const banner = document.getElementById('riskBanner');
+        if (!banner) return;
+        host = document.createElement('div');
+        host.id = 'levelEscalationBanner';
+        host.style.cssText = 'margin:14px 0 0;padding:12px 14px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.45);border-left:4px solid #818cf8;border-radius:10px;color:#c7d2fe;font-size:13px;line-height:1.55;display:none';
+        banner.parentNode.insertBefore(host, banner.nextSibling);
+    }
+
+    const reason = data.levelReason || _deriveLevelReason(data);
+    if (!reason) {
+        host.style.display = 'none';
+        return;
+    }
+
+    const labelTxt = currentLang === 'tr' ? data.labelTR : data.labelEN;
+    host.innerHTML =
+        '<div style="font-weight:700;color:#a5b4fc;font-size:11px;letter-spacing:1px;margin-bottom:4px">⚠️ ' +
+        (currentLang === 'tr' ? 'SKOR & SEVİYE FARKLILIĞI' : 'SCORE / LEVEL DISCREPANCY') + '</div>' +
+        '<div>' + (currentLang === 'tr'
+            ? `Kural motoru skoru <b>${data.score}/100</b> (düşük) çıktı, ancak risk seviyesi <b>${esc(labelTxt)}</b>'a yükseltildi.`
+            : `Rule-engine score is <b>${data.score}/100</b> (low), but the risk level was raised to <b>${esc(labelTxt)}</b>.`) + '</div>' +
+        '<div style="margin-top:6px;color:#e0e7ff"><b>' +
+        (currentLang === 'tr' ? 'Sebep' : 'Reason') + ':</b> ' + esc(reason.reason || reason) + '</div>';
+    host.style.display = '';
+}
+
+// Eski kayıtlar için client-side fallback: skor düşük + seviye yüksek mi kontrol et,
+// öyleyse sinyal kaynaklarını sayıp basit bir açıklama üret.
+function _deriveLevelReason(data) {
+    const score = Number(data.score || 0);
+    const lvl = data.level;
+    const scoreLvl = score <= 25 ? 'safe' : (score <= 50 ? 'low' : (score <= 75 ? 'medium' : 'high'));
+    const rank = { safe:0, low:1, medium:2, high:3 };
+    if ((rank[lvl] || 0) <= (rank[scoreLvl] || 0)) return null;
+
+    const parts = [];
+    const otx = data.otxData?.indicators || [];
+    const otxMal = otx.filter(i => i.verdict === 'malicious').length;
+    const otxSus = otx.filter(i => i.verdict === 'suspicious').length;
+    if (otxMal) parts.push(`OTX'te ${otxMal} zararlı gösterge`);
+    else if (otxSus) parts.push(`OTX'te ${otxSus} şüpheli gösterge`);
+
+    const vt = data.virusTotal || [];
+    const vtMal = vt.reduce((n,e) => n + (e.stats?.malicious || 0), 0);
+    const vtSus = vt.reduce((n,e) => n + (e.stats?.suspicious || 0), 0);
+    if (vtMal) parts.push(`VirusTotal'de ${vtMal} motor zararlı`);
+    else if (vtSus) parts.push(`VirusTotal'de ${vtSus} motor şüpheli`);
+
+    const ai = data.openaiAnalysis;
+    if (ai?.threatLevel) {
+        const t = String(ai.threatLevel).toLowerCase();
+        const c = Number(ai.confidence || 0);
+        if (['high','critical','medium'].includes(t) && c >= 60) {
+            parts.push(`AI ${t} tehdit (%${c} güvenle)`);
+        }
+    }
+
+    const crit = (data.findings || []).filter(f => f.severity === 'critical').length;
+    if (crit && !parts.length) parts.push(`${crit} kritik bulgu`);
+
+    if (!parts.length) return null;
+    return { reason: parts.join(' · ') };
 }
 
 function renderMainMeta(meta) {
@@ -2691,7 +2764,28 @@ async function verifyAdminResetCode() {
     }
 }
 
+async function readApiJsonOrThrow(res, fallbackMessage) {
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (!res.ok || data.success === false) {
+        const message = data.error || fallbackMessage || 'Kayit basarisiz';
+        const statusEl = document.getElementById('settingsStatus');
+        if (statusEl) statusEl.innerHTML = `<span style="color:#f87171;font-weight:600">Kaydedilemedi: ${esc(message)}</span>`;
+        throw new Error(message);
+    }
+    return data;
+}
+
+function settingsAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (licenseKey) headers['x-license-key'] = licenseKey;
+    return headers;
+}
+
 async function saveSettings() {
+    const statusEl = document.getElementById('settingsStatus');
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--text-secondary)">Kaydediliyor...</span>';
+
     const vtKey     = document.getElementById('vtApiKeyInput').value.trim();
     const otxKey    = document.getElementById('otxApiKeyInput')?.value.trim() || '';
     const claudeKey = document.getElementById('claudeApiKeyInput').value.trim();
@@ -2708,15 +2802,8 @@ async function saveSettings() {
         monthly: document.getElementById('periodicMonthly')?.checked !== false
     };
 
-    // API anahtarları ve model yalnızca admin şifresiyle kaydedilebilir
-    if (!adminPwd) {
-        const statusEl = document.getElementById('settingsStatus');
-        if (statusEl) {
-            statusEl.innerHTML = '<span style="color:#f87171;font-weight:600">⛔ API anahtarı ve model kaydetmek için Admin Şifresi gereklidir.</span>';
-            setTimeout(() => { statusEl.textContent = ''; }, 3000);
-        }
-        return;
-    }
+    // Giriş zaten yetkili kişi tarafından yapıldığı için ek admin şifresi sorulmuyor.
+    // Admin şifresi alanı yalnızca yeni şifre belirlemek için kullanılır (opsiyonel).
 
     // OpenAI model: "__custom__" seçiliyse text box'tan al, yoksa select değerini kullan
     const modelSel   = document.getElementById('openaiModelSelect');
@@ -2725,23 +2812,24 @@ async function saveSettings() {
         ? (modelInp?.value.trim() || '')
         : (modelSel?.value || '');
 
+    const riskMode = document.getElementById('riskModeSelect')?.value || 'classic';
+
     const payload = {
         vtApiKey: vtKey, claudeApiKey: claudeKey, openaiApiKey: openaiKey,
         otxApiKey: otxKey,
         openaiModel,
-        adminPassword: adminPwd,
-        companyProfile
+        companyProfile,
+        riskMode
     };
+    // Admin şifresi alanı doluysa yeni şifre olarak gönder (opsiyonel)
+    if (adminPwd) payload.adminPassword = adminPwd;
 
     const keysRes = await fetch('/api/settings/keys', {
         method: 'POST',
-        headers: {
-            'Content-Type':    'application/json',
-            'x-admin-password': adminPwd,
-            ...(licenseKey ? { 'x-license-key': licenseKey } : {})
-        },
+        headers: settingsAuthHeaders(),
         body: JSON.stringify(payload)
     });
+    await readApiJsonOrThrow(keysRes, 'Ayar anahtarlari kaydedilemedi');
 
     // Admin şifresi alanını her kayıttan sonra temizle
     const adminInput = document.getElementById('adminPasswordInput');
@@ -2750,24 +2838,25 @@ async function saveSettings() {
     if (!keysRes.ok) {
         const statusEl = document.getElementById('settingsStatus');
         if (statusEl) {
-            statusEl.innerHTML = '<span style="color:#f87171;font-weight:600">⛔ Admin şifresi hatalı veya yetki reddedildi.</span>';
+            statusEl.innerHTML = '<span style="color:#f87171;font-weight:600">⛔ Yetki reddedildi. Lütfen tekrar giriş yapın.</span>';
             setTimeout(() => { statusEl.textContent = ''; }, 3000);
         }
         return;
     }
 
-    await fetch('/api/reports/settings', {
+    const reportRes = await fetch('/api/reports/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: settingsAuthHeaders(),
         body: JSON.stringify(reportSettings)
     });
+    await readApiJsonOrThrow(reportRes, 'Periyodik rapor ayarlari kaydedilemedi');
 
-    await saveWebhookSettings();
+    await saveWebhookSettings({ throwOnError: true, silent: true });
 
     await loadSettingsStatus();
     await loadPeriodicReportSettings();
+    await loadWebhookSettings();
     // Başarı bildirimi göster, sonra kapat
-    const statusEl = document.getElementById('settingsStatus');
     if (statusEl) {
         const prev = statusEl.innerHTML;
         statusEl.innerHTML = '<span style="color:var(--green,#00e676);font-weight:600">✅ Ayarlar başarıyla kaydedildi.</span>';
@@ -2835,6 +2924,10 @@ async function loadSettingsStatus() {
             }
         }
 
+        // Risk modu select'ini güncel değere ayarla
+        const riskModeSel = document.getElementById('riskModeSelect');
+        if (riskModeSel) riskModeSel.value = status.riskMode || 'classic';
+
         statusEl.textContent = [
             `VirusTotal: ${status.vtConfigured ? '✅' : '—'}`,
             `OTX: ${status.otxConfigured ? '✅' : '—'}`,
@@ -2860,10 +2953,12 @@ async function testOtxConnection() {
     }
     statusEl.innerHTML = '<span style="color:var(--text-secondary)">⏳ Test ediliyor...</span>';
     try {
-        const adminPwd = document.getElementById('adminPasswordInput')?.value || '';
         const res = await fetch('/api/settings/otx/test', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPwd },
+            headers: {
+                'Content-Type': 'application/json',
+                ...(licenseKey ? { 'x-license-key': licenseKey } : {})
+            },
             body: JSON.stringify({ otxApiKey: apiKey })
         });
         const data = await res.json();
@@ -2958,6 +3053,63 @@ function exportPDF() {
     });
 
     doc.save(`mailtrustai-report-${result.id || 'scan'}.pdf`);
+}
+
+async function exportExecutivePDF() {
+    if (!window.jspdf) return alert('PDF kutuphanesi yuklenemedi.');
+    if (!currentExecutiveDashboard) await loadExecutiveDashboard();
+    const data = currentExecutiveDashboard;
+    if (!data) return alert('Executive rapor verisi alinamadi.');
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const generated = data.generatedAt ? new Date(data.generatedAt).toLocaleString('tr-TR') : new Date().toLocaleString('tr-TR');
+    let y = 18;
+    const addLine = (text, size = 11, color = [30, 41, 59]) => {
+        doc.setFontSize(size);
+        doc.setTextColor(color[0], color[1], color[2]);
+        const lines = doc.splitTextToSize(String(text || ''), 180);
+        doc.text(lines, 14, y);
+        y += lines.length * (size * 0.38) + 4;
+        if (y > 270) { doc.addPage(); y = 18; }
+    };
+
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, 210, 34, 'F');
+    doc.setTextColor(248, 250, 252);
+    doc.setFontSize(18);
+    doc.text('MailTrustAI Executive Risk Report', 14, 20);
+    doc.setFontSize(9);
+    doc.text(`Olusturma: ${generated} | Periyot: Son ${data.periodDays || 30} gun`, 14, 28);
+    y = 46;
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(30);
+    doc.text(`${data.score ?? '--'}/100`, 14, y);
+    doc.setFontSize(12);
+    doc.text(`Risk notu: ${data.grade || '-'} | Trend: ${data.trendLabel || 'stabil'}`, 72, y - 3);
+    doc.text(`Toplam: ${data.stats?.total || 0} | Riskli: ${data.stats?.risky || 0} | Yuksek: ${data.stats?.high || 0}`, 72, y + 5);
+    y += 18;
+
+    addLine('Yonetici ozeti', 14, [15, 23, 42]);
+    addLine(`Guvenlik skoru ${data.score ?? '--'} ve risk orani %${data.stats?.riskRate || 0}. Bu rapor karar vericiler icin lisans, operasyon ve risk aksiyonlarini tek sayfada ozetler.`);
+
+    addLine('Ticari / operasyonel uyarilar', 14, [15, 23, 42]);
+    const alerts = Array.isArray(data.commercialAlerts) ? data.commercialAlerts : [];
+    if (alerts.length) {
+        alerts.slice(0, 5).forEach((alert) => addLine(`- ${alert.title}: ${alert.message}`));
+    } else {
+        addLine('- Kritik ticari uyari yok. Duzenli executive rapor paylasimi surdurulebilir.');
+    }
+
+    addLine('En riskli kaynaklar', 14, [15, 23, 42]);
+    (data.topSenders || []).slice(0, 6).forEach((item) => addLine(`- ${item.email}: ${item.count} riskli mail`));
+    if (!(data.topSenders || []).length) addLine('- Riskli gonderici listesi bos.');
+
+    addLine('Onerilen aksiyonlar', 14, [15, 23, 42]);
+    (data.recommendations || []).slice(0, 5).forEach((item) => addLine(`- ${item}`));
+
+    doc.save(`mailtrustai-executive-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
 function downloadBlob(blob, filename) {
@@ -3666,7 +3818,10 @@ async function serviceAction(action) {
     try {
         const res = await fetch(`/api/admin/${action}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: {
+                'Content-Type': 'application/json',
+                ...(licenseKey ? { 'x-license-key': licenseKey } : {})
+            }
         });
 
         // Sunucu bazen yanıt göndermeden çıkabilir (restart); JSON parse hatasına karşı güvenli
@@ -3679,15 +3834,15 @@ async function serviceAction(action) {
         }
         if (statusEl) statusEl.innerHTML = `<span style="color:var(--green,#00e676)">${esc(data.message || 'İşlem gönderildi.')}</span>`;
         if (action === 'restart') {
-            // 4 saniye sonra sayfayı yenile (sunucunun yeniden başlaması için zaman tanı)
-            if (statusEl) statusEl.innerHTML += '<br><span class="text-muted" style="font-size:11px">Sayfa 4 saniye içinde yeniden yüklenecek...</span>';
-            setTimeout(() => location.reload(), 4000);
+            // 7 sn sonra sayfayı yenile (parent kapanma 0.5s + child wait 2s + node startup ~3-4s)
+            if (statusEl) statusEl.innerHTML += '<br><span class="text-muted" style="font-size:11px">Sayfa 7 saniye içinde yeniden yüklenecek...</span>';
+            setTimeout(() => location.reload(), 7000);
         }
     } catch (e) {
         // Ağ hatası (sunucu kapalı) bile olsa restart başarılı sayılabilir
         if (action === 'restart') {
-            if (statusEl) statusEl.innerHTML = '<span style="color:var(--green,#00e676)">🔄 Servis yeniden başlatılıyor...</span><br><span class="text-muted" style="font-size:11px">Sayfa 5 saniye içinde yeniden yüklenecek...</span>';
-            setTimeout(() => location.reload(), 5000);
+            if (statusEl) statusEl.innerHTML = '<span style="color:var(--green,#00e676)">🔄 Servis yeniden başlatılıyor...</span><br><span class="text-muted" style="font-size:11px">Sayfa 7 saniye içinde yeniden yüklenecek...</span>';
+            setTimeout(() => location.reload(), 7000);
         } else {
             if (statusEl) statusEl.textContent = `Bağlantı hatası: ${e.message}`;
         }
@@ -3755,7 +3910,110 @@ function showPage(page) {
 
 // ─── İSTATİSTİK SAYFASI ───────────────────────────────────
 async function loadStatsPage() {
-    await Promise.all([_cuLoadStats(), loadDetailedStatsCustomer()]);
+    await Promise.all([_cuLoadStats(), loadDetailedStatsCustomer(), loadLlmUsage()]);
+}
+
+// ─── LLM Çağrı İstatistikleri (provider × model bazlı) ──────
+async function loadLlmUsage(days = 30) {
+    const host = document.getElementById('llmUsageContent');
+    if (!host) return;
+    try {
+        const res = await fetch('/api/stats/llm-usage?days=' + encodeURIComponent(days));
+        if (!res.ok) {
+            host.innerHTML = '<div style="color:#f87171;font-size:13px">Yüklenemedi</div>';
+            return;
+        }
+        const data = await res.json();
+        const lifetime = data.lifetime || [];
+        const recent   = data.recent?.byModel || [];
+        const trend    = data.recent?.trend || [];
+
+        const recentTotal = recent.reduce((n, r) => n + (r.calls || 0), 0);
+        const lifetimeTotal = lifetime.reduce((n, r) => n + (r.calls || 0), 0);
+
+        if (!lifetime.length) {
+            host.innerHTML = '<div style="color:var(--text-secondary);font-size:13px;padding:8px 0">Henüz LLM çağrısı yapılmadı.</div>';
+            return;
+        }
+
+        // Renk kodu — provider'a göre
+        const providerColor = (p) => p === 'openai' ? '#10a37f' : (p === 'anthropic' ? '#d97757' : '#94a3b8');
+        const providerLabel = (p) => p === 'openai' ? 'OpenAI' : (p === 'anthropic' ? 'Anthropic' : p);
+
+        // Son 30 gün modeli özet tablosu
+        const recentRowsHtml = recent.length
+            ? recent.map(r => `
+                <tr>
+                    <td style="padding:6px 8px;font-size:13px">
+                        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${providerColor(r.provider)};margin-right:6px;vertical-align:middle"></span>
+                        ${esc(providerLabel(r.provider))}
+                    </td>
+                    <td style="padding:6px 8px;font-size:13px;color:var(--text-primary);font-family:monospace">${esc(r.model)}</td>
+                    <td style="padding:6px 8px;font-size:13px;text-align:right;font-weight:700;color:#e5e7eb">${r.calls}</td>
+                    <td style="padding:6px 8px;font-size:13px;text-align:right;color:${r.errors > 0 ? '#f87171' : 'var(--text-secondary)'}">${r.errors}</td>
+                </tr>`).join('')
+            : '<tr><td colspan="4" style="padding:8px;color:var(--text-secondary);font-size:13px">Bu aralıkta çağrı yok</td></tr>';
+
+        // Lifetime amaç dağılımı
+        const purposeStats = {};
+        for (const r of lifetime) {
+            for (const [p, c] of Object.entries(r.byPurpose || {})) {
+                purposeStats[p] = (purposeStats[p] || 0) + c;
+            }
+        }
+        const purposeLabels = { analysis: 'Klasik Analiz', adjudicate: 'AI Hâkim', other: 'Diğer' };
+        const purposeChips = Object.entries(purposeStats)
+            .sort((a, b) => b[1] - a[1])
+            .map(([p, c]) => `<span style="display:inline-block;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);color:#c7d2fe;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;margin-right:4px">${esc(purposeLabels[p] || p)}: ${c}</span>`)
+            .join('');
+
+        // Trend mini-bar
+        const maxDaily = Math.max(1, ...trend.map(t => t.calls));
+        const trendBars = trend.map(t => {
+            const h = Math.max(2, Math.round((t.calls / maxDaily) * 28));
+            return `<div title="${esc(t.date)}: ${t.calls}" style="display:inline-block;width:6px;height:30px;margin-right:1px;vertical-align:bottom;position:relative"><div style="position:absolute;bottom:0;left:0;right:0;height:${h}px;background:linear-gradient(180deg,#6366f1,#4f46e5);border-radius:1px"></div></div>`;
+        }).join('');
+
+        host.innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px">
+                <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px 12px">
+                    <div style="font-size:11px;color:#6ee7b7;font-weight:700;letter-spacing:1px">SON ${days} GÜN</div>
+                    <div style="font-size:24px;font-weight:900;color:#34d399">${recentTotal} çağrı</div>
+                </div>
+                <div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:10px 12px">
+                    <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px">TÜM ZAMANLAR</div>
+                    <div style="font-size:24px;font-weight:900;color:#818cf8">${lifetimeTotal} çağrı</div>
+                </div>
+            </div>
+
+            <div style="margin-bottom:12px;font-size:12px;color:var(--text-secondary)">
+                <b style="color:var(--text-primary)">Amaç dağılımı:</b> ${purposeChips || '-'}
+            </div>
+
+            ${trend.length ? `
+            <div style="margin-bottom:14px">
+                <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Günlük çağrı trendi (son ${days} gün)</div>
+                <div style="background:#0b1220;border:1px solid var(--border);border-radius:6px;padding:10px;line-height:0">${trendBars}</div>
+            </div>
+            ` : ''}
+
+            <div style="overflow:auto">
+                <table style="width:100%;border-collapse:collapse">
+                    <thead>
+                        <tr style="background:rgba(99,102,241,0.06);color:#a5b4fc;font-size:11px;letter-spacing:1px;text-transform:uppercase">
+                            <th style="padding:8px;text-align:left">Sağlayıcı</th>
+                            <th style="padding:8px;text-align:left">Model</th>
+                            <th style="padding:8px;text-align:right">Çağrı</th>
+                            <th style="padding:8px;text-align:right">Hata</th>
+                        </tr>
+                    </thead>
+                    <tbody>${recentRowsHtml}</tbody>
+                </table>
+            </div>
+        `;
+    } catch (e) {
+        host.innerHTML = `<div style="color:#f87171;font-size:13px">Hata: ${esc(e.message)}</div>`;
+    }
 }
 
 // Hızlı preset hesaplayıcı — hem üst butonlar (setStatsRange) hem alt dropdown (onCuStatsRangeChange) kullanır
@@ -4620,7 +4878,7 @@ function exportDetailedCsvCustomer() {
 }
 
 async function loadHomePage() {
-    await Promise.all([loadHomeStats(), loadHomeRecentScans(), loadHomeThreatIntel()]);
+    await Promise.all([loadHomeStats(), loadHomeRecentScans(), loadHomeThreatIntel(), loadExecutiveDashboard()]);
 }
 
 async function loadHomeStats() {
@@ -4638,6 +4896,47 @@ async function loadHomeStats() {
         setVal('hsSafe',       safe);
     } catch (e) {
         console.error('loadHomeStats error:', e);
+    }
+}
+
+async function loadExecutiveDashboard() {
+    const scoreEl = document.getElementById('homeRiskScore');
+    const gradeEl = document.getElementById('homeRiskGrade');
+    const trendEl = document.getElementById('homeRiskTrend');
+    const alertsEl = document.getElementById('homeRiskAlerts');
+    try {
+        const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
+        const res = await fetch('/api/reports/executive/summary?days=30', { headers });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Executive dashboard yuklenemedi');
+        currentExecutiveDashboard = data;
+        if (scoreEl) scoreEl.textContent = data.score ?? '--';
+        if (gradeEl) gradeEl.textContent = data.grade || '-';
+        if (trendEl) {
+            const trend = Number(data.trend || 0);
+            const sign = trend > 0 ? '+' : '';
+            trendEl.textContent = `${data.trendLabel || 'stabil'} (${sign}${trend} puan)`;
+            trendEl.style.color = trend < -3 ? '#f87171' : (trend > 3 ? '#34d399' : 'var(--text-secondary)');
+        }
+        if (alertsEl) {
+            const alerts = Array.isArray(data.commercialAlerts) ? data.commercialAlerts : [];
+            if (!alerts.length) {
+                alertsEl.innerHTML = '<div class="home-risk-alert"><span>Risk seviyesi dusuk. Executive rapor hazir.</span></div>';
+            } else {
+                alertsEl.innerHTML = alerts.slice(0, 3).map(alert => `
+                    <div class="home-risk-alert">
+                        <span><strong>${esc(alert.title || 'Uyari')}</strong><br><span style="color:var(--text-secondary)">${esc(alert.message || '')}</span></span>
+                        <span style="font-weight:800;color:${alert.type === 'critical' || alert.type === 'risk' ? '#f87171' : '#f59e0b'}">${esc(alert.type || '')}</span>
+                    </div>
+                `).join('');
+            }
+        }
+    } catch (e) {
+        currentExecutiveDashboard = null;
+        if (scoreEl) scoreEl.textContent = '--';
+        if (gradeEl) gradeEl.textContent = '-';
+        if (trendEl) trendEl.textContent = 'Risk dashboard alinamadi';
+        if (alertsEl) alertsEl.innerHTML = `<div class="home-risk-alert"><span>${esc(e.message)}</span></div>`;
     }
 }
 
@@ -4939,7 +5238,9 @@ async function loadWebhookSettings() {
     }
 }
 
-async function saveWebhookSettings() {
+async function saveWebhookSettings(options = {}) {
+    const silent = options?.silent === true;
+    const throwOnError = options?.throwOnError === true;
     const enabledEl = document.getElementById('webhookEnabled');
     const urlEl = document.getElementById('webhookUrl');
     const levelEl = document.getElementById('webhookMinLevel');
@@ -4954,7 +5255,34 @@ async function saveWebhookSettings() {
     try {
         const res = await fetch('/api/settings/webhook', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: settingsAuthHeaders(),
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            if (statusEl && !silent) statusEl.innerHTML = `<span style="color:#f87171">${esc(data.error || 'Hata')}</span>`;
+            if (throwOnError) throw new Error(data.error || 'Webhook ayarlari kaydedilemedi');
+            return data;
+        }
+        if (statusEl && !silent) {
+            statusEl.innerHTML = '<span style="color:var(--green,#00e676)">Webhook ayarlari kaydedildi.</span>';
+            setTimeout(() => { statusEl.textContent = ''; }, 2500);
+        }
+        return data;
+    } catch (e) {
+        if (statusEl && !silent) statusEl.innerHTML = `<span style="color:#f87171">${esc(e.message)}</span>`;
+        if (throwOnError) {
+            const settingsStatus = document.getElementById('settingsStatus');
+            if (settingsStatus) settingsStatus.innerHTML = `<span style="color:#f87171;font-weight:600">Kaydedilemedi: ${esc(e.message)}</span>`;
+            throw e;
+        }
+        return null;
+    }
+
+    try {
+        const res = await fetch('/api/settings/webhook', {
+            method: 'POST',
+            headers: settingsAuthHeaders(),
             body: JSON.stringify(payload)
         });
         const data = await res.json();

@@ -2,6 +2,9 @@
 // SECURITY REPORT BUILDER
 // ============================================================
 const { loadSettings } = require('../storage/settingsStore');
+const { validateLicenseKey } = require('../license/license');
+const { getDealerWhiteLabel } = require('../storage/dealerStore');
+const { levelEscalationReason } = require('../analysis/scorer');
 
 function buildReportHtml(result, lang = 'tr') {
     const companyProfile = resolveReportProfile(result);
@@ -18,7 +21,18 @@ function buildReportHtml(result, lang = 'tr') {
     const aiOpenAI = null;
     const aiClaude = null;
     const level = effectiveReportLevel(result);
+    // Skor (kural motoru ham çıktısı) ve seviye (zorlanmış olabilir) ayrı
+    // kalır. Fark varsa aşağıda "Sebep" satırıyla açıklanır.
     const score = Number(result.score || 0);
+    const escalation = result.levelReason || levelEscalationReason(result);
+    // E-posta raporunda gösterilecek "neden seviye yükseldi" bandı (varsa).
+    const escalationBanner = escalation
+        ? `<tr><td style="padding:0 30px 12px"><div style="background:#1e1b4b;border:1px solid #4338ca;border-left:4px solid #818cf8;border-radius:10px;padding:12px 14px;color:#c7d2fe;font-size:13px;line-height:1.55">` +
+          `<div style="font-weight:700;color:#a5b4fc;font-size:11px;letter-spacing:1px;margin-bottom:4px">&#9888;&#65039; SKOR &amp; SEVİYE FARKLILIĞI</div>` +
+          `<div>Kural motoru skoru ${score}/100 (düşük) çıktı, ancak risk seviyesi <b>${escapeHtml(levelText)}</b>'a yükseltildi.</div>` +
+          `<div style="margin-top:6px;color:#e0e7ff"><b>Sebep:</b> ${escapeHtml(escalation.reason)}</div>` +
+          `</div></td></tr>`
+        : '';
     const levelText = reportLevelText(level, isTR);
     const risky = level !== 'safe';
     const verdictText = risky ? (isTR ? 'RISKLI' : 'RISKY') : (isTR ? 'GUVENLI' : 'SAFE');
@@ -79,19 +93,30 @@ function buildReportHtml(result, lang = 'tr') {
         buildAiSection(aiOpenAI, aiClaude, isTR)
     ].join('');
 
-    return `<!DOCTYPE html><html lang="${isTR ? 'tr' : 'en'}"><head><meta charset="UTF-8"><title>${escapeHtml(companyName)} Mail Guvenlik Raporu</title></head><body style="margin:0;padding:0;background:#0f172a;font-family:Arial,Helvetica,sans-serif;color:#e5e7eb"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f172a;border-collapse:collapse"><tr><td valign="top" align="center" style="padding:12px 8px"><table width="760" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:760px;background:#111827;border:1px solid #263244;border-top:4px solid ${brandAccent};border-radius:18px;overflow:hidden"><tr><td style="padding:28px 30px;background:linear-gradient(135deg,#111827,#172033 58%,#24111a)"><div style="font-size:26px;font-weight:800;color:#f8fafc;letter-spacing:.4px">${escapeHtml(companyName.toUpperCase())} MAIL GUVENLIK RAPORU</div><div style="font-size:13px;color:#94a3b8;margin-top:8px">${isTR ? 'Analiz Tarihi' : 'Analysis Date'}: ${escapeHtml(formatDate(result.timestamp || new Date(), isTR))}</div>${companyDetails ? `<div style="font-size:13px;color:#cbd5e1;margin-top:8px">${escapeHtml(companyDetails)}</div>` : ''}</td></tr><tr><td style="padding:24px 30px 8px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="33%" style="padding:12px"><div style="border:1px solid ${color};background:${color}20;border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">RISK SEVIYESI</div><div style="font-size:24px;color:${color};font-weight:900;margin-top:8px">${escapeHtml(levelText)}</div></div></td><td width="33%" style="padding:12px"><div style="border:1px solid #334155;background:#0b1220;border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">SKOR</div><div style="font-size:24px;color:#f8fafc;font-weight:900;margin-top:8px">${score}/100</div></div></td><td width="33%" style="padding:12px"><div style="border:1px solid ${risky ? '#fb7185' : '#34d399'};background:${risky ? '#3f1420' : '#052e2b'};border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">SONUC</div><div style="font-size:24px;color:${risky ? '#fb7185' : '#34d399'};font-weight:900;margin-top:8px">${verdictText}</div></div></td></tr></table></td></tr><tr><td style="padding:8px 30px 20px"><div style="background:#0b1220;border:1px solid #263244;border-radius:14px;padding:18px;color:#d1d5db;font-size:14px;line-height:1.65">${escapeHtml(summary)}</div></td></tr>${sections}<tr><td style="padding:22px 30px 28px;text-align:center;color:#64748b;font-size:12px;line-height:1.6">${escapeHtml(companyName)} Mail Guvenlik Sistemi - Bu rapor yapay zeka ve otomatik guvenlik kontrolleri tarafindan olusturulmustur.<br>Supheli durumlarda bilgi islem birimiyle iletisime gecin.${companyContactInfo ? `<br><br>${escapeHtml(companyContactInfo)}` : ''}</td></tr></table></td></tr></table></body></html>`;
+    return `<!DOCTYPE html><html lang="${isTR ? 'tr' : 'en'}"><head><meta charset="UTF-8"><title>${escapeHtml(companyName)} Mail Guvenlik Raporu</title></head><body style="margin:0;padding:0;background:#0f172a;font-family:Arial,Helvetica,sans-serif;color:#e5e7eb"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f172a;border-collapse:collapse"><tr><td valign="top" align="center" style="padding:12px 8px"><table width="760" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:760px;background:#111827;border:1px solid #263244;border-top:4px solid ${brandAccent};border-radius:18px;overflow:hidden"><tr><td style="padding:28px 30px;background:linear-gradient(135deg,#111827,#172033 58%,#24111a)"><div style="font-size:26px;font-weight:800;color:#f8fafc;letter-spacing:.4px">${escapeHtml(companyName.toUpperCase())} MAIL GUVENLIK RAPORU</div><div style="font-size:13px;color:#94a3b8;margin-top:8px">${isTR ? 'Analiz Tarihi' : 'Analysis Date'}: ${escapeHtml(formatDate(result.timestamp || new Date(), isTR))}</div>${companyDetails ? `<div style="font-size:13px;color:#cbd5e1;margin-top:8px">${escapeHtml(companyDetails)}</div>` : ''}</td></tr><tr><td style="padding:24px 30px 8px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="33%" style="padding:12px"><div style="border:1px solid ${color};background:${color}20;border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">RISK SEVIYESI</div><div style="font-size:24px;color:${color};font-weight:900;margin-top:8px">${escapeHtml(levelText)}</div></div></td><td width="33%" style="padding:12px"><div style="border:1px solid #334155;background:#0b1220;border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">SKOR</div><div style="font-size:24px;color:#f8fafc;font-weight:900;margin-top:8px">${score}/100</div></div></td><td width="33%" style="padding:12px"><div style="border:1px solid ${risky ? '#fb7185' : '#34d399'};background:${risky ? '#3f1420' : '#052e2b'};border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">SONUC</div><div style="font-size:24px;color:${risky ? '#fb7185' : '#34d399'};font-weight:900;margin-top:8px">${verdictText}</div></div></td></tr></table></td></tr>${escalationBanner}<tr><td style="padding:8px 30px 20px"><div style="background:#0b1220;border:1px solid #263244;border-radius:14px;padding:18px;color:#d1d5db;font-size:14px;line-height:1.65">${escapeHtml(summary)}</div></td></tr>${sections}<tr><td style="padding:22px 30px 28px;text-align:center;color:#64748b;font-size:12px;line-height:1.6">${escapeHtml(companyName)} Mail Guvenlik Sistemi - Bu rapor yapay zeka ve otomatik guvenlik kontrolleri tarafindan olusturulmustur.<br>Supheli durumlarda bilgi islem birimiyle iletisime gecin.${companyContactInfo ? `<br><br>${escapeHtml(companyContactInfo)}` : ''}</td></tr></table></td></tr></table></body></html>`;
 }
 
 function resolveReportProfile(result = {}) {
     const settingsProfile = loadSettings().companyProfile || {};
-    const whiteLabel = result.whiteLabelProfile || {};
-    if (whiteLabel.name) {
+    const whiteLabel = result.whiteLabelProfile || resolveWhiteLabelFromLicense(result) || {};
+    if (whiteLabel.enabled !== false && whiteLabel.name) {
         return {
             ...settingsProfile,
             ...whiteLabel
         };
     }
     return settingsProfile;
+}
+
+function resolveWhiteLabelFromLicense(result = {}) {
+    const key = String(result.licenseKey || result.license?.key || '').trim();
+    if (!key) return null;
+    const validation = validateLicenseKey(key);
+    if (!validation.valid || !validation.reseller || validation.reseller === 'DIRECT' || validation.reseller === 'TRIAL') {
+        return null;
+    }
+    const profile = getDealerWhiteLabel(validation.reseller);
+    return profile?.enabled ? profile : null;
 }
 
 function buildAiSection(aiOpenAI, aiClaude, isTR) {
@@ -316,15 +341,12 @@ function isRisky(result) {
     return effectiveReportLevel(result) !== 'safe';
 }
 
+// Tek doğruluk kaynağı: scorer.effectiveLevelFromResult — analizör de bunu
+// kullanarak result.level'i hesaplıyor; böylece web UI ile e-posta raporu
+// her zaman aynı seviyeyi gösterir.
+const { effectiveLevelFromResult } = require('../analysis/scorer');
 function effectiveReportLevel(result) {
-    const baseLevel = result.level || 'safe';
-    const baseRank = levelRank(baseLevel);
-    const findingLevel = levelFromFindings(result.findings || []);
-    const aiLevel = levelFromAi(result.openaiAnalysis);
-    const vtLevel = levelFromVirusTotal(result.virusTotal || []);
-    const otxLevel = levelFromOtx(result.otxData);
-    const maxRank = Math.max(baseRank, levelRank(findingLevel), levelRank(aiLevel), levelRank(vtLevel), levelRank(otxLevel));
-    return ['safe', 'low', 'medium', 'high'][maxRank] || 'safe';
+    return effectiveLevelFromResult(result || {});
 }
 
 function levelFromOtx(otxData) {

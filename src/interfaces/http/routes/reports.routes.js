@@ -11,6 +11,7 @@ const { sendPeriodicReport } =
     require('../../../application/reports/SendPeriodicReportService');
 const { PERIODS, resolveRange, filterRowsForReport, summarizeRows } =
     require('../../../smtp/periodicReportBuilder');
+const { recordAudit } = require('../../../storage/auditLog');
 
 const router = express.Router();
 
@@ -21,7 +22,9 @@ router.get('/reports/settings', (req, res) => {
 router.post('/reports/settings', (req, res) => {
     const current   = loadSettings();
     const existing  = normalizePeriodicReportSettings(current.periodicReports);
-    const recipients = normalizeReportRecipients(req.body.recipients);
+    const recipients = req.body.recipients !== undefined
+        ? normalizeReportRecipients(req.body.recipients)
+        : existing.recipients;
     const enabledRecipients = req.body.enabledRecipients !== undefined
         ? normalizeReportRecipients(req.body.enabledRecipients).filter(e => recipients.includes(e))
         : existing.enabledRecipients.filter(e => recipients.includes(e));
@@ -33,6 +36,13 @@ router.post('/reports/settings', (req, res) => {
         lastSent: existing.lastSent || {}
     };
     saveSettings({ ...current, periodicReports: next });
+    recordAudit({
+        req,
+        actorType: 'customer',
+        actorId: 'settings',
+        action: 'reports.settings.update',
+        details: { daily: next.daily, weekly: next.weekly, monthly: next.monthly, recipientCount: next.recipients.length }
+    });
     res.json({ success: true, settings: next });
 });
 

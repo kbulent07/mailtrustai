@@ -15,6 +15,7 @@ const { getMonthlyCount, getCurrentMonthKey } = require('../../../storage/monthl
 const { getDailyCount } = require('../../../storage/dailyScansStore');
 const { state } = require('../../../services/appState');
 const { requireAdminAuth } = require('../../../middleware/adminAuth');
+const { recordAudit } = require('../../../storage/auditLog');
 
 const router = express.Router();
 
@@ -103,6 +104,14 @@ router.post('/license/activate', async (req, res) => {
     });
 
     console.log(`[License] Aktif lisans sunucuya kaydedildi: ${_maskKey(key)} (plan=${result.plan}, tier=${result.tier})`);
+    recordAudit({
+        req,
+        actorType: 'customer',
+        actorId: 'license',
+        action: 'license.activate',
+        target: key,
+        details: { plan: result.plan, tier: result.tier, duration: result.duration, reseller: result.reseller }
+    });
     res.json({
         success: true,
         message: 'Lisans sunucuya kaydedildi. Yeniden başlatma ve versiyon geçişlerinde otomatik korunacak.',
@@ -121,6 +130,14 @@ router.post('/license/trial', requireAdminAuth, async (req, res) => {
     if (!validation.valid) return res.status(500).json({ error: 'Trial lisans üretilemedi.' });
 
     console.log(`[License] Admin trial lisansı üretildi: ${_maskKey(key)} — 7 gün, ENT T3 (reseller=${reseller})`);
+    recordAudit({
+        req,
+        actorType: 'admin',
+        actorId: 'admin',
+        action: 'license.trial.generate',
+        target: key,
+        details: { plan, tier, duration, reseller }
+    });
     res.json({
         success:   true,
         message:   '7 günlük Enterprise deneme lisansı üretildi.',
@@ -139,13 +156,33 @@ router.post('/license/deactivate', (req, res) => {
     }
     saveSettings({ ...settings, activeLicenseKey: '', activeLicenseSetAt: '' });
     console.log('[License] Sunucudaki aktif lisans kaldırıldı.');
+    recordAudit({ req, actorType: 'customer', actorId: 'license', action: 'license.deactivate' });
     res.json({ success: true, message: 'Sunucudaki kayıtlı lisans kaldırıldı.' });
 });
 
 router.post('/license/generate', requireAdminAuth, (req, res) => {
     const { plan, tier, duration, reseller, count } = req.body;
-    if (count && count > 1) return res.json({ keys: generateBatchKeys(plan, tier, duration, count, reseller) });
-    res.json({ key: generateLicenseKey(plan, tier, duration, reseller) });
+    if (count && count > 1) {
+        const keys = generateBatchKeys(plan, tier, duration, count, reseller);
+        recordAudit({
+            req,
+            actorType: 'admin',
+            actorId: 'admin',
+            action: 'license.batch.generate',
+            details: { plan, tier, duration, reseller, count: keys.length }
+        });
+        return res.json({ keys });
+    }
+    const key = generateLicenseKey(plan, tier, duration, reseller);
+    recordAudit({
+        req,
+        actorType: 'admin',
+        actorId: 'admin',
+        action: 'license.generate',
+        target: key,
+        details: { plan, tier, duration, reseller }
+    });
+    res.json({ key });
 });
 
 router.get('/license/prices', (req, res) => {
@@ -167,6 +204,7 @@ router.post('/license/revoke', requireAdminAuth, (req, res) => {
     const { key } = req.body;
     if (!key) return res.status(400).json({ error: 'Lisans anahtarı gerekli' });
     revokeKey(key);
+    recordAudit({ req, actorType: 'admin', actorId: 'admin', action: 'license.revoke', target: key });
     res.json({ success: true, message: `Lisans iptal edildi: ${key}` });
 });
 
@@ -174,6 +212,7 @@ router.post('/license/unrevoke', requireAdminAuth, (req, res) => {
     const { key } = req.body;
     if (!key) return res.status(400).json({ error: 'Lisans anahtarı gerekli' });
     unRevokeKey(key);
+    recordAudit({ req, actorType: 'admin', actorId: 'admin', action: 'license.unrevoke', target: key });
     res.json({ success: true, message: `Lisans iptali kaldırıldı: ${key}` });
 });
 
