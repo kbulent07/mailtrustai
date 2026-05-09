@@ -1138,12 +1138,27 @@ let editingImapAlertAccountEmail = null;
 
 function updateAlertDefaultRecipientHint() {
     const hint = document.getElementById('imapAlertDefaultHint');
-    if (!hint) return;
-    if (!editingImapAlertAccountEmail) {
-        hint.innerHTML = '<span style="color:#f87171">⚠️ Tarama posta kutusu tanımlanmamış</span>';
-    } else {
-        hint.innerHTML = `Birden fazla alıcı ekleyebilirsiniz. Boş bırakılırsa: <span style="opacity:0.45">${editingImapAlertAccountEmail}</span>`;
+    if (hint) {
+        if (!editingImapAlertAccountEmail) {
+            hint.innerHTML = '<span style="color:#f87171">⚠️ Tarama posta kutusu tanımlanmamış</span>';
+        } else {
+            hint.innerHTML = `Birden fazla alıcı ekleyebilirsiniz. Boş bırakılırsa: <span style="opacity:0.45">${editingImapAlertAccountEmail}</span>`;
+        }
     }
+    // Özet kutusundaki alıcı etiketini de güncelle
+    const summary = document.getElementById('imapAlertSummaryRecipient');
+    if (summary) {
+        summary.textContent = editingImapAlertAccountEmail || 'bu hesabın kendisi';
+    }
+}
+
+function toggleImapAlertAdvanced() {
+    const adv = document.getElementById('imapAlertAdvanced');
+    const btn = document.getElementById('imapAlertAdvancedBtn');
+    if (!adv) return;
+    const open = adv.style.display !== 'none';
+    adv.style.display = open ? 'none' : 'block';
+    if (btn) btn.textContent = open ? '⚙️ Özelleştir' : '🙈 Gizle';
 }
 
 function renderAlertEmailTags() {
@@ -1215,6 +1230,11 @@ function closeImapModal() {
     clearAlertEmails();
     const senderSel = document.getElementById('imapAlertSenderAccount');
     if (senderSel) senderSel.value = '';
+    // Advanced bölümü kapalı duruma sıfırla
+    const adv = document.getElementById('imapAlertAdvanced');
+    if (adv) adv.style.display = 'none';
+    const advBtn = document.getElementById('imapAlertAdvancedBtn');
+    if (advBtn) advBtn.textContent = '⚙️ Özelleştir';
     editingImapAlertAccountEmail = null;
 }
 
@@ -1483,6 +1503,18 @@ async function editImapAccount(email) {
             setAlertEmails(smb.reportTo || '');
             document.getElementById('imapAlertLang').value = smb.reportLang || 'tr';
             await loadAlertSenderOptions(smb.senderSmtpEmail || '');
+            // Daha önce varsayılan dışı bir ayar yapılmışsa advanced'i otomatik aç
+            const isCustomized =
+                (smb.reportMode && smb.reportMode !== 'risky') ||
+                (smb.reportTo && smb.reportTo.length > 0) ||
+                (smb.reportLang && smb.reportLang !== 'tr') ||
+                !!smb.senderSmtpEmail;
+            if (enabled && isCustomized) {
+                const adv = document.getElementById('imapAlertAdvanced');
+                const btn = document.getElementById('imapAlertAdvancedBtn');
+                if (adv) adv.style.display = 'block';
+                if (btn) btn.textContent = '🙈 Gizle';
+            }
         }
     } catch {}
 

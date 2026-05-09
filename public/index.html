@@ -769,38 +769,52 @@
             </label>
 
             <div id="imapRealTimeAlertSection" style="display:none;padding-left:10px;border-left:2px solid rgba(96,165,250,0.3)">
-                <div class="form-group">
-                    <label class="form-label">Rapor Politikası</label>
-                    <select class="form-input" id="imapAlertMode" onchange="onImapAlertModeChange(this)">
-                        <option value="risky">⚠️ Sadece riskli mailler</option>
-                        <option value="all">📬 Tüm mailler [Enterprise]</option>
-                    </select>
-                    <div id="imapAlertModeWarning" style="font-size:11px;color:#f59e0b;display:none;margin-top:4px">
-                        ⚠️ "Tüm mailler" modu Enterprise lisansı gerektirir.
+                <!-- Varsayılan özet — kullanıcı hiçbir şey doldurmadan kullanabilir -->
+                <div id="imapAlertSummary" style="font-size:12px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.2);border-radius:6px;padding:10px 12px;margin-bottom:10px">
+                    <div style="margin-bottom:6px">✅ <strong>Hazır kullanıma uygun.</strong> Hiçbir şey doldurmanıza gerek yok — varsayılanlar:</div>
+                    <div style="opacity:0.85;line-height:1.7">
+                        • Politika: <strong>Sadece riskli mailler</strong><br>
+                        • Alıcı: <strong id="imapAlertSummaryRecipient">bu hesabın kendisi</strong><br>
+                        • Gönderen: <strong>bu hesabın SMTP ayarları</strong> · Dil: <strong>Türkçe</strong>
                     </div>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="toggleImapAlertAdvanced()" id="imapAlertAdvancedBtn" style="margin-top:8px;font-size:12px;padding:4px 10px">⚙️ Özelleştir</button>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">📨 Rapor Alıcısı</label>
-                    <div id="imapAlertReportToBox" onclick="document.getElementById('imapAlertReportToInput').focus()" style="background:var(--surface2);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:40px;cursor:text">
-                        <span id="imapAlertReportToTags" style="display:contents"></span>
-                        <input type="text" id="imapAlertReportToInput" placeholder="e-posta ekle, Enter ile onayla" onkeydown="onAlertEmailKeydown(event)" onblur="tryAddAlertEmail()" style="background:transparent;border:none;outline:none;color:inherit;font-size:13px;min-width:180px;flex:1">
+
+                <!-- İleri ayarlar — varsayılan kapalı -->
+                <div id="imapAlertAdvanced" style="display:none">
+                    <div class="form-group">
+                        <label class="form-label">Rapor Politikası</label>
+                        <select class="form-input" id="imapAlertMode" onchange="onImapAlertModeChange(this)">
+                            <option value="risky">⚠️ Sadece riskli mailler</option>
+                            <option value="all">📬 Tüm mailler [Enterprise]</option>
+                        </select>
+                        <div id="imapAlertModeWarning" style="font-size:11px;color:#f59e0b;display:none;margin-top:4px">
+                            ⚠️ "Tüm mailler" modu Enterprise lisansı gerektirir.
+                        </div>
                     </div>
-                    <input type="hidden" id="imapAlertReportTo">
-                    <div id="imapAlertDefaultHint" style="font-size:11px;margin-top:4px;opacity:0.6"></div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">📤 Gönderen Hesap (SMTP)</label>
-                    <select class="form-input" id="imapAlertSenderAccount">
-                        <option value="">— Bu hesabın kimlik bilgileriyle gönder —</option>
-                    </select>
-                    <div style="font-size:11px;opacity:0.55;margin-top:4px">Tarama Posta Kutularından biri seçilirse o hesabın SMTP ayarları kullanılır.</div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Rapor Dili</label>
-                    <select class="form-input" id="imapAlertLang">
-                        <option value="tr">Türkçe</option>
-                        <option value="en">English</option>
-                    </select>
+                    <div class="form-group">
+                        <label class="form-label">📨 Rapor Alıcısı <span style="font-weight:400;opacity:0.6;font-size:11px">(opsiyonel)</span></label>
+                        <div id="imapAlertReportToBox" onclick="document.getElementById('imapAlertReportToInput').focus()" style="background:var(--surface2);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:40px;cursor:text">
+                            <span id="imapAlertReportToTags" style="display:contents"></span>
+                            <input type="text" id="imapAlertReportToInput" placeholder="e-posta ekle, Enter ile onayla" onkeydown="onAlertEmailKeydown(event)" onblur="tryAddAlertEmail()" style="background:transparent;border:none;outline:none;color:inherit;font-size:13px;min-width:180px;flex:1">
+                        </div>
+                        <input type="hidden" id="imapAlertReportTo">
+                        <div id="imapAlertDefaultHint" style="font-size:11px;margin-top:4px;opacity:0.6"></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">📤 Gönderen Hesap (SMTP) <span style="font-weight:400;opacity:0.6;font-size:11px">(opsiyonel)</span></label>
+                        <select class="form-input" id="imapAlertSenderAccount">
+                            <option value="">— Bu hesabın kimlik bilgileriyle gönder —</option>
+                        </select>
+                        <div style="font-size:11px;opacity:0.55;margin-top:4px">Tarama Posta Kutularından biri seçilirse o hesabın SMTP ayarları kullanılır.</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Rapor Dili</label>
+                        <select class="form-input" id="imapAlertLang">
+                            <option value="tr">Türkçe</option>
+                            <option value="en">English</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
