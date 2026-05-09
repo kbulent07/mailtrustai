@@ -3476,26 +3476,328 @@ async function updateScanMailboxReportMode(imapEmail, reportMode) {
 // ============================================================
 function showPage(page) {
     const homePanel  = document.getElementById('homePanel');
+    const statsPanel = document.getElementById('statsPanel');
     const mainPanels = ['connectionBar','scanModes','panelUpload','panelPaste',
                         'panelImap','panelScanMailbox','scanProgress','resultsPanel',
                         'historyPanel','listsPanel'];
 
-    const tabHome = document.getElementById('navTabHome');
-    const tabScan = document.getElementById('navTabScan');
+    const tabHome  = document.getElementById('navTabHome');
+    const tabScan  = document.getElementById('navTabScan');
+    const tabStats = document.getElementById('navTabStats');
+
+    // Önce her şeyi gizle
+    if (homePanel)  homePanel.style.display  = 'none';
+    if (statsPanel) statsPanel.style.display = 'none';
+    [tabHome, tabScan, tabStats].forEach(t => t && t.classList.remove('active'));
 
     if (page === 'home') {
         if (homePanel) homePanel.style.display = '';
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
         if (tabHome) tabHome.classList.add('active');
-        if (tabScan) tabScan.classList.remove('active');
         loadHomePage();
+    } else if (page === 'stats') {
+        if (statsPanel) statsPanel.style.display = '';
+        mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+        if (tabStats) tabStats.classList.add('active');
+        loadStatsPage();
     } else {
-        if (homePanel) homePanel.style.display = 'none';
+        // 'scan' (varsayılan)
         // Her paneli inline style'dan arındır; görünürlüğü mevcut .hidden sınıfı yönetir
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
         if (tabScan) tabScan.classList.add('active');
-        if (tabHome) tabHome.classList.remove('active');
     }
+}
+
+// ─── İSTATİSTİK SAYFASI ───────────────────────────────────
+async function loadStatsPage() {
+    await Promise.all([_cuLoadStats(), loadDetailedStatsCustomer()]);
+}
+
+async function _cuLoadStats() {
+    try {
+        const res = await fetch('/api/stats');
+        if (!res.ok) return;
+        const d = await res.json();
+        _cuRenderStatsCards(d);
+        _cuRenderLevelBars(d.byLevel || {});
+        _cuRenderSourceBars(d.bySource || {});
+        _cuRenderTrend(d.trend7 || []);
+        _cuRenderIntegrations(d);
+        _cuRenderCategories(d.topCategories || []);
+    } catch (e) { console.error('stats load:', e); }
+}
+
+function _cuRenderStatsCards(d) {
+    const threatColor = d.threats > 0 ? '#f87171' : 'var(--green)';
+    document.getElementById('cuStatsCards').innerHTML = `
+        <div class="stat-card"><div class="stat-value">${d.totalScans ?? 0}</div><div class="stat-label">Toplam Tarama</div></div>
+        <div class="stat-card"><div class="stat-value">${d.todayScans ?? 0}</div><div class="stat-label">Bugün</div></div>
+        <div class="stat-card"><div class="stat-value">${d.monthlyScans ?? 0}</div><div class="stat-label">Bu Ay</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:${threatColor}">${d.threats ?? 0}</div><div class="stat-label">Yüksek Riskli</div></div>
+        <div class="stat-card"><div class="stat-value">${d.accounts ?? 0}</div><div class="stat-label">IMAP Hesabı</div></div>
+    `;
+}
+
+function _cuBar(label, count, total, color) {
+    const pct = total > 0 ? Math.round(count / total * 100) : 0;
+    return `<div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+            <span>${esc(label)}</span>
+            <span style="font-weight:600">${count} <span style="color:var(--text-secondary);font-weight:400">(${pct}%)</span></span>
+        </div>
+        <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width .4s"></div>
+        </div>
+    </div>`;
+}
+
+function _cuRenderLevelBars(byLevel) {
+    const total = Object.values(byLevel).reduce((a, b) => a + b, 0);
+    const items = [
+        { key: 'high',   label: '🔴 Yüksek Risk', color: '#f87171' },
+        { key: 'medium', label: '🟠 Orta Risk',   color: '#fb923c' },
+        { key: 'low',    label: '🟡 Düşük Risk',  color: '#fbbf24' },
+        { key: 'safe',   label: '🟢 Güvenli',     color: '#34d399' }
+    ];
+    document.getElementById('cuStatsLevelBars').innerHTML =
+        items.map(i => _cuBar(i.label, byLevel[i.key] || 0, total, i.color)).join('') ||
+        '<p class="text-muted">Henüz tarama yok.</p>';
+}
+
+function _cuRenderSourceBars(bySource) {
+    const labels = {
+        'upload':       '📤 Yükleme (EML/Dosya)',
+        'imap-manual':  '🔍 IMAP Manuel',
+        'scan-mailbox': '📬 Tarama Posta Kutusu',
+        'unknown':      '❓ Bilinmiyor'
+    };
+    const total   = Object.values(bySource).reduce((a, b) => a + b, 0);
+    const entries = Object.entries(bySource).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) {
+        document.getElementById('cuStatsSourceBars').innerHTML = '<p class="text-muted">Henüz tarama yok.</p>';
+        return;
+    }
+    document.getElementById('cuStatsSourceBars').innerHTML =
+        entries.map(([src, cnt]) => _cuBar(labels[src] || src, cnt, total, 'var(--accent)')).join('');
+}
+
+function _cuRenderTrend(trend7) {
+    if (!trend7.length) {
+        document.getElementById('cuStatsTrend').innerHTML = '<p class="text-muted">Veri yok.</p>';
+        return;
+    }
+    const max = Math.max(...trend7.map(t => t.count), 1);
+    const bars = trend7.map(t => {
+        const h = Math.max(4, Math.round(t.count / max * 80));
+        const dateLabel = new Date(t.date).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+        return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1">
+            <span style="font-size:11px;font-weight:600;color:${t.count > 0 ? 'var(--accent)' : 'var(--text-secondary)'}">${t.count}</span>
+            <div style="width:100%;background:var(--surface2);border-radius:3px;height:80px;display:flex;align-items:flex-end">
+                <div style="width:100%;height:${h}px;background:var(--accent);border-radius:3px;opacity:${t.count > 0 ? 1 : 0.2}"></div>
+            </div>
+            <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap">${dateLabel}</span>
+        </div>`;
+    }).join('');
+    document.getElementById('cuStatsTrend').innerHTML =
+        `<div style="display:flex;gap:6px;align-items:flex-end;padding:4px 0">${bars}</div>`;
+}
+
+function _cuRenderIntegrations(d) {
+    const total  = d.totalScans || 0;
+    const vtPct  = total > 0 ? (d.vtHits  / total * 100).toFixed(1) : '0.0';
+    const otxPct = total > 0 ? (d.otxHits / total * 100).toFixed(1) : '0.0';
+    document.getElementById('cuStatsIntegrations').innerHTML = `
+        <div style="margin-bottom:14px">
+            ${_cuBar('🦠 VirusTotal Tespiti', d.vtHits || 0, total || 1, '#f87171')}
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">İsabet oranı: ${vtPct}%</div>
+        </div>
+        <div>
+            ${_cuBar('🌐 AlienVault OTX Tespiti', d.otxHits || 0, total || 1, '#fb923c')}
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">İsabet oranı: ${otxPct}%</div>
+        </div>
+    `;
+}
+
+function _cuRenderCategories(cats) {
+    if (!cats.length) {
+        document.getElementById('cuStatsCategories').innerHTML = '<p class="text-muted">Henüz tehdit kaydı yok.</p>';
+        return;
+    }
+    const catLabels = {
+        virusTotal:  '🦠 VirusTotal', otx: '🌐 OTX',
+        spf: '📋 SPF', dkim: '🔏 DKIM', dmarc: '🛡️ DMARC',
+        phishing: '🎣 Phishing', attachment: '📎 Şüpheli Ek',
+        link: '🔗 Şüpheli Link', spoofing: '🎭 Sahtecilik',
+        unicode: '🔤 Unicode', threatIntel: '🌍 Tehdit İstihbaratı',
+        reputation: '📊 İtibar', content: '📝 İçerik', header: '📨 Header'
+    };
+    const maxCnt = cats[0]?.count || 1;
+    document.getElementById('cuStatsCategories').innerHTML =
+        `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">` +
+        cats.map(({ category, count }) =>
+            _cuBar(catLabels[category] || category, count, maxCnt, 'var(--accent)')
+        ).join('') + `</div>`;
+}
+
+// ─── AYRINTILI RAPOR ──────────────────────────────────────
+let _cuLastDetailed = null;
+
+async function loadDetailedStatsCustomer() {
+    const daysEl = document.getElementById('cuStatsDays');
+    const days   = daysEl ? Number(daysEl.value) || 30 : 30;
+    try {
+        const res = await fetch('/api/stats/detailed?days=' + days);
+        if (!res.ok) return;
+        const d = await res.json();
+        _cuLastDetailed = d;
+        _cuRenderDetailedSummary(d);
+        _cuRenderDetailedByUser(d);
+        _cuRenderDetailedHourly(d.hourly || []);
+        _cuRenderDetailedWeekday(d.weekday || []);
+        _cuRenderDetailedTopSenders(d.topSenders || []);
+        _cuRenderDetailedRiskySenders(d.topRiskySenders || []);
+    } catch (e) { console.error('detailed load:', e); }
+}
+
+function _cuRenderDetailedSummary(d) {
+    const el = document.getElementById('cuDetailedSummary');
+    const riskyPct = d.totalScans > 0 ? Math.round(d.riskyTotal / d.totalScans * 100) : 0;
+    el.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+            <div class="stat-card"><div class="stat-value">${d.totalScans}</div><div class="stat-label">Toplam (${d.days}g)</div></div>
+            <div class="stat-card"><div class="stat-value" style="color:#f87171">${d.riskyTotal}</div><div class="stat-label">Riskli</div></div>
+            <div class="stat-card"><div class="stat-value">${d.avgScore || 0}</div><div class="stat-label">Ortalama Skor</div></div>
+            <div class="stat-card"><div class="stat-value">%${riskyPct}</div><div class="stat-label">Risk Oranı</div></div>
+        </div>
+    `;
+}
+
+function _cuRenderDetailedByUser(d) {
+    const wrap  = document.getElementById('cuDetailedByUserWrap');
+    const users = d.byUser || [];
+    if (!users.length) { wrap.innerHTML = '<p class="text-muted" style="padding:12px">Bu dönemde tarama yapılmamış.</p>'; return; }
+    const totalAll = users.reduce((s, u) => s + u.scanCount, 0);
+    const rows = users.map(u => {
+        const pct = totalAll > 0 ? Math.round(u.scanCount / totalAll * 100) : 0;
+        const lastDate = u.lastScanAt ? new Date(u.lastScanAt).toLocaleString('tr-TR', {dateStyle:'short', timeStyle:'short'}) : '-';
+        const riskyCount = u.highCount + u.mediumCount;
+        const riskyColor = riskyCount > 0 ? '#f87171' : 'var(--text-secondary)';
+        return `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:8px;font-size:13px">${esc(u.label)}</td>
+            <td style="padding:8px;text-align:right;font-weight:700">${u.scanCount} <span style="color:var(--text-secondary);font-weight:400;font-size:11px">(%${pct})</span></td>
+            <td style="padding:8px;text-align:center;color:#f87171;font-weight:600">${u.highCount}</td>
+            <td style="padding:8px;text-align:center;color:#fb923c;font-weight:600">${u.mediumCount}</td>
+            <td style="padding:8px;text-align:center;color:#fbbf24">${u.lowCount}</td>
+            <td style="padding:8px;text-align:center;color:#34d399">${u.safeCount}</td>
+            <td style="padding:8px;text-align:center;color:${riskyColor};font-weight:600">${riskyCount}</td>
+            <td style="padding:8px;text-align:right">${u.avgScore || '-'}</td>
+            <td style="padding:8px;color:var(--text-secondary);font-size:12px">${esc(lastDate)}</td>
+        </tr>`;
+    }).join('');
+    wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="color:var(--text-secondary);font-size:12px;background:var(--surface2)">
+            <th style="text-align:left;padding:10px">Kullanıcı / Kaynak</th>
+            <th style="text-align:right;padding:10px">Tarama</th>
+            <th style="text-align:center;padding:10px" title="Yüksek Risk">🔴</th>
+            <th style="text-align:center;padding:10px" title="Orta Risk">🟠</th>
+            <th style="text-align:center;padding:10px" title="Düşük Risk">🟡</th>
+            <th style="text-align:center;padding:10px" title="Güvenli">🟢</th>
+            <th style="text-align:center;padding:10px">Riskli</th>
+            <th style="text-align:right;padding:10px">Ort. Skor</th>
+            <th style="text-align:left;padding:10px">Son Tarama</th>
+        </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function _cuRenderDetailedHourly(hourly) {
+    const max = Math.max(...hourly.map(h => h.count), 1);
+    const bars = hourly.map(h => {
+        const height = Math.max(2, Math.round(h.count / max * 70));
+        const opacity = h.count > 0 ? 1 : 0.15;
+        return `<div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:0">
+            <div style="font-size:9px;color:var(--text-secondary);margin-bottom:2px;height:12px">${h.count > 0 ? h.count : ''}</div>
+            <div style="width:100%;height:70px;display:flex;align-items:flex-end;background:var(--surface2);border-radius:2px">
+                <div style="width:100%;height:${height}px;background:var(--accent);opacity:${opacity};border-radius:2px"></div>
+            </div>
+            <div style="font-size:9px;color:var(--text-secondary);margin-top:3px">${String(h.hour).padStart(2,'0')}</div>
+        </div>`;
+    }).join('');
+    document.getElementById('cuDetailedHourly').innerHTML =
+        `<div style="display:flex;gap:2px;align-items:flex-end;padding:4px 0">${bars}</div>`;
+}
+
+function _cuRenderDetailedWeekday(weekday) {
+    const max = Math.max(...weekday.map(w => w.count), 1);
+    const bars = weekday.map(w => {
+        const height = Math.max(2, Math.round(w.count / max * 80));
+        return `<div style="display:flex;flex-direction:column;align-items:center;flex:1">
+            <div style="font-size:11px;font-weight:600;color:${w.count > 0 ? 'var(--accent)' : 'var(--text-secondary)'};margin-bottom:4px">${w.count}</div>
+            <div style="width:100%;background:var(--surface2);border-radius:3px;height:80px;display:flex;align-items:flex-end">
+                <div style="width:100%;height:${height}px;background:var(--accent);border-radius:3px;opacity:${w.count > 0 ? 1 : 0.2}"></div>
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">${esc(w.weekday)}</div>
+        </div>`;
+    }).join('');
+    document.getElementById('cuDetailedWeekday').innerHTML =
+        `<div style="display:flex;gap:6px;align-items:flex-end;padding:4px 0">${bars}</div>`;
+}
+
+function _cuRenderDetailedTopSenders(senders) {
+    const el = document.getElementById('cuDetailedTopSenders');
+    if (!senders.length) { el.innerHTML = '<p class="text-muted" style="padding:8px">Veri yok.</p>'; return; }
+    const max = senders[0].count || 1;
+    el.innerHTML = senders.map(s => {
+        const pct = Math.round(s.count / max * 100);
+        return `<div style="margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${esc(s.email)}</span>
+                <span style="font-weight:600;margin-left:8px">${s.count}</span>
+            </div>
+            <div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:3px"></div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function _cuRenderDetailedRiskySenders(senders) {
+    const el = document.getElementById('cuDetailedRiskySenders');
+    if (!senders.length) { el.innerHTML = '<p class="text-muted" style="padding:8px">Riskli gönderici tespit edilmedi.</p>'; return; }
+    el.innerHTML = senders.map(s =>
+        `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+            <div style="flex:1;overflow:hidden">
+                <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.email)}</div>
+                <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Ortalama skor: ${s.avgScore}</div>
+            </div>
+            <div style="display:flex;gap:6px;font-size:11px;font-weight:700">
+                ${s.high   ? `<span style="background:rgba(248,113,113,0.15);color:#f87171;padding:3px 8px;border-radius:6px">🔴 ${s.high}</span>` : ''}
+                ${s.medium ? `<span style="background:rgba(251,146,60,0.15);color:#fb923c;padding:3px 8px;border-radius:6px">🟠 ${s.medium}</span>` : ''}
+            </div>
+        </div>`
+    ).join('');
+}
+
+function exportDetailedCsvCustomer() {
+    if (!_cuLastDetailed) { alert('Önce raporu yükleyin.'); return; }
+    const d = _cuLastDetailed;
+    const lines = [];
+    lines.push('# MailTrustAI Ayrintili Istatistik Raporu');
+    lines.push(`# Donem: Son ${d.days} gun`);
+    lines.push(`# Toplam: ${d.totalScans} tarama, ${d.riskyTotal} riskli, ortalama skor ${d.avgScore}`);
+    lines.push('');
+    lines.push('Kullanici/Kaynak,Tarama,Yuksek,Orta,Dusuk,Guvenli,Ortalama Skor,Son Tarama');
+    for (const u of (d.byUser || [])) {
+        const row = [u.label, u.scanCount, u.highCount, u.mediumCount, u.lowCount, u.safeCount, u.avgScore, u.lastScanAt || '']
+            .map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
+        lines.push(row);
+    }
+    const csv  = '﻿' + lines.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `mailtrustai-rapor-${d.days}gun-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function loadHomePage() {
