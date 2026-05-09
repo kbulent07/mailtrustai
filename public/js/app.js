@@ -2582,6 +2582,7 @@ function showSettings() {
     loadSettingsStatus();
     loadPeriodicReportSettings();
     loadServiceStatus();
+    loadUserTdCount();
     loadWebhookSettings();
 
     // ESC ile kapat
@@ -4201,6 +4202,165 @@ async function reportFpFromStats(domain, severity, message) {
     } catch (e) {
         alert(`Hata: ${e.message}`);
     }
+}
+
+// ══════════════════════════════════════════════════════════
+// KULLANICI — OTX GÜVENİLİR DOMAİN EXPORT / IMPORT
+// ══════════════════════════════════════════════════════════
+let _userTdBackup = null; // sıfırlama öncesi otomatik yedek (bellek)
+
+/** Ayarlar açıldığında domain sayısını göster */
+async function loadUserTdCount() {
+    const countEl = document.getElementById('userTdExportCount');
+    if (!countEl) return;
+    try {
+        const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
+        const res = await fetch('/api/trusted-domains/export', { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        countEl.textContent = `(${data.count || 0} domain)`;
+    } catch { /* sessiz */ }
+}
+
+/** Mevcut listeyi JSON dosyası olarak indirir */
+async function userTdExport() {
+    try {
+        const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
+        const res = await fetch('/api/trusted-domains/export', { headers });
+        if (!res.ok) { alert('Dışa aktarma başarısız: ' + res.status); return; }
+        const blob = await res.blob();
+        const cd   = res.headers.get('Content-Disposition') || '';
+        const fnMatch = cd.match(/filename="([^"]+)"/);
+        const filename = fnMatch ? fnMatch[1] : 'trusted-domains.json';
+        const url = URL.createObjectURL(blob);
+        const a   = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+    } catch (e) { alert('Hata: ' + e.message); }
+}
+
+/** Dosya seçildi — ismi göster */
+function userTdImportSelected(input) {
+    const nameEl = document.getElementById('userTdFileName');
+    if (nameEl) nameEl.textContent = input.files[0]?.name || 'Dosya seçilmedi';
+}
+
+/** İçe aktar butonu (dosya seçildikten sonra tetiklenir) */
+async function userTdImport() {
+    const input   = document.getElementById('userTdImportFile');
+    const resetCk = document.getElementById('userTdResetCheck');
+    const resEl   = document.getElementById('userTdImportResult');
+    const restoreBtn = document.getElementById('btnUserTdRestore');
+    const file    = input?.files[0];
+    if (!file) { _userTdShowResult(resEl, false, '❌ Lütfen önce bir dosya seçin.'); return; }
+
+    const doReset = resetCk?.checked || false;
+    _userTdShowResult(resEl, null, '⏳ İşleniyor…');
+
+    try {
+        // Dosyayı oku ve parse et
+        const text    = await file.text();
+        const payload = JSON.parse(text);
+        const domains = Array.isArray(payload) ? payload
+            : (Array.isArray(payload.domains) ? payload.domains : null);
+        if (!domains || !domains.length) {
+            _userTdShowResult(resEl, false, '❌ Geçerli domain listesi bulunamadı.'); return;
+        }
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (licenseKey) headers['x-license-key'] = licenseKey;
+
+        if (doReset) {
+            // — Adım 1: Mevcut listeyi yedekle (otomatik indir + bellekte sakla) —
+            _userTdShowResult(resEl, null, '⏳ Mevcut liste yedekleniyor…');
+            const backupRes = await fetch('/api/trusted-domains/export', {
+                headers: licenseKey ? { 'x-license-key': licenseKey } : {}
+            });
+            if (backupRes.ok) {
+                const backupData = await backupRes.json();
+                _userTdBackup = backupData.domains || [];
+                // Dosyayı otomatik indir
+                const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+                const bkFilename = `mailtrustai-trusted-domains-onceki-yedek-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+                const bkUrl = URL.createObjectURL(blob);
+                const bkA   = document.createElement('a');
+                bkA.href = bkUrl; bkA.download = bkFilename; bkA.click();
+                URL.revokeObjectURL(bkUrl);
+                if (restoreBtn) restoreBtn.style.display = '';
+            }
+            _userTdShowResult(resEl, null, '⏳ Liste sıfırlanıyor ve yeni domainler ekleniyor…');
+        }
+
+        // — Adım 2: Import (merge=false → sıfırla, merge=true → sadece ekle) —
+        const res = await fetch('/api/trusted-domains/import', {
+            method: 'POST', headers,
+            body: JSON.stringify({ domains, merge: !doReset })
+        });
+        const data = await res.json();
+        if (!res.ok) { _userTdShowResult(resEl, false, '❌ ' + (data.error || res.status)); return; }
+
+        const added   = data.accepted?.length || 0;
+        const skipped = data.rejected?.length || 0;
+        const msg = doReset
+            ? `✅ Liste sıfırlandı. ${added} domain yüklendi${skipped ? `, ${skipped} geçersiz atlandı` : ''}. Önceki yedeğiniz otomatik indirildi.`
+            : `✅ ${added} domain eklendi${skipped ? `, ${skipped} geçersiz atlandı` : ''}. Mevcut domainlerinize dokunulmadı.`;
+        _userTdShowResult(resEl, true, msg);
+        loadUserTdCount();
+
+        // Input'u temizle
+        input.value = '';
+        const nameEl = document.getElementById('userTdFileName');
+        if (nameEl) nameEl.textContent = 'Dosya seçilmedi';
+        if (resetCk) resetCk.checked = false;
+
+    } catch (e) {
+        _userTdShowResult(resEl, false, '❌ ' + e.message);
+    }
+}
+
+/** Son otomatik yedekten geri yükle */
+async function userTdRestoreBackup() {
+    if (!_userTdBackup || !_userTdBackup.length) {
+        alert('Geri dönülecek yedek bulunamadı. Sayfayı yenilediyseniz yedek kaybolmuş olabilir.\nDosya olarak indirdiğiniz yedeği "İçe Aktar" ile yükleyin.'); return;
+    }
+    if (!confirm(`${_userTdBackup.length} domainlik önceki listeye dönmek istiyor musunuz?\n\nBu işlem mevcut listeyi temizleyip yedeği geri yükleyecek.`)) return;
+
+    const resEl  = document.getElementById('userTdImportResult');
+    _userTdShowResult(resEl, null, '⏳ Önceki listeye dönülüyor…');
+
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (licenseKey) headers['x-license-key'] = licenseKey;
+        const res = await fetch('/api/trusted-domains/import', {
+            method: 'POST', headers,
+            body: JSON.stringify({ domains: _userTdBackup, merge: false })
+        });
+        const data = await res.json();
+        if (!res.ok) { _userTdShowResult(resEl, false, '❌ ' + (data.error || res.status)); return; }
+        _userTdBackup = null;
+        const restoreBtn = document.getElementById('btnUserTdRestore');
+        if (restoreBtn) restoreBtn.style.display = 'none';
+        _userTdShowResult(resEl, true, `✅ Önceki listeye geri dönüldü. ${data.accepted?.length || 0} domain yüklendi.`);
+        loadUserTdCount();
+    } catch (e) {
+        _userTdShowResult(resEl, false, '❌ ' + e.message);
+    }
+}
+
+function _userTdShowResult(el, ok, msg) {
+    if (!el) return;
+    el.style.display = '';
+    if (ok === null) { // loading
+        el.style.background = 'rgba(99,102,241,0.1)';
+        el.style.color = '#a5b4fc';
+    } else if (ok) {
+        el.style.background = 'rgba(16,185,129,0.12)';
+        el.style.color = '#34d399';
+    } else {
+        el.style.background = 'rgba(239,68,68,0.12)';
+        el.style.color = '#f87171';
+    }
+    el.textContent = msg;
 }
 
 function _cuRenderCategories(cats) {

@@ -83,4 +83,44 @@ router.post('/admin/trusted-domains/import', requireAdminAuth, (req, res) => {
     }
 });
 
+// ──────────────────────────────────────────────────────────
+// KULLANICI YETKİSİYLE ERİŞİLEBİLEN ROUTE'LAR
+// (Admin token veya müşteri token yeterli — ek requireAdminAuth yok)
+// ──────────────────────────────────────────────────────────
+
+// Kullanıcı: liste dışa aktar
+router.get('/trusted-domains/export', (req, res) => {
+    const domains = listTrustedDomains();
+    const payload = {
+        version:    1,
+        exportedAt: new Date().toISOString(),
+        source:     'user',
+        count:      domains.length,
+        domains:    domains.map(d => ({
+            domain:   d.domain,
+            category: d.category,
+            note:     d.note || '',
+            enabled:  d.enabled
+        }))
+    };
+    const filename = `mailtrustai-trusted-domains-backup-${new Date().toISOString().slice(0,10)}.json`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(JSON.stringify(payload, null, 2));
+});
+
+// Kullanıcı: içe aktar (merge=true varsayılan — kullanıcı domainleri silinmez)
+router.post('/trusted-domains/import', (req, res) => {
+    const { domains, merge = true } = req.body || {};
+    if (!Array.isArray(domains) || !domains.length) {
+        return res.status(400).json({ error: 'domains[] zorunludur' });
+    }
+    try {
+        const result = importTrustedDomains(domains, { addedBy: 'user-import', merge });
+        res.json(result);
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
 module.exports = router;
