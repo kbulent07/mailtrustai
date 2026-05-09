@@ -38,9 +38,20 @@ router.get('/scan-mailboxes', (req, res) => {
 
 router.post('/scan-mailboxes', async (req, res) => {
     const { imapHost, imapEmail, imapPassword } = req.body;
-    if (!imapHost)     return res.status(400).json({ error: 'IMAP sunucu adresi zorunludur.' });
     if (!imapEmail)    return res.status(400).json({ error: 'E-posta adresi zorunludur.' });
-    if (!imapPassword) return res.status(400).json({ error: 'IMAP şifresi zorunludur.' });
+    if (!imapHost)     return res.status(400).json({ error: 'IMAP sunucu adresi zorunludur.' });
+
+    // Şifre boşsa: bu hesap için zaten kayıt varsa mevcut (encrypt edilmiş) şifreyi yeniden kullan.
+    // Yoksa hâlâ zorunlu — yeni hesap için açık şifre lazım.
+    if (!imapPassword) {
+        const settings = loadSettings();
+        const existing = (settings.scanMailboxes || []).find(s => s.imapEmail === imapEmail);
+        if (existing && existing.imapPassword) {
+            req.body._existingEncryptedImapPassword = existing.imapPassword;
+        } else {
+            return res.status(400).json({ error: 'IMAP şifresi zorunludur.' });
+        }
+    }
 
     const license = checkLicense(req);
     if (!license.features?.scanMailbox)

@@ -19,7 +19,8 @@ async function upsertScanMailbox(input, license) {
     const {
         imapHost, imapPort, imapEmail, imapPassword, imapTls,
         smtpHost, smtpPort, smtpPassword,
-        reportLang, enabled, reportMode, reportTo, reportToForwarder
+        reportLang, enabled, reportMode, reportTo, reportToForwarder,
+        _existingEncryptedImapPassword
     } = input;
 
     if (reportMode === 'all' && license.plan !== 'enterprise') {
@@ -44,15 +45,19 @@ async function upsertScanMailbox(input, license) {
         };
     }
 
+    // Şifre payload'da boşsa rota katmanı mevcut encrypted şifreyi geçirir — onu kullan.
+    const encryptedImapPassword = imapPassword
+        ? encrypt(imapPassword)
+        : _existingEncryptedImapPassword;
     const entry = {
         imapEmail,
         imapHost,
         imapPort:          Number(imapPort) || 993,
-        imapPassword:      encrypt(imapPassword),
+        imapPassword:      encryptedImapPassword,
         imapTls:           imapTls !== false && imapTls !== 'false',
         smtpHost:          smtpHost || imapHost,
         smtpPort:          Number(smtpPort) || 587,
-        smtpPassword:      smtpPassword ? encrypt(smtpPassword) : encrypt(imapPassword),
+        smtpPassword:      smtpPassword ? encrypt(smtpPassword) : encryptedImapPassword,
         reportLang:        reportLang || 'tr',
         reportMode:        reportMode === 'all' ? 'all' : 'risky',
         reportTo:          reportToForwarder ? '' : (reportTo || ''),

@@ -1343,11 +1343,30 @@ async function saveImapAccount() {
         }
         const headers = { 'Content-Type': 'application/json' };
         if (licenseKey) headers['x-license-key'] = licenseKey;
-        await fetch('/api/scan-mailboxes', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ ...alert_, imapEmail: targetEmail, realtimeAlert: true })
-        }).catch(() => {});
+        // IMAP bağlantı bilgilerini de gönder — server scan-mailbox kaydı için bunlara ihtiyaç duyuyor.
+        // Edit modunda şifre boş olabilir; o durumda server mevcut kayıttaki şifreyi yeniden kullanır.
+        const payload = {
+            ...alert_,
+            imapEmail:    targetEmail,
+            imapHost:     account.host,
+            imapPort:     account.port,
+            imapPassword: account.password,
+            imapTls:      account.secure,
+            realtimeAlert: true
+        };
+        try {
+            const res = await fetch('/api/scan-mailboxes', {
+                method: 'POST', headers, body: JSON.stringify(payload)
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                alert((currentLang === 'tr' ? 'Anlık rapor kaydedilemedi: ' : 'Failed to save instant report: ') + (data.error || res.status));
+                return;
+            }
+        } catch (e) {
+            alert((currentLang === 'tr' ? 'Anlık rapor kaydedilemedi: ' : 'Failed to save instant report: ') + e.message);
+            return;
+        }
     } else {
         await fetch(`/api/scan-mailboxes/${encodeURIComponent(targetEmail)}`, { method: 'DELETE' }).catch(() => {});
     }
