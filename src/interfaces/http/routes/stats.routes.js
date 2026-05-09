@@ -90,6 +90,51 @@ router.get('/stats', (req, res) => {
     });
 });
 
+// VirusTotal tespitleri — istatistik paneli için ek/mail detayı
+router.get('/stats/vt-detections', (req, res) => {
+    const history = loadScanHistory();
+    const results = [];
+
+    for (const scan of history) {
+        const vtFiles = (scan.virusTotal || []).filter(v =>
+            (v.stats?.malicious || 0) > 0 || (v.stats?.suspicious || 0) > 0
+        );
+        if (!vtFiles.length) continue;
+
+        const meta = scan.emailMeta || {};
+        const from    = meta.from?.[0]?.address || '';
+        const fromName= meta.from?.[0]?.name    || '';
+        const subject = meta.subject || '(Konu yok)';
+        const date    = meta.date || scan.timestamp || '';
+
+        for (const vt of vtFiles) {
+            // Engine listesini birleştir ve deduplikasyon yap (aynı virus adı birden fazla motorda)
+            const engines = [
+                ...(vt.maliciousEngines  || []).map(e => ({ engine: e.engine, result: e.result, type: 'malicious' })),
+                ...(vt.suspiciousEngines || []).map(e => ({ engine: e.engine, result: e.result, type: 'suspicious' }))
+            ];
+            results.push({
+                scanId:    scan.id || scan.timestamp || '',
+                timestamp: scan.timestamp || '',
+                filename:  vt.filename || vt.name || '—',
+                sha256:    vt.sha256 || vt.hash || '',
+                fileType:  vt.typeDescription || '',
+                link:      vt.link || '',
+                malicious: vt.stats?.malicious  || 0,
+                suspicious:vt.stats?.suspicious || 0,
+                total:     vt.stats?.total      || 0,
+                engines,
+                email: { from, fromName, subject, date }
+            });
+        }
+    }
+
+    // En çok malicious önce, sonra tarih
+    results.sort((a, b) => (b.malicious + b.suspicious) - (a.malicious + a.suspicious) || b.timestamp.localeCompare(a.timestamp));
+
+    res.json(results.slice(0, 200));
+});
+
 // OTX ile tespit edilen domain/hostname listesi — istatistik paneli FP entegrasyonu için
 router.get('/stats/otx-domains', (req, res) => {
     const history = loadScanHistory();

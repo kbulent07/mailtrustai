@@ -3977,8 +3977,14 @@ function _cuRenderIntegrations(d) {
     const otxPct = total > 0 ? (d.otxHits / total * 100).toFixed(1) : '0.0';
     document.getElementById('cuStatsIntegrations').innerHTML = `
         <div style="margin-bottom:14px">
-            ${_cuBar('🦠 VirusTotal Tespiti', d.vtHits || 0, total || 1, '#f87171')}
-            <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">İsabet oranı: ${vtPct}%</div>
+            <div style="cursor:pointer;user-select:none" onclick="toggleVtDetections()" title="Tespit edilen dosya ve antivirüsleri göster/gizle">
+                ${_cuBar('🦠 VirusTotal Antivirüs Tespitleri  ▾', d.vtHits || 0, total || 1, '#f87171')}
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">
+                İsabet oranı: ${vtPct}%
+                ${d.vtHits > 0 ? `<span style="margin-left:8px;color:#f87171;cursor:pointer;text-decoration:underline" onclick="toggleVtDetections()">tespit listesi →</span>` : ''}
+            </div>
+            <div id="cuVtDetectionList" style="display:none;margin-top:10px"></div>
         </div>
         <div>
             <div style="cursor:pointer;user-select:none" onclick="toggleOtxDomainList()" title="Tespit edilen domainleri göster/gizle">
@@ -3990,6 +3996,110 @@ function _cuRenderIntegrations(d) {
             </div>
             <div id="cuOtxDomainList" style="display:none;margin-top:10px"></div>
         </div>
+    `;
+}
+
+// ─── VIRUSTOTAl TESPİT LİSTESİ ───────────────────────────
+let _vtDetectionListOpen = false;
+async function toggleVtDetections() {
+    const panel = document.getElementById('cuVtDetectionList');
+    if (!panel) return;
+    _vtDetectionListOpen = !_vtDetectionListOpen;
+    if (!_vtDetectionListOpen) { panel.style.display = 'none'; return; }
+    panel.style.display = '';
+    panel.innerHTML = '<p style="font-size:12px;color:var(--text-secondary);padding:8px 0">⏳ Yükleniyor…</p>';
+    try {
+        const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
+        const res = await fetch('/api/stats/vt-detections', { headers });
+        if (!res.ok) { panel.innerHTML = '<p style="font-size:12px;color:#f87171">Yüklenemedi.</p>'; return; }
+        const list = await res.json();
+        _cuRenderVtDetections(panel, list);
+    } catch (e) {
+        panel.innerHTML = `<p style="font-size:12px;color:#f87171">${esc(e.message)}</p>`;
+    }
+}
+
+function _cuRenderVtDetections(panel, list) {
+    if (!list.length) {
+        panel.innerHTML = '<p style="font-size:12px;color:var(--text-secondary);padding:8px 0">VirusTotal tespiti bulunamadı.</p>';
+        return;
+    }
+
+    const cards = list.map(item => {
+        const scanDate = item.timestamp ? new Date(item.timestamp).toLocaleString('tr-TR', { dateStyle:'short', timeStyle:'short' }) : '—';
+        const emailDate = item.email.date ? new Date(item.email.date).toLocaleDateString('tr-TR', { day:'2-digit', month:'short', year:'2-digit' }) : '—';
+        const ratio = item.total > 0 ? `${item.malicious + item.suspicious}/${item.total}` : '—';
+        const ratioColor = item.malicious > 0 ? '#f87171' : '#fb923c';
+
+        // Engine satırları: motor adı + virus/tespit adı
+        const engineRows = item.engines.slice(0, 12).map(e => {
+            const dot = e.type === 'malicious' ? '🔴' : '🟠';
+            return `<div style="display:flex;gap:6px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px">
+                <span style="min-width:14px">${dot}</span>
+                <span style="min-width:120px;color:var(--text-secondary);flex-shrink:0">${esc(e.engine)}</span>
+                <span style="color:#fde68a;word-break:break-all">${esc(e.result)}</span>
+            </div>`;
+        }).join('');
+        const moreEngines = item.engines.length > 12
+            ? `<div style="font-size:11px;color:var(--text-secondary);padding:4px 0">… ve ${item.engines.length - 12} motor daha</div>`
+            : '';
+
+        const vtLink = item.link
+            ? `<a href="${esc(item.link)}" target="_blank" style="font-size:11px;color:#60a5fa;text-decoration:none" title="VirusTotal'da görüntüle">🔗 VT</a>`
+            : '';
+
+        const scanLink = item.scanId
+            ? `<span style="font-size:11px;color:#60a5fa;cursor:pointer;text-decoration:underline" onclick="openHistoryResult('${esc(item.scanId)}');showPage('scan')" title="Taramayı aç">📋 Taramayı aç</span>`
+            : '';
+
+        return `
+        <div style="background:var(--surface2);border:1px solid rgba(248,113,113,0.2);border-radius:10px;padding:12px;margin-bottom:10px">
+
+            <!-- Dosya başlığı -->
+            <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
+                <div style="font-size:22px;line-height:1">📎</div>
+                <div style="flex:1;min-width:0">
+                    <div style="font-weight:700;font-size:13px;color:#f8fafc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(item.filename)}">${esc(item.filename)}</div>
+                    <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${esc(item.fileType || '—')}</div>
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                    <div style="font-size:18px;font-weight:800;color:${ratioColor}">${ratio}</div>
+                    <div style="font-size:10px;color:var(--text-secondary)">motordan</div>
+                </div>
+            </div>
+
+            <!-- E-posta bilgisi -->
+            <div style="background:rgba(0,0,0,0.2);border-radius:7px;padding:8px 10px;margin-bottom:10px;font-size:12px">
+                <div style="display:flex;gap:6px;align-items:baseline;margin-bottom:3px">
+                    <span style="color:var(--text-secondary);min-width:50px">📧 Kimden:</span>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.email.fromName ? `${item.email.fromName} <${item.email.from}>` : item.email.from)}</span>
+                </div>
+                <div style="display:flex;gap:6px;align-items:baseline;margin-bottom:3px">
+                    <span style="color:var(--text-secondary);min-width:50px">📌 Konu:</span>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:italic">${esc(item.email.subject)}</span>
+                </div>
+                <div style="display:flex;gap:6px;align-items:baseline">
+                    <span style="color:var(--text-secondary);min-width:50px">📅 Tarih:</span>
+                    <span>${emailDate}</span>
+                    <span style="color:var(--text-secondary);margin-left:auto">${vtLink} &nbsp; ${scanLink}</span>
+                </div>
+            </div>
+
+            <!-- Antivirüs motorları -->
+            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
+                🛡️ Antivirüs Tespitleri (${item.engines.length} motor)
+            </div>
+            <div style="background:rgba(0,0,0,0.15);border-radius:6px;padding:6px 8px;max-height:220px;overflow-y:auto">
+                ${engineRows}${moreEngines}
+            </div>
+        </div>`;
+    }).join('');
+
+    panel.innerHTML = `
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">
+            ${list.length} zararlı/şüpheli ek tespiti — en fazla motor tespitinden sıralı
+        </div>
+        ${cards}
     `;
 }
 
