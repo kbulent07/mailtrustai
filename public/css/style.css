@@ -194,6 +194,15 @@ body::before {
 .btn-sm { padding: 6px 14px; font-size: 13px; }
 .btn-icon { padding: 8px; width: 36px; height: 36px; justify-content: center; }
 
+/* İstatistik tarih aralığı çubuğu — dar ekranda butonları sıkıştır */
+@media (max-width: 768px) {
+    .stats-range-bar .btn-sm { padding: 5px 8px; font-size: 12px; min-height: 28px; }
+    .stats-range-bar { gap: 4px !important; }
+}
+@media (max-width: 480px) {
+    .stats-range-bar .btn-sm { padding: 4px 7px; font-size: 11px; }
+}
+
 /* ─── MAIN LAYOUT ──────────────────────────── */
 .main-content {
     position: relative; z-index: 1;

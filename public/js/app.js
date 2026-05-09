@@ -3513,36 +3513,92 @@ async function loadStatsPage() {
     await Promise.all([_cuLoadStats(), loadDetailedStatsCustomer()]);
 }
 
+// Hızlı preset hesaplayıcı — hem üst butonlar (setStatsRange) hem alt dropdown (onCuStatsRangeChange) kullanır
+function _statsQuickPreset(key) {
+    const fmt = d => d.toISOString().slice(0, 10);
+    switch (key) {
+        case 'today': {
+            const t = new Date();
+            return { start: fmt(t), end: fmt(t), btnId: 'rangeBtnToday' };
+        }
+        case 'yesterday': {
+            const y = new Date(Date.now() - 86400000);
+            return { start: fmt(y), end: fmt(y), btnId: 'rangeBtnYesterday' };
+        }
+        case 'thisWeek': {
+            // Pazartesi → bugün (TR alışkanlığı: hafta Pzt başlar)
+            const today = new Date();
+            const day   = today.getDay();              // 0=Paz, 1=Pzt
+            const diff  = day === 0 ? 6 : day - 1;
+            const monday = new Date(Date.now() - diff * 86400000);
+            return { start: fmt(monday), end: fmt(today), btnId: 'rangeBtnThisWeek' };
+        }
+        case 'thisMonth': {
+            const now = new Date();
+            const first = new Date(now.getFullYear(), now.getMonth(), 1);
+            return { start: fmt(first), end: fmt(now), btnId: 'rangeBtnThisMonth' };
+        }
+        case 'lastMonth': {
+            const now = new Date();
+            const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const last  = new Date(now.getFullYear(), now.getMonth(), 0);
+            return { start: fmt(first), end: fmt(last), btnId: 'rangeBtnLastMonth' };
+        }
+        default:
+            return null;
+    }
+}
+
 // Üst tarih aralığı butonları — hem özet hem ayrıntılı raporu aynı aralıkla yükler
 function setStatsRange(value) {
-    // Aktif buton stil güncelleme
-    ['7','30','90','365','Custom'].forEach(k => {
+    // Aktif buton stil güncelleme — tüm range butonları
+    const allKeys = ['Today','Yesterday','ThisWeek','ThisMonth','LastMonth','7','30','90','365','Custom'];
+    allKeys.forEach(k => {
         const btn = document.getElementById('rangeBtn' + k);
         if (btn) btn.style.borderColor = '';
     });
     const wrap = document.getElementById('topRangeWrap');
+    const fmt = d => d.toISOString().slice(0, 10);
+
+    const preset = _statsQuickPreset(value);
+    if (preset) {
+        const btn = document.getElementById(preset.btnId);
+        if (btn) btn.style.borderColor = 'var(--accent)';
+        if (wrap) wrap.style.display = 'none';
+        // Alt bölüm dropdown'unu custom + tarihlerle senkronla
+        const sel = document.getElementById('cuStatsDays');
+        if (sel) sel.value = 'custom';
+        const subWrap = document.getElementById('cuCustomRangeWrap');
+        if (subWrap) subWrap.style.display = 'inline-flex';
+        const sIn = document.getElementById('cuStatsStart');
+        const eIn = document.getElementById('cuStatsEnd');
+        if (sIn) sIn.value = preset.start;
+        if (eIn) eIn.value = preset.end;
+        // Hem üst kartlar hem ayrıntılı rapor aynı aralıkla
+        _cuLoadStatsRanged(preset.start, preset.end);
+        loadDetailedStatsCustomer();
+        return;
+    }
 
     if (value === 'custom') {
         const btn = document.getElementById('rangeBtnCustom');
         if (btn) btn.style.borderColor = 'var(--accent)';
         // Default 30 gün önce → bugün
-        const start = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-        const end   = new Date().toISOString().slice(0, 10);
         const sIn = document.getElementById('topStatsStart');
         const eIn = document.getElementById('topStatsEnd');
-        if (sIn && !sIn.value) sIn.value = start;
-        if (eIn && !eIn.value) eIn.value = end;
+        if (sIn && !sIn.value) sIn.value = fmt(new Date(Date.now() - 30 * 86400000));
+        if (eIn && !eIn.value) eIn.value = fmt(new Date());
         if (wrap) wrap.style.display = '';
         return;
     }
 
-    // Preset gün sayısı
+    // Preset gün sayısı (7/30/90/365)
     if (wrap) wrap.style.display = 'none';
     const days = String(value);
     const btn  = document.getElementById('rangeBtn' + days);
     if (btn) btn.style.borderColor = 'var(--accent)';
 
-    // Alttaki dropdown'u senkronla — eğer bu değer mevcut option'lardan biri değilse "30" varsayalım
+    // Alttaki dropdown'u senkronla
     const sel = document.getElementById('cuStatsDays');
     if (sel) {
         const has = Array.from(sel.options).some(o => o.value === days);
@@ -3728,6 +3784,21 @@ function onCuStatsRangeChange() {
     const sel  = document.getElementById('cuStatsDays');
     const wrap = document.getElementById('cuCustomRangeWrap');
     if (!sel || !wrap) return;
+
+    // Hızlı preset (today/yesterday/thisWeek/thisMonth/lastMonth)
+    const preset = _statsQuickPreset(sel.value);
+    if (preset) {
+        // Dropdown 'custom' moduna alınıp tarihler doldurulur — loadDetailedStatsCustomer custom'tan tarih okuyor
+        sel.value = 'custom';
+        const sIn = document.getElementById('cuStatsStart');
+        const eIn = document.getElementById('cuStatsEnd');
+        if (sIn) sIn.value = preset.start;
+        if (eIn) eIn.value = preset.end;
+        wrap.style.display = 'inline-flex';
+        loadDetailedStatsCustomer();
+        return;
+    }
+
     if (sel.value === 'custom') {
         // Default: son 30 gün
         const end   = new Date();
