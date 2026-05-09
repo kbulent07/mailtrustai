@@ -4161,16 +4161,28 @@ async function reportFpFromStats(domain, severity, message) {
     if (!domain) return;
     if (!confirm(`"${domain}" için yanlış pozitif raporu gönderilsin mi?\nAdmin onayından sonra güvenilir listeye eklenir.`)) return;
     try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (licenseKey) headers['x-license-key'] = licenseKey;
         const res = await fetch('/api/fp-suggestions', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ domain, findingMsg: message, severity })
+            headers,
+            body: JSON.stringify({ domain, message, severity, category: 'otx' })
         });
         const data = await res.json();
-        if (res.ok) {
-            alert(`✅ "${domain}" yanlış pozitif olarak raporlandı. Admin onayını bekliyor.`);
-        } else {
+        if (!res.ok) {
             alert(`⚠️ ${data.error || 'Gönderilemedi.'}`);
+            return;
+        }
+        if (data.alreadyDecided) {
+            if (data.status === 'approved') {
+                alert(`✅ "${domain}" zaten güvenilir listede (onaylı). Tekrar eklenmesi gerekmiyor.`);
+            } else {
+                alert(`ℹ️ "${domain}" daha önce reddedilmiş. Lütfen yöneticinize danışın.`);
+            }
+        } else if (data.incremented) {
+            alert(`✅ "${domain}" için rapor güncellendi (bildirim sayısı artırıldı). Admin onayını bekliyor.`);
+        } else {
+            alert(`✅ "${domain}" yanlış pozitif olarak raporlandı. Admin onayını bekliyor.`);
         }
     } catch (e) {
         alert(`Hata: ${e.message}`);

@@ -6,7 +6,7 @@
 //   • POST /api/admin/fp-suggestions/:domain/reject  — reddet (admin)
 // ============================================================
 const express = require('express');
-const { requireAdminAuth } = require('../../../middleware/adminAuth');
+const { requireAdminAuth, verifyAdminToken } = require('../../../middleware/adminAuth');
 const { checkLicense } = require('../../../services/appState');
 const {
     addSuggestion, listPending, listAll, approve, reject, deleteSuggestion
@@ -15,9 +15,14 @@ const {
 const router = express.Router();
 
 // Kullanıcı tarafı: lisanslı her kullanıcı kendi taramasından FP raporlayabilir
+// Admin Bearer token ile de çağrılabilir (istatistikler panelinden)
 router.post('/fp-suggestions', (req, res) => {
+    // Admin oturumu kontrolü — Bearer token varsa lisans zorunluluğunu atla
+    const auth = req.headers['authorization'] || '';
+    const isAdmin = auth.startsWith('Bearer ') && !!verifyAdminToken(auth.slice(7).trim());
+
     const license = checkLicense(req);
-    if (!license || !license.valid) {
+    if (!isAdmin && (!license || !license.valid)) {
         return res.status(401).json({ error: 'Lisans gerekli' });
     }
 
@@ -31,7 +36,7 @@ router.post('/fp-suggestions', (req, res) => {
             category: category || '',
             severity: severity || '',
             message:  message  || '',
-            reporter: (license.licenseKey || '').slice(0, 32)
+            reporter: isAdmin ? 'admin' : (license.licenseKey || '').slice(0, 32)
         });
         res.json(out);
     } catch (e) {
