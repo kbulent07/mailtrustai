@@ -3642,12 +3642,48 @@ function _cuRenderCategories(cats) {
 // ─── AYRINTILI RAPOR ──────────────────────────────────────
 let _cuLastDetailed = null;
 
+function onCuStatsRangeChange() {
+    const sel  = document.getElementById('cuStatsDays');
+    const wrap = document.getElementById('cuCustomRangeWrap');
+    if (!sel || !wrap) return;
+    if (sel.value === 'custom') {
+        // Default: son 30 gün
+        const end   = new Date();
+        const start = new Date(Date.now() - 30 * 86400000);
+        const fmt   = d => d.toISOString().slice(0, 10);
+        const eIn   = document.getElementById('cuStatsEnd');
+        const sIn   = document.getElementById('cuStatsStart');
+        if (eIn && !eIn.value) eIn.value = fmt(end);
+        if (sIn && !sIn.value) sIn.value = fmt(start);
+        wrap.style.display = 'inline-flex';
+        // Custom seçildi — kullanıcı "Uygula"ya basana kadar yükleme yapma
+        return;
+    }
+    wrap.style.display = 'none';
+    loadDetailedStatsCustomer();
+}
+
 async function loadDetailedStatsCustomer() {
     const daysEl = document.getElementById('cuStatsDays');
-    const days   = daysEl ? Number(daysEl.value) || 30 : 30;
+    const mode   = daysEl ? daysEl.value : '30';
+    let url;
+    if (mode === 'custom') {
+        const start = document.getElementById('cuStatsStart')?.value;
+        const end   = document.getElementById('cuStatsEnd')?.value;
+        if (!start || !end) { alert('Başlangıç ve bitiş tarihini girin.'); return; }
+        if (start > end)    { alert('Başlangıç tarihi bitişten sonra olamaz.'); return; }
+        url = `/api/stats/detailed?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+    } else {
+        const days = Number(mode) || 30;
+        url = '/api/stats/detailed?days=' + days;
+    }
     try {
-        const res = await fetch('/api/stats/detailed?days=' + days);
-        if (!res.ok) return;
+        const res = await fetch(url);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            console.error('detailed stats:', res.status, err);
+            return;
+        }
         const d = await res.json();
         _cuLastDetailed = d;
         _cuRenderDetailedSummary(d);

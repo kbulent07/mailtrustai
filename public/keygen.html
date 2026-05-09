@@ -331,11 +331,20 @@
             <h3 style="margin:0">📋 Ayrıntılı Rapor</h3>
             <div style="display:flex;align-items:center;gap:8px">
                 <label style="font-size:12px;color:var(--text-secondary)">Dönem:</label>
-                <select id="statsDays" onchange="loadDetailedStats()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text-primary);font-size:13px">
+                <select id="statsDays" onchange="onAdminStatsRangeChange()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text-primary);font-size:13px">
                     <option value="7">Son 7 gün</option>
                     <option value="30" selected>Son 30 gün</option>
                     <option value="90">Son 90 gün</option>
+                    <option value="180">Son 180 gün</option>
+                    <option value="365">Son 365 gün</option>
+                    <option value="custom">📅 Özel aralık</option>
                 </select>
+                <span id="adminCustomRangeWrap" style="display:none;align-items:center;gap:6px;font-size:13px">
+                    <input type="date" id="statsStart" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-primary);font-size:13px">
+                    <span style="color:var(--text-secondary)">–</span>
+                    <input type="date" id="statsEnd" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-primary);font-size:13px">
+                    <button class="btn btn-primary btn-sm" onclick="loadDetailedStats()">Uygula</button>
+                </span>
                 <button class="btn btn-ghost btn-sm" onclick="exportDetailedCsv()" title="CSV indir">⬇️ CSV</button>
             </div>
         </div>
@@ -886,11 +895,39 @@
         // ─── AYRINTILI RAPOR ──────────────────────────────────────
         let _lastDetailed = null;
 
+        function onAdminStatsRangeChange() {
+            const sel  = document.getElementById('statsDays');
+            const wrap = document.getElementById('adminCustomRangeWrap');
+            if (!sel || !wrap) return;
+            if (sel.value === 'custom') {
+                const fmt = d => d.toISOString().slice(0, 10);
+                const sIn = document.getElementById('statsStart');
+                const eIn = document.getElementById('statsEnd');
+                if (sIn && !sIn.value) sIn.value = fmt(new Date(Date.now() - 30 * 86400000));
+                if (eIn && !eIn.value) eIn.value = fmt(new Date());
+                wrap.style.display = 'inline-flex';
+                return;
+            }
+            wrap.style.display = 'none';
+            loadDetailedStats();
+        }
+
         async function loadDetailedStats() {
             const daysEl = document.getElementById('statsDays');
-            const days   = daysEl ? Number(daysEl.value) || 30 : 30;
+            const mode   = daysEl ? daysEl.value : '30';
+            let url;
+            if (mode === 'custom') {
+                const start = document.getElementById('statsStart')?.value;
+                const end   = document.getElementById('statsEnd')?.value;
+                if (!start || !end) { alert('Başlangıç ve bitiş tarihini girin.'); return; }
+                if (start > end)    { alert('Başlangıç tarihi bitişten sonra olamaz.'); return; }
+                url = `/api/stats/detailed?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+            } else {
+                const days = Number(mode) || 30;
+                url = '/api/stats/detailed?days=' + days;
+            }
             try {
-                const res  = await fetch('/api/stats/detailed?days=' + days, { headers: adminHeaders() });
+                const res = await fetch(url, { headers: adminHeaders() });
                 if (handle403(res)) return;
                 if (!res.ok) { console.error('detailed stats error:', res.status); return; }
                 const d = await res.json();

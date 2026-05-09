@@ -121,13 +121,38 @@ function saveScanHistory(history) {
 
 // ─── AYRINTILI İSTATİSTİK ────────────────────────────────
 /**
- * Belirtilen gün sayısı için ayrıntılı istatistikler.
- * @param {number} days - varsayılan 30
- * @returns {object} { totalScans, byUser, bySource, byLevel, hourly,
- *                     topSenders, topRiskySenders, slowestScores, avgScore }
+ * Belirtilen aralık için ayrıntılı istatistikler.
+ *
+ * @param {number|object} arg
+ *   number     → son N gün (geriye uyumluluk: getDetailedStats(30))
+ *   object     → { days?, start?, end? } — start/end ISO string
+ *                start verilirse since=start, end verilirse cutoff=end
+ *
+ * @returns {object} { days, start, end, totalScans, byUser, bySource,
+ *                     byLevel, hourly, topSenders, topRiskySenders, avgScore }
  */
-function getDetailedStats(days = 30) {
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+function getDetailedStats(arg = 30) {
+    let days, since, until;
+    if (typeof arg === 'number') {
+        days  = Math.max(1, Math.min(arg, 365));
+        since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+        until = new Date().toISOString();
+    } else {
+        const startMs = arg.start ? new Date(arg.start).getTime() : null;
+        const endMs   = arg.end   ? new Date(arg.end).getTime()   : null;
+        if (Number.isFinite(startMs) && Number.isFinite(endMs)) {
+            since = new Date(startMs).toISOString();
+            // end günü dahil et — verilmiş tarihin günün sonu (23:59:59)
+            const endIncl = new Date(endMs);
+            endIncl.setHours(23, 59, 59, 999);
+            until = endIncl.toISOString();
+            days  = Math.max(1, Math.round((endIncl.getTime() - startMs) / 86400000));
+        } else {
+            days  = Math.max(1, Math.min(arg.days || 30, 365));
+            since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+            until = new Date().toISOString();
+        }
+    }
 
     // ─── Kullanıcı bazlı tarama sayısı ve tehdit sayısı ───
     const byUserRows = db.prepare(`
@@ -141,10 +166,10 @@ function getDetailedStats(days = 30) {
             ROUND(AVG(score), 1) AS avg_score,
             MAX(timestamp) AS last_scan_at
         FROM scan_history
-        WHERE timestamp >= ?
+        WHERE timestamp >= ? AND timestamp <= ?
         GROUP BY user_key
         ORDER BY scan_count DESC
-    `).all(since);
+    `).all(since, until);
 
     const byUser = byUserRows.map(r => ({
         userKey:    r.user_key,
@@ -161,15 +186,15 @@ function getDetailedStats(days = 30) {
     // ─── Kaynak bazlı dağılım ─────────────────────────────
     const bySourceRows = db.prepare(`
         SELECT scan_source, COUNT(*) AS n, ROUND(AVG(score),1) AS avg_score
-        FROM scan_history WHERE timestamp >= ?
+        FROM scan_history WHERE timestamp >= ? AND timestamp <= ?
         GROUP BY scan_source ORDER BY n DESC
-    `).all(since);
+    `).all(since, until);
 
     // ─── Seviye dağılımı ─────────────────────────────────
     const byLevelRows = db.prepare(`
         SELECT level, COUNT(*) AS n FROM scan_history
-        WHERE timestamp >= ? GROUP BY level
-    `).all(since);
+        WHERE timestamp >= ? AND timestamp <= ? GROUP BY level
+    `).all(since, until);
     const byLevel = { high: 0, medium: 0, low: 0, safe: 0 };
     for (const r of byLevelRows) {
         if (byLevel[r.level] !== undefined) byLevel[r.level] = r.n;
@@ -178,9 +203,9 @@ function getDetailedStats(days = 30) {
     // ─── Saatlik dağılım (0-23) ──────────────────────────
     const hourlyRows = db.prepare(`
         SELECT CAST(strftime('%H', timestamp) AS INTEGER) AS hour, COUNT(*) AS n
-        FROM scan_history WHERE timestamp >= ?
+        FROM scan_history WHERE timestamp >= ? AND timestamp <= ?
         GROUP BY hour ORDER BY hour
-    `).all(since);
+    `).all(since, until);
     const hourly = Array.from({ length: 24 }, (_, h) => ({
         hour: h,
         count: hourlyRows.find(r => r.hour === h)?.n || 0
@@ -189,9 +214,9 @@ function getDetailedStats(days = 30) {
     // ─── Hafta günü dağılımı (0=Pazar, 6=Cumartesi) ───────
     const weekdayRows = db.prepare(`
         SELECT CAST(strftime('%w', timestamp) AS INTEGER) AS wd, COUNT(*) AS n
-        FROM scan_history WHERE timestamp >= ?
+        FROM scan_history WHERE timestamp >= ? AND timestamp <= ?
         GROUP BY wd ORDER BY wd
-    `).all(since);
+    `).all(since, until);
     const weekdayLabels = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
     const weekday = weekdayLabels.map((label, i) => ({
         weekday: label,
@@ -201,9 +226,9 @@ function getDetailedStats(days = 30) {
     // ─── En çok taranan göndericiler ─────────────────────
     const topSenders = db.prepare(`
         SELECT from_email, COUNT(*) AS n FROM scan_history
-        WHERE timestamp >= ? AND from_email != ''
+        WHERE timestamp >= ? AND timestamp <= ? AND from_email != ''
         GROUP BY from_email ORDER BY n DESC LIMIT 10
-    `).all(since).map(r => ({ email: r.from_email, count: r.n }));
+    `).all(since, until).map(r => ({ email: r.from_email, count: r.n }));
 
     // ─── En riskli göndericiler (yüksek seviyeli) ─────────
     const topRiskySenders = db.prepare(`
@@ -213,12 +238,12 @@ function getDetailedStats(days = 30) {
                COUNT(*) AS total_n,
                ROUND(AVG(score),1) AS avg_score
         FROM scan_history
-        WHERE timestamp >= ? AND from_email != ''
+        WHERE timestamp >= ? AND timestamp <= ? AND from_email != ''
             AND (level='high' OR level='medium')
         GROUP BY from_email
         ORDER BY high_n DESC, medium_n DESC
         LIMIT 10
-    `).all(since).map(r => ({
+    `).all(since, until).map(r => ({
         email:     r.from_email,
         high:      r.high_n   || 0,
         medium:    r.medium_n || 0,
@@ -230,12 +255,15 @@ function getDetailedStats(days = 30) {
     const summary = db.prepare(`
         SELECT COUNT(*) AS total, ROUND(AVG(score),1) AS avg_score,
                SUM(CASE WHEN level IN ('high','medium') THEN 1 ELSE 0 END) AS risky_total
-        FROM scan_history WHERE timestamp >= ?
-    `).get(since);
+        FROM scan_history WHERE timestamp >= ? AND timestamp <= ?
+    `).get(since, until);
 
     return {
         days,
         since,
+        until,
+        start:           since,
+        end:             until,
         totalScans:      summary?.total || 0,
         avgScore:        summary?.avg_score || 0,
         riskyTotal:      summary?.risky_total || 0,

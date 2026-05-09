@@ -17,7 +17,22 @@ router.get('/history', (req, res) => {
 });
 
 router.get('/stats/detailed', (req, res) => {
-    const days = Math.max(1, Math.min(parseInt(req.query.days, 10) || 30, 90));
+    // Tarih aralığı modları:
+    //   ?days=N         → son N gün (1..365)
+    //   ?start=YYYY-MM-DD&end=YYYY-MM-DD → özel aralık
+    const { start, end } = req.query;
+    if (start && end) {
+        const sd = new Date(start);
+        const ed = new Date(end);
+        if (Number.isNaN(sd.getTime()) || Number.isNaN(ed.getTime())) {
+            return res.status(400).json({ error: 'Geçersiz tarih: start/end YYYY-MM-DD formatında olmalı.' });
+        }
+        if (sd.getTime() > ed.getTime()) {
+            return res.status(400).json({ error: 'start tarihi end tarihinden büyük olamaz.' });
+        }
+        return res.json(getDetailedStats({ start, end }));
+    }
+    const days = Math.max(1, Math.min(parseInt(req.query.days, 10) || 30, 365));
     res.json(getDetailedStats(days));
 });
 
