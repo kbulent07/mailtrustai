@@ -8,7 +8,7 @@ const { loadSettings } = require('../storage/settingsStore');
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 saat
 
 function _getSecret() {
-    return process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#';
+    return process.env.MSA_ADMIN_TOKEN_SECRET || process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#';
 }
 
 function createAdminToken() {

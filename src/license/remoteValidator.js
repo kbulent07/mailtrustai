@@ -151,9 +151,8 @@ async function checkRemoteLicense(licenseKey) {
     console.warn('[RemoteValidator] Uzak sunucu erişilemez:', remote.error);
     const cached = _memMap.get(licenseKey);
     if (!cached) {
-        // İlk çalıştırma: önbellekte kayıt yok → izin ver, loglama yap
-        console.warn('[RemoteValidator] İlk çalıştırma toleransı: önbellekte kayıt yok.');
-        return { allowed: true, source: 'first-run-tolerance' };
+        // Önbellekte kayıt yok → erişim engellenir
+        return { allowed: false, source: 'no-cache' };
     }
 
     const ageMs = Date.now() - new Date(cached.checkedAt).getTime();
@@ -174,7 +173,7 @@ async function checkRemoteLicense(licenseKey) {
 function getCachedStatus(licenseKey) {
     if (!REMOTE_URL || !licenseKey) return null;
     const cached = _memMap.get(licenseKey);
-    if (!cached) return null;
+    if (!cached) return { allowed: false, source: 'no-cache' };
 
     const ageMs = Date.now() - new Date(cached.checkedAt).getTime();
     if (ageMs > GRACE_PERIOD_MS) {

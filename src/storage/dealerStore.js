@@ -12,6 +12,7 @@ function rowToDealer(row) {
         pinHash:       row.pin_hash,
         discountPct:   row.discount_pct,
         customPrices:  JSON.parse(row.custom_prices || '{}'),
+        whiteLabel:    JSON.parse(row.white_label || '{}'),
         active:        Boolean(row.active),
         credits:       row.credits,
         salesCount:    row.sales_count,
@@ -31,25 +32,27 @@ function findDealer(code) { return rowToDealer(_byCode.get(code)); }
 const _update = db.prepare(`
     UPDATE dealers SET
         name=?, contact_person=?, email=?, pin_hash=?,
-        discount_pct=?, custom_prices=?, active=?
+        discount_pct=?, custom_prices=?, white_label=?, active=?
     WHERE code=?`);
 
 const _insert = db.prepare(`
     INSERT INTO dealers
         (code, name, contact_person, email, pin_hash, discount_pct,
-         custom_prices, active, credits, sales_count, created_at)
-    VALUES (?,?,?,?,?,?,?,?,0,0,?)`);
+         custom_prices, white_label, active, credits, sales_count, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,0,0,?)`);
 
 function upsertDealer(d) {
     const exists = db.prepare('SELECT 1 FROM dealers WHERE code=?').get(d.code);
     if (exists) {
+        const current = findDealer(d.code);
         _update.run(d.name, d.contactPerson||'', d.email||'', d.pinHash,
             d.discountPct||0, JSON.stringify(d.customPrices||{}),
+            JSON.stringify(d.whiteLabel !== undefined ? d.whiteLabel : (current?.whiteLabel || {})),
             d.active !== false ? 1 : 0, d.code);
     } else {
         _insert.run(d.code, d.name, d.contactPerson||'', d.email||'', d.pinHash,
             d.discountPct||0, JSON.stringify(d.customPrices||{}),
-            d.active !== false ? 1 : 0, new Date().toISOString());
+            JSON.stringify(d.whiteLabel||{}), d.active !== false ? 1 : 0, new Date().toISOString());
     }
     return findDealer(d.code);
 }
@@ -120,7 +123,32 @@ function generateLicenseTx(params) {
     return _generateTx(params);
 }
 
+function normalizeWhiteLabel(input = {}) {
+    return {
+        enabled: input.enabled === true || input.enabled === 'true',
+        name: String(input.name || '').trim().slice(0, 120),
+        details: String(input.details || '').trim().slice(0, 240),
+        contactInfo: String(input.contactInfo || '').trim().slice(0, 500),
+        accentColor: /^#[0-9a-f]{6}$/i.test(String(input.accentColor || ''))
+            ? String(input.accentColor)
+            : ''
+    };
+}
+
+function updateDealerWhiteLabel(code, whiteLabel) {
+    const normalized = normalizeWhiteLabel(whiteLabel);
+    db.prepare('UPDATE dealers SET white_label=? WHERE code=?')
+        .run(JSON.stringify(normalized), code);
+    return findDealer(code)?.whiteLabel || normalized;
+}
+
+function getDealerWhiteLabel(code) {
+    const dealer = findDealer(code);
+    return dealer?.whiteLabel || {};
+}
+
 module.exports = {
     loadDealers, findDealer, upsertDealer, deleteDealer,
-    incrementSales, getCredits, addCredits, generateLicenseTx
+    incrementSales, getCredits, addCredits, generateLicenseTx,
+    updateDealerWhiteLabel, getDealerWhiteLabel, normalizeWhiteLabel
 };

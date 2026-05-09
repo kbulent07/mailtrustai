@@ -13,8 +13,14 @@ function computeHmac(dataObj) {
     const filtered = Object.fromEntries(
         Object.entries(dataObj).filter(([k]) => !k.startsWith('_'))
     );
-    const content = JSON.stringify(filtered, Object.keys(filtered).sort());
+    const content = stableStringify(filtered);
     return crypto.createHmac('sha256', HMAC_SECRET).update(content).digest('hex').substring(0, 24);
+}
+
+function stableStringify(value) {
+    if (!value || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
 }
 
 function getCurrentMonthKey() {
@@ -49,15 +55,20 @@ function saveCounts(data) {
     fs.writeFileSync(COUNTER_FILE, JSON.stringify(withHmac, null, 2), 'utf8');
 }
 
-function getMonthlyCount(monthKey) {
+function getMonthlyCount(monthKey, scope = 'global') {
     const key = monthKey || getCurrentMonthKey();
-    return loadCounts()[key] || 0;
+    const value = loadCounts()[key];
+    if (typeof value === 'number') return scope === 'global' ? value : 0;
+    if (scope === 'global') return Object.values(value || {}).reduce((sum, n) => sum + (Number(n) || 0), 0);
+    return value?.[scope] || 0;
 }
 
-function incrementMonthlyCount() {
+function incrementMonthlyCount(scope = 'global') {
     const counts = loadCounts();
     const key = getCurrentMonthKey();
-    counts[key] = (counts[key] || 0) + 1;
+    const current = typeof counts[key] === 'object' && counts[key] !== null ? counts[key] : {};
+    current[scope] = (current[scope] || 0) + 1;
+    counts[key] = current;
 
     // 13 aydan eski kayıtları temizle
     const cutoff = new Date();
@@ -68,7 +79,7 @@ function incrementMonthlyCount() {
     }
 
     saveCounts(counts);
-    return counts[key];
+    return current[scope];
 }
 
 function resetMonthlyCount(monthKey) {

@@ -7,6 +7,7 @@ const { getDailyCount, incrementDailyCount, todayKey } = require('../storage/dai
 const { getMonthlyCount, incrementMonthlyCount } = require('../storage/monthlyCounter');
 const { validateLicenseKey, UNLICENSED_FEATURES, UNLICENSED_MONTHLY_LIMIT } = require('../license/license');
 const { getCachedStatus } = require('../license/remoteValidator');
+const crypto = require('crypto');
 
 const persistedSettings = loadSettings();
 
@@ -23,20 +24,13 @@ const state = {
 
 // ─── LİSANS KONTROL FONKSİYONLARI ───────────────────────
 function checkLicense(req) {
-    // 1) Header/body'den gelen lisans (öncelik)
-    // 2) Server tarafında kalıcı olarak saklanan aktif lisans (fallback)
-    //    → Versiyon geçişi/restart sonrası lisans bilgisi otomatik korunur,
-    //      kullanıcı her cihazdan tekrar girmek zorunda kalmaz.
-    let key = req.headers['x-license-key'] || req.body?.licenseKey || '';
-    let fromServer = false;
-    if (!key) {
-        try {
-            const persisted = (loadSettings().activeLicenseKey || '').trim();
-            if (persisted) { key = persisted; fromServer = true; }
-        } catch { /* sessiz */ }
-    }
-
-    const fallback = { valid: false, features: { ...UNLICENSED_FEATURES }, monthlyLimit: UNLICENSED_MONTHLY_LIMIT, licenseKey: '' };
+    const key = req.headers['x-license-key'] || req.body?.licenseKey || '';
+    const fallback = {
+        valid: false,
+        features: { ...UNLICENSED_FEATURES },
+        monthlyLimit: UNLICENSED_MONTHLY_LIMIT,
+        usageScope: 'unlicensed'
+    };
     if (!key) return fallback;
 
     const result = validateLicenseKey(key);
@@ -48,24 +42,28 @@ function checkLicense(req) {
         return fallback;
     }
 
-    // İstatistik/audit için kullanıcı kimlik bilgisi olarak licenseKey'i sonuçla birlikte taşı
-    return { ...result, licenseKey: key, source: fromServer ? 'server-persisted' : 'request' };
+    return { ...result, usageScope: licenseUsageScope(key) };
 }
 
 function checkDailyLimit(license) {
     if (license.features?.dailyLimit === Infinity) return true;
-    return getDailyCount(todayKey()) < (license.features?.dailyLimit || 3);
+    return getDailyCount(todayKey(), license.usageScope || 'unlicensed') < (license.features?.dailyLimit || 3);
 }
 
 function checkMonthlyLimit(license) {
     const limit = license.monthlyLimit ?? 30;
     if (limit === Infinity) return true;
-    return getMonthlyCount() < limit;
+    return getMonthlyCount(undefined, license.usageScope || 'unlicensed') < limit;
 }
 
-function incrementScanCounts() {
-    incrementDailyCount();
-    incrementMonthlyCount();
+function incrementScanCounts(license = {}) {
+    const scope = license.usageScope || 'unlicensed';
+    incrementDailyCount(scope);
+    incrementMonthlyCount(scope);
 }
 
-module.exports = { state, checkLicense, checkDailyLimit, checkMonthlyLimit, incrementScanCounts };
+function licenseUsageScope(key) {
+    return crypto.createHash('sha256').update(String(key)).digest('hex').slice(0, 16);
+}
+
+module.exports = { state, checkLicense, checkDailyLimit, checkMonthlyLimit, incrementScanCounts, licenseUsageScope };

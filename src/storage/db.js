@@ -90,6 +90,15 @@ db.exec(`
     }
 })();
 
+// dealers tablosuna white_label kolonu ekleme (migration)
+(function ensureWhiteLabelColumn() {
+    const cols = db.prepare(`PRAGMA table_info(dealers)`).all();
+    if (!cols.find(c => c.name === 'white_label')) {
+        db.exec(`ALTER TABLE dealers ADD COLUMN white_label TEXT NOT NULL DEFAULT '{}'`);
+        console.log('[DB] dealers.white_label kolonu eklendi.');
+    }
+})();
+
 // ─── TEHDİT PATERNI VE MARKA DOMAIN TABLOLARI ────────────
 db.exec(`
     CREATE TABLE IF NOT EXISTS brand_domains (

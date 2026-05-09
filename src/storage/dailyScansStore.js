@@ -20,14 +20,19 @@ function todayKey() {
     return new Date().toISOString().slice(0, 10);
 }
 
-function getDailyCount(dateKey) {
-    return load()[dateKey || todayKey()] || 0;
+function getDailyCount(dateKey, scope = 'global') {
+    const value = load()[dateKey || todayKey()];
+    if (typeof value === 'number') return scope === 'global' ? value : 0;
+    if (scope === 'global') return Object.values(value || {}).reduce((sum, n) => sum + (Number(n) || 0), 0);
+    return value?.[scope] || 0;
 }
 
-function incrementDailyCount() {
+function incrementDailyCount(scope = 'global') {
     const data = load();
     const key = todayKey();
-    data[key] = (data[key] || 0) + 1;
+    const current = typeof data[key] === 'object' && data[key] !== null ? data[key] : {};
+    current[scope] = (current[scope] || 0) + 1;
+    data[key] = current;
 
     // 31 günden eski kayıtları temizle
     const cutoff = new Date();
@@ -37,7 +42,7 @@ function incrementDailyCount() {
     }
 
     save(data);
-    return data[key];
+    return current[scope];
 }
 
 module.exports = { getDailyCount, incrementDailyCount, todayKey };

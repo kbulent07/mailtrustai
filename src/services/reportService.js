@@ -4,12 +4,17 @@
 // ============================================================
 const { loadScanHistory } = require('../storage/scanHistory');
 const { loadSettings, saveSettings } = require('../storage/settingsStore');
-const { loadCredentials } = require('../imap/connection');
+const { loadCredentials, decrypt } = require('../imap/connection');
 const { sendReportEmail } = require('../smtp/sender');
 const { buildReportHtml, isRisky } = require('../smtp/reportBuilder');
 const { PERIODS, buildPeriodicReportHtml, filterRowsForReport, resolveRange, summarizeRows } = require('../smtp/periodicReportBuilder');
 
 let periodicReportInFlight = false;
+
+function safeDecrypt(value) {
+    if (!value) return '';
+    try { return decrypt(value); } catch { return value; }
+}
 
 // ─── YARDIMCI NORMALIZASYON ───────────────────────────────
 function normalizeReportRecipients(value) {
@@ -53,18 +58,19 @@ function getReportingSmtpConfig() {
     const imapAccounts  = loadCredentials();
     const senderEmail   = mailbox.senderSmtpEmail || mailbox.imapEmail;
     const senderAccount = imapAccounts.find(a => a.email === senderEmail);
-    if (!senderAccount) return null;
+    const smtpHost = senderAccount?.smtpHost || senderAccount?.host || mailbox.smtpHost || mailbox.imapHost || '';
+    const smtpPort = Number(senderAccount?.smtpPort || mailbox.smtpPort) || 587;
+    const smtpPassword = senderAccount?.password || safeDecrypt(mailbox.smtpPassword || mailbox.imapPassword);
+    if (!smtpHost || !senderEmail || !smtpPassword) return null;
 
-    const smtpHost = senderAccount.smtpHost || senderAccount.host || '';
-    const smtpPort = Number(senderAccount.smtpPort) || 587;
     return {
         ...mailbox,
         smtpHost,
         smtpPort,
-        smtpUser:                 senderAccount.email,
-        smtpPassword:             senderAccount.password || '',
+        smtpUser:                 senderAccount?.email || senderEmail,
+        smtpPassword,
         smtpSecure:               smtpPort === 465,
-        smtpRejectUnauthorized:   senderAccount.rejectUnauthorized !== false
+        smtpRejectUnauthorized:   senderAccount?.rejectUnauthorized !== false && mailbox.imapRejectUnauthorized !== false
     };
 }
 
@@ -181,7 +187,9 @@ async function runScheduledPeriodicReports() {
     try {
         const settings       = loadSettings();
         const reportSettings = normalizePeriodicReportSettings(settings.periodicReports);
-        const recipients     = getAutoSummaryReportRecipients();
+        const recipients     = reportSettings.enabledRecipients.length
+            ? reportSettings.enabledRecipients
+            : getAutoSummaryReportRecipients();
         if (!recipients.length) return;
 
         for (const period of Object.keys(PERIODS)) {

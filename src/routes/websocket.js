@@ -8,6 +8,7 @@ const { analyzeLinks } = require('../analysis/linkAnalyzer');
 const { analyzeAttachments } = require('../analysis/attachmentAnalyzer');
 const { calculateScore, resolveLevel, levelMeta } = require('../analysis/scorer');
 const { validateLicenseKey, UNLICENSED_FEATURES } = require('../license/license');
+const { getCachedStatus } = require('../license/remoteValidator');
 const { loadCredentials } = require('../imap/connection');
 const { recordScan } = require('../storage/scanHistory');
 const { removeAutoMonitor, listAutoMonitors } = require('../storage/autoMonitorState');
@@ -28,6 +29,8 @@ function resolveLicense(licenseKey) {
     if (!licenseKey) return { valid: false, features: { ...UNLICENSED_FEATURES } };
     const result = validateLicenseKey(licenseKey);
     if (!result.valid) return { valid: false, features: { ...UNLICENSED_FEATURES } };
+    const remote = getCachedStatus(licenseKey);
+    if (remote && !remote.allowed) return { valid: false, features: { ...UNLICENSED_FEATURES } };
     return result;
 }
 
@@ -240,6 +243,10 @@ function setupWebSocket(wss) {
                     broadcast({ type: 'monitor-started', email });
                 }
                 if (msg.type === 'stop-monitor') {
+                    const licStop = resolveLicense(msg.licenseKey);
+                    if (!licStop.features?.autoMonitor) {
+                        throw new Error('Otomatik izleme Enterprise lisansı gerektirir');
+                    }
                     await stopAutoMonitor({ email: msg.email, monitors });
                     broadcast({ type: 'monitor-stopped', email: msg.email });
                 }

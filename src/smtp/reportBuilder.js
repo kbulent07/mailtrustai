@@ -4,10 +4,11 @@
 const { loadSettings } = require('../storage/settingsStore');
 
 function buildReportHtml(result, lang = 'tr') {
-    const companyProfile = loadSettings().companyProfile || {};
+    const companyProfile = resolveReportProfile(result);
     const companyName = companyProfile.name || 'MailTrustAI';
     const companyDetails = companyProfile.details || '';
     const companyContactInfo = companyProfile.contactInfo || '';
+    const brandAccent = /^#[0-9a-f]{6}$/i.test(companyProfile.accentColor || '') ? companyProfile.accentColor : '#7c3aed';
     const isTR = lang === 'tr';
     const meta = result.emailMeta || {};
     const findings = result.findings || [];
@@ -36,29 +37,8 @@ function buildReportHtml(result, lang = 'tr') {
         .map((finding) => finding.message);
     const summary = buildExecutiveSummary(result, isTR);
 
-    // E-postanın hemen üstüne yerleştirilen verdict ayracı
-    const levelIcon = { high: '&#128308;', medium: '&#128992;', low: '&#128993;', safe: '&#128994;' }[level] || '&#9888;&#65039;';
-    const verdictBadgeText = risky ? (isTR ? '&#9888; RISKLI' : '&#9888; RISKY') : (isTR ? '&#10003; GUVENLI' : '&#10003; SAFE');
-    const topTagsHtml = (threatTags || []).slice(0, 4).map((tag) =>
-        `<span style="display:inline-block;margin:3px 5px 3px 0;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,0.14);color:#f8fafc;font-size:11px;font-weight:700">${escapeHtml(tag)}</span>`
-    ).join('');
-    const verdictDivider =
-        `<tr><td style="padding:6px 30px 0">` +
-        `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border:2px solid ${color};border-radius:12px;background:linear-gradient(90deg,${color}33,${color}10);overflow:hidden">` +
-        `<tr>` +
-        `<td style="padding:12px 16px;font-size:24px;width:1%;white-space:nowrap">${levelIcon}</td>` +
-        `<td style="padding:12px 8px">` +
-        `<div style="font-size:11px;color:#cbd5e1;font-weight:700;letter-spacing:1px">${isTR ? '&#128235; BU E-POSTA ICIN TARAMA SONUCU' : '&#128235; SCAN RESULT FOR THIS EMAIL'}</div>` +
-        `<div style="font-size:18px;font-weight:800;color:${color};margin-top:2px">${escapeHtml(levelText)} <span style="font-size:13px;color:#94a3b8;font-weight:600;margin-left:6px">${isTR ? 'Skor' : 'Score'} ${score}/100</span></div>` +
-        `</td>` +
-        `<td align="right" style="padding:12px 16px;width:1%;white-space:nowrap"><span style="display:inline-block;padding:6px 14px;border-radius:8px;background:${color};color:#0f172a;font-size:11px;font-weight:800;letter-spacing:1.5px">${verdictBadgeText}</span></td>` +
-        `</tr>` +
-        (topTagsHtml ? `<tr><td colspan="3" style="padding:0 16px 12px;border-top:1px dashed ${color}55">${topTagsHtml}</td></tr>` : '') +
-        `</table></td></tr>`;
-
     // Tüm bölümleri birleştir — tek satır (Zimbra whitespace sorununu önler)
     const sections = [
-        verdictDivider,
         section('&#128231; Incelenen E-posta', [
             kv('Gonderen', from || '-'),
             kv('Alici', to || '-'),
@@ -99,22 +79,19 @@ function buildReportHtml(result, lang = 'tr') {
         buildAiSection(aiOpenAI, aiClaude, isTR)
     ].join('');
 
-    // Header logosu — software brand (MailTrustAI) sabit. Müşteri firma adı
-    // (companyName) ayrı bir satırda "X için" şeklinde gösterilir.
-    // Email-client uyumlu (Outlook/Gmail/Zimbra/Apple Mail): inline CSS + table
-    // layout; gradient destekleyen client'lar görsel olarak gösterir,
-    // desteklemeyenlerde solid #1e3a8a fallback ile okunur.
-    const reportTitle    = isTR ? 'GÜVENLİK RAPORU' : 'SECURITY REPORT';
-    const hasCustomBrand = companyName && companyName.toLowerCase() !== 'mailtrustai';
-    const customerLine   = hasCustomBrand
-        ? `<div style="font-size:13px;color:#cbd5e1;margin-top:6px">${isTR ? 'Müşteri' : 'Customer'}: <strong style="color:#f1f5f9">${escapeHtml(companyName)}</strong></div>`
-        : '';
-    const logoBlock = `<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr>` +
-        `<td style="background:#1e3a8a;background:linear-gradient(135deg,#1e3a8a,#3b82f6 60%,#8b5cf6);width:48px;height:48px;border-radius:10px;text-align:center;vertical-align:middle;font-size:26px;line-height:48px;color:#ffffff;font-weight:900">&#128737;</td>` +
-        `<td style="padding-left:14px;vertical-align:middle"><div style="font-size:18px;font-weight:800;color:#f8fafc;letter-spacing:.3px">MailTrustAI</div><div style="font-size:11px;color:#94a3b8;letter-spacing:1px;margin-top:2px">SCAN &middot; ANALYZE &middot; EVALUATE &middot; PROTECT</div></td>` +
-        `</tr></table>`;
+    return `<!DOCTYPE html><html lang="${isTR ? 'tr' : 'en'}"><head><meta charset="UTF-8"><title>${escapeHtml(companyName)} Mail Guvenlik Raporu</title></head><body style="margin:0;padding:0;background:#0f172a;font-family:Arial,Helvetica,sans-serif;color:#e5e7eb"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f172a;border-collapse:collapse"><tr><td valign="top" align="center" style="padding:12px 8px"><table width="760" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:760px;background:#111827;border:1px solid #263244;border-top:4px solid ${brandAccent};border-radius:18px;overflow:hidden"><tr><td style="padding:28px 30px;background:linear-gradient(135deg,#111827,#172033 58%,#24111a)"><div style="font-size:26px;font-weight:800;color:#f8fafc;letter-spacing:.4px">${escapeHtml(companyName.toUpperCase())} MAIL GUVENLIK RAPORU</div><div style="font-size:13px;color:#94a3b8;margin-top:8px">${isTR ? 'Analiz Tarihi' : 'Analysis Date'}: ${escapeHtml(formatDate(result.timestamp || new Date(), isTR))}</div>${companyDetails ? `<div style="font-size:13px;color:#cbd5e1;margin-top:8px">${escapeHtml(companyDetails)}</div>` : ''}</td></tr><tr><td style="padding:24px 30px 8px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="33%" style="padding:12px"><div style="border:1px solid ${color};background:${color}20;border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">RISK SEVIYESI</div><div style="font-size:24px;color:${color};font-weight:900;margin-top:8px">${escapeHtml(levelText)}</div></div></td><td width="33%" style="padding:12px"><div style="border:1px solid #334155;background:#0b1220;border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">SKOR</div><div style="font-size:24px;color:#f8fafc;font-weight:900;margin-top:8px">${score}/100</div></div></td><td width="33%" style="padding:12px"><div style="border:1px solid ${risky ? '#fb7185' : '#34d399'};background:${risky ? '#3f1420' : '#052e2b'};border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">SONUC</div><div style="font-size:24px;color:${risky ? '#fb7185' : '#34d399'};font-weight:900;margin-top:8px">${verdictText}</div></div></td></tr></table></td></tr><tr><td style="padding:8px 30px 20px"><div style="background:#0b1220;border:1px solid #263244;border-radius:14px;padding:18px;color:#d1d5db;font-size:14px;line-height:1.65">${escapeHtml(summary)}</div></td></tr>${sections}<tr><td style="padding:22px 30px 28px;text-align:center;color:#64748b;font-size:12px;line-height:1.6">${escapeHtml(companyName)} Mail Guvenlik Sistemi - Bu rapor yapay zeka ve otomatik guvenlik kontrolleri tarafindan olusturulmustur.<br>Supheli durumlarda bilgi islem birimiyle iletisime gecin.${companyContactInfo ? `<br><br>${escapeHtml(companyContactInfo)}` : ''}</td></tr></table></td></tr></table></body></html>`;
+}
 
-    return `<!DOCTYPE html><html lang="${isTR ? 'tr' : 'en'}"><head><meta charset="UTF-8"><title>MailTrustAI ${reportTitle}${hasCustomBrand ? ' — ' + escapeHtml(companyName) : ''}</title></head><body style="margin:0;padding:0;background:#0f172a;font-family:Arial,Helvetica,sans-serif;color:#e5e7eb"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f172a;border-collapse:collapse"><tr><td valign="top" align="center" style="padding:12px 8px"><table width="760" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:760px;background:#111827;border:1px solid #263244;border-radius:18px;overflow:hidden"><tr><td style="padding:24px 30px 22px;background:linear-gradient(135deg,#111827,#172033 58%,#24111a)">${logoBlock}<div style="font-size:24px;font-weight:800;color:#f8fafc;letter-spacing:.4px;margin-top:18px">${reportTitle}</div>${customerLine}<div style="font-size:13px;color:#94a3b8;margin-top:6px">${isTR ? 'Analiz Tarihi' : 'Analysis Date'}: ${escapeHtml(formatDate(result.timestamp || new Date(), isTR))}</div>${companyDetails ? `<div style="font-size:13px;color:#cbd5e1;margin-top:8px">${escapeHtml(companyDetails)}</div>` : ''}</td></tr><tr><td style="padding:24px 30px 8px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="33%" style="padding:12px"><div style="border:1px solid ${color};background:${color}20;border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">RISK SEVIYESI</div><div style="font-size:24px;color:${color};font-weight:900;margin-top:8px">${escapeHtml(levelText)}</div></div></td><td width="33%" style="padding:12px"><div style="border:1px solid #334155;background:#0b1220;border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">SKOR</div><div style="font-size:24px;color:#f8fafc;font-weight:900;margin-top:8px">${score}/100</div></div></td><td width="33%" style="padding:12px"><div style="border:1px solid ${risky ? '#fb7185' : '#34d399'};background:${risky ? '#3f1420' : '#052e2b'};border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">SONUC</div><div style="font-size:24px;color:${risky ? '#fb7185' : '#34d399'};font-weight:900;margin-top:8px">${verdictText}</div></div></td></tr></table></td></tr><tr><td style="padding:8px 30px 20px"><div style="background:#0b1220;border:1px solid #263244;border-radius:14px;padding:18px;color:#d1d5db;font-size:14px;line-height:1.65">${escapeHtml(summary)}</div></td></tr>${sections}<tr><td style="padding:22px 30px 28px;text-align:center;color:#64748b;font-size:12px;line-height:1.6">MailTrustAI Mail Guvenlik Sistemi - Bu rapor yapay zeka ve otomatik guvenlik kontrolleri tarafindan olusturulmustur.<br>Supheli durumlarda bilgi islem birimiyle iletisime gecin.${hasCustomBrand ? `<br><br><strong>${escapeHtml(companyName)}</strong>${companyContactInfo ? ` &middot; ${escapeHtml(companyContactInfo)}` : ''}` : (companyContactInfo ? `<br><br>${escapeHtml(companyContactInfo)}` : '')}</td></tr></table></td></tr></table></body></html>`;
+function resolveReportProfile(result = {}) {
+    const settingsProfile = loadSettings().companyProfile || {};
+    const whiteLabel = result.whiteLabelProfile || {};
+    if (whiteLabel.name) {
+        return {
+            ...settingsProfile,
+            ...whiteLabel
+        };
+    }
+    return settingsProfile;
 }
 
 function buildAiSection(aiOpenAI, aiClaude, isTR) {
@@ -280,7 +257,7 @@ function buildOtxSection(result) {
                 `<td style="color:#e5e7eb">${escapeHtml(typeLabel)}</td>` +
                 `<td style="color:#e5e7eb;font-family:monospace">${escapeHtml(ind.value)}</td>` +
                 `<td style="color:${color};font-size:12px">${escapeHtml(pulseText + malwareText + tagText)}</td>` +
-                `<td style="color:${color};font-weight:800">${ind.verdict === 'malicious' ? 'ZARARLII' : 'SUPHELI'}</td>` +
+                `<td style="color:${color};font-weight:800">${ind.verdict === 'malicious' ? 'ZARARLI' : 'SUPHELI'}</td>` +
                 `</tr>`;
         });
 

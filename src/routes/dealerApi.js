@@ -3,16 +3,18 @@
 // ============================================================
 const express = require('express');
 const bcrypt = require('bcrypt');
-const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
 
 const { loadDealers, findDealer, upsertDealer, deleteDealer,
-        getCredits, addCredits, generateLicenseTx } = require('../storage/dealerStore');
+        getCredits, addCredits, generateLicenseTx,
+        updateDealerWhiteLabel } = require('../storage/dealerStore');
 const { getSalesByDealer, getAllSales, getSalesStats } = require('../storage/dealerSales');
 const { recordTransaction, getTransactionsByDealer } = require('../storage/creditTransactionStore');
-const { generateLicenseKey, getPriceTable, TIERS } = require('../license/license');
+const { generateLicenseKey, validateLicenseKey, getPriceTable, TIERS } = require('../license/license');
 const { requireAdminAuth } = require('../middleware/adminAuth');
+const { loadSettings } = require('../storage/settingsStore');
+const { recordAudit } = require('../storage/auditLog');
 
 // ─── IP TABANLI GİRİŞ SINIRLAMASI ────────────────────────
 const loginAttempts = new Map();
@@ -40,75 +42,26 @@ function checkLoginRate(ip) {
     return { allowed: true };
 }
 
-// ─── OTURUM YÖNETİMİ (HMAC-imzalı stateless token) ──────
-// Restart/upgrade sonrası bayi oturumları kaybolmaz; token kendi imzasıyla
-// doğrulandığı için sunucu state'i tutmaya gerek yoktur.
-const DEALER_TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 saat
+// ─── OTURUM YÖNETİMİ ─────────────────────────────────────
+const dealerSessions = new Map();
 
-function _getDealerSecret() {
-    return (process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#') + '|dealer';
-}
-
-function createDealerToken(code) {
-    const payload    = JSON.stringify({ exp: Date.now() + DEALER_TOKEN_TTL_MS, c: String(code).toUpperCase(), r: 'dealer' });
-    const payloadB64 = Buffer.from(payload).toString('base64url');
-    const sig        = crypto.createHmac('sha256', _getDealerSecret()).update(payloadB64).digest('hex');
-    return `${payloadB64}.${sig}`;
-}
-
-function verifyDealerToken(token) {
-    if (!token || typeof token !== 'string') return null;
-    const dot = token.lastIndexOf('.');
-    if (dot < 1) return null;
-    const payloadB64 = token.slice(0, dot);
-    const sig        = token.slice(dot + 1);
-
-    const expectedSig = crypto.createHmac('sha256', _getDealerSecret()).update(payloadB64).digest('hex');
-    try {
-        const eSigBuf = Buffer.from(expectedSig, 'hex');
-        const sSigBuf = Buffer.from(sig,         'hex');
-        if (eSigBuf.length !== sSigBuf.length) return null;
-        if (!crypto.timingSafeEqual(eSigBuf, sSigBuf)) return null;
-    } catch { return null; }
-
-    try {
-        const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
-        if (parsed.r !== 'dealer' || typeof parsed.exp !== 'number' || parsed.exp <= Date.now() || !parsed.c) {
-            return null;
-        }
-        return { code: parsed.c, exp: parsed.exp };
-    } catch { return null; }
-}
-
-// İptal edilen token'ları takip etmek için (logout) — bellekte tutulur,
-// restart'ta sıfırlanır. Token süresi 8 saat olduğundan worst-case bir
-// kullanıcı eski token ile 8 saat boyunca işlem yapabilir; pratikte
-// sorun değil — gerçekten gerekli ise DB tabanlı revocation eklenebilir.
-const _revokedTokens = new Set();
 setInterval(() => {
-    // Süresi dolanları temizle (token zaten kendi içinde TTL'i kontrol eder)
-    for (const t of _revokedTokens) {
-        const v = verifyDealerToken(t);
-        if (!v) _revokedTokens.delete(t);
+    const now = Date.now();
+    for (const [token, s] of dealerSessions.entries()) {
+        if (now > s.expiresAt) dealerSessions.delete(token);
     }
-}, 60 * 60 * 1000).unref();
+}, 15 * 60 * 1000);
 
 function requireDealerAuth(req, res, next) {
     const auth = req.headers['authorization'] || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
-    if (_revokedTokens.has(token)) return res.status(401).json({ error: 'Session revoked' });
-
-    const verified = verifyDealerToken(token);
-    if (!verified) return res.status(401).json({ error: 'Session expired' });
-
-    // Bayi hala aktif mi (admin pasifleştirebilir)
-    const dealer = findDealer(verified.code);
-    if (!dealer || !dealer.active) {
-        return res.status(403).json({ error: 'Bayi pasifleştirilmiş.' });
+    const session = dealerSessions.get(token);
+    if (!session || Date.now() > session.expiresAt) {
+        dealerSessions.delete(token);
+        return res.status(401).json({ error: 'Session expired' });
     }
-
-    req.dealerCode = verified.code;
+    req.dealerCode = session.code;
     next();
 }
 
@@ -127,19 +80,25 @@ router.post('/login', async (req, res) => {
     if (!code || !pin) return res.status(400).json({ error: 'Bayi kodu ve PIN gereklidir' });
 
     const dealer = findDealer(code.toUpperCase());
-    if (!dealer || !dealer.active) return res.status(401).json({ error: 'Geçersiz kimlik bilgileri' });
+    if (!dealer || !dealer.active) {
+        recordAudit({ req, actorType: 'dealer', actorId: code.toUpperCase(), action: 'dealer.login', status: 'failure' });
+        return res.status(401).json({ error: 'Geçersiz kimlik bilgileri' });
+    }
 
     const match = await bcrypt.compare(String(pin), dealer.pinHash);
-    if (!match) return res.status(401).json({ error: 'Geçersiz kimlik bilgileri' });
+    if (!match) {
+        recordAudit({ req, actorType: 'dealer', actorId: dealer.code, action: 'dealer.login', status: 'failure' });
+        return res.status(401).json({ error: 'Geçersiz kimlik bilgileri' });
+    }
 
     loginAttempts.delete(clientIp);
 
-    // HMAC-imzalı stateless token — sunucu restart'ları arasında geçerli kalır
-    const token = createDealerToken(dealer.code);
+    const token = uuidv4();
+    dealerSessions.set(token, { code: dealer.code, expiresAt: Date.now() + 8 * 60 * 60 * 1000 });
+    recordAudit({ req, actorType: 'dealer', actorId: dealer.code, action: 'dealer.login', status: 'success' });
 
     res.json({
         success: true, token,
-        expiresIn: Math.floor(DEALER_TOKEN_TTL_MS / 1000),
         dealer: { name: dealer.name, code: dealer.code, discountPct: dealer.discountPct || 0 }
     });
 });
@@ -147,7 +106,8 @@ router.post('/login', async (req, res) => {
 // ─── DEALER AUTH GEREKTİREN ENDPOINTLER ──────────────────
 router.post('/logout', requireDealerAuth, (req, res) => {
     const token = (req.headers['authorization'] || '').slice(7);
-    if (token) _revokedTokens.add(token);
+    dealerSessions.delete(token);
+    recordAudit({ req, actorType: 'dealer', actorId: req.dealerCode, action: 'dealer.logout' });
     res.json({ success: true });
 });
 
@@ -163,6 +123,11 @@ router.get('/sales', requireDealerAuth, (req, res) => {
     res.json(getSalesByDealer(req.dealerCode, limit));
 });
 
+router.get('/renewals', requireDealerAuth, (req, res) => {
+    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 120);
+    res.json(buildRenewalList(getSalesByDealer(req.dealerCode, 500), days));
+});
+
 router.get('/stats', requireDealerAuth, (req, res) => {
     res.json(getSalesStats(req.dealerCode));
 });
@@ -171,7 +136,7 @@ router.get('/prices', requireDealerAuth, (req, res) => {
     const dealer = findDealer(req.dealerCode);
     if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
 
-    const base = getPriceTable();
+    const base = getPriceTable(loadSettings().customPrices);
     const discount = dealer.discountPct || 0;
     const result = {};
     for (const [plan, tiers] of Object.entries(base)) {
@@ -192,27 +157,35 @@ router.get('/prices', requireDealerAuth, (req, res) => {
     res.json({ prices: result, tierInfo, discountPct: discount });
 });
 
+router.get('/white-label', requireDealerAuth, (req, res) => {
+    const dealer = findDealer(req.dealerCode);
+    if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
+    res.json(dealer.whiteLabel || {});
+});
+
+router.post('/white-label', requireDealerAuth, (req, res) => {
+    const updated = updateDealerWhiteLabel(req.dealerCode, req.body || {});
+    recordAudit({
+        req,
+        actorType: 'dealer',
+        actorId: req.dealerCode,
+        action: 'dealer.white_label.update',
+        target: req.dealerCode,
+        details: { enabled: updated.enabled, name: updated.name }
+    });
+    res.json({ success: true, whiteLabel: updated });
+});
+
 router.post('/generate', requireDealerAuth, (req, res) => {
     const { plan, tier, duration, customerNote } = req.body;
     if (!plan || !tier || !duration) {
         return res.status(400).json({ error: 'plan, tier ve duration zorunludur' });
     }
 
-    // Bayiler trial (T) lisans üretemez — yalnızca admin üretebilir
-    if (String(duration).toUpperCase() === 'T') {
-        return res.status(403).json({
-            error: 'Trial (deneme) lisanslar yalnızca yönetici tarafından üretilebilir.'
-        });
-    }
-    // Yalnızca aylık (M) ve yıllık (Y) bayi tarafında geçerli
-    if (!['M', 'Y'].includes(String(duration).toUpperCase())) {
-        return res.status(400).json({ error: 'Bayiler yalnızca M (Aylık) veya Y (Yıllık) lisans üretebilir.' });
-    }
-
     const dealer = findDealer(req.dealerCode);
     if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
 
-    const base = getPriceTable();
+    const base = getPriceTable(loadSettings().customPrices);
     const basePrice = base[plan]?.[tier]?.[duration] ?? null;
     if (basePrice === null) return res.status(400).json({ error: 'Geçersiz plan/tier/süre' });
 
@@ -227,6 +200,14 @@ router.post('/generate', requireDealerAuth, (req, res) => {
             dealerCode: req.dealerCode, plan, tier, duration,
             licenseKey, customerNote: customerNote || '',
             creditCost, isFree
+        });
+        recordAudit({
+            req,
+            actorType: 'dealer',
+            actorId: req.dealerCode,
+            action: 'license.generate',
+            target: licenseKey,
+            details: { plan, tier, duration, creditCost, saleId }
         });
 
         res.json({ success: true, licenseKey, saleId, plan, tier, duration, creditCost, creditsRemaining: newBalance });
@@ -259,12 +240,22 @@ router.post('/admin/dealers', requireAdminAuth, async (req, res) => {
         pinHash, discountPct: discountPct || 0,
         customPrices: customPrices || {}, active: active !== false
     });
+    recordAudit({
+        req,
+        actorType: 'admin',
+        actorId: 'admin',
+        action: 'dealer.upsert',
+        target: dealer.code,
+        details: { name: dealer.name, active: dealer.active, discountPct: dealer.discountPct }
+    });
     const { pinHash: _, ...safe } = dealer;
     res.json({ success: true, dealer: safe });
 });
 
 router.delete('/admin/dealers/:code', requireAdminAuth, (req, res) => {
-    deleteDealer(req.params.code.toUpperCase());
+    const code = req.params.code.toUpperCase();
+    deleteDealer(code);
+    recordAudit({ req, actorType: 'admin', actorId: 'admin', action: 'dealer.delete', target: code });
     res.json({ success: true });
 });
 
@@ -275,6 +266,11 @@ router.get('/admin/sales', requireAdminAuth, (req, res) => {
 
 router.get('/admin/stats', requireAdminAuth, (req, res) => {
     res.json(getSalesStats());
+});
+
+router.get('/admin/renewals', requireAdminAuth, (req, res) => {
+    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 120);
+    res.json(buildRenewalList(getAllSales(5000), days));
 });
 
 // ─── KREDİ YÖNETİMİ ─────────────────────────────────────
@@ -301,8 +297,43 @@ router.post('/admin/dealers/:code/credits', requireAdminAuth, (req, res) => {
         note: note || (amount > 0 ? 'Admin kredi yükleme' : 'Admin kredi düzeltme'),
         balanceAfter: newBalance
     });
+    recordAudit({
+        req,
+        actorType: 'admin',
+        actorId: 'admin',
+        action: 'dealer.credits.update',
+        target: code,
+        details: { amount, balanceAfter: newBalance }
+    });
 
     res.json({ success: true, credits: newBalance });
 });
+
+function buildRenewalList(sales, days) {
+    const seen = new Set();
+    return (sales || [])
+        .map((sale) => ({ sale, license: validateLicenseKey(sale.licenseKey || '') }))
+        .filter(({ sale }) => {
+            if (!sale.licenseKey || seen.has(sale.licenseKey)) return false;
+            seen.add(sale.licenseKey);
+            return true;
+        })
+        .filter(({ license }) => license.valid || license.error === 'License expired')
+        .filter(({ license }) => Number(license.daysLeft) <= days)
+        .sort((a, b) => Number(a.license.daysLeft || 0) - Number(b.license.daysLeft || 0))
+        .slice(0, 100)
+        .map(({ sale, license }) => ({
+            dealerCode: sale.dealerCode,
+            licenseKey: sale.licenseKey,
+            customerNote: sale.customerNote || '',
+            plan: sale.plan,
+            tier: sale.tier,
+            duration: sale.duration,
+            createdAt: sale.createdAt,
+            expiryDate: license.expiryDate,
+            daysLeft: Number(license.daysLeft || 0),
+            expired: license.error === 'License expired' || Number(license.daysLeft || 0) <= 0
+        }));
+}
 
 module.exports = router;

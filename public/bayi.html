@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MailTrustAI Bayi Portalı</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link rel="alternate icon" type="image/png" href="/img/logo.png">
-    <link rel="apple-touch-icon" href="/img/logo.png">
     <link rel="stylesheet" href="/css/style.css">
     <style>
         .bayi-nav { display:flex; align-items:center; gap:20px; padding:14px 24px; border-bottom:1px solid var(--border); background:var(--surface); }
@@ -59,11 +56,12 @@
         <button onclick="doLogout()" style="border:1px solid #f59e0b;color:#f59e0b;background:transparent;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px">Çıkış Yap / Yeniden Giriş</button>
     </div>
     <div class="bayi-nav">
-        <span class="brand"><img src="/favicon.svg" alt="" width="22" height="22" style="vertical-align:middle;margin-right:6px;border-radius:4px"> Bayi Portalı</span>
+        <span class="brand">🛡️ Bayi Portalı</span>
         <a class="active" onclick="showSection('dashboard')">📊 Dashboard</a>
         <a onclick="showSection('generate')">🔑 Yeni Lisans</a>
         <a onclick="showSection('sales')">📋 Satışlarım</a>
         <a onclick="showSection('prices')">💰 Fiyatlar</a>
+        <a onclick="showSection('branding')">White-label</a>
         <span class="spacer"></span>
         <span class="dealer-info" id="dealerNameDisplay"></span>
         <span id="creditDisplay" style="display:none;font-size:13px;font-weight:700;padding:4px 12px;background:rgba(99,102,241,0.12);border-radius:6px">💳 <span id="creditBalance">0</span> kredi</span>
@@ -149,6 +147,40 @@
         <div id="sectionPrices" class="tab-content">
             <h2 style="margin-bottom:20px">💰 Fiyat Tablosu</h2>
             <div id="priceTable"></div>
+        </div>
+
+        <!-- BRANDING -->
+        <div id="sectionBranding" class="tab-content">
+            <h2 style="margin-bottom:20px">White-label Rapor Ayarlari</h2>
+            <div class="card" style="max-width:680px">
+                <label class="report-toggle" style="margin-bottom:16px">
+                    <input type="checkbox" id="wlEnabled">
+                    <span>Raporlarda bayi markami kullan</span>
+                </label>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Rapor Firma Adi</label>
+                        <input class="form-input" id="wlName" placeholder="Ornek Bilisim SOC">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Vurgu Rengi</label>
+                        <input class="form-input" id="wlAccent" placeholder="#6366f1">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Firma Bilgisi</label>
+                    <input class="form-input" id="wlDetails" placeholder="Siber Guvenlik Hizmetleri / SOC">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Iletisim / Alt Bilgi</label>
+                    <textarea class="form-textarea" id="wlContact" rows="3" placeholder="Telefon, e-posta, destek notu"></textarea>
+                </div>
+                <div class="flex gap-16">
+                    <button class="btn btn-primary" onclick="saveWhiteLabel()">Kaydet</button>
+                    <button class="btn btn-ghost" onclick="loadWhiteLabel()">Yenile</button>
+                </div>
+                <div id="whiteLabelStatus" class="text-muted" style="font-size:12px;margin-top:12px"></div>
+            </div>
         </div>
 
     </div>

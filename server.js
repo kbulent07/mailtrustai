@@ -8,10 +8,7 @@ const apiRoutes = require('./src/routes/api');
 const dealerRoutes = require('./src/routes/dealerApi');
 const { setupWebSocket } = require('./src/routes/websocket');
 const { startBackgroundRefresh } = require('./src/license/remoteValidator');
-const { loadSettings, migrateToEncrypted } = require('./src/storage/settingsStore');
-
-// İlk açılışta düz metin API anahtarlarını AES'le şifreli formata yükselt
-migrateToEncrypted();
+const { loadSettings } = require('./src/storage/settingsStore');
 
 const app = express();
 const server = http.createServer(app);

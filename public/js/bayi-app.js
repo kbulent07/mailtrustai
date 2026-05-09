@@ -135,6 +135,7 @@ function showSection(name) {
 
     if (name === 'sales') loadSales();
     if (name === 'prices') renderPrices();
+    if (name === 'branding') loadWhiteLabel();
 }
 
 // ─── KREDİ GÖSTERİMİ ─────────────────────────────────────
@@ -194,6 +195,11 @@ async function loadDashboard() {
 
         const stats = await statsRes.json();
         const sales = await salesRes.json();
+        let renewals = [];
+        try {
+            const renewalsRes = await apiFetch('/api/dealer/renewals?days=30', { headers: authHeaders() });
+            if (renewalsRes.ok) renewals = await renewalsRes.json();
+        } catch {}
 
         if (meRes.ok) {
             dealerData = await meRes.json();
@@ -226,6 +232,13 @@ async function loadDashboard() {
                 </tr>`).join('')}</tbody>
                </table>`
             : '<p class="text-muted" style="padding:12px">Henüz satış bulunmuyor</p>';
+        if (renewals.length) {
+            const target = document.getElementById('recentSales');
+            target.innerHTML =
+                `<div style="border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);border-radius:8px;padding:10px 12px;margin-bottom:12px;color:#fde68a;font-size:13px">
+                    ${renewals.length} lisans 30 gun icinde yenileme penceresinde. Ilk musteri: ${escHtml(renewals[0].customerNote || renewals[0].licenseKey)}
+                </div>` + target.innerHTML;
+        }
     } catch (e) {
         if (e.isSessionExpired) return;
         console.error('dashboard error:', e);
@@ -268,6 +281,52 @@ function renderPrices() {
     }
     html += '</tbody></table></div>';
     document.getElementById('priceTable').innerHTML = html;
+}
+
+async function loadWhiteLabel() {
+    const status = document.getElementById('whiteLabelStatus');
+    try {
+        const res = await apiFetch('/api/dealer/white-label', { headers: authHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'White-label ayarlari alinamadi');
+        document.getElementById('wlEnabled').checked = data.enabled === true;
+        document.getElementById('wlName').value = data.name || '';
+        document.getElementById('wlDetails').value = data.details || '';
+        document.getElementById('wlContact').value = data.contactInfo || '';
+        document.getElementById('wlAccent').value = data.accentColor || '';
+        if (status) status.textContent = 'Mevcut marka ayarlari yuklendi.';
+    } catch (e) {
+        if (e.isSessionExpired) return;
+        if (status) status.innerHTML = `<span class="text-red">${escHtml(e.message)}</span>`;
+    }
+}
+
+async function saveWhiteLabel() {
+    const status = document.getElementById('whiteLabelStatus');
+    const payload = {
+        enabled: document.getElementById('wlEnabled')?.checked === true,
+        name: document.getElementById('wlName')?.value.trim() || '',
+        details: document.getElementById('wlDetails')?.value.trim() || '',
+        contactInfo: document.getElementById('wlContact')?.value.trim() || '',
+        accentColor: document.getElementById('wlAccent')?.value.trim() || ''
+    };
+    if (payload.enabled && !payload.name) {
+        if (status) status.innerHTML = '<span class="text-red">White-label acikken firma adi zorunludur.</span>';
+        return;
+    }
+    try {
+        const res = await apiFetch('/api/dealer/white-label', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Kaydedilemedi');
+        if (status) status.innerHTML = '<span class="text-green">White-label rapor ayarlari kaydedildi.</span>';
+    } catch (e) {
+        if (e.isSessionExpired) return;
+        if (status) status.innerHTML = `<span class="text-red">${escHtml(e.message)}</span>`;
+    }
 }
 
 function updatePricePreview() {

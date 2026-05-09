@@ -1,80 +1,80 @@
 // ============================================================
-// SETTINGS STORE — at-rest encryption ile API anahtarları
-//
-// Hassas alanlar (API anahtarları, IMAP rapor şifresi vb.) otomatik
-// olarak AES-256-CBC ile şifrelenir. Eski (düz) değerler ilk kayıtta
-// transparent olarak şifrelenir; encrypt('') = '' (boş kalır).
+// AYARLAR STORAGE — hassas alanlar makineye özgü AES-256-GCM ile şifrelenir
+// Aynı makinede restart'ta otomatik açılır; başka makinede boş döner.
 // ============================================================
-const fs = require('fs');
-const path = require('path');
-const { encrypt, decrypt } = require('../imap/connection');
+const fs     = require('fs');
+const path   = require('path');
+const crypto = require('crypto');
+const os     = require('os');
 
 const SETTINGS_FILE = path.join(__dirname, '..', '..', 'data', 'settings.json');
 
-// Diskte şifreli saklanan alanlar (kök seviye)
-const SECRET_FIELDS = ['vtApiKey', 'claudeApiKey', 'openaiApiKey', 'otxApiKey', 'activeLicenseKey'];
+// ─── ŞİFRELEME ───────────────────────────────────────────────
+const ENC_PREFIX = 'enc:v1:';
+const SENSITIVE   = ['vtApiKey', 'claudeApiKey', 'openaiApiKey', 'otxApiKey', 'webhookUrl'];
 
-// Şifreli string formatı: "iv_hex:ciphertext_hex"
-function isEncrypted(v) {
-    return typeof v === 'string' && /^[0-9a-f]{32}:[0-9a-f]+$/i.test(v);
+function _deriveKey() {
+    const secret   = process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#';
+    const hostname = os.hostname();
+    // PBKDF2: hostname + secret → 32 byte key (makineye özgü)
+    return crypto.pbkdf2Sync(
+        `${hostname}::${secret}`,
+        'MSA_SETTINGS_SALT_v1',
+        100_000,
+        32,
+        'sha256'
+    );
 }
 
-function safeEncrypt(plain) {
-    const s = String(plain || '');
-    if (!s) return '';
-    if (isEncrypted(s)) return s;
-    try { return encrypt(s); } catch { return s; }
+let _cachedKey = null;
+function _key() {
+    if (!_cachedKey) _cachedKey = _deriveKey();
+    return _cachedKey;
 }
 
-function safeDecrypt(maybeCipher) {
-    const s = String(maybeCipher || '');
-    if (!s) return '';
-    if (!isEncrypted(s)) return s; // eski/düz değer
-    try { return decrypt(s); } catch { return ''; }
+function encryptValue(plaintext) {
+    if (!plaintext) return plaintext;
+    const iv         = crypto.randomBytes(12);
+    const cipher     = crypto.createCipheriv('aes-256-gcm', _key(), iv);
+    const encrypted  = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    const authTag    = cipher.getAuthTag();
+    const payload    = Buffer.concat([iv, authTag, encrypted]);
+    return ENC_PREFIX + payload.toString('base64');
 }
 
+function decryptValue(stored) {
+    if (!stored || !stored.startsWith(ENC_PREFIX)) return stored;
+    try {
+        const payload  = Buffer.from(stored.slice(ENC_PREFIX.length), 'base64');
+        const iv       = payload.subarray(0, 12);
+        const authTag  = payload.subarray(12, 28);
+        const data     = payload.subarray(28);
+        const decipher = crypto.createDecipheriv('aes-256-gcm', _key(), iv);
+        decipher.setAuthTag(authTag);
+        return decipher.update(data) + decipher.final('utf8');
+    } catch {
+        // Farklı makine / bozuk kayıt → boş döner
+        return '';
+    }
+}
+
+// ─── LOAD / SAVE ─────────────────────────────────────────────
 function ensureDir() {
     const dir = path.dirname(SETTINGS_FILE);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-}
-
-// Diske yazılırken hassas alanları şifrele
-function encryptForDisk(settings) {
-    const out = { ...settings };
-    for (const k of SECRET_FIELDS) {
-        if (out[k] !== undefined && out[k] !== null) {
-            out[k] = safeEncrypt(out[k]);
-        }
-    }
-    // scanMailboxes içindeki imapPassword/smtpPassword zaten ayrı encrypt ile saklanıyor; dokunma
-    return out;
-}
-
-// Diskten okunurken hassas alanları çöz
-function decryptFromDisk(settings) {
-    const out = { ...settings };
-    for (const k of SECRET_FIELDS) {
-        if (out[k] !== undefined && out[k] !== null) {
-            out[k] = safeDecrypt(out[k]);
-        }
-    }
-    return out;
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
 function loadSettings() {
     try {
-        if (!fs.existsSync(SETTINGS_FILE)) {
-            return defaultSettings();
-        }
+        if (!fs.existsSync(SETTINGS_FILE)) return defaultSettings();
+        const raw  = fs.readFileSync(SETTINGS_FILE, 'utf8');
+        const data = { ...defaultSettings(), ...JSON.parse(raw || '{}') };
 
-        const raw = fs.readFileSync(SETTINGS_FILE, 'utf8');
-        const parsed = JSON.parse(raw || '{}');
-        return {
-            ...defaultSettings(),
-            ...decryptFromDisk(parsed)
-        };
+        // Şifreli alanları çöz
+        for (const field of SENSITIVE) {
+            if (data[field]) data[field] = decryptValue(data[field]);
+        }
+        return data;
     } catch {
         return defaultSettings();
     }
@@ -82,65 +82,41 @@ function loadSettings() {
 
 function saveSettings(settings) {
     ensureDir();
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(encryptForDisk(settings), null, 2), 'utf8');
-    return settings;
-}
+    const toSave = { ...settings };
 
-// İlk açılışta düz metin API anahtarlarını şifreli formata yükselt
-function migrateToEncrypted() {
-    if (!fs.existsSync(SETTINGS_FILE)) return;
-    try {
-        const raw = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8') || '{}');
-        let dirty = false;
-        for (const k of SECRET_FIELDS) {
-            const v = raw[k];
-            if (typeof v === 'string' && v.length > 0 && !isEncrypted(v)) {
-                dirty = true;
-                break;
-            }
+    // Hassas alanları şifrele (henüz şifrelenmemişleri)
+    for (const field of SENSITIVE) {
+        if (toSave[field] && !toSave[field].startsWith(ENC_PREFIX)) {
+            toSave[field] = encryptValue(toSave[field]);
         }
-        if (dirty) {
-            const decrypted = decryptFromDisk(raw); // güvenli — düz metinleri olduğu gibi alır
-            saveSettings({ ...defaultSettings(), ...decrypted });
-            console.log('[Settings] API anahtarları şifreli formata yükseltildi.');
-        }
-    } catch { /* sessiz */ }
+    }
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(toSave, null, 2), 'utf8');
+    return settings; // orijinali (plaintext) döndür — in-memory state şifreli olmasın
 }
 
 function defaultSettings() {
     return {
-        vtApiKey: '',
-        claudeApiKey: '',
-        openaiApiKey: '',
-        openaiModel: '',
-        otxApiKey: '',
-        activeLicenseKey: '',           // Sunucu tarafında kalıcı saklanan aktif lisans (şifreli)
-        activeLicenseSetAt: '',         // ISO tarih
+        vtApiKey:      '',
+        claudeApiKey:  '',
+        openaiApiKey:  '',
+        openaiModel:   '',
+        otxApiKey:     '',
         adminPassword: '',
-        customerPassword: '',
-        companyProfile: {
-            name: '',
-            details: '',
-            contactInfo: ''
-        },
+        companyProfile: { name: '', details: '', contactInfo: '' },
         scanMailboxes: [],
         periodicReports: {
-            recipients: [],
+            recipients:       [],
             enabledRecipients: [],
-            daily: true,
-            weekly: true,
+            daily:   true,
+            weekly:  true,
             monthly: true,
             lastSent: {}
         },
-        webhookEnabled: false,
-        webhookUrl: '',
+        webhookEnabled:  false,
+        webhookUrl:      '',
         webhookMinLevel: 'low',
-        customPrices: null
+        customPrices:    null
     };
 }
 
-module.exports = {
-    loadSettings,
-    saveSettings,
-    migrateToEncrypted
-};
+module.exports = { loadSettings, saveSettings, encryptValue, decryptValue };
