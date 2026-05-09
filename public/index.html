@@ -407,7 +407,7 @@
             <h3 style="margin:0">📋 Ayrıntılı Rapor</h3>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                 <label style="font-size:12px;color:var(--text-secondary)">Dönem:</label>
-                <select id="cuStatsDays" onchange="onCuStatsRangeChange()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text-primary);font-size:13px">
+                <select id="cuStatsDays" onchange="onCuStatsRangeChange()" style="background:#0b1220;border:1px solid var(--border);border-radius:6px;padding:6px 12px;color:var(--text-primary);font-size:13px;min-height:32px">
                     <option value="7">Son 7 gün</option>
                     <option value="30" selected>Son 30 gün</option>
                     <option value="90">Son 90 gün</option>
@@ -416,9 +416,9 @@
                     <option value="custom">📅 Özel aralık</option>
                 </select>
                 <span id="cuCustomRangeWrap" style="display:none;align-items:center;gap:6px;font-size:13px">
-                    <input type="date" id="cuStatsStart" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-primary);font-size:13px">
+                    <input type="date" id="cuStatsStart" style="background:#0b1220;border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text-primary);font-size:13px;min-height:32px">
                     <span style="color:var(--text-secondary)">–</span>
-                    <input type="date" id="cuStatsEnd" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-primary);font-size:13px">
+                    <input type="date" id="cuStatsEnd" style="background:#0b1220;border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text-primary);font-size:13px;min-height:32px">
                     <button class="btn btn-primary btn-sm" onclick="loadDetailedStatsCustomer()">Uygula</button>
                 </span>
                 <button class="btn btn-ghost btn-sm" onclick="exportDetailedCsvCustomer()" title="CSV indir">⬇️ CSV</button>
