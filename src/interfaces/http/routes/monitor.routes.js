@@ -4,6 +4,7 @@
 const express = require('express');
 
 const { loadSettings }            = require('../../../storage/settingsStore');
+const { loadCredentials }         = require('../../../imap/connection');
 const { listAutoMonitors, removeAutoMonitor } =
     require('../../../storage/autoMonitorState');
 const { upsertScanMailbox, patchScanMailbox } =
@@ -41,15 +42,23 @@ router.post('/scan-mailboxes', async (req, res) => {
     if (!imapEmail)    return res.status(400).json({ error: 'E-posta adresi zorunludur.' });
     if (!imapHost)     return res.status(400).json({ error: 'IMAP sunucu adresi zorunludur.' });
 
-    // Şifre boşsa: bu hesap için zaten kayıt varsa mevcut (encrypt edilmiş) şifreyi yeniden kullan.
-    // Yoksa hâlâ zorunlu — yeni hesap için açık şifre lazım.
+    // Şifre boşsa fallback sırası:
+    //   1) Zaten scan-mailbox kaydı varsa, oradaki encrypted şifreyi yeniden kullan.
+    //   2) Yoksa IMAP hesapları store'unda kayıtlı (decrypted) şifreyi al — kullanıcı zaten panele
+    //      şifreyle girdi, ayar değişikliği için tekrar girmesine gerek yok.
+    //   3) Hiçbiri yoksa hâlâ zorunlu (yeni IMAP hesabı + ilk kez aktivasyon).
     if (!imapPassword) {
         const settings = loadSettings();
-        const existing = (settings.scanMailboxes || []).find(s => s.imapEmail === imapEmail);
-        if (existing && existing.imapPassword) {
-            req.body._existingEncryptedImapPassword = existing.imapPassword;
+        const existingScan = (settings.scanMailboxes || []).find(s => s.imapEmail === imapEmail);
+        if (existingScan && existingScan.imapPassword) {
+            req.body._existingEncryptedImapPassword = existingScan.imapPassword;
         } else {
-            return res.status(400).json({ error: 'IMAP şifresi zorunludur.' });
+            const imapAccount = loadCredentials().find(a => a.email === imapEmail);
+            if (imapAccount && imapAccount.password) {
+                req.body.imapPassword = imapAccount.password;
+            } else {
+                return res.status(400).json({ error: 'IMAP şifresi zorunludur.' });
+            }
         }
     }
 
