@@ -31,6 +31,68 @@ const PRIVATE_RANGES = [
     /^0\./
 ];
 
+// ─── OTX FALSE-POSITIVE WHITELIST ─────────────────────────────
+// AlienVault OTX'in pulse veritabanı:
+//  • Araştırmacılar pulse'lara test/karşılaştırma için popüler domain'leri ekler
+//  • Mirai/Tofsee gibi botnet'ler "internet bağlantı kontrolü" amacıyla
+//    google/youtube/microsoft.com'a sorgu atar — bu pulse'larda görünür
+//  • Sonuç: youtube.com 50+ pulse alıyor → false positive
+//
+// Aşağıdaki domain'ler için OTX sorgusu atlanır (gerçek tehdit kaynağı
+// değildirler; e-posta context'inde bu domain'in geçmesi tehdit göstergesi
+// sayılmaz). Listeyi makul tutuyoruz; yine de typosquat / impersonation
+// linkAnalyzer tarafından yakalanır.
+const OTX_DOMAIN_WHITELIST = new Set([
+    // Google ekosistemi
+    'google.com', 'gmail.com', 'googlemail.com', 'youtube.com', 'youtu.be',
+    'google.com.tr', 'googleusercontent.com', 'gstatic.com', 'doubleclick.net',
+    // Microsoft
+    'microsoft.com', 'office.com', 'office365.com', 'outlook.com', 'live.com',
+    'hotmail.com', 'msn.com', 'bing.com', 'sharepoint.com', 'onedrive.live.com',
+    'azure.com', 'azureedge.net', 'windows.net', 'microsoftonline.com',
+    // Apple
+    'apple.com', 'icloud.com', 'me.com', 'mac.com',
+    // Sosyal medya / mesajlaşma
+    'facebook.com', 'fb.com', 'fbcdn.net', 'instagram.com', 'whatsapp.com',
+    'messenger.com', 'twitter.com', 'x.com', 'twimg.com', 'linkedin.com',
+    'licdn.com', 'tiktok.com', 'snapchat.com', 'pinterest.com', 'reddit.com',
+    'discord.com', 'discordapp.com', 'telegram.org', 't.me',
+    // Bulut / dev
+    'amazon.com', 'amazonaws.com', 'cloudfront.net', 'github.com',
+    'githubusercontent.com', 'gitlab.com', 'bitbucket.org',
+    'cloudflare.com', 'dropbox.com', 'box.com', 'wetransfer.com',
+    'zoom.us', 'webex.com', 'teams.microsoft.com',
+    // E-ticaret / ödeme (legitimate hostname'ler)
+    'paypal.com', 'stripe.com', 'shopify.com', 'wix.com', 'wordpress.com',
+    'godaddy.com', 'namecheap.com',
+    // Türkiye yaygın servisler
+    'yandex.com', 'yandex.com.tr', 'yandex.ru',
+    'turkiye.gov.tr', 'gib.gov.tr', 'sgk.gov.tr', 'pttsepet.com', 'ptt.gov.tr',
+    'trendyol.com', 'hepsiburada.com', 'n11.com', 'gittigidiyor.com',
+    'sahibinden.com', 'arabam.com',
+    'turkcell.com.tr', 'turktelekom.com.tr', 'vodafone.com.tr',
+    'ziraatbank.com.tr', 'isbank.com.tr', 'garantibbva.com.tr', 'akbank.com',
+    'yapikredi.com.tr', 'halkbank.com.tr', 'vakifbank.com.tr',
+    // Diğer popüler/CDN
+    'wikipedia.org', 'wikimedia.org', 'mozilla.org', 'firefox.com',
+    'adobe.com', 'salesforce.com', 'jsdelivr.net', 'unpkg.com', 'jquery.com',
+    'fontawesome.com', 'googletagmanager.com', 'google-analytics.com',
+    'mailchimp.com', 'sendgrid.net', 'mailgun.org', 'sendpulse.com'
+]);
+
+function isOtxWhitelisted(value) {
+    const v = String(value || '').toLowerCase().replace(/^www\./, '').trim();
+    if (!v) return false;
+    if (OTX_DOMAIN_WHITELIST.has(v)) return true;
+    // subdomain match: x.youtube.com → youtube.com whitelisted
+    const parts = v.split('.');
+    for (let i = 1; i < parts.length - 1; i++) {
+        const candidate = parts.slice(i).join('.');
+        if (OTX_DOMAIN_WHITELIST.has(candidate)) return true;
+    }
+    return false;
+}
+
 function isPrivateIp(ip) {
     return PRIVATE_RANGES.some(r => r.test(ip));
 }
@@ -167,31 +229,33 @@ function extractIndicators(parsedData, linkUrls = []) {
         }
     }
 
-    // 2) Gönderici domaini
+    // 2) Gönderici domaini (whitelist'tekiler atlanır → false-positive önle)
     const senderAddr = parsedData.from?.[0]?.address || '';
     const senderDomain = senderAddr.split('@')[1]?.toLowerCase().trim();
-    if (senderDomain && !seenDomains.has(senderDomain)) {
+    if (senderDomain && !seenDomains.has(senderDomain) && !isOtxWhitelisted(senderDomain)) {
         seenDomains.add(senderDomain);
         indicators.push({ type: 'domain', value: senderDomain });
     }
 
-    // 3a) Link domain'leri (domain tipi — ilk 5)
+    // 3a) Link domain'leri (domain tipi — ilk 5; whitelist filtreli)
     for (const url of (linkUrls || []).slice(0, 5)) {
         try {
             const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-            if (hostname && !seenDomains.has(hostname) && hostname !== senderDomain) {
-                seenDomains.add(hostname);
-                indicators.push({ type: 'domain', value: hostname });
-            }
+            if (!hostname || seenDomains.has(hostname) || hostname === senderDomain) continue;
+            if (isOtxWhitelisted(hostname)) continue; // youtube/google/microsoft vb. atla
+            seenDomains.add(hostname);
+            indicators.push({ type: 'domain', value: hostname });
         } catch { /* geçersiz URL */ }
     }
 
-    // 3b) Tam URL sorgusu (url tipi — ilk 3, OTX URL gösterge veritabanı için)
+    // 3b) Tam URL sorgusu (url tipi — ilk 3; whitelist host filtreli)
     for (const url of (linkUrls || []).slice(0, 3)) {
         try {
             const clean = url.trim();
             // Sadece http/https URL'leri; veri URL'leri ve mailto'ları atla
             if (!clean || !/^https?:\/\//i.test(clean)) continue;
+            const hostname = new URL(clean).hostname.toLowerCase().replace(/^www\./, '');
+            if (isOtxWhitelisted(hostname)) continue;
             const normalised = clean.split('#')[0].replace(/\/+$/, ''); // fragment ve trailing slash sil
             if (!seenUrls.has(normalised)) {
                 seenUrls.add(normalised);
@@ -251,5 +315,9 @@ module.exports = {
     queryIndicator,
     verdictFromResult,
     severityFromVerdict,
-    scoreFromVerdict
+    scoreFromVerdict,
+    // Test/debug + dış kullanım için
+    isOtxWhitelisted,
+    extractIndicators,
+    OTX_DOMAIN_WHITELIST
 };
