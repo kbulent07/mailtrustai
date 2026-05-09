@@ -20,6 +20,7 @@ async function upsertScanMailbox(input, license) {
         imapHost, imapPort, imapEmail, imapPassword, imapTls,
         smtpHost, smtpPort, smtpPassword,
         reportLang, enabled, reportMode, reportTo, reportToForwarder,
+        realtimeAlert,
         _existingEncryptedImapPassword
     } = input;
 
@@ -34,15 +35,23 @@ async function upsertScanMailbox(input, license) {
     const mailboxes = current.scanMailboxes || [];
     const idx       = mailboxes.findIndex(s => s.imapEmail === imapEmail);
 
-    // Sistemde yalnızca 1 merkezi raporlama mail hesabı kurulabilir (tüm lisans tipleri)
-    if (idx < 0 && mailboxes.length >= 1) {
-        return {
-            ok: false, status: 403,
-            body: {
-                error: 'Yalnızca 1 merkezi raporlama mail hesabı tanımlanabilir. Mevcut hesabı silip yenisini ekleyebilirsiniz.',
-                limitReached: true
-            }
-        };
+    // İki farklı kullanım var:
+    //   • forwarder: kullanıcılar şüpheli maili buraya forward eder → sistem gönderene cevap yazar (tek olabilir)
+    //   • realtime : kişinin kendi inbox'unu otomatik tarar, kendisine rapor mail'ler (Enterprise; çok sayıda)
+    const purpose = realtimeAlert ? 'realtime' : 'forwarder';
+
+    // "Yalnızca 1 hesap" limiti SADECE forwarder için geçerli
+    if (purpose === 'forwarder' && idx < 0) {
+        const otherForwarderCount = mailboxes.filter(s => (s.purpose || 'forwarder') === 'forwarder').length;
+        if (otherForwarderCount >= 1) {
+            return {
+                ok: false, status: 403,
+                body: {
+                    error: 'Yalnızca 1 merkezi raporlama (forwarder) mail hesabı tanımlanabilir. Mevcut hesabı silip yenisini ekleyebilirsiniz.',
+                    limitReached: true
+                }
+            };
+        }
     }
 
     // Şifre payload'da boşsa rota katmanı mevcut encrypted şifreyi geçirir — onu kullan.
@@ -62,6 +71,7 @@ async function upsertScanMailbox(input, license) {
         reportMode:        reportMode === 'all' ? 'all' : 'risky',
         reportTo:          reportToForwarder ? '' : (reportTo || ''),
         reportToForwarder: reportToForwarder === true,
+        purpose,
         enabled:           enabled !== false && enabled !== 'false'
     };
 
