@@ -198,6 +198,17 @@ router.post('/generate', requireDealerAuth, (req, res) => {
         return res.status(400).json({ error: 'plan, tier ve duration zorunludur' });
     }
 
+    // Bayiler trial (T) lisans üretemez — yalnızca admin üretebilir
+    if (String(duration).toUpperCase() === 'T') {
+        return res.status(403).json({
+            error: 'Trial (deneme) lisanslar yalnızca yönetici tarafından üretilebilir.'
+        });
+    }
+    // Yalnızca aylık (M) ve yıllık (Y) bayi tarafında geçerli
+    if (!['M', 'Y'].includes(String(duration).toUpperCase())) {
+        return res.status(400).json({ error: 'Bayiler yalnızca M (Aylık) veya Y (Yıllık) lisans üretebilir.' });
+    }
+
     const dealer = findDealer(req.dealerCode);
     if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
 

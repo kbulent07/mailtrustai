@@ -2298,73 +2298,10 @@ function showImapBackgroundScanNotification(result, message) {
 // ============================================================
 function showLicenseModal() {
     document.getElementById('licenseModal').classList.remove('hidden');
-    refreshTrialBanner();
 }
 
 function closeLicenseModal() {
     document.getElementById('licenseModal').classList.add('hidden');
-}
-
-// Trial banner'ı güncelle — yalnızca daha önce kullanılmamışsa ve
-// halihazırda aktif lisans yoksa göster
-async function refreshTrialBanner() {
-    const banner = document.getElementById('trialBanner');
-    if (!banner) return;
-    try {
-        const res = await fetch('/api/license/trial-status');
-        if (!res.ok) { banner.style.display = 'none'; return; }
-        const data = await res.json();
-        const hasActive = !!licenseInfo?.valid;
-        banner.style.display = (data.used || hasActive) ? 'none' : '';
-    } catch {
-        banner.style.display = 'none';
-    }
-}
-
-async function activateTrial() {
-    const btn = document.getElementById('trialBtn');
-    const orig = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Etkinleştiriliyor...'; }
-
-    try {
-        const res = await fetch('/api/license/trial', { method: 'POST' });
-        const data = await res.json();
-
-        if (res.status === 409) {
-            alert('Bu sunucu için ücretsiz deneme zaten kullanılmış.\nFarklı bir lisans anahtarı girin.');
-            document.getElementById('trialBanner').style.display = 'none';
-            return;
-        }
-        if (!res.ok || !data.success) {
-            alert('Trial etkinleştirilemedi: ' + (data.error || 'bilinmeyen hata'));
-            return;
-        }
-
-        // Lisansı yerel state'e yükle
-        licenseKey  = data.key;
-        licenseInfo = data.validation;
-        localStorage.setItem('msa_license', licenseKey);
-        updateLicenseBadge(data.validation);
-        loadLicenseUsage();
-
-        document.getElementById('licenseResult').innerHTML = `
-            <div class="text-green mt-16">
-                🎉 ${currentLang === 'tr' ? '7 günlük ücretsiz deneme aktifleştirildi!' : '7-day free trial activated!'}<br>
-                <strong>PRO T3</strong> — ${currentLang === 'tr' ? '250 tarama/ay' : '250 scans/month'}<br>
-                ${currentLang === 'tr' ? 'Sona erme' : 'Expires'}: ${formatDate(data.expiresAt, true)}
-                <div style="font-size:11px;margin-top:8px;color:var(--green)">
-                    ✓ ${currentLang === 'tr'
-                        ? 'Lisans sunucuya kaydedildi — restart ve versiyon geçişlerinde otomatik korunur.'
-                        : 'License saved on server — preserved across restarts and upgrades.'}
-                </div>
-            </div>
-        `;
-        document.getElementById('trialBanner').style.display = 'none';
-    } catch (e) {
-        alert('Bağlantı hatası: ' + e.message);
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = orig; }
-    }
 }
 
 async function activateLicense() {

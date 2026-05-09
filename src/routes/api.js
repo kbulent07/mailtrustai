@@ -630,52 +630,34 @@ router.post('/license/activate', async (req, res) => {
     });
 });
 
-// POST /api/license/trial — 7 günlük ücretsiz deneme lisansı (sunucu başına 1 kez)
-router.post('/license/trial', async (req, res) => {
-    const settings = loadSettings();
-    if (settings.trialUsedAt) {
-        return res.status(409).json({
-            error: 'Bu sunucu için ücretsiz deneme zaten kullanılmış.',
-            usedAt: settings.trialUsedAt
-        });
-    }
+// POST /api/license/trial — 7 günlük Enterprise deneme lisansı
+//
+// YALNIZCA ADMIN üretebilir; sonuç olarak yeni bir lisans anahtarı döner.
+// Bayiler bu endpoint'e erişemez (admin auth gerektirir). Bayi /generate
+// endpoint'i de duration='T' yi reddeder.
+//
+// Otomatik aktivasyon yapılmaz — admin anahtarı müşteriye iletir,
+// müşteri /api/license/activate ile aktive eder.
+router.post('/license/trial', requireAdminAuth, async (req, res) => {
+    // Trial: ENTERPRISE plan + T3 tier (250 tarama/ay) + 7 gün
+    const plan = 'ENT', tier = 'T3', duration = 'T';
+    const reseller = String(req.body?.reseller || 'TRIAL').toUpperCase().slice(0, 12);
 
-    // Trial: PRO planı + T3 tier (250 tarama/ay) + 7 gün
-    const plan = 'PRO', tier = 'T3', duration = 'T';
-    const key = generateLicenseKey(plan, tier, duration, 'TRIAL');
+    const key = generateLicenseKey(plan, tier, duration, reseller);
     const validation = validateLicenseKey(key);
     if (!validation.valid) {
         return res.status(500).json({ error: 'Trial lisans üretilemedi.' });
     }
 
-    saveSettings({
-        ...settings,
-        trialUsedAt:        new Date().toISOString(),
-        activeLicenseKey:   key,
-        activeLicenseSetAt: new Date().toISOString()
-    });
-
-    console.log(`[License] Trial lisans aktifleştirildi: ${_maskKey(key)} — 7 gün, PRO T3`);
+    console.log(`[License] Admin trial lisansı üretildi: ${_maskKey(key)} — 7 gün, ENT T3 (reseller=${reseller})`);
     res.json({
         success:   true,
-        message:   '7 günlük ücretsiz deneme aktifleştirildi. Sunucuya kalıcı olarak kaydedildi.',
+        message:   '7 günlük Enterprise deneme lisansı üretildi.',
         key,
         maskedKey: _maskKey(key),
         validation,
-        expiresAt: validation.expiryDate
-    });
-});
-
-// GET /api/license/trial-status — trial daha önce kullanıldı mı?
-router.get('/license/trial-status', (req, res) => {
-    const s = loadSettings();
-    res.json({
-        used:    Boolean(s.trialUsedAt),
-        usedAt:  s.trialUsedAt || null,
-        days:    7,
-        plan:    'PRO',
-        tier:    'T3',
-        tierLabel: 'T3 (250/ay)'
+        expiresAt: validation.expiryDate,
+        plan, tier, duration
     });
 });
 
