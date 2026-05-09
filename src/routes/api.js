@@ -33,7 +33,7 @@ const PUBLIC_PATHS = new Set([
     '/customer/login'
 ]);
 
-router.use((req, res, next) => {
+router.use(async (req, res, next) => {
     if (PUBLIC_PATHS.has(req.path)) return next();
     if (req.path.startsWith('/dealer/') || req.path === '/dealer') return next();
 
@@ -50,6 +50,14 @@ router.use((req, res, next) => {
     if (licKey) {
         const result = validateLicenseKey(licKey);
         if (result.valid) return next();
+    }
+
+    // x-admin-password: doğrudan admin şifresi ile erişim (index.html ayarlar formu)
+    const adminPwdHeader = req.headers['x-admin-password'] || '';
+    if (adminPwdHeader) {
+        const { verifyAdminPassword } = require('../middleware/adminAuth');
+        const valid = await verifyAdminPassword(adminPwdHeader);
+        if (valid) return next();
     }
 
     return res.status(401).json({ error: 'Müşteri yönetim oturumu gerekli. Lütfen giriş yapın.' });

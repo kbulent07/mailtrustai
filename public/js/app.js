@@ -2735,7 +2735,11 @@ async function saveSettings() {
 
     const keysRes = await fetch('/api/settings/keys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPwd },
+        headers: {
+            'Content-Type':    'application/json',
+            'x-admin-password': adminPwd,
+            ...(licenseKey ? { 'x-license-key': licenseKey } : {})
+        },
         body: JSON.stringify(payload)
     });
 
