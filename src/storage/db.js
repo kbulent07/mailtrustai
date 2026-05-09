@@ -99,6 +99,17 @@ db.exec(`
         enabled   INTEGER NOT NULL DEFAULT 1
     );
 
+    CREATE TABLE IF NOT EXISTS trusted_domains (
+        domain     TEXT PRIMARY KEY,
+        category   TEXT NOT NULL DEFAULT 'custom',  -- 'standard'|'tech'|'cloud'|'social'|'tr_service'|'finance'|'cdn'|'ai'|'custom'
+        added_by   TEXT NOT NULL DEFAULT 'admin',   -- 'seed'|'admin'|'auto'
+        note       TEXT NOT NULL DEFAULT '',
+        enabled    INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_trusted_enabled ON trusted_domains(enabled);
+    CREATE INDEX IF NOT EXISTS idx_trusted_category ON trusted_domains(category);
+
     CREATE TABLE IF NOT EXISTS threat_patterns (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         category   TEXT NOT NULL,   -- 'urgency'|'credential'|'threat'|'reward'|'sextortion'|'bec_content'|'bec_subject'|'bec_body'
@@ -132,6 +143,69 @@ db.exec(`
         ];
         db.transaction(() => { for (const [d, a] of brands) ins.run(d, a); })();
         console.log(`[DB] ${brands.length} marka domain seed edildi.`);
+    }
+
+    // Trusted domains (OTX whitelist) — kategori başına seed
+    const trustedCount = db.prepare('SELECT COUNT(*) AS n FROM trusted_domains').get().n;
+    if (trustedCount === 0) {
+        const ins = db.prepare('INSERT OR IGNORE INTO trusted_domains (domain, category, added_by, note) VALUES (?, ?, ?, ?)');
+        const seed = [
+            // Google ekosistemi
+            ['google.com','tech'],['gmail.com','tech'],['googlemail.com','tech'],
+            ['youtube.com','tech'],['youtu.be','tech'],['google.com.tr','tech'],
+            ['googleusercontent.com','cdn'],['gstatic.com','cdn'],['doubleclick.net','cdn'],
+            ['googletagmanager.com','cdn'],['google-analytics.com','cdn'],
+            // Microsoft
+            ['microsoft.com','tech'],['office.com','tech'],['office365.com','tech'],
+            ['outlook.com','tech'],['live.com','tech'],['hotmail.com','tech'],['msn.com','tech'],
+            ['bing.com','tech'],['sharepoint.com','tech'],['onedrive.live.com','tech'],
+            ['azure.com','cloud'],['azureedge.net','cloud'],['windows.net','cloud'],
+            ['microsoftonline.com','cloud'],['teams.microsoft.com','tech'],
+            // Apple
+            ['apple.com','tech'],['icloud.com','tech'],['me.com','tech'],['mac.com','tech'],
+            // Sosyal medya
+            ['facebook.com','social'],['fb.com','social'],['fbcdn.net','cdn'],
+            ['instagram.com','social'],['whatsapp.com','social'],['messenger.com','social'],
+            ['twitter.com','social'],['x.com','social'],['twimg.com','cdn'],
+            ['linkedin.com','social'],['licdn.com','cdn'],['tiktok.com','social'],
+            ['snapchat.com','social'],['pinterest.com','social'],['reddit.com','social'],
+            ['discord.com','social'],['discordapp.com','social'],
+            ['telegram.org','social'],['t.me','social'],
+            // Bulut / dev
+            ['amazon.com','cloud'],['amazonaws.com','cloud'],['cloudfront.net','cdn'],
+            ['github.com','cloud'],['githubusercontent.com','cdn'],['gitlab.com','cloud'],
+            ['bitbucket.org','cloud'],['cloudflare.com','cloud'],['dropbox.com','cloud'],
+            ['box.com','cloud'],['wetransfer.com','cloud'],
+            ['zoom.us','tech'],['webex.com','tech'],
+            // E-ticaret / ödeme
+            ['paypal.com','finance'],['stripe.com','finance'],['shopify.com','tech'],
+            ['wix.com','tech'],['wordpress.com','tech'],
+            ['godaddy.com','tech'],['namecheap.com','tech'],
+            // Türkiye servisleri
+            ['yandex.com','tech'],['yandex.com.tr','tech'],['yandex.ru','tech'],
+            ['turkiye.gov.tr','tr_service'],['gib.gov.tr','tr_service'],['sgk.gov.tr','tr_service'],
+            ['pttsepet.com','tr_service'],['ptt.gov.tr','tr_service'],
+            ['trendyol.com','tr_service'],['hepsiburada.com','tr_service'],['n11.com','tr_service'],
+            ['gittigidiyor.com','tr_service'],['sahibinden.com','tr_service'],['arabam.com','tr_service'],
+            ['turkcell.com.tr','tr_service'],['turktelekom.com.tr','tr_service'],['vodafone.com.tr','tr_service'],
+            ['ziraatbank.com.tr','finance'],['isbank.com.tr','finance'],['garantibbva.com.tr','finance'],
+            ['akbank.com','finance'],['yapikredi.com.tr','finance'],['halkbank.com.tr','finance'],
+            ['vakifbank.com.tr','finance'],
+            // CDN / popüler
+            ['wikipedia.org','tech'],['wikimedia.org','cdn'],['mozilla.org','tech'],['firefox.com','tech'],
+            ['adobe.com','tech'],['salesforce.com','tech'],
+            ['jsdelivr.net','cdn'],['unpkg.com','cdn'],['jquery.com','cdn'],['fontawesome.com','cdn'],
+            ['mailchimp.com','cdn'],['sendgrid.net','cdn'],['mailgun.org','cdn'],['sendpulse.com','cdn'],
+            // Standart/namespace URI'ları
+            ['w3.org','standard'],['ietf.org','standard'],['iana.org','standard'],
+            ['rfc-editor.org','standard'],['schema.org','standard'],
+            ['json-schema.org','standard'],['opensearch.org','standard'],
+            // AI
+            ['anthropic.com','ai'],['claude.ai','ai'],['openai.com','ai'],
+            ['chatgpt.com','ai'],['huggingface.co','ai']
+        ];
+        db.transaction(() => { for (const [d, cat] of seed) ins.run(d, cat, 'seed', ''); })();
+        console.log(`[DB] ${seed.length} trusted domain seed edildi.`);
     }
 
     const patternCount = db.prepare('SELECT COUNT(*) AS n FROM threat_patterns').get().n;

@@ -80,6 +80,7 @@
             <a href="#" onclick="showTab('dealers',event)">👥 Bayiler</a>
             <a href="#" onclick="showTab('revoke',event)">🚫 Lisans İptal</a>
             <a href="#" onclick="showTab('stats',event)">📊 İstatistik</a>
+            <a href="#" onclick="showTab('trusted',event)">🛡️ Güvenilir Domainler</a>
             <a href="/">← Uygulamaya Dön</a>
         </div>
         <div id="sessionBadge">
@@ -387,6 +388,89 @@
         </div>
     </div><!-- /tabStats -->
 
+    <!-- TRUSTED DOMAINS TAB -->
+    <div id="tabTrusted" class="main-content" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h2>🛡️ Güvenilir Domain'ler (OTX Whitelist)</h2>
+            <button class="btn btn-ghost btn-sm" onclick="loadTrustedDomains()">🔄 Yenile</button>
+        </div>
+        <div class="card mb-16">
+            <div class="card-header"><span class="card-title">ℹ️ Nasıl çalışır?</span></div>
+            <div style="font-size:13px;line-height:1.6;opacity:0.85">
+                Bu listedeki domain'ler için <strong>OTX (AlienVault) tehdit istihbaratı sorgulanmaz</strong>. Pulse-tabanlı false-positive'leri önler (ör. <code>w3.org</code>, <code>youtube.com</code> gibi popüler domain'lerin tehdit pulse'larında görünmesi).
+                <br>Subdomain match: <code>youtube.com</code> listede ise <code>m.youtube.com</code> da güvenilir sayılır.
+                <br><span style="opacity:0.7">Not: Whitelist tehdit göstergesini sıfırlamaz — typosquat ve impersonation tespiti linkAnalyzer tarafından yapılmaya devam eder.</span>
+            </div>
+        </div>
+
+        <!-- Tekli ekleme + toplu ekleme -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+            <div class="card">
+                <div class="card-header"><span class="card-title">➕ Tekli Ekle</span></div>
+                <div class="form-group">
+                    <label class="form-label">Domain</label>
+                    <input class="form-input" id="tdNewDomain" type="text" placeholder="ornek.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kategori</label>
+                    <select class="form-input" id="tdNewCategory">
+                        <option value="custom">Custom</option>
+                        <option value="standard">Standard / Namespace</option>
+                        <option value="tech">Tech ürün</option>
+                        <option value="cloud">Bulut / Dev</option>
+                        <option value="social">Sosyal medya</option>
+                        <option value="finance">Finans / Ödeme</option>
+                        <option value="cdn">CDN</option>
+                        <option value="ai">AI servis</option>
+                        <option value="tr_service">TR servis</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Not (opsiyonel)</label>
+                    <input class="form-input" id="tdNewNote" type="text" placeholder="ör. müşteri istedi, FP rapor edildi">
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="addTrusted()">➕ Ekle</button>
+                <div id="tdAddResult" style="margin-top:8px;font-size:12px"></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title">📦 Toplu Ekle</span></div>
+                <div class="form-group">
+                    <label class="form-label">Domain listesi <span style="font-weight:400;opacity:0.6;font-size:11px">(virgül veya yeni satır)</span></label>
+                    <textarea class="form-input" id="tdBulkList" rows="5" placeholder="ornek.com&#10;partner.org&#10;musteri.com.tr" style="resize:vertical;font-family:monospace;font-size:13px"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Hepsi için kategori</label>
+                    <select class="form-input" id="tdBulkCategory">
+                        <option value="custom" selected>Custom</option>
+                        <option value="tech">Tech ürün</option>
+                        <option value="cloud">Bulut / Dev</option>
+                        <option value="ai">AI servis</option>
+                        <option value="tr_service">TR servis</option>
+                        <option value="finance">Finans / Ödeme</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="addTrustedBulk()">📦 Toplu Ekle</button>
+                <div id="tdBulkResult" style="margin-top:8px;font-size:12px"></div>
+            </div>
+        </div>
+
+        <!-- Filtreler -->
+        <div class="card mb-16">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <input class="form-input" id="tdFilter" type="search" placeholder="🔍 Domain ara…" style="flex:1;min-width:200px;margin:0" oninput="renderTrustedDomains()">
+                <select class="form-input" id="tdFilterCategory" onchange="renderTrustedDomains()" style="margin:0;width:auto">
+                    <option value="">Tüm kategoriler</option>
+                </select>
+                <span id="tdSummary" style="font-size:12px;opacity:0.7"></span>
+            </div>
+        </div>
+
+        <!-- Tablo -->
+        <div class="card">
+            <div id="tdList" style="overflow-x:auto"></div>
+        </div>
+    </div><!-- /tabTrusted -->
+
     <script>
         // ─── TOKEN YÖNETİMİ ─────────────────────────────────────
         const SESSION_KEY = 'msa_admin_token';
@@ -463,10 +547,178 @@
             document.getElementById('tabDealers').style.display = tab === 'dealers' ? '' : 'none';
             document.getElementById('tabRevoke').style.display  = tab === 'revoke'  ? '' : 'none';
             document.getElementById('tabStats').style.display   = tab === 'stats'   ? '' : 'none';
+            document.getElementById('tabTrusted').style.display = tab === 'trusted' ? '' : 'none';
             document.querySelectorAll('.admin-nav a').forEach(a => a.classList.remove('active'));
             if (event && event.target) event.target.classList.add('active');
-            if (tab === 'revoke') loadRevokedList();
-            if (tab === 'stats')  { loadStats(); loadDetailedStats(); }
+            if (tab === 'revoke')  loadRevokedList();
+            if (tab === 'stats')   { loadStats(); loadDetailedStats(); }
+            if (tab === 'trusted') loadTrustedDomains();
+        }
+
+        // ─── GÜVENİLİR DOMAIN'LER (OTX WHITELIST) ──────────────
+        let _trustedAll = [];
+
+        async function loadTrustedDomains() {
+            const list = document.getElementById('tdList');
+            list.innerHTML = '<div style="padding:14px;opacity:0.7">Yükleniyor…</div>';
+            try {
+                const res = await fetch('/api/admin/trusted-domains', { headers: adminHeaders() });
+                if (!res.ok) {
+                    list.innerHTML = `<div style="padding:14px;color:#f87171">Yüklenemedi: ${res.status}</div>`;
+                    return;
+                }
+                _trustedAll = await res.json();
+                // Kategori dropdown'unu doldur
+                const cats = [...new Set(_trustedAll.map(t => t.category))].sort();
+                const sel = document.getElementById('tdFilterCategory');
+                const cur = sel.value;
+                sel.innerHTML = '<option value="">Tüm kategoriler</option>' +
+                    cats.map(c => `<option value="${c}">${c}</option>`).join('');
+                if (cur) sel.value = cur;
+                renderTrustedDomains();
+            } catch (e) {
+                list.innerHTML = `<div style="padding:14px;color:#f87171">Hata: ${e.message}</div>`;
+            }
+        }
+
+        function renderTrustedDomains() {
+            const filter = (document.getElementById('tdFilter').value || '').toLowerCase().trim();
+            const catFilter = document.getElementById('tdFilterCategory').value;
+            const filtered = _trustedAll.filter(t => {
+                if (filter && !t.domain.includes(filter)) return false;
+                if (catFilter && t.category !== catFilter) return false;
+                return true;
+            });
+
+            const summary = document.getElementById('tdSummary');
+            const total = _trustedAll.length;
+            const enabled = _trustedAll.filter(t => t.enabled).length;
+            summary.textContent = `${filtered.length} / ${total} domain · ${enabled} aktif`;
+
+            const list = document.getElementById('tdList');
+            if (!filtered.length) {
+                list.innerHTML = '<div style="padding:14px;opacity:0.7">Eşleşen domain bulunamadı.</div>';
+                return;
+            }
+
+            const rows = filtered.map(t => {
+                const isSeed = t.added_by === 'seed';
+                const badge = isSeed
+                    ? '<span style="font-size:10px;padding:1px 6px;background:rgba(96,165,250,0.15);color:#60a5fa;border-radius:4px;margin-left:6px">seed</span>'
+                    : t.added_by === 'auto'
+                        ? '<span style="font-size:10px;padding:1px 6px;background:rgba(168,139,250,0.15);color:#a78bfa;border-radius:4px;margin-left:6px">auto</span>'
+                        : '';
+                const note = t.note ? `<div style="font-size:11px;opacity:0.6;margin-top:2px">${escapeHtml(t.note)}</div>` : '';
+                return `
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.05)">
+                    <td style="padding:8px 10px;font-family:monospace;font-size:13px">
+                        <strong>${escapeHtml(t.domain)}</strong>${badge}
+                        ${note}
+                    </td>
+                    <td style="padding:8px 10px"><span style="font-size:11px;background:rgba(255,255,255,0.05);padding:2px 8px;border-radius:4px">${escapeHtml(t.category)}</span></td>
+                    <td style="padding:8px 10px;font-size:11px;opacity:0.6">${t.created_at ? new Date(t.created_at).toLocaleDateString('tr-TR') : ''}</td>
+                    <td style="padding:8px 10px">
+                        <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer">
+                            <input type="checkbox" ${t.enabled ? 'checked' : ''} onchange="toggleTrusted('${escapeAttr(t.domain)}', this.checked)">
+                            Aktif
+                        </label>
+                    </td>
+                    <td style="padding:8px 10px;text-align:right">
+                        <button class="btn btn-ghost btn-sm" onclick="removeTrusted('${escapeAttr(t.domain)}')" title="Sil">🗑️</button>
+                    </td>
+                </tr>`;
+            }).join('');
+
+            list.innerHTML = `
+                <table style="width:100%;border-collapse:collapse">
+                    <thead>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.1);text-align:left;opacity:0.7;font-size:11px;text-transform:uppercase;letter-spacing:.05em">
+                            <th style="padding:8px 10px">Domain</th>
+                            <th style="padding:8px 10px">Kategori</th>
+                            <th style="padding:8px 10px">Eklendi</th>
+                            <th style="padding:8px 10px">Durum</th>
+                            <th style="padding:8px 10px;text-align:right">İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+        }
+
+        function escapeHtml(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+        function escapeAttr(s) { return escapeHtml(s).replace(/'/g, '&#39;'); }
+
+        async function addTrusted() {
+            const domain = document.getElementById('tdNewDomain').value.trim();
+            const category = document.getElementById('tdNewCategory').value;
+            const note = document.getElementById('tdNewNote').value.trim();
+            const out = document.getElementById('tdAddResult');
+            if (!domain) { out.innerHTML = '<span style="color:#f87171">Domain girin.</span>'; return; }
+            try {
+                const res = await fetch('/api/admin/trusted-domains', {
+                    method: 'POST',
+                    headers: adminHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ domain, category, note })
+                });
+                const data = await res.json();
+                if (!res.ok) { out.innerHTML = `<span style="color:#f87171">❌ ${data.error || res.status}</span>`; return; }
+                out.innerHTML = `<span style="color:#4ade80">✅ Eklendi: ${data.domain}</span>`;
+                document.getElementById('tdNewDomain').value = '';
+                document.getElementById('tdNewNote').value = '';
+                loadTrustedDomains();
+            } catch (e) {
+                out.innerHTML = `<span style="color:#f87171">❌ ${e.message}</span>`;
+            }
+        }
+
+        async function addTrustedBulk() {
+            const raw = document.getElementById('tdBulkList').value;
+            const category = document.getElementById('tdBulkCategory').value;
+            const out = document.getElementById('tdBulkResult');
+            const domains = raw.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+            if (!domains.length) { out.innerHTML = '<span style="color:#f87171">Liste boş.</span>'; return; }
+            try {
+                const res = await fetch('/api/admin/trusted-domains/bulk', {
+                    method: 'POST',
+                    headers: adminHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ domains, category })
+                });
+                const data = await res.json();
+                if (!res.ok) { out.innerHTML = `<span style="color:#f87171">❌ ${data.error || res.status}</span>`; return; }
+                out.innerHTML = `<span style="color:#4ade80">✅ ${data.accepted.length} eklendi</span>` +
+                    (data.rejected.length ? ` <span style="color:#f59e0b">⚠️ ${data.rejected.length} reddedildi: ${data.rejected.join(', ')}</span>` : '');
+                document.getElementById('tdBulkList').value = '';
+                loadTrustedDomains();
+            } catch (e) {
+                out.innerHTML = `<span style="color:#f87171">❌ ${e.message}</span>`;
+            }
+        }
+
+        async function removeTrusted(domain) {
+            if (!confirm(`${domain} silinsin mi?`)) return;
+            try {
+                const res = await fetch(`/api/admin/trusted-domains/${encodeURIComponent(domain)}`, {
+                    method: 'DELETE',
+                    headers: adminHeaders()
+                });
+                if (!res.ok) { alert(`Hata: ${res.status}`); return; }
+                loadTrustedDomains();
+            } catch (e) { alert(e.message); }
+        }
+
+        async function toggleTrusted(domain, enabled) {
+            try {
+                await fetch(`/api/admin/trusted-domains/${encodeURIComponent(domain)}/toggle`, {
+                    method: 'PATCH',
+                    headers: adminHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ enabled })
+                });
+                // local state'i güncelle
+                const t = _trustedAll.find(x => x.domain === domain);
+                if (t) t.enabled = enabled ? 1 : 0;
+                renderTrustedDomains();
+            } catch (e) { alert(e.message); }
         }
 
         // ─── LİSANS ÜRETİCİ ─────────────────────────────────────

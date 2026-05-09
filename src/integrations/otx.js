@@ -38,66 +38,23 @@ const PRIVATE_RANGES = [
 //    google/youtube/microsoft.com'a sorgu atar — bu pulse'larda görünür
 //  • Sonuç: youtube.com 50+ pulse alıyor → false positive
 //
-// Aşağıdaki domain'ler için OTX sorgusu atlanır (gerçek tehdit kaynağı
-// değildirler; e-posta context'inde bu domain'in geçmesi tehdit göstergesi
-// sayılmaz). Listeyi makul tutuyoruz; yine de typosquat / impersonation
-// linkAnalyzer tarafından yakalanır.
-const OTX_DOMAIN_WHITELIST = new Set([
-    // Google ekosistemi
-    'google.com', 'gmail.com', 'googlemail.com', 'youtube.com', 'youtu.be',
-    'google.com.tr', 'googleusercontent.com', 'gstatic.com', 'doubleclick.net',
-    // Microsoft
-    'microsoft.com', 'office.com', 'office365.com', 'outlook.com', 'live.com',
-    'hotmail.com', 'msn.com', 'bing.com', 'sharepoint.com', 'onedrive.live.com',
-    'azure.com', 'azureedge.net', 'windows.net', 'microsoftonline.com',
-    // Apple
-    'apple.com', 'icloud.com', 'me.com', 'mac.com',
-    // Sosyal medya / mesajlaşma
-    'facebook.com', 'fb.com', 'fbcdn.net', 'instagram.com', 'whatsapp.com',
-    'messenger.com', 'twitter.com', 'x.com', 'twimg.com', 'linkedin.com',
-    'licdn.com', 'tiktok.com', 'snapchat.com', 'pinterest.com', 'reddit.com',
-    'discord.com', 'discordapp.com', 'telegram.org', 't.me',
-    // Bulut / dev
-    'amazon.com', 'amazonaws.com', 'cloudfront.net', 'github.com',
-    'githubusercontent.com', 'gitlab.com', 'bitbucket.org',
-    'cloudflare.com', 'dropbox.com', 'box.com', 'wetransfer.com',
-    'zoom.us', 'webex.com', 'teams.microsoft.com',
-    // E-ticaret / ödeme (legitimate hostname'ler)
-    'paypal.com', 'stripe.com', 'shopify.com', 'wix.com', 'wordpress.com',
-    'godaddy.com', 'namecheap.com',
-    // Türkiye yaygın servisler
-    'yandex.com', 'yandex.com.tr', 'yandex.ru',
-    'turkiye.gov.tr', 'gib.gov.tr', 'sgk.gov.tr', 'pttsepet.com', 'ptt.gov.tr',
-    'trendyol.com', 'hepsiburada.com', 'n11.com', 'gittigidiyor.com',
-    'sahibinden.com', 'arabam.com',
-    'turkcell.com.tr', 'turktelekom.com.tr', 'vodafone.com.tr',
-    'ziraatbank.com.tr', 'isbank.com.tr', 'garantibbva.com.tr', 'akbank.com',
-    'yapikredi.com.tr', 'halkbank.com.tr', 'vakifbank.com.tr',
-    // Diğer popüler/CDN
-    'wikipedia.org', 'wikimedia.org', 'mozilla.org', 'firefox.com',
-    'adobe.com', 'salesforce.com', 'jsdelivr.net', 'unpkg.com', 'jquery.com',
-    'fontawesome.com', 'googletagmanager.com', 'google-analytics.com',
-    'mailchimp.com', 'sendgrid.net', 'mailgun.org', 'sendpulse.com',
-    // Standart/namespace URI'ları (mail HTML'inde sık geçer, OTX'te gürültülü)
-    'w3.org', 'ietf.org', 'iana.org', 'rfc-editor.org',
-    'schema.org', 'json-schema.org', 'opensearch.org',
-    // AI / büyük tech ürün servisleri
-    'anthropic.com', 'claude.ai', 'openai.com', 'chatgpt.com',
-    'huggingface.co'
-]);
+// OTX whitelist artık DB'de (trusted_domains tablosu) yönetilir.
+// Admin paneli üzerinden eklenip silinebilir; restart gerekmez.
+// Geriye dönük uyumluluk: OTX_DOMAIN_WHITELIST mevcut Set olarak (ilk
+// snapshot'ı) export edilmeye devam ediyor — testler ve harici kullanımlar
+// için. Live davranış için isOtxWhitelisted() kullanın.
+const { isTrusted, getTrustedDomains } = require('../storage/trustedDomainStore');
 
 function isOtxWhitelisted(value) {
-    const v = String(value || '').toLowerCase().replace(/^www\./, '').trim();
-    if (!v) return false;
-    if (OTX_DOMAIN_WHITELIST.has(v)) return true;
-    // subdomain match: x.youtube.com → youtube.com whitelisted
-    const parts = v.split('.');
-    for (let i = 1; i < parts.length - 1; i++) {
-        const candidate = parts.slice(i).join('.');
-        if (OTX_DOMAIN_WHITELIST.has(candidate)) return true;
-    }
-    return false;
+    return isTrusted(value);
 }
+
+// Geriye dönük uyumluluk: ilk yüklenen anki snapshot — değiştirmek
+// için trustedDomainStore API'sini kullanın, bu Set güncellenmez.
+const OTX_DOMAIN_WHITELIST = (() => {
+    try { return new Set(getTrustedDomains()); }
+    catch { return new Set(); }
+})();
 
 function isPrivateIp(ip) {
     return PRIVATE_RANGES.some(r => r.test(ip));
