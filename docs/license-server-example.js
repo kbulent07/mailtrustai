@@ -1,7 +1,7 @@
 // ============================================================
 // MERKEZİ LİSANS SUNUCUSU — Örnek Uygulama
 // ============================================================
-// Bu dosyayı kendi sunucunuzda (örn. license.cw-enerji.com)
+// Bu dosyayı kendi sunucunuzda (örn. license.example.com)
 // ayrı bir Node.js servisi olarak çalıştırın.
 //
 // Müşteri sunucuları bu servise sorgu atar.

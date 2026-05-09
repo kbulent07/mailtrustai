@@ -1080,4 +1080,4 @@ sudo chown -R 1001:1001 ./data ./logs
 
 ---
 
-*MailTrustAI © 2026 CW-Enerji — Tüm hakları saklıdır*
+*MailTrustAI © 2026 — Tüm hakları saklıdır*

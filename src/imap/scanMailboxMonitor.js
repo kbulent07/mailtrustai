@@ -72,8 +72,7 @@ class ScanMailboxMonitor {
             // Bu, iletilenin aynı zamanda rapor alıcısı olduğu durumlarda döngüyü keser.
             const subject = String(email.subject || '');
             if (subject.includes('[MailTrustAI Güvenlik Raporu]') ||
-                subject.includes('[MailTrustAI Security Report]') ||
-                subject.includes('[CW-Enerji Mail Guvenlik Raporu]')) {
+                subject.includes('[MailTrustAI Security Report]')) {
                 console.log(`[ScanMailbox] Self-loop atlandı (rapor konusu): "${subject.slice(0, 80)}"`);
                 this.markProcessed(uid);
                 return;

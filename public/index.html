@@ -117,11 +117,13 @@
                 }
             } catch { /* sessizce devam */ }
             return _origFetch(input, init).then(res => {
-                // 401 → oturum sona ermiş; overlay'i göster ama dealer/admin login isteklerini bypass et
+                // 401 → yalnızca daha önce GEÇERLİ token'ımız varken reload tetikle.
+                // Token hiç yoksa (overlay'de login bekleniyor) reload yapma → infinite loop önle.
                 try {
                     const url = typeof input === 'string' ? input : (input && input.url) || '';
                     const SKIP_401 = ['/api/admin/session', '/api/dealer/login', '/api/customer/login', '/api/customer/setup', '/api/customer/status'];
-                    if (res.status === 401 && url.startsWith('/api/') && !SKIP_401.some(p => url.startsWith(p))) {
+                    const hadToken = !!(window.__msaCustomerToken || getToken());
+                    if (res.status === 401 && url.startsWith('/api/') && !SKIP_401.some(p => url.startsWith(p)) && hadToken) {
                         clearToken();
                         location.reload();
                     }
@@ -165,7 +167,9 @@
                 return;
             }
             setToken(data.token);
-            unlockApp();
+            // Login/setup sonrası fresh start: app.js'in DOMContentLoaded init'i
+            // token yokken yapıldığı için kalıcı state bozuk olabilir → reload.
+            location.reload();
         } catch (e) {
             errEl.textContent = 'Bağlantı hatası: ' + e.message;
         } finally {
@@ -193,7 +197,9 @@
                 return;
             }
             setToken(data.token);
-            unlockApp();
+            // Login/setup sonrası fresh start: app.js'in DOMContentLoaded init'i
+            // token yokken yapıldığı için kalıcı state bozuk olabilir → reload.
+            location.reload();
         } catch (e) {
             errEl.textContent = 'Bağlantı hatası: ' + e.message;
         } finally {
@@ -803,7 +809,7 @@
         </div>
         <div class="form-group">
             <label class="form-label">Firma Adi</label>
-            <input class="form-input" id="companyNameInput" placeholder="CW-Enerji">
+            <input class="form-input" id="companyNameInput" placeholder="Şirketinizin Adı">
         </div>
         <div class="form-group">
             <label class="form-label">Firma Bilgisi</label>

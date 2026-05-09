@@ -33,7 +33,8 @@ function buildPeriodicReportHtml({ period, history, generatedAt = new Date(), ta
                 <td style="background:#1e3a8a;background:linear-gradient(135deg,#1e3a8a,#3b82f6 60%,#8b5cf6);width:44px;height:44px;border-radius:9px;text-align:center;vertical-align:middle;font-size:24px;line-height:44px;color:#ffffff;font-weight:900">&#128737;</td>
                 <td style="padding-left:12px;vertical-align:middle"><div style="font-size:17px;font-weight:800;color:#f8fafc;letter-spacing:.3px">MailTrustAI</div><div style="font-size:10px;color:#9eb0c9;letter-spacing:1px;margin-top:2px">SCAN &middot; ANALYZE &middot; EVALUATE &middot; PROTECT</div></td>
             </tr></table>
-            <div style="font-size:22px;font-weight:800;letter-spacing:.04em;">${esc(companyName.toUpperCase())} TARAMA OZETI</div>
+            <div style="font-size:22px;font-weight:800;letter-spacing:.04em;">TARAMA OZETI</div>
+            ${(companyName && companyName.toLowerCase() !== 'mailtrustai') ? `<div style="margin-top:6px;color:#cbd5e1;">Musteri: <strong>${esc(companyName)}</strong></div>` : ''}
             ${companyDetails ? `<div style="margin-top:8px;color:#cbd5e1;">${esc(companyDetails)}</div>` : ''}
             <div style="margin-top:8px;color:#9eb0c9;">Rapor turu: <strong>${esc(periodMeta.label)}</strong> | Uretim zamani: ${esc(formatDate(generatedAt))}</div>
             <div style="margin-top:4px;color:#9eb0c9;">Kapsam: ${esc(formatDate(range.start))} - ${esc(formatDate(range.end))}</div>
@@ -63,8 +64,8 @@ function buildPeriodicReportHtml({ period, history, generatedAt = new Date(), ta
         </div>
 
         <div style="margin-top:22px;color:#7f8da8;font-size:12px;line-height:1.6;">
-            Bu otomatik rapor ${esc(companyName)} tarafindan olusturulmustur. Riskli mesajlarda ekleri acmayiniz, baglantilara tiklamayiniz ve bilgi islem ekibiyle iletisime geciniz.
-            ${companyContactInfo ? `<br><br>${esc(companyContactInfo)}` : ''}
+            Bu otomatik rapor MailTrustAI Mail Guvenlik Sistemi tarafindan olusturulmustur. Riskli mesajlarda ekleri acmayiniz, baglantilara tiklamayiniz ve bilgi islem ekibiyle iletisime geciniz.
+            ${(companyName && companyName.toLowerCase() !== 'mailtrustai') ? `<br><br><strong>${esc(companyName)}</strong>${companyContactInfo ? ` &middot; ${esc(companyContactInfo)}` : ''}` : (companyContactInfo ? `<br><br>${esc(companyContactInfo)}` : '')}
         </div>
     </div>
 </body>
