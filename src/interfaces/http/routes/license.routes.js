@@ -1,0 +1,189 @@
+// ============================================================
+// HTTP routes: lisans yönetimi (validate / activate / trial /
+// generate / prices / tiers / revoke / unrevoke / revoked / usage)
+// ============================================================
+const express = require('express');
+
+const {
+    validateLicenseKey, generateLicenseKey, generateBatchKeys,
+    getPriceTable, PLANS, TIERS, DURATIONS,
+    revokeKey, unRevokeKey, loadRevocationList
+} = require('../../../license/license');
+const { checkRemoteLicense, getCachedStatus } = require('../../../license/remoteValidator');
+const { loadSettings, saveSettings } = require('../../../storage/settingsStore');
+const { getMonthlyCount, getCurrentMonthKey } = require('../../../storage/monthlyCounter');
+const { getDailyCount } = require('../../../storage/dailyScansStore');
+const { state } = require('../../../services/appState');
+const { requireAdminAuth } = require('../../../middleware/adminAuth');
+
+const router = express.Router();
+
+function _maskKey(k) {
+    if (!k) return '';
+    const s = String(k);
+    if (s.length <= 12) return s;
+    return s.slice(0, 8) + '…' + s.slice(-4);
+}
+
+router.post('/license/validate', async (req, res) => {
+    const key    = String(req.body.key || '');
+    const result = validateLicenseKey(key);
+    if (!result.valid) return res.json(result);
+
+    try {
+        const remote = await checkRemoteLicense(key);
+        if (!remote.allowed) {
+            return res.json({
+                valid: false,
+                error: remote.revokedAt
+                    ? `License revoked (${new Date(remote.revokedAt).toLocaleDateString('tr-TR')})`
+                    : 'License revoked or blocked by remote server',
+                remoteSource: remote.source
+            });
+        }
+        result.remoteCheck = { source: remote.source, graceRemainingHours: remote.graceRemainingHours };
+    } catch (e) {
+        result.remoteCheck = { source: 'error', error: e.message };
+    }
+
+    res.json(result);
+});
+
+// Sunucuda kayıtlı (kalıcı) lisans
+router.get('/license', (req, res) => {
+    try {
+        const settings = loadSettings();
+        const key = (settings.activeLicenseKey || '').trim();
+        if (!key) return res.json({ active: false });
+
+        const result        = validateLicenseKey(key);
+        const remote        = getCachedStatus(key);
+        const remoteAllowed = !remote || remote.allowed !== false;
+
+        res.json({
+            active:        result.valid && remoteAllowed,
+            licenseKey:    key,
+            maskedKey:     _maskKey(key),
+            setAt:         settings.activeLicenseSetAt || null,
+            validation:    result,
+            remoteAllowed,
+            remoteSource:  remote?.source || null
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.post('/license/activate', async (req, res) => {
+    const key = String(req.body?.key || '').trim();
+    if (!key) return res.status(400).json({ error: 'Lisans anahtarı zorunludur.' });
+
+    const result = validateLicenseKey(key);
+    if (!result.valid) return res.status(400).json({ error: result.error || 'Geçersiz lisans anahtarı.' });
+
+    try {
+        const remote = await checkRemoteLicense(key);
+        if (!remote.allowed) {
+            return res.status(403).json({
+                error: remote.revokedAt
+                    ? `Lisans iptal edilmiş (${new Date(remote.revokedAt).toLocaleDateString('tr-TR')})`
+                    : 'Lisans uzak sunucuda engellenmiş veya iptal edilmiş.',
+                remoteSource: remote.source
+            });
+        }
+    } catch (e) {
+        console.warn('[License/Activate] Uzak doğrulama erişilemez:', e.message);
+    }
+
+    const settings = loadSettings();
+    saveSettings({
+        ...settings,
+        activeLicenseKey:   key,
+        activeLicenseSetAt: new Date().toISOString()
+    });
+
+    console.log(`[License] Aktif lisans sunucuya kaydedildi: ${_maskKey(key)} (plan=${result.plan}, tier=${result.tier})`);
+    res.json({
+        success: true,
+        message: 'Lisans sunucuya kaydedildi. Yeniden başlatma ve versiyon geçişlerinde otomatik korunacak.',
+        validation: result,
+        maskedKey:  _maskKey(key)
+    });
+});
+
+// 7 günlük Enterprise trial — yalnızca admin
+router.post('/license/trial', requireAdminAuth, async (req, res) => {
+    const plan = 'ENT', tier = 'T3', duration = 'T';
+    const reseller = String(req.body?.reseller || 'TRIAL').toUpperCase().slice(0, 12);
+
+    const key        = generateLicenseKey(plan, tier, duration, reseller);
+    const validation = validateLicenseKey(key);
+    if (!validation.valid) return res.status(500).json({ error: 'Trial lisans üretilemedi.' });
+
+    console.log(`[License] Admin trial lisansı üretildi: ${_maskKey(key)} — 7 gün, ENT T3 (reseller=${reseller})`);
+    res.json({
+        success:   true,
+        message:   '7 günlük Enterprise deneme lisansı üretildi.',
+        key,
+        maskedKey: _maskKey(key),
+        validation,
+        expiresAt: validation.expiryDate,
+        plan, tier, duration
+    });
+});
+
+router.post('/license/deactivate', (req, res) => {
+    const settings = loadSettings();
+    if (!settings.activeLicenseKey) {
+        return res.status(404).json({ error: 'Sunucuda kayıtlı lisans yok.' });
+    }
+    saveSettings({ ...settings, activeLicenseKey: '', activeLicenseSetAt: '' });
+    console.log('[License] Sunucudaki aktif lisans kaldırıldı.');
+    res.json({ success: true, message: 'Sunucudaki kayıtlı lisans kaldırıldı.' });
+});
+
+router.post('/license/generate', requireAdminAuth, (req, res) => {
+    const { plan, tier, duration, reseller, count } = req.body;
+    if (count && count > 1) return res.json({ keys: generateBatchKeys(plan, tier, duration, count, reseller) });
+    res.json({ key: generateLicenseKey(plan, tier, duration, reseller) });
+});
+
+router.get('/license/prices', (req, res) => {
+    res.json(getPriceTable(state.customPrices));
+});
+
+router.post('/license/prices', (req, res) => {
+    state.customPrices = req.body.prices || null;
+    const current = loadSettings();
+    saveSettings({ ...current, customPrices: state.customPrices });
+    res.json({ success: true });
+});
+
+router.get('/license/tiers', (req, res) => {
+    res.json({ plans: PLANS, tiers: TIERS, durations: DURATIONS });
+});
+
+router.post('/license/revoke', requireAdminAuth, (req, res) => {
+    const { key } = req.body;
+    if (!key) return res.status(400).json({ error: 'Lisans anahtarı gerekli' });
+    revokeKey(key);
+    res.json({ success: true, message: `Lisans iptal edildi: ${key}` });
+});
+
+router.post('/license/unrevoke', requireAdminAuth, (req, res) => {
+    const { key } = req.body;
+    if (!key) return res.status(400).json({ error: 'Lisans anahtarı gerekli' });
+    unRevokeKey(key);
+    res.json({ success: true, message: `Lisans iptali kaldırıldı: ${key}` });
+});
+
+router.get('/license/revoked', requireAdminAuth, (req, res) => {
+    res.json(loadRevocationList());
+});
+
+router.get('/license/usage', (req, res) => {
+    const today = new Date().toISOString().slice(0, 10);
+    res.json({ monthlyCount: getMonthlyCount(), monthKey: getCurrentMonthKey(), dailyCount: getDailyCount(today) });
+});
+
+module.exports = router;
