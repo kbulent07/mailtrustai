@@ -3123,6 +3123,7 @@ async function loadScanMailboxes() {
                         <input type="checkbox" ${smb.enabled ? 'checked' : ''} onchange="toggleScanMailboxEnabled('${esc(smb.imapEmail)}', this.checked)">
                         ${t('scanmailbox_enabled')}
                     </label>
+                    <button class="btn btn-ghost btn-sm" onclick="editScanMailbox('${esc(smb.imapEmail)}')" title="Düzenle">✏️</button>
                     <button class="btn btn-ghost btn-sm" onclick="deleteScanMailbox('${esc(smb.imapEmail)}')">🗑️</button>
                 </div>
             `}).join('')
@@ -3171,7 +3172,10 @@ function stopAutoMonitorFromList(email) {
         .catch(() => loadScanMailboxes());
 }
 
+let editingScanMailboxEmail = null;
+
 async function showScanMailboxModal() {
+    editingScanMailboxEmail = null;
     const modal       = document.getElementById('scanMailboxModal');
     const limitBanner = document.getElementById('smProLimitBanner');
     const formBody    = document.getElementById('smFormBody');
@@ -3227,6 +3231,8 @@ async function showScanMailboxModal() {
             const el = document.getElementById(id);
             if (el) { el.value = ''; if (el.dataset) el.dataset.userEdited = 'false'; }
         });
+        const imapEmailEl = document.getElementById('smImapEmail');
+        if (imapEmailEl) { imapEmailEl.readOnly = false; imapEmailEl.style.opacity = ''; }
         const imapPort = document.getElementById('smImapPort');
         if (imapPort) imapPort.value = '993';
         const smtpPort = document.getElementById('smSmtpPort');
@@ -3250,6 +3256,82 @@ async function showScanMailboxModal() {
     modal.classList.remove('hidden');
 }
 
+async function editScanMailbox(imapEmail) {
+    editingScanMailboxEmail = imapEmail;
+    const modal       = document.getElementById('scanMailboxModal');
+    const limitBanner = document.getElementById('smProLimitBanner');
+    const formBody    = document.getElementById('smFormBody');
+    const saveBtn     = document.getElementById('smSaveBtn');
+
+    // Edit modunda limit/banner göster<a></a>me; formu aç
+    if (limitBanner) limitBanner.classList.add('hidden');
+    if (formBody)    formBody.classList.remove('hidden');
+    if (saveBtn)     saveBtn.disabled = false;
+
+    // "Tüm mailler" seçeneğinin Enterprise gating'i (showScanMailboxModal ile aynı)
+    const allOpt = document.querySelector('#smReportMode option[value="all"]');
+    if (allOpt) {
+        const isEnterprise = licenseInfo?.plan === 'enterprise';
+        allOpt.disabled = !isEnterprise;
+        allOpt.textContent = isEnterprise
+            ? '📬 Tüm mailler için rapor al'
+            : '📬 Tüm mailler için rapor al [Enterprise — devre dışı]';
+    }
+
+    try {
+        const headers = {};
+        if (licenseKey) headers['x-license-key'] = licenseKey;
+        const res = await fetch('/api/scan-mailboxes', { headers });
+        const list = await res.json();
+        const smb  = list.find(s => s.imapEmail === imapEmail);
+        if (!smb) {
+            alert('Hesap bulunamadı.');
+            return;
+        }
+
+        // IMAP / SMTP bağlantı alanları
+        document.getElementById('smImapHost').value     = smb.imapHost || '';
+        document.getElementById('smImapPort').value     = smb.imapPort || 993;
+        document.getElementById('smImapEmail').value    = smb.imapEmail || '';
+        document.getElementById('smImapEmail').readOnly = true;
+        document.getElementById('smImapEmail').style.opacity = '0.65';
+        document.getElementById('smImapPassword').value = '';   // boş = mevcut kullanılır
+        document.getElementById('smImapPassword').placeholder = '•••••••• (değiştirmek için doldurun)';
+        document.getElementById('smImapTls').checked    = smb.imapTls !== false;
+
+        document.getElementById('smSmtpHost').value     = smb.smtpHost || smb.imapHost || '';
+        document.getElementById('smSmtpPort').value     = smb.smtpPort || 587;
+        document.getElementById('smSmtpHost').dataset.userEdited = 'true'; // edit modunda otomatik eşitleme yapma
+        // SMTP şifresi: edit'te varsayılan olarak "IMAP ile aynı" işaretliyiz; kullanıcı değiştirebilir
+        document.getElementById('smSmtpSamePass').checked = true;
+        onSmSmtpSamePassChange();
+        document.getElementById('smSmtpPassword').value = '';
+        document.getElementById('smSmtpPassword').placeholder = '•••••••• (değiştirmek için doldurun)';
+
+        // Domain filtresi
+        const domains = Array.isArray(smb.allowedDomains) ? smb.allowedDomains : [];
+        document.getElementById('smAllowedDomains').value = domains.join(', ');
+
+        // Rapor hedefi
+        const isForwarder = smb.reportToForwarder === true;
+        document.getElementById('smReportTargetForwarder').checked = isForwarder;
+        document.getElementById('smReportTargetFixed').checked     = !isForwarder;
+        document.getElementById('smReportTo').value = isForwarder ? '' : (smb.reportTo || '');
+        onSmReportTargetChange();
+
+        // Dil / Mod / Aktif
+        document.getElementById('smReportLang').value = smb.reportLang || 'tr';
+        document.getElementById('smReportMode').value = smb.reportMode === 'all' ? 'all' : 'risky';
+        onScanMailboxReportModeChange(document.getElementById('smReportMode'));
+        document.getElementById('smEnabled').checked  = smb.enabled !== false;
+
+        document.getElementById('smTestResult').innerHTML = '';
+        modal.classList.remove('hidden');
+    } catch (e) {
+        alert('Düzenleme açılırken hata: ' + e.message);
+    }
+}
+
 function onSmReportTargetChange() {
     const isForwarder = document.getElementById('smReportTargetForwarder')?.checked;
     const wrap = document.getElementById('smReportToWrap');
@@ -3259,6 +3341,14 @@ function onSmReportTargetChange() {
 function closeScanMailboxModal() {
     document.getElementById('scanMailboxModal').classList.add('hidden');
     document.getElementById('smTestResult').innerHTML = '';
+    editingScanMailboxEmail = null;
+    // Şifre alanı placeholder'larını ilk haline döndür
+    const imapPwd = document.getElementById('smImapPassword');
+    if (imapPwd) imapPwd.placeholder = '••••••••';
+    const smtpPwd = document.getElementById('smSmtpPassword');
+    if (smtpPwd) smtpPwd.placeholder = '••••••••';
+    const smtpHost = document.getElementById('smSmtpHost');
+    if (smtpHost && smtpHost.dataset) smtpHost.dataset.userEdited = 'false';
 }
 
 function showSmError(msg) {
@@ -3381,7 +3471,8 @@ async function saveScanMailbox() {
         showSmError('⚠️ E-posta / kullanıcı adı zorunludur.');
         return;
     }
-    if (!data.imapPassword) {
+    // Edit modunda şifre boş bırakılabilir — server mevcut kayıttaki şifreyi yeniden kullanır.
+    if (!data.imapPassword && !editingScanMailboxEmail) {
         showSmError('⚠️ IMAP şifresi zorunludur.');
         return;
     }
