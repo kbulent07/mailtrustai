@@ -24,6 +24,14 @@ const _selectRecent = db.prepare(`
     LIMIT ?
 `);
 
+const _selectById = db.prepare(`
+    SELECT payload FROM scan_history WHERE scan_id = ? LIMIT 1
+`);
+
+const _updatePayloadById = db.prepare(`
+    UPDATE scan_history SET payload = ? WHERE scan_id = ?
+`);
+
 const _deleteOld = db.prepare(`
     DELETE FROM scan_history WHERE timestamp < ?
 `);
@@ -345,9 +353,34 @@ function _prune() {
     }
 })();
 
+function findScanById(scanId) {
+    if (!scanId) return null;
+    try {
+        const row = _selectById.get(String(scanId));
+        if (!row) return null;
+        return _decode({ payload: row.payload });
+    } catch { return null; }
+}
+
+function updateScanById(scanId, patch) {
+    if (!scanId || !patch || typeof patch !== 'object') return null;
+    const existing = findScanById(scanId);
+    if (!existing) return null;
+    const merged = { ...existing, ...patch };
+    try {
+        _updatePayloadById.run(JSON.stringify(merged), String(scanId));
+        return merged;
+    } catch (e) {
+        console.error('[ScanHistory] updateScanById hata:', e.message);
+        return null;
+    }
+}
+
 module.exports = {
     loadScanHistory,
     recordScan,
     saveScanHistory,
-    getDetailedStats
+    getDetailedStats,
+    findScanById,
+    updateScanById
 };

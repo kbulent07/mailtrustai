@@ -217,6 +217,7 @@ function showResults(data, options = {}) {
     renderMainRiskBanner(data);
     renderMainMeta(data.emailMeta || {});
     renderMainStats(data);
+    renderDeepAiPanel(data);
     renderStructuredReport(data);
     renderFindings(data.findings || []);
     renderAttachmentDetails(data);
@@ -402,6 +403,229 @@ function renderMainStats(data) {
             <div class="stat-value text-green">${data.summary?.safe || 0}</div>
             <div class="stat-label">${t('stat_safe')}</div>
         </div>
+    `;
+}
+
+// ============================================================
+// DERİN AI İNCELEME PANELİ
+// Mevcut bir analiz raporunun üzerine kullanıcı isteğiyle çağrılır.
+// 5 tarama hakkı tüketir; sonuç scan history'ye kaydedilir, tekrar
+// açıldığında cache'ten gelir.
+// ============================================================
+const DEEP_AI_COST = 5;
+
+function renderDeepAiPanel(data) {
+    let host = document.getElementById('deepAiPanel');
+    if (!host) {
+        const banner = document.getElementById('riskBanner');
+        if (!banner) return;
+        host = document.createElement('div');
+        host.id = 'deepAiPanel';
+        host.style.cssText = 'margin:14px 0 0';
+        banner.parentNode.insertBefore(host, banner.nextSibling);
+    }
+
+    const scanId = data?.id || data?.scanId || null;
+    if (!scanId) {
+        host.style.display = 'none';
+        return;
+    }
+
+    if (data.deepAiAnalysis) {
+        host.innerHTML = renderDeepAiResult(data.deepAiAnalysis, true);
+        host.style.display = '';
+        return;
+    }
+
+    // Buton görünümü — henüz yapılmadı
+    host.innerHTML = `
+        <div style="background:linear-gradient(135deg,rgba(139,92,246,0.10),rgba(99,102,241,0.10));border:1px solid rgba(139,92,246,0.35);border-left:4px solid #a78bfa;border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+            <div style="flex:1;min-width:280px">
+                <div style="font-size:14px;font-weight:700;color:#c4b5fd;margin-bottom:3px">🔬 Yapay Zekâ ile Derinlemesine İncele</div>
+                <div style="font-size:12px;color:#a5b4fc;line-height:1.55">
+                    Saldırı zinciri, sosyal mühendislik kalıpları, marka taklidi, kullanıcı/IT/kurum tavsiyeleri ve IoC listesi içeren detaylı forensic rapor üretir.
+                    <br><b style="color:#fbbf24">⚠️ Bu işlem aylık tarama hakkından <span style="color:#fcd34d">${DEEP_AI_COST}</span> düşer.</b>
+                </div>
+            </div>
+            <button id="deepAiTriggerBtn" onclick="requestDeepAiAnalysis()" style="background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;border:none;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(124,58,237,0.35);white-space:nowrap">
+                🚀 Derinlemesine Analiz Et
+            </button>
+        </div>
+        <div id="deepAiStatus" style="margin-top:8px;font-size:12px;color:var(--text-secondary);text-align:center"></div>
+    `;
+    host.style.display = '';
+}
+
+async function requestDeepAiAnalysis() {
+    const data = currentResult;
+    const scanId = data?.id || data?.scanId;
+    if (!scanId) return;
+
+    const confirmed = confirm(
+        `Bu işlem yapay zekâdan derinlemesine analiz alır ve aylık tarama hakkından ${DEEP_AI_COST} düşer.\n\nDevam edilsin mi?`
+    );
+    if (!confirmed) return;
+
+    const btn = document.getElementById('deepAiTriggerBtn');
+    const status = document.getElementById('deepAiStatus');
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ AI analiz yapıyor (~10-20 sn)...'; btn.style.opacity = '0.7'; btn.style.cursor = 'wait'; }
+    if (status) status.textContent = 'Yapay zekâya delil paketi gönderildi, derinlemesine analiz hazırlanıyor...';
+
+    try {
+        const res = await fetch('/api/analyze/deep-ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scanId })
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+            const msg = json.error || `Hata: HTTP ${res.status}`;
+            if (status) status.innerHTML = `<span style="color:#f87171">❌ ${esc(msg)}</span>`;
+            if (btn) { btn.disabled = false; btn.innerHTML = '🚀 Derinlemesine Analiz Et'; btn.style.opacity = ''; btn.style.cursor = ''; }
+            return;
+        }
+
+        // Sonucu currentResult'a yaz ve panel'i güncelle
+        currentResult.deepAiAnalysis = json.analysis;
+        const host = document.getElementById('deepAiPanel');
+        if (host) host.innerHTML = renderDeepAiResult(json.analysis, json.cached);
+
+        // Limit göstergesi
+        const remaining = (json.monthlyLimit === Infinity ? '∞' : (json.monthlyLimit - json.monthlyUsed));
+        if (status) status.textContent = `✅ Tamamlandı. Aylık limit: ${json.monthlyUsed}/${json.monthlyLimit === Infinity ? '∞' : json.monthlyLimit} kullanıldı (kalan: ${remaining}).`;
+    } catch (e) {
+        if (status) status.innerHTML = `<span style="color:#f87171">❌ Bağlantı hatası: ${esc(e.message)}</span>`;
+        if (btn) { btn.disabled = false; btn.innerHTML = '🚀 Derinlemesine Analiz Et'; btn.style.opacity = ''; btn.style.cursor = ''; }
+    }
+}
+
+function renderDeepAiResult(a, cached) {
+    if (!a) return '';
+    const verdictColors = { safe: '#10b981', low: '#facc15', medium: '#fb923c', high: '#ef4444' };
+    const verdictLabels = { safe: 'GÜVENLİ', low: 'DÜŞÜK', medium: 'ORTA', high: 'KRİTİK' };
+    const vc = verdictColors[a.verdict] || '#94a3b8';
+    const vl = verdictLabels[a.verdict] || a.verdict?.toUpperCase() || '—';
+
+    const tactics = (a.social_engineering_tactics || []).map(t =>
+        `<span style="display:inline-block;background:rgba(139,92,246,0.18);border:1px solid rgba(139,92,246,0.4);color:#ddd6fe;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600;margin:2px 4px 2px 0">${esc(t)}</span>`
+    ).join('');
+
+    const killChain = (a.kill_chain_steps_tr || []).map(s =>
+        `<li style="margin-bottom:6px;color:#e5e7eb;font-size:13px;line-height:1.55">${esc(s)}</li>`
+    ).join('');
+
+    const iocSection = (() => {
+        const groups = [
+            ['Domains', a.iocs?.domains || []],
+            ['IPs',     a.iocs?.ips     || []],
+            ['URLs',    a.iocs?.urls    || []],
+            ['Emails',  a.iocs?.emails  || []],
+            ['Hashes',  a.iocs?.hashes  || []]
+        ].filter(([_, list]) => list.length > 0);
+        if (!groups.length) return '<div style="color:var(--text-secondary);font-size:13px;padding:6px 0">İndikatör bulunamadı</div>';
+        return groups.map(([label, list]) => `
+            <div style="margin-bottom:8px">
+                <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:4px">${esc(label)} (${list.length})</div>
+                <div style="background:#0b1220;border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px;color:#e5e7eb;word-break:break-all">${list.map(esc).join('<br>')}</div>
+            </div>
+        `).join('');
+    })();
+
+    const actionList = (items, color) => (items || []).length
+        ? `<ol style="margin:0;padding-left:18px;color:#e5e7eb;font-size:13px;line-height:1.7">${items.map(i => `<li style="margin-bottom:3px">${esc(i)}</li>`).join('')}</ol>`
+        : `<div style="color:var(--text-secondary);font-size:13px">Önerilen ek işlem yok</div>`;
+
+    const brand = a.brand_impersonation || {};
+    const brandHtml = brand.is_impersonating
+        ? `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+                <div style="font-size:11px;color:#fca5a5;font-weight:700;letter-spacing:1px;margin-bottom:4px">🎭 MARKA TAKLİDİ TESPİT EDİLDİ</div>
+                <div style="font-size:14px;color:#fecaca;font-weight:700">${esc(brand.impersonated_brand || 'Bilinmeyen marka')}</div>
+                <div style="font-size:12px;color:#fee2e2;margin-top:4px">${esc(brand.evidence_tr || '')}</div>
+           </div>`
+        : '';
+
+    return `
+    <div style="background:linear-gradient(135deg,#1e1b4b,#1e293b);border:1px solid #6366f1;border-left:4px solid #a78bfa;border-radius:12px;padding:18px 20px;color:#e5e7eb">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+            <div style="font-size:15px;font-weight:800;color:#c4b5fd;letter-spacing:0.3px">🔬 Yapay Zekâ Derinlemesine İncelemesi ${cached ? '<span style="font-size:10px;background:rgba(99,102,241,0.3);color:#c7d2fe;padding:2px 8px;border-radius:999px;margin-left:8px;font-weight:700">CACHED</span>' : ''}</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <span style="background:${vc}22;border:1px solid ${vc};color:${vc};padding:4px 12px;border-radius:8px;font-size:12px;font-weight:800">${esc(vl)} · ${a.score}/100</span>
+                <span style="background:#0b1220;border:1px solid var(--border);color:var(--text-secondary);padding:4px 12px;border-radius:8px;font-size:11px">Güven: %${a.confidence}</span>
+                <span style="background:#0b1220;border:1px solid var(--border);color:var(--text-secondary);padding:4px 12px;border-radius:8px;font-size:11px;font-family:monospace">${esc(a.modelUsed || '')}</span>
+            </div>
+        </div>
+
+        <!-- Yönetici Özeti -->
+        <div style="background:#0b1220;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+            <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:6px">📋 YÖNETİCİ ÖZETİ</div>
+            <div style="font-size:14px;color:#f1f5f9;line-height:1.65;font-weight:500">${esc(a.executive_summary_tr || '—')}</div>
+        </div>
+
+        ${brandHtml}
+
+        <!-- Threat narrative -->
+        <div style="margin-bottom:14px">
+            <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:6px">🎯 SALDIRI/AMAÇ ANLATIMI</div>
+            <div style="font-size:13px;color:#e5e7eb;line-height:1.65">${esc(a.threat_narrative_tr || '—')}</div>
+        </div>
+
+        <!-- Sosyal mühendislik kalıpları -->
+        ${tactics ? `
+        <div style="margin-bottom:14px">
+            <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:6px">🧠 SOSYAL MÜHENDİSLİK KALIPLARI</div>
+            <div>${tactics}</div>
+        </div>` : ''}
+
+        <!-- Kill chain -->
+        ${killChain ? `
+        <div style="margin-bottom:14px">
+            <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:6px">⛓️ SALDIRI ZİNCİRİ (KILL CHAIN)</div>
+            <ol style="margin:0;padding-left:20px">${killChain}</ol>
+        </div>` : ''}
+
+        <!-- Aksiyonlar 3 kolon -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px">
+            <div style="background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:12px">
+                <div style="font-size:11px;color:#86efac;font-weight:700;letter-spacing:1px;margin-bottom:8px">👤 KULLANICI YAPMALI</div>
+                ${actionList(a.user_actions_tr, '#86efac')}
+            </div>
+            <div style="background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:12px">
+                <div style="font-size:11px;color:#93c5fd;font-weight:700;letter-spacing:1px;margin-bottom:8px">🛠️ IT EKİBİ YAPMALI</div>
+                ${actionList(a.it_actions_tr, '#93c5fd')}
+            </div>
+            <div style="background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.3);border-radius:8px;padding:12px">
+                <div style="font-size:11px;color:#d8b4fe;font-weight:700;letter-spacing:1px;margin-bottom:8px">🏢 KURUM ÇAPINDA</div>
+                ${actionList(a.organization_actions_tr, '#d8b4fe')}
+            </div>
+        </div>
+
+        <!-- IoCs -->
+        <div style="margin-bottom:14px">
+            <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:6px">🔍 GÖSTERGELER (IoCs)</div>
+            ${iocSection}
+        </div>
+
+        <!-- Benzer kampanyalar + FP riski -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:10px">
+            <div style="background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:12px">
+                <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:6px">📊 BENZER KAMPANYALAR</div>
+                <div style="font-size:13px;color:#e5e7eb;line-height:1.55">${esc(a.similar_campaigns_tr || '-')}</div>
+            </div>
+            <div style="background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:12px">
+                <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:6px">⚠️ YANLIŞ POZİTİF RİSKİ</div>
+                <div style="font-size:13px;color:#e5e7eb;line-height:1.55">${esc(a.false_positive_risk_tr || '-')}</div>
+            </div>
+        </div>
+
+        <!-- Güven gerekçesi -->
+        <div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.25);border-radius:8px;padding:10px 12px;font-size:12px;color:#c7d2fe">
+            <b>Güven seviyesi gerekçesi:</b> ${esc(a.confidence_reasoning_tr || '-')}
+        </div>
+
+        <div style="margin-top:10px;font-size:10px;color:var(--text-secondary);text-align:right">
+            ${cached ? 'Önbellekten yüklendi' : `Oluşturuldu: ${a.requestedAt ? new Date(a.requestedAt).toLocaleString('tr-TR') : '-'}`}
+        </div>
+    </div>
     `;
 }
 
