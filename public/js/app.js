@@ -3977,45 +3977,62 @@ function _cuRenderIntegrations(d) {
     const otxPct = total > 0 ? (d.otxHits / total * 100).toFixed(1) : '0.0';
     document.getElementById('cuStatsIntegrations').innerHTML = `
         <div style="margin-bottom:14px">
-            <div style="cursor:pointer;user-select:none" onclick="toggleVtDetections()" title="Tespit edilen dosya ve antivirüsleri göster/gizle">
-                ${_cuBar('🦠 VirusTotal Antivirüs Tespitleri  ▾', d.vtHits || 0, total || 1, '#f87171')}
+            <div style="cursor:pointer;user-select:none" onclick="showVtDetections()" title="Tespit edilen dosya ve antivirüsleri görüntüle">
+                ${_cuBar('🦠 VirusTotal Antivirüs Tespitleri  ↗', d.vtHits || 0, total || 1, '#f87171')}
             </div>
             <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">
                 İsabet oranı: ${vtPct}%
-                ${d.vtHits > 0 ? `<span style="margin-left:8px;color:#f87171;cursor:pointer;text-decoration:underline" onclick="toggleVtDetections()">tespit listesi →</span>` : ''}
+                ${d.vtHits > 0 ? `<span style="margin-left:8px;color:#f87171;cursor:pointer;text-decoration:underline" onclick="showVtDetections()">tespit listesi →</span>` : ''}
             </div>
-            <div id="cuVtDetectionList" style="display:none;margin-top:10px"></div>
         </div>
         <div>
-            <div style="cursor:pointer;user-select:none" onclick="toggleOtxDomainList()" title="Tespit edilen domainleri göster/gizle">
-                ${_cuBar('🌐 AlienVault OTX Tespiti  ▾', d.otxHits || 0, total || 1, '#fb923c')}
+            <div style="cursor:pointer;user-select:none" onclick="showOtxDomainList()" title="Tespit edilen domainleri görüntüle">
+                ${_cuBar('🌐 AlienVault OTX Tespiti  ↗', d.otxHits || 0, total || 1, '#fb923c')}
             </div>
             <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">
                 İsabet oranı: ${otxPct}%
-                ${d.otxHits > 0 ? `<span style="margin-left:8px;color:#fb923c;cursor:pointer;text-decoration:underline" onclick="toggleOtxDomainList()">domain listesi →</span>` : ''}
+                ${d.otxHits > 0 ? `<span style="margin-left:8px;color:#fb923c;cursor:pointer;text-decoration:underline" onclick="showOtxDomainList()">domain listesi →</span>` : ''}
             </div>
-            <div id="cuOtxDomainList" style="display:none;margin-top:10px"></div>
         </div>
     `;
 }
 
+// ─── LİSTE DETAY MODALİ ──────────────────────────────────
+let _listDetailEscHandler = null;
+function _openListDetailModal(title) {
+    const overlay = document.getElementById('listDetailModal');
+    const titleEl = document.getElementById('listDetailModalTitle');
+    const body    = document.getElementById('listDetailModalBody');
+    if (!overlay || !titleEl || !body) return null;
+    titleEl.textContent = title;
+    body.innerHTML = '<p style="color:var(--text-secondary);padding:20px 0">⏳ Yükleniyor…</p>';
+    overlay.classList.remove('hidden');
+    if (_listDetailEscHandler) document.removeEventListener('keydown', _listDetailEscHandler);
+    _listDetailEscHandler = (e) => { if (e.key === 'Escape') closeListDetailModal(); };
+    document.addEventListener('keydown', _listDetailEscHandler);
+    return body;
+}
+function closeListDetailModal() {
+    const overlay = document.getElementById('listDetailModal');
+    if (overlay) overlay.classList.add('hidden');
+    if (_listDetailEscHandler) {
+        document.removeEventListener('keydown', _listDetailEscHandler);
+        _listDetailEscHandler = null;
+    }
+}
+
 // ─── VIRUSTOTAl TESPİT LİSTESİ ───────────────────────────
-let _vtDetectionListOpen = false;
-async function toggleVtDetections() {
-    const panel = document.getElementById('cuVtDetectionList');
-    if (!panel) return;
-    _vtDetectionListOpen = !_vtDetectionListOpen;
-    if (!_vtDetectionListOpen) { panel.style.display = 'none'; return; }
-    panel.style.display = '';
-    panel.innerHTML = '<p style="font-size:12px;color:var(--text-secondary);padding:8px 0">⏳ Yükleniyor…</p>';
+async function showVtDetections() {
+    const body = _openListDetailModal('🦠 VirusTotal Antivirüs Tespitleri');
+    if (!body) return;
     try {
         const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
         const res = await fetch('/api/stats/vt-detections', { headers });
-        if (!res.ok) { panel.innerHTML = '<p style="font-size:12px;color:#f87171">Yüklenemedi.</p>'; return; }
+        if (!res.ok) { body.innerHTML = '<p style="color:#f87171">Veriler yüklenemedi.</p>'; return; }
         const list = await res.json();
-        _cuRenderVtDetections(panel, list);
+        _cuRenderVtDetections(body, list);
     } catch (e) {
-        panel.innerHTML = `<p style="font-size:12px;color:#f87171">${esc(e.message)}</p>`;
+        body.innerHTML = `<p style="color:#f87171">Hata: ${esc(e.message)}</p>`;
     }
 }
 
@@ -4096,29 +4113,24 @@ function _cuRenderVtDetections(panel, list) {
     }).join('');
 
     panel.innerHTML = `
-        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)">
             ${list.length} zararlı/şüpheli ek tespiti — en fazla motor tespitinden sıralı
         </div>
         ${cards}
     `;
 }
 
-let _otxDomainListOpen = false;
-async function toggleOtxDomainList() {
-    const panel = document.getElementById('cuOtxDomainList');
-    if (!panel) return;
-    _otxDomainListOpen = !_otxDomainListOpen;
-    if (!_otxDomainListOpen) { panel.style.display = 'none'; return; }
-    panel.style.display = '';
-    panel.innerHTML = '<p style="font-size:12px;color:var(--text-secondary);padding:8px 0">⏳ Yükleniyor…</p>';
+async function showOtxDomainList() {
+    const body = _openListDetailModal('🌐 AlienVault OTX — Tespit Edilen Domain / Hostname Listesi');
+    if (!body) return;
     try {
         const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
         const res = await fetch('/api/stats/otx-domains', { headers });
-        if (!res.ok) { panel.innerHTML = '<p style="font-size:12px;color:#f87171">Yüklenemedi.</p>'; return; }
+        if (!res.ok) { body.innerHTML = '<p style="color:#f87171">Veriler yüklenemedi.</p>'; return; }
         const list = await res.json();
-        _cuRenderOtxDomainList(panel, list);
+        _cuRenderOtxDomainList(body, list);
     } catch (e) {
-        panel.innerHTML = `<p style="font-size:12px;color:#f87171">${esc(e.message)}</p>`;
+        body.innerHTML = `<p style="color:#f87171">Hata: ${esc(e.message)}</p>`;
     }
 }
 
@@ -4137,21 +4149,23 @@ function _cuRenderOtxDomainList(panel, list) {
             ? `<span style="font-size:10px;background:rgba(251,146,60,0.15);color:#fb923c;border-radius:4px;padding:2px 6px;margin-left:6px">${item.count}×</span>`
             : '';
         return `
-        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;background:var(--surface2);margin-bottom:5px;font-size:12px">
-            <span style="font-size:14px">${icon}</span>
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:8px;background:var(--surface2);margin-bottom:6px;font-size:12px">
+            <span style="font-size:15px;padding-top:1px">${icon}</span>
             <div style="flex:1;min-width:0">
-                <div style="font-weight:600;color:${color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                <div style="font-weight:700;color:${color};margin-bottom:2px">
                     ${esc(item.domain)}${countBadge}
                 </div>
-                <div style="font-size:11px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(item.message)}">${esc(item.message)}</div>
+                <div style="font-size:11px;color:var(--text-secondary);line-height:1.5;word-break:break-word">${esc(item.message)}</div>
             </div>
-            <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap">${lastDate}</span>
-            <button onclick="reportFpFromStats('${esc(item.domain)}','${esc(item.severity)}','${esc(item.message)}')" title="Yanlış pozitif olarak bildir" style="background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:5px;color:#94a3b8;font-size:10px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0">⚠️ Yanlış pozitif</button>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">
+                <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap">${lastDate}</span>
+                <button onclick="reportFpFromStats('${esc(item.domain)}','${esc(item.severity)}','${esc(item.message)}')" title="Yanlış pozitif olarak bildir" style="background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:5px;color:#94a3b8;font-size:10px;padding:3px 7px;cursor:pointer;white-space:nowrap">⚠️ Yanlış pozitif</button>
+            </div>
         </div>`;
     }).join('');
     panel.innerHTML = `
-        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">
-            ${list.length} benzersiz domain/hostname — en çok tekrarlananlar üstte
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+            ${list.length} benzersiz domain/hostname tespit edildi — en çok tekrarlananlar üstte
         </div>
         ${rows}
     `;
