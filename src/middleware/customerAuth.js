@@ -69,7 +69,7 @@ setInterval(() => {
     for (const [ip, rec] of setupAttempts.entries()) {
         if (now > rec.resetAt) setupAttempts.delete(ip);
     }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref(); // .unref(): bu interval Node.js event loop'u canlı tutmaz
 
 function checkLoginRate(ip) {
     const now = Date.now();
