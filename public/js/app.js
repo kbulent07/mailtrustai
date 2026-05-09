@@ -3103,6 +3103,10 @@ async function loadScanMailboxes() {
                     ? '📤 İletilen adrese'
                     : `📨 ${esc(smb.reportTo || smb.imapEmail)}`;
                 const centralBadge = '<span style="font-size:10px;background:rgba(56,189,248,0.15);color:#38bdf8;border:1px solid rgba(56,189,248,0.3);border-radius:4px;padding:1px 6px;margin-left:6px">Merkezi Raporlama</span>';
+                const domains = Array.isArray(smb.allowedDomains) ? smb.allowedDomains : [];
+                const domainBadge = domains.length
+                    ? `<div style="font-size:11px;margin-top:3px;color:#a78bfa">🛡️ Yalnızca: ${esc(domains.join(', '))}</div>`
+                    : '<div style="font-size:11px;margin-top:3px;opacity:0.55">🌐 Tüm domain\'lere açık</div>';
                 return `
                 <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface2);border-radius:8px;margin-bottom:8px">
                     <div style="flex:1">
@@ -3113,6 +3117,7 @@ async function loadScanMailboxes() {
                             &nbsp;·&nbsp; ${(smb.reportLang || 'tr').toUpperCase()}
                         </div>
                         <div style="font-size:11px;margin-top:3px;color:var(--blue,#60a5fa)">${recipientLabel}</div>
+                        ${domainBadge}
                     </div>
                     <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px">
                         <input type="checkbox" ${smb.enabled ? 'checked' : ''} onchange="toggleScanMailboxEnabled('${esc(smb.imapEmail)}', this.checked)">
@@ -3218,7 +3223,7 @@ async function showScanMailboxModal() {
 
     if (!limitReached) {
         // Form sıfırla — tüm alanlar boş
-        ['smImapHost','smImapEmail','smImapPassword','smSmtpHost','smSmtpPassword','smReportTo'].forEach(id => {
+        ['smImapHost','smImapEmail','smImapPassword','smSmtpHost','smSmtpPassword','smReportTo','smAllowedDomains'].forEach(id => {
             const el = document.getElementById(id);
             if (el) { el.value = ''; if (el.dataset) el.dataset.userEdited = 'false'; }
         });
@@ -3312,6 +3317,18 @@ async function testScanMailboxImap() {
     }
 }
 
+// "ornek.com, alt.ornek.com\npartner.org" → ['ornek.com', 'alt.ornek.com', 'partner.org']
+// Lowercase, '@' ve boşluklar temizlenir, dup atılır.
+function parseAllowedDomains(raw) {
+    if (!raw) return [];
+    return [...new Set(
+        String(raw)
+            .split(/[\s,;]+/)
+            .map(s => s.trim().toLowerCase().replace(/^@/, ''))
+            .filter(s => s && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(s))
+    )];
+}
+
 function getScanMailboxFormData() {
     const reportToForwarder = document.getElementById('smReportTargetForwarder')?.checked ?? true;
     const imapPassword      = document.getElementById('smImapPassword')?.value || '';
@@ -3330,6 +3347,7 @@ function getScanMailboxFormData() {
         smtpPassword,
         reportToForwarder,
         reportTo:          reportToForwarder ? '' : (document.getElementById('smReportTo')?.value || '').trim(),
+        allowedDomains:    parseAllowedDomains(document.getElementById('smAllowedDomains')?.value || ''),
         reportLang:        document.getElementById('smReportLang')?.value || 'tr',
         reportMode:        document.getElementById('smReportMode')?.value === 'all' ? 'all' : 'risky',
         enabled:           document.getElementById('smEnabled')?.checked !== false

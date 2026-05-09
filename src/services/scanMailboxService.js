@@ -52,7 +52,8 @@ async function startScanMailboxMonitor(smb) {
         buildAnalysisFn:   emailData => buildEmailAnalysisResult(emailData, { features, monthlyLimit: Infinity }),
         lang:              smb.reportLang       || 'tr',
         reportMode:        smb.reportMode       || 'risky',
-        reportToForwarder: smb.reportToForwarder === true
+        reportToForwarder: smb.reportToForwarder === true,
+        allowedDomains:    Array.isArray(smb.allowedDomains) ? smb.allowedDomains : []
     });
 
     await monitor.start();

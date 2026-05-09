@@ -20,9 +20,19 @@ async function upsertScanMailbox(input, license) {
         imapHost, imapPort, imapEmail, imapPassword, imapTls,
         smtpHost, smtpPort, smtpPassword,
         reportLang, enabled, reportMode, reportTo, reportToForwarder,
+        allowedDomains,
         realtimeAlert,
         _existingEncryptedImapPassword
     } = input;
+
+    // İzin verilen gönderen domain'leri — boş array = tüm domain'lere açık
+    const normalizedAllowedDomains = Array.isArray(allowedDomains)
+        ? [...new Set(
+            allowedDomains
+                .map(d => String(d || '').trim().toLowerCase().replace(/^@/, ''))
+                .filter(d => d && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(d))
+          )]
+        : [];
 
     if (reportMode === 'all' && license.plan !== 'enterprise') {
         return {
@@ -71,6 +81,7 @@ async function upsertScanMailbox(input, license) {
         reportMode:        reportMode === 'all' ? 'all' : 'risky',
         reportTo:          reportToForwarder ? '' : (reportTo || ''),
         reportToForwarder: reportToForwarder === true,
+        allowedDomains:    normalizedAllowedDomains,
         purpose,
         enabled:           enabled !== false && enabled !== 'false'
     };

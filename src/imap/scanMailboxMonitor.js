@@ -14,15 +14,29 @@ const CATCHUP_LIMIT = 15;
 const CATCHUP_WINDOW_MS = 60 * 60 * 1000;
 
 class ScanMailboxMonitor {
-    constructor({ account, smtpConfig, buildAnalysisFn, lang = 'tr', reportMode = 'risky', reportToForwarder = false }) {
+    constructor({ account, smtpConfig, buildAnalysisFn, lang = 'tr', reportMode = 'risky', reportToForwarder = false, allowedDomains = [] }) {
         this.account = account;
         this.smtpConfig = smtpConfig;
         this.buildAnalysisFn = buildAnalysisFn;
         this.lang = lang;
         this.reportMode = reportMode === 'all' ? 'all' : 'risky';
         this.reportToForwarder = reportToForwarder === true;
+        // Lowercased domain whitelist — sadece forwarder modunda kullanılır.
+        // Boş array = tüm domain'lere açık (geriye uyumlu).
+        this.allowedDomains = Array.isArray(allowedDomains)
+            ? allowedDomains.map(d => String(d || '').toLowerCase()).filter(Boolean)
+            : [];
         this.imapMonitor = new ImapMonitor(account, this._onNewEmail.bind(this));
         this.startedAt = null;
+    }
+
+    // fromAddr'ın domain'i (veya alt-domain'i) whitelist'e uyuyor mu?
+    _isDomainAllowed(fromAddr) {
+        if (!this.allowedDomains.length) return true; // Liste boş → her şey serbest
+        const at = String(fromAddr || '').toLowerCase().lastIndexOf('@');
+        if (at < 0) return false;
+        const fromDomain = fromAddr.toLowerCase().slice(at + 1);
+        return this.allowedDomains.some(d => fromDomain === d || fromDomain.endsWith('.' + d));
     }
 
     async start() {
@@ -74,6 +88,14 @@ class ScanMailboxMonitor {
             if (subject.includes('[MailTrustAI Güvenlik Raporu]') ||
                 subject.includes('[MailTrustAI Security Report]')) {
                 console.log(`[ScanMailbox] Self-loop atlandı (rapor konusu): "${subject.slice(0, 80)}"`);
+                this.markProcessed(uid);
+                return;
+            }
+
+            // Domain filtresi — yalnızca forwarder modunda anlamlı.
+            // (realtime/inbox modunda mailler zaten kullanıcının kendi inbox'undan geliyor.)
+            if (this.reportToForwarder && !this._isDomainAllowed(fromAddr)) {
+                console.log(`[ScanMailbox] Domain filtresi: ${fromAddr || '(adres yok)'} izin verilen listeye uymuyor — rapor gönderilmedi`);
                 this.markProcessed(uid);
                 return;
             }
