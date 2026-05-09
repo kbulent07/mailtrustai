@@ -468,11 +468,11 @@ function renderFindings(findings, filter = 'all') {
         : findings.filter((finding) => finding.category === filter);
 
     list.innerHTML = filtered.map((finding, idx) => {
-        // FP raporlama butonu — yalnızca OTX kategorisinde domain çıkarılabilir bulgular için
-        // (ind.value finding üzerinde indicatorValue olarak taşınıyor)
+        // FP raporlama butonu — OTX kategorisinde IP olmayan (domain/hostname/eski veri) bulgular için
+        // indicatorType yoksa (eski tarama verisi) veya 'IPv4' değilse butonu göster
         const canReportFp = finding.category === 'otx'
             && finding.indicatorValue
-            && finding.indicatorType === 'domain'
+            && finding.indicatorType !== 'IPv4'
             && (finding.severity === 'critical' || finding.severity === 'warning');
         const fpBtn = canReportFp
             ? `<button class="finding-fp-btn" onclick="reportFalsePositive('${esc(finding.indicatorValue)}','${esc(finding.category)}','${esc(finding.severity)}',${idx})" title="Bu domain yanlış pozitif — admin onayına gönder" style="margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#94a3b8;font-size:11px;padding:3px 8px;cursor:pointer;white-space:nowrap">⚠️ Yanlış pozitif</button>`
