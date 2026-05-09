@@ -25,7 +25,10 @@ function buildReportHtml(result, lang = 'tr') {
     // kalır. Fark varsa aşağıda "Sebep" satırıyla açıklanır.
     const score = Number(result.score || 0);
     const escalation = result.levelReason || levelEscalationReason(result);
+    const levelText = reportLevelText(level, isTR);
+    const risky = level !== 'safe';
     // E-posta raporunda gösterilecek "neden seviye yükseldi" bandı (varsa).
+    // ÖNEMLI: levelText'ten SONRA tanımlanmalı — TDZ hatası önlenir.
     const escalationBanner = escalation
         ? `<tr><td style="padding:0 30px 12px"><div style="background:#1e1b4b;border:1px solid #4338ca;border-left:4px solid #818cf8;border-radius:10px;padding:12px 14px;color:#c7d2fe;font-size:13px;line-height:1.55">` +
           `<div style="font-weight:700;color:#a5b4fc;font-size:11px;letter-spacing:1px;margin-bottom:4px">&#9888;&#65039; SKOR &amp; SEVİYE FARKLILIĞI</div>` +
@@ -33,8 +36,6 @@ function buildReportHtml(result, lang = 'tr') {
           `<div style="margin-top:6px;color:#e0e7ff"><b>Sebep:</b> ${escapeHtml(escalation.reason)}</div>` +
           `</div></td></tr>`
         : '';
-    const levelText = reportLevelText(level, isTR);
-    const risky = level !== 'safe';
     const verdictText = risky ? (isTR ? 'RISKLI' : 'RISKY') : (isTR ? 'GUVENLI' : 'SAFE');
     const color = levelColor(level);
     const from = formatAddressList(meta.from);
