@@ -683,7 +683,22 @@
     <div class="card mt-24" id="listsPanel" style="display:none">
         <div class="card-header">
             <span class="card-title">🛡️ Allowlist / Blocklist Yönetimi</span>
-            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('listsPanel').style.display='none'" style="margin-left:auto">✕</button>
+            <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+                <button class="btn btn-ghost btn-sm" onclick="exportLists()" title="Listeyi JSON olarak dışa aktar">📤 Dışa Aktar</button>
+                <label class="btn btn-ghost btn-sm" title="JSON dosyasından içe aktar" style="cursor:pointer;margin:0">
+                    📥 İçe Aktar
+                    <input type="file" id="listsImportFile" accept=".json" onchange="importListsFile(this)" style="display:none">
+                </label>
+                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('listsPanel').style.display='none'">✕</button>
+            </div>
+        </div>
+        <div id="listsImportStatus" style="display:none;padding:6px 0;font-size:13px"></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 0;border-bottom:1px solid var(--border,#2a2a3e);flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                <input type="checkbox" id="listsResetCheck" style="accent-color:#ff5c7a">
+                <span style="color:#ff5c7a">Mevcut listeyi sıfırla (içe aktarmadan önce temizle)</span>
+            </label>
+            <button id="btnListsRestore" onclick="listsRestoreBackup()" style="display:none" class="btn btn-ghost btn-sm">↩ Son yedekten geri dön</button>
         </div>
         <div class="grid-2" style="gap:20px">
             <div>

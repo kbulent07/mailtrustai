@@ -4766,6 +4766,132 @@ async function removeListEntry(type, domain) {
     }
 }
 
+// ─── Allow/Blocklist Export ───────────────────────────────────────────────
+function _listsAuthHeaders(extra) {
+    const h = { ...(extra || {}) };
+    if (licenseKey) h['x-license-key'] = licenseKey;
+    return h;
+}
+
+async function exportLists() {
+    try {
+        const res = await fetch('/api/lists/export', { headers: _listsAuthHeaders() });
+        if (!res.ok) throw new Error('Sunucu hatası: ' + res.status);
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `mailtrustai-lists-${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        _listsShowStatus('❌ Dışa aktarma hatası: ' + e.message, '#f87171');
+    }
+}
+
+// ─── Allow/Blocklist Import ───────────────────────────────────────────────
+let _listsBackup = null;
+
+async function importListsFile(input) {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+
+    let parsed;
+    try {
+        const text = await file.text();
+        parsed = JSON.parse(text);
+    } catch {
+        return _listsShowStatus('❌ Geçersiz JSON dosyası', '#f87171');
+    }
+
+    if (!Array.isArray(parsed.allowlist) && !Array.isArray(parsed.blocklist)) {
+        return _listsShowStatus('❌ Dosyada allowlist veya blocklist alanı bulunamadı', '#f87171');
+    }
+
+    const reset = document.getElementById('listsResetCheck')?.checked;
+
+    // Sıfırlama seçiliyse önce yedeği al
+    if (reset) {
+        try {
+            const backupRes = await fetch('/api/lists/export', { headers: _listsAuthHeaders() });
+            if (backupRes.ok) {
+                const backupBlob = await backupRes.blob();
+                const bUrl = URL.createObjectURL(backupBlob);
+                const a   = document.createElement('a');
+                a.href    = bUrl;
+                a.download = `mailtrustai-lists-backup-${new Date().toISOString().slice(0,10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(bUrl);
+                // Bellek yedeği
+                const backupData = await fetch('/api/lists', { headers: _listsAuthHeaders() }).then(r => r.json());
+                _listsBackup = backupData;
+                const btn = document.getElementById('btnListsRestore');
+                if (btn) btn.style.display = '';
+            }
+        } catch {/* yedek alınamazsa devam et */}
+    }
+
+    try {
+        const res = await fetch('/api/lists/import', {
+            method:  'POST',
+            headers: _listsAuthHeaders({ 'Content-Type': 'application/json' }),
+            body:    JSON.stringify({
+                allowlist: parsed.allowlist || [],
+                blocklist: parsed.blocklist || [],
+                merge:     !reset
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) return _listsShowStatus('❌ ' + (data.error || 'İçe aktarma başarısız'), '#f87171');
+
+        const msg = reset
+            ? `✅ Liste sıfırlandı ve içe aktarıldı — Allowlist: +${data.allowlistAdded}, Blocklist: +${data.blocklistAdded}`
+            : `✅ İçe aktarıldı — Allowlist: +${data.allowlistAdded}, Blocklist: +${data.blocklistAdded}`;
+        _listsShowStatus(msg, '#2ee59d');
+        loadListsPanel();
+    } catch (e) {
+        _listsShowStatus('❌ İçe aktarma hatası: ' + e.message, '#f87171');
+    }
+}
+
+async function listsRestoreBackup() {
+    if (!_listsBackup) return _listsShowStatus('❌ Belleğe alınmış yedek yok', '#f87171');
+    try {
+        const res = await fetch('/api/lists/import', {
+            method:  'POST',
+            headers: _listsAuthHeaders({ 'Content-Type': 'application/json' }),
+            body:    JSON.stringify({
+                allowlist: _listsBackup.allowlist || [],
+                blocklist: _listsBackup.blocklist || [],
+                merge:     false
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) return _listsShowStatus('❌ ' + (data.error || 'Geri yükleme başarısız'), '#f87171');
+        _listsShowStatus('✅ Yedek başarıyla geri yüklendi', '#2ee59d');
+        _listsBackup = null;
+        const btn = document.getElementById('btnListsRestore');
+        if (btn) btn.style.display = 'none';
+        loadListsPanel();
+    } catch (e) {
+        _listsShowStatus('❌ Geri yükleme hatası: ' + e.message, '#f87171');
+    }
+}
+
+function _listsShowStatus(msg, color) {
+    const el = document.getElementById('listsImportStatus');
+    if (!el) return;
+    el.style.display   = '';
+    el.style.color     = color || '#ccc';
+    el.textContent     = msg;
+    setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
 // ============================================================
 // WEBHOOK AYARLARI
 // ============================================================

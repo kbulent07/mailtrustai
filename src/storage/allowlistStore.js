@@ -108,8 +108,44 @@ function isBlocklisted(emailOrDomain) {
     return blocklist.some(b => d === b || d.endsWith('.' + b));
 }
 
+// ─── Import ────────────────────────────────────────────────────────────────
+/**
+ * allowlist / blocklist'i içe aktar.
+ * merge=true  → mevcut listelerle birleştir (varsayılan)
+ * merge=false → mevcut listeleri temizle, sadece yenileri ekle
+ * @param {{ allowlist?: string[], blocklist?: string[] }} payload
+ * @param {{ merge?: boolean }} opts
+ * @returns {{ allowlistAdded, bloclistAdded }}
+ */
+function importLists(payload, { merge = true } = {}) {
+    const current = loadLists();
+
+    const incoming = {
+        allowlist: Array.isArray(payload.allowlist) ? payload.allowlist.map(normalizeEntry).filter(Boolean) : [],
+        blocklist:  Array.isArray(payload.blocklist)  ? payload.blocklist.map(normalizeEntry).filter(Boolean)  : []
+    };
+
+    let base = merge
+        ? { allowlist: [...current.allowlist], blocklist: [...current.blocklist] }
+        : { allowlist: [], blocklist: [] };
+
+    let allowlistAdded = 0;
+    let blocklistAdded  = 0;
+
+    for (const e of incoming.allowlist) {
+        if (!base.allowlist.includes(e)) { base.allowlist.push(e); allowlistAdded++; }
+    }
+    for (const e of incoming.blocklist) {
+        if (!base.blocklist.includes(e)) { base.blocklist.push(e); blocklistAdded++; }
+    }
+
+    saveLists(base);
+    return { allowlistAdded, blocklistAdded };
+}
+
 module.exports = {
     loadLists,
     addToAllowlist, removeFromAllowlist, isAllowlisted,
-    addToBlocklist,  removeFromBlocklist,  isBlocklisted
+    addToBlocklist,  removeFromBlocklist,  isBlocklisted,
+    importLists
 };
