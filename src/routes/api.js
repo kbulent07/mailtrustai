@@ -38,9 +38,18 @@ router.use((req, res, next) => {
 
 // ─── Analizörler ve Ayrıştırıcılar ───────────────────────
 const { parseEmail, parseUploadedEmail } = require('../analysis/parser');
-const { analyzeAttachments } = require('../analysis/attachmentAnalyzer');
-const { buildEmailAnalysisResult, buildAttachmentOnlyResult, applyVirusTotalInsights } = require('../analysis/emailAnalyzer');
-const { scanAttachments: vtScan } = require('../integrations/virustotal');
+
+// ─── Application services (use-case orchestration) ───────
+const { analyzeParsedEmail, analyzeStandaloneAttachment } =
+    require('../application/analyze/AnalyzeUploadedMailService');
+const { runManualImapScan } =
+    require('../application/analyze/AnalyzeImapMailService');
+const { upsertScanMailbox, patchScanMailbox } =
+    require('../application/monitor/UpsertScanMailboxService');
+const { deleteScanMailbox } =
+    require('../application/monitor/DeleteScanMailboxService');
+const { sendPeriodicReport } =
+    require('../application/reports/SendPeriodicReportService');
 
 // ─── Lisans ───────────────────────────────────────────────
 const { validateLicenseKey, generateLicenseKey, generateBatchKeys, getPriceTable, PLANS, TIERS, DURATIONS, revokeKey, unRevokeKey, loadRevocationList } = require('../license/license');
@@ -48,10 +57,10 @@ const { checkRemoteLicense, startBackgroundRefresh } = require('../license/remot
 
 // ─── IMAP / Hesaplar ──────────────────────────────────────
 const { testConnection, addAccount, removeAccount, updateAccount, loadCredentials } = require('../imap/connection');
-const { listEmails, fetchAndParseEmail } = require('../imap/scanner');
+const { listEmails } = require('../imap/scanner');
 
 // ─── Storage ──────────────────────────────────────────────
-const { loadScanHistory, recordScan, getDetailedStats } = require('../storage/scanHistory');
+const { loadScanHistory, getDetailedStats } = require('../storage/scanHistory');
 const { loadSettings, saveSettings }  = require('../storage/settingsStore');
 const { loadResellers, addReseller, removeReseller } = require('../storage/resellerStore');
 const { listAutoMonitors, removeAutoMonitor } = require('../storage/autoMonitorState');
@@ -59,14 +68,12 @@ const { getMonthlyCount, getCurrentMonthKey } = require('../storage/monthlyCount
 const { getDailyCount, todayKey } = require('../storage/dailyScansStore');
 
 // ─── Servisler ────────────────────────────────────────────
-const { state, checkLicense, checkDailyLimit, checkMonthlyLimit, incrementScanCounts } = require('../services/appState');
+const { state, checkLicense, checkDailyLimit, checkMonthlyLimit } = require('../services/appState');
 const {
     normalizeReportRecipients, normalizePeriodicReportSettings,
-    getAutoSummaryReportRecipients, getReportingSmtpConfig,
-    sendEnterpriseRiskAlert, sendPeriodicSummaryReport,
-    runScheduledPeriodicReports
+    getReportingSmtpConfig, runScheduledPeriodicReports
 } = require('../services/reportService');
-const { scanMailboxMonitors, startScanMailboxMonitor } = require('../services/scanMailboxService');
+const { startScanMailboxMonitor } = require('../services/scanMailboxService');
 
 // ─── Diğer ────────────────────────────────────────────────
 const { generateOtp, verifyOtp } = require('../utils/otpStore');
@@ -264,7 +271,7 @@ router.post('/analyze/eml', upload.single('file'), async (req, res) => {
         if (!checkMonthlyLimit(license)) return res.status(429).json({ error: 'Monthly scan limit reached' });
 
         let source;
-        if (req.file)        source = req.file.buffer;
+        if (req.file)             source = req.file.buffer;
         else if (req.body.source) source = req.body.source;
         else return res.status(400).json({ error: 'No EML file or source provided' });
 
@@ -273,11 +280,7 @@ router.post('/analyze/eml', upload.single('file'), async (req, res) => {
             : await parseEmail(source);
         if (!parsed.success) return res.status(400).json({ error: parsed.error });
 
-        const result = await buildEmailAnalysisResult(parsed.data, license);
-        result.scanSource = 'upload';
-        result.licenseKey = license.licenseKey || '';
-        state.scanHistory = recordScan(result);
-        incrementScanCounts();
+        const result = await analyzeParsedEmail(parsed.data, license, 'upload');
         res.json(result);
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -295,39 +298,16 @@ router.post('/analyze/file', upload.single('file'), async (req, res) => {
         if (lowerName.endsWith('.eml') || lowerName.endsWith('.msg')) {
             const parsed = await parseUploadedEmail(req.file.buffer, req.file.originalname || '');
             if (!parsed.success) return res.status(400).json({ error: parsed.error });
-            const result = await buildEmailAnalysisResult(parsed.data, license);
-            result.scanSource = 'upload';
-        result.licenseKey = license.licenseKey || '';
-            state.scanHistory = recordScan(result);
-            incrementScanCounts();
+            const result = await analyzeParsedEmail(parsed.data, license, 'upload');
             return res.json(result);
         }
 
-        const att = { filename: req.file.originalname, contentType: req.file.mimetype, size: req.file.size, content: req.file.buffer };
-        const attachmentResult = analyzeAttachments([att]);
-        const result = buildAttachmentOnlyResult(att, attachmentResult);
-        result.scanSource = 'upload';
-        result.licenseKey = license.licenseKey || '';
-
-        const vtCandidates = (attachmentResult.results || []).filter(item => item.vtEligible !== false);
-        if (state.vtApiKey && vtCandidates.length) {
-            result.virusTotal = await vtScan(vtCandidates.map(item => ({
-                ...item, content: req.file.buffer,
-                contentType: req.file.mimetype, filename: req.file.originalname
-            })), state.vtApiKey);
-            result.vtStatus.checked = true;
-            result.vtStatus.reason  = 'completed';
-            applyVirusTotalInsights(result, result.virusTotal);
-        } else if (attachmentResult.results?.some(item => item.vtEligible === false)) {
-            result.vtStatus.checked = false;
-            result.vtStatus.reason  = 'image-local-scan';
-        } else if (attachmentResult.results?.length > 0) {
-            result.findings.push({ severity: 'warning', category: 'virusTotal',
-                message: 'Virüs tarama API anahtarı tanımlı değil. Yalnızca yerel ek kontrolleri çalıştırıldı.' });
-        }
-
-        state.scanHistory = recordScan(result);
-        incrementScanCounts();
+        const result = await analyzeStandaloneAttachment({
+            filename: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size:     req.file.size,
+            buffer:   req.file.buffer
+        }, license);
         res.json(result);
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -390,20 +370,9 @@ router.post('/imap/scan', async (req, res) => {
     const account = loadCredentials().find(a => a.email === email);
     if (!account) return res.status(404).json({ error: 'Account not found' });
 
-    const parsed = await fetchAndParseEmail(account, uid, folder);
-    if (!parsed.success) return res.status(400).json(parsed);
-
-    const result = await buildEmailAnalysisResult(parsed.data, license);
-    result.scanSource = 'imap-manual';
-    result.licenseKey = license.licenseKey || '';
-    result.account    = account.email;
-
-    const riskAlert = await sendEnterpriseRiskAlert({ result, license, to: account.email, reason: 'manual-imap-scan' });
-    if (riskAlert) result.riskAlert = riskAlert;
-
-    state.scanHistory = recordScan(result);
-    incrementScanCounts();
-    res.json(result);
+    const out = await runManualImapScan({ account, uid, folder, license });
+    if (!out.ok) return res.status(out.status).json(out.body);
+    res.json(out.result);
 });
 
 // ============================================================
@@ -436,12 +405,7 @@ router.get('/scan-mailboxes', (req, res) => {
 });
 
 router.post('/scan-mailboxes', async (req, res) => {
-    const {
-        imapHost, imapPort, imapEmail, imapPassword, imapTls,
-        smtpHost, smtpPort, smtpPassword,
-        reportLang, enabled, reportMode, reportTo, reportToForwarder
-    } = req.body;
-
+    const { imapHost, imapEmail, imapPassword } = req.body;
     if (!imapHost)     return res.status(400).json({ error: 'IMAP sunucu adresi zorunludur.' });
     if (!imapEmail)    return res.status(400).json({ error: 'E-posta adresi zorunludur.' });
     if (!imapPassword) return res.status(400).json({ error: 'IMAP şifresi zorunludur.' });
@@ -449,80 +413,22 @@ router.post('/scan-mailboxes', async (req, res) => {
     const license = checkLicense(req);
     if (!license.features?.scanMailbox)
         return res.status(403).json({ error: 'Tarama Posta Kutusu Pro veya Enterprise lisansı gerektirir.' });
-    if (reportMode === 'all' && license.plan !== 'enterprise')
-        return res.status(403).json({ error: 'Tüm mailler raporlama modu yalnızca Enterprise lisansında kullanılabilir.' });
 
-    const current   = loadSettings();
-    const mailboxes = current.scanMailboxes || [];
-    const idx       = mailboxes.findIndex(s => s.imapEmail === imapEmail);
-
-    // Sistemde yalnızca 1 merkezi raporlama mail hesabı kurulabilir (tüm lisans tipleri)
-    if (idx < 0 && mailboxes.length >= 1) {
-        return res.status(403).json({
-            error: 'Yalnızca 1 merkezi raporlama mail hesabı tanımlanabilir. Mevcut hesabı silip yenisini ekleyebilirsiniz.',
-            limitReached: true
-        });
-    }
-
-    // Şifreleri şifrele, düz metin saklanmasın
-    const { encrypt } = require('../imap/connection');
-    const entry = {
-        imapEmail,
-        imapHost,
-        imapPort:          Number(imapPort) || 993,
-        imapPassword:      encrypt(imapPassword),
-        imapTls:           imapTls !== false && imapTls !== 'false',
-        smtpHost:          smtpHost || imapHost,
-        smtpPort:          Number(smtpPort) || 587,
-        smtpPassword:      smtpPassword ? encrypt(smtpPassword) : encrypt(imapPassword),
-        reportLang:        reportLang || 'tr',
-        reportMode:        reportMode === 'all' ? 'all' : 'risky',
-        reportTo:          reportToForwarder ? '' : (reportTo || ''),
-        reportToForwarder: reportToForwarder === true,
-        enabled:           enabled !== false && enabled !== 'false'
-    };
-
-    if (idx >= 0) mailboxes[idx] = entry; else mailboxes.push(entry);
-    saveSettings({ ...current, scanMailboxes: mailboxes });
-
-    const existing = scanMailboxMonitors.get(imapEmail);
-    if (existing) { await existing.stop(); scanMailboxMonitors.delete(imapEmail); }
-    if (entry.enabled) await startScanMailboxMonitor(entry).catch(e => console.error('[ScanMailbox] Start error:', e.message));
-
-    res.json({ success: true, count: mailboxes.length });
+    const out = await upsertScanMailbox(req.body, license);
+    if (!out.ok) return res.status(out.status).json(out.body);
+    res.json(out.body);
 });
 
 router.delete('/scan-mailboxes/:email', async (req, res) => {
-    const imapEmail = decodeURIComponent(req.params.email);
-    const monitor   = scanMailboxMonitors.get(imapEmail);
-    if (monitor) { await monitor.stop(); scanMailboxMonitors.delete(imapEmail); }
-
-    const current = loadSettings();
-    saveSettings({ ...current, scanMailboxes: (current.scanMailboxes || []).filter(s => s.imapEmail !== imapEmail) });
-    res.json({ success: true });
+    const result = await deleteScanMailbox(decodeURIComponent(req.params.email));
+    res.json(result);
 });
 
 router.patch('/scan-mailboxes/:email', async (req, res) => {
-    const imapEmail = decodeURIComponent(req.params.email);
-    if (req.body.reportMode === 'all') {
-        const license = checkLicense(req);
-        if (license.plan !== 'enterprise')
-            return res.status(403).json({ error: 'Tüm mailler raporlama modu yalnızca Enterprise lisansında kullanılabilir.' });
-    }
-
-    const current   = loadSettings();
-    const mailboxes = current.scanMailboxes || [];
-    const idx       = mailboxes.findIndex(s => s.imapEmail === imapEmail);
-    if (idx < 0) return res.status(404).json({ error: 'Scan mailbox not found' });
-
-    mailboxes[idx] = { ...mailboxes[idx], ...req.body, imapEmail };
-    saveSettings({ ...current, scanMailboxes: mailboxes });
-
-    const existing = scanMailboxMonitors.get(imapEmail);
-    if (existing) { await existing.stop(); scanMailboxMonitors.delete(imapEmail); }
-    if (mailboxes[idx].enabled) await startScanMailboxMonitor(mailboxes[idx]).catch(e => console.error('[ScanMailbox] Restart error:', e.message));
-
-    res.json({ success: true });
+    const license = checkLicense(req);
+    const out = await patchScanMailbox(decodeURIComponent(req.params.email), req.body, license);
+    if (!out.ok) return res.status(out.status).json(out.body);
+    res.json(out.body);
 });
 
 // ============================================================
@@ -940,13 +846,8 @@ router.post('/reports/send', async (req, res) => {
     const period = String(req.body.period || 'daily');
     if (!PERIODS[period]) return res.status(400).json({ error: 'Invalid report period' });
 
-    const targetMailbox = String(req.body.targetEmail || '').trim();
-    const recipients = req.body.recipients !== undefined
-        ? normalizeReportRecipients(req.body.recipients)
-        : (targetMailbox ? [targetMailbox] : getAutoSummaryReportRecipients());
-
-    const result = await sendPeriodicSummaryReport({ period, recipients, targetMailbox, reason: 'manual' });
-    res.status(result.success ? 200 : 400).json(result);
+    const out = await sendPeriodicReport(req.body);
+    res.status(out.status).json(out.body);
 });
 
 router.get('/reports/preview/:period', (req, res) => {

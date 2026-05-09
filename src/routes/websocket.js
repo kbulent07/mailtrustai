@@ -6,16 +6,20 @@ const { analyzeHeaders } = require('../analysis/headerAnalyzer');
 const { analyzeContent } = require('../analysis/contentAnalyzer');
 const { analyzeLinks } = require('../analysis/linkAnalyzer');
 const { analyzeAttachments } = require('../analysis/attachmentAnalyzer');
-const { calculateScore, resolveLevel, scoreToLevel, levelMeta } = require('../analysis/scorer');
-const { validateLicenseKey, FEATURES, UNLICENSED_FEATURES } = require('../license/license');
+const { calculateScore, resolveLevel, levelMeta } = require('../analysis/scorer');
+const { validateLicenseKey, UNLICENSED_FEATURES } = require('../license/license');
 const { loadCredentials } = require('../imap/connection');
 const { recordScan } = require('../storage/scanHistory');
-const { addAutoMonitor, removeAutoMonitor, listAutoMonitors } = require('../storage/autoMonitorState');
+const { removeAutoMonitor, listAutoMonitors } = require('../storage/autoMonitorState');
 const { loadSettings } = require('../storage/settingsStore');
 const { analyzeWithClaude } = require('../integrations/claude');
 const { analyzeWithOpenAI } = require('../integrations/openai');
 const { scanAttachments: vtScan } = require('../integrations/virustotal');
 const crypto = require('crypto');
+
+// ─── Application services ─────────────────────────────────
+const { startAutoMonitor } = require('../application/monitor/StartAutoMonitorService');
+const { stopAutoMonitor }  = require('../application/monitor/StopAutoMonitorService');
 
 const monitors = new Map();
 const clients = new Set();
@@ -228,27 +232,15 @@ function setupWebSocket(wss) {
             try {
                 const msg = JSON.parse(data);
                 if (msg.type === 'start-monitor') {
-                    const license = resolveLicense(msg.licenseKey);
-                    if (!license.features?.autoMonitor) {
-                        throw new Error('Otomatik izleme Enterprise lisansı gerektirir');
-                    }
-                    if (!msg.email) {
-                        throw new Error('İzleme için e-posta adresi gerekli');
-                    }
-
-                    const account = loadCredentials().find(entry => entry.email === msg.email);
-                    if (!account) {
-                        throw new Error('Kayıtlı IMAP hesabı bulunamadı');
-                    }
-
-                    await startMonitorForAccount(account, license);
-                    addAutoMonitor(account.email, msg.licenseKey);
-                    broadcast({ type: 'monitor-started', email: account.email });
+                    const { email } = await startAutoMonitor({
+                        email:                  msg.email,
+                        licenseKey:             msg.licenseKey,
+                        startMonitorForAccount: startMonitorForAccount
+                    });
+                    broadcast({ type: 'monitor-started', email });
                 }
                 if (msg.type === 'stop-monitor') {
-                    const monitor = monitors.get(msg.email);
-                    if (monitor) { await monitor.stop(); monitors.delete(msg.email); }
-                    removeAutoMonitor(msg.email);
+                    await stopAutoMonitor({ email: msg.email, monitors });
                     broadcast({ type: 'monitor-stopped', email: msg.email });
                 }
             } catch (e) {
