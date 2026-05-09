@@ -8,6 +8,7 @@ const {
     listTrustedDomains,
     addTrustedDomain,
     addTrustedDomainsBulk,
+    importTrustedDomains,
     removeTrustedDomain,
     setEnabled
 } = require('../../../storage/trustedDomainStore');
@@ -45,6 +46,41 @@ router.delete('/admin/trusted-domains/:domain', requireAdminAuth, (req, res) => 
 router.patch('/admin/trusted-domains/:domain/toggle', requireAdminAuth, (req, res) => {
     setEnabled(decodeURIComponent(req.params.domain), req.body?.enabled !== false);
     res.json({ success: true });
+});
+
+// ─── Export ───────────────────────────────────────────────
+router.get('/admin/trusted-domains/export', requireAdminAuth, (req, res) => {
+    const domains = listTrustedDomains();
+    const payload = {
+        version:    1,
+        exportedAt: new Date().toISOString(),
+        source:     'keygen',
+        count:      domains.length,
+        domains:    domains.map(d => ({
+            domain:   d.domain,
+            category: d.category,
+            note:     d.note || '',
+            enabled:  d.enabled
+        }))
+    };
+    const filename = `mailtrustai-trusted-domains-${new Date().toISOString().slice(0,10)}.json`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(JSON.stringify(payload, null, 2));
+});
+
+// ─── Import ───────────────────────────────────────────────
+router.post('/admin/trusted-domains/import', requireAdminAuth, (req, res) => {
+    const { domains, merge = true } = req.body || {};
+    if (!Array.isArray(domains) || !domains.length) {
+        return res.status(400).json({ error: 'domains[] zorunludur' });
+    }
+    try {
+        const result = importTrustedDomains(domains, { addedBy: 'import', merge });
+        res.json(result);
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
 });
 
 module.exports = router;

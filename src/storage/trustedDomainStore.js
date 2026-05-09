@@ -98,6 +98,40 @@ function setEnabled(domain, enabled) {
 }
 
 /**
+ * JSON import — her öğenin kendi domain/category/note'u olabilir.
+ * merge=true → mevcut listeye ekle; merge=false → önce sil, sonra ekle.
+ */
+function importTrustedDomains(items, { addedBy = 'import', merge = true } = {}) {
+    if (!Array.isArray(items) || !items.length) return { accepted: [], rejected: [], replaced: false };
+    const accepted = [];
+    const rejected = [];
+    db.transaction(() => {
+        if (!merge) {
+            // Sadece manuel eklenenler silinsin; seed kayıtları korunur
+            db.prepare("DELETE FROM trusted_domains WHERE added_by NOT IN ('seed','system')").run();
+            invalidateCache();
+        }
+        for (const raw of items) {
+            const d = _normalize(typeof raw === 'string' ? raw : (raw.domain || ''));
+            if (!d || !_isValidDomain(d)) { rejected.push(raw.domain || raw); continue; }
+            const cat  = String((raw.category || 'custom')).toLowerCase();
+            const note = String(raw.note || '');
+            db.prepare(`
+                INSERT INTO trusted_domains (domain, category, added_by, note, enabled)
+                VALUES (?, ?, ?, ?, 1)
+                ON CONFLICT(domain) DO UPDATE SET
+                    category = excluded.category,
+                    note     = excluded.note,
+                    enabled  = 1
+            `).run(d, cat, addedBy, note);
+            accepted.push(d);
+        }
+    })();
+    invalidateCache();
+    return { accepted, rejected, replaced: !merge };
+}
+
+/**
  * value içindeki domain (veya alt domain'i) trusted listede mi?
  * Subdomain match: x.youtube.com → youtube.com listede ise TRUE
  */
@@ -120,6 +154,7 @@ module.exports = {
     listTrustedDomains,
     addTrustedDomain,
     addTrustedDomainsBulk,
+    importTrustedDomains,
     removeTrustedDomain,
     setEnabled,
     isTrusted

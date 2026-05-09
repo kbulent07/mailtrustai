@@ -136,6 +136,7 @@ function showSection(name) {
     if (name === 'sales') loadSales();
     if (name === 'prices') renderPrices();
     if (name === 'branding') loadWhiteLabel();
+    if (name === 'trusted') tdLoad();
 }
 
 // ─── KREDİ GÖSTERİMİ ─────────────────────────────────────
@@ -459,3 +460,208 @@ function escHtml(v) {
         _clearSession();
     }
 })();
+
+// ══════════════════════════════════════════════════════════
+// GÜVENİLİR DOMAIN (OTX WHITELIST) YÖNETİMİ — Bayi Portal
+// ══════════════════════════════════════════════════════════
+let _bdTdAll = [];
+
+function _bdTdHeaders(extra) {
+    return Object.assign({ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + dealerToken }, extra || {});
+}
+
+function _esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function tdLoad() {
+    const listEl = document.getElementById('bdTdList');
+    const sumEl  = document.getElementById('bdTdSummary');
+    if (!listEl) return;
+    listEl.innerHTML = '<div style="padding:12px;opacity:0.6">⏳ Yükleniyor…</div>';
+    try {
+        const res = await apiFetch('/api/dealer/trusted-domains', {
+            headers: _bdTdHeaders()
+        });
+        if (!res.ok) { listEl.innerHTML = `<div style="padding:12px;color:#f87171">Yüklenemedi: ${res.status}</div>`; return; }
+        _bdTdAll = await res.json();
+
+        // Kategori filtresi güncelle
+        const catSel = document.getElementById('bdTdFilterCat');
+        if (catSel) {
+            const cats = [...new Set(_bdTdAll.map(t => t.category))].sort();
+            const cur  = catSel.value;
+            catSel.innerHTML = '<option value="">Tüm kategoriler</option>' +
+                cats.map(c => `<option value="${_esc(c)}"${c===cur?' selected':''}>${_esc(c)}</option>`).join('');
+        }
+        tdRender();
+    } catch (e) {
+        if (!e.isSessionExpired) listEl.innerHTML = `<div style="padding:12px;color:#f87171">Hata: ${_esc(e.message)}</div>`;
+    }
+}
+
+function tdRender() {
+    const listEl  = document.getElementById('bdTdList');
+    const sumEl   = document.getElementById('bdTdSummary');
+    const filter  = (document.getElementById('bdTdFilter')?.value || '').toLowerCase();
+    const catFilter = document.getElementById('bdTdFilterCat')?.value || '';
+    if (!listEl) return;
+
+    const filtered = _bdTdAll.filter(t => {
+        if (catFilter && t.category !== catFilter) return false;
+        if (filter && !t.domain.includes(filter)) return false;
+        return true;
+    });
+
+    if (sumEl) sumEl.textContent = `${filtered.length} / ${_bdTdAll.length} domain`;
+
+    if (!filtered.length) {
+        listEl.innerHTML = '<div style="padding:16px;opacity:0.6;text-align:center">Liste boş veya filtre eşleşmedi.</div>';
+        return;
+    }
+
+    const catColors = { tech:'#60a5fa', cloud:'#34d399', social:'#a78bfa', finance:'#fbbf24',
+        cdn:'#94a3b8', ai:'#f472b6', tr_service:'#fb923c', custom:'#64748b', standard:'#6ee7b7' };
+
+    listEl.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+                <tr style="border-bottom:1px solid var(--border);opacity:0.6;font-size:11px;text-transform:uppercase;letter-spacing:.04em">
+                    <th style="padding:8px 10px;text-align:left">Domain</th>
+                    <th style="padding:8px 10px;text-align:left">Kategori</th>
+                    <th style="padding:8px 10px;text-align:left">Not</th>
+                    <th style="padding:8px 10px;text-align:left">Durum</th>
+                    <th style="padding:8px 10px;text-align:right">İşlem</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${filtered.map(t => {
+                    const color = catColors[t.category] || '#94a3b8';
+                    const enabled = t.enabled !== 0;
+                    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);${enabled ? '' : 'opacity:0.4'}">
+                        <td style="padding:8px 10px;font-family:monospace;font-weight:600">${_esc(t.domain)}</td>
+                        <td style="padding:8px 10px"><span style="font-size:11px;padding:2px 7px;border-radius:4px;background:${color}22;color:${color}">${_esc(t.category)}</span></td>
+                        <td style="padding:8px 10px;font-size:12px;opacity:0.65;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(t.note||'')}</td>
+                        <td style="padding:8px 10px">
+                            <button onclick="tdToggle('${_esc(t.domain)}',${!enabled})" style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid ${enabled?'#34d399':'#94a3b8'};color:${enabled?'#34d399':'#94a3b8'};background:transparent;cursor:pointer">
+                                ${enabled ? '✅ Aktif' : '⏸ Pasif'}
+                            </button>
+                        </td>
+                        <td style="padding:8px 10px;text-align:right">
+                            <button onclick="tdRemove('${_esc(t.domain)}')" style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.4);color:#f87171;background:transparent;cursor:pointer">🗑 Sil</button>
+                        </td>
+                    </tr>`;
+                }).join('')}
+            </tbody>
+        </table>`;
+}
+
+async function tdAdd() {
+    const domain   = document.getElementById('bdTdDomain')?.value.trim();
+    const category = document.getElementById('bdTdCategory')?.value || 'custom';
+    const note     = document.getElementById('bdTdNote')?.value.trim() || '';
+    const resEl    = document.getElementById('bdTdAddResult');
+    if (!domain) { resEl.textContent = '❌ Domain zorunludur.'; resEl.style.color='#f87171'; return; }
+    try {
+        const res = await apiFetch('/api/dealer/trusted-domains', {
+            method: 'POST',
+            headers: _bdTdHeaders(),
+            body: JSON.stringify({ domain, category, note })
+        });
+        const data = await res.json();
+        if (!res.ok) { resEl.textContent = '❌ ' + (data.error || res.status); resEl.style.color='#f87171'; return; }
+        resEl.textContent = `✅ ${data.domain} eklendi.`; resEl.style.color='#34d399';
+        document.getElementById('bdTdDomain').value = '';
+        document.getElementById('bdTdNote').value   = '';
+        tdLoad();
+    } catch (e) { if (!e.isSessionExpired) { resEl.textContent='❌ '+e.message; resEl.style.color='#f87171'; } }
+}
+
+async function tdBulkAdd() {
+    const raw      = document.getElementById('bdTdBulk')?.value || '';
+    const category = document.getElementById('bdTdBulkCat')?.value || 'custom';
+    const resEl    = document.getElementById('bdTdBulkResult');
+    const domains  = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    if (!domains.length) { resEl.textContent='❌ Liste boş.'; resEl.style.color='#f87171'; return; }
+    try {
+        const res = await apiFetch('/api/dealer/trusted-domains/bulk', {
+            method: 'POST',
+            headers: _bdTdHeaders(),
+            body: JSON.stringify({ domains, category })
+        });
+        const data = await res.json();
+        if (!res.ok) { resEl.textContent='❌ '+(data.error||res.status); resEl.style.color='#f87171'; return; }
+        resEl.textContent=`✅ ${data.accepted?.length||0} eklendi${data.rejected?.length ? `, ${data.rejected.length} geçersiz atlandı` : ''}.`;
+        resEl.style.color='#34d399';
+        document.getElementById('bdTdBulk').value = '';
+        tdLoad();
+    } catch (e) { if (!e.isSessionExpired) { resEl.textContent='❌ '+e.message; resEl.style.color='#f87171'; } }
+}
+
+async function tdRemove(domain) {
+    if (!confirm(`"${domain}" silinsin mi?`)) return;
+    try {
+        const res = await apiFetch(`/api/dealer/trusted-domains/${encodeURIComponent(domain)}`, {
+            method: 'DELETE', headers: _bdTdHeaders()
+        });
+        if (!res.ok) { alert('Hata: ' + res.status); return; }
+        tdLoad();
+    } catch (e) { if (!e.isSessionExpired) alert(e.message); }
+}
+
+async function tdToggle(domain, enabled) {
+    try {
+        await apiFetch(`/api/dealer/trusted-domains/${encodeURIComponent(domain)}/toggle`, {
+            method: 'PATCH', headers: _bdTdHeaders(),
+            body: JSON.stringify({ enabled })
+        });
+        const t = _bdTdAll.find(x => x.domain === domain);
+        if (t) t.enabled = enabled ? 1 : 0;
+        tdRender();
+    } catch (e) { if (!e.isSessionExpired) alert(e.message); }
+}
+
+async function tdExport() {
+    try {
+        const res = await apiFetch('/api/dealer/trusted-domains/export', { headers: _bdTdHeaders() });
+        if (!res.ok) { alert('Dışa aktarma başarısız: ' + res.status); return; }
+        const blob = await res.blob();
+        const cd   = res.headers.get('Content-Disposition') || '';
+        const fnMatch = cd.match(/filename="([^"]+)"/);
+        const filename = fnMatch ? fnMatch[1] : 'trusted-domains.json';
+        const url = URL.createObjectURL(blob);
+        const a   = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+    } catch (e) { if (!e.isSessionExpired) alert('Hata: ' + e.message); }
+}
+
+async function tdImportFile(input) {
+    const file   = input.files[0];
+    if (!file) return;
+    input.value  = '';
+    const resEl  = document.getElementById('tdBayiImportResult');
+    try {
+        const text    = await file.text();
+        const payload = JSON.parse(text);
+        const domains = Array.isArray(payload) ? payload
+            : (Array.isArray(payload.domains) ? payload.domains : null);
+        if (!domains || !domains.length) {
+            resEl.style.cssText = 'display:block;background:rgba(239,68,68,.12);color:#f87171;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px';
+            resEl.textContent   = '❌ Geçerli domain listesi bulunamadı.'; return;
+        }
+        const merge = confirm(`${domains.length} domain içe aktarılacak.\n\n"Tamam" → Mevcut listeyle birleştir\n"İptal" → Önce listeyi temizle, sonra yükle`);
+        const res = await apiFetch('/api/dealer/trusted-domains/import', {
+            method: 'POST', headers: _bdTdHeaders(),
+            body: JSON.stringify({ domains, merge })
+        });
+        const data = await res.json();
+        if (!res.ok) { alert('Hata: ' + (data.error || res.status)); return; }
+        resEl.style.cssText = 'display:block;background:rgba(16,185,129,.12);color:#34d399;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px';
+        resEl.textContent   = `✅ ${data.accepted?.length||0} domain içe aktarıldı${data.rejected?.length ? `, ${data.rejected.length} geçersiz atlandı` : ''}.${data.replaced ? ' (Liste yenilendi)' : ''}`;
+        tdLoad();
+    } catch (e) {
+        if (!e.isSessionExpired) {
+            resEl.style.cssText = 'display:block;background:rgba(239,68,68,.12);color:#f87171;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px';
+            resEl.textContent   = '❌ ' + e.message;
+        }
+    }
+}

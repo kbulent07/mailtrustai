@@ -390,10 +390,18 @@
 
     <!-- TRUSTED DOMAINS TAB -->
     <div id="tabTrusted" class="main-content" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
             <h2>🛡️ Güvenilir Domain'ler (OTX Whitelist)</h2>
-            <button class="btn btn-ghost btn-sm" onclick="loadTrustedDomains()">🔄 Yenile</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-ghost btn-sm" onclick="exportTrustedDomains()" title="Tüm listeyi JSON olarak indir">📤 Dışa Aktar</button>
+                <label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0" title="JSON dosyasından içe aktar">
+                    📥 İçe Aktar
+                    <input type="file" accept=".json" style="display:none" onchange="importTrustedDomainsFile(this)">
+                </label>
+                <button class="btn btn-ghost btn-sm" onclick="loadTrustedDomains()">🔄 Yenile</button>
+            </div>
         </div>
+        <div id="tdImportResult" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:8px;font-size:13px"></div>
         <div class="card mb-16">
             <div class="card-header"><span class="card-title">ℹ️ Nasıl çalışır?</span></div>
             <div style="font-size:13px;line-height:1.6;opacity:0.85">
@@ -715,6 +723,60 @@
                 if (!res.ok) { alert(`Hata: ${res.status}`); return; }
                 loadTrustedDomains();
             } catch (e) { alert(e.message); }
+        }
+
+        // ─── EXPORT / IMPORT ────────────────────────────────────
+        async function exportTrustedDomains() {
+            try {
+                const res = await fetch('/api/admin/trusted-domains/export', { headers: adminHeaders() });
+                if (!res.ok) { alert('Dışa aktarma başarısız: ' + res.status); return; }
+                const blob = await res.blob();
+                const cd   = res.headers.get('Content-Disposition') || '';
+                const fnMatch = cd.match(/filename="([^"]+)"/);
+                const filename = fnMatch ? fnMatch[1] : 'trusted-domains.json';
+                const url  = URL.createObjectURL(blob);
+                const a    = document.createElement('a');
+                a.href = url; a.download = filename; a.click();
+                URL.revokeObjectURL(url);
+            } catch (e) { alert('Hata: ' + e.message); }
+        }
+
+        async function importTrustedDomainsFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+            input.value = '';
+            const resultEl = document.getElementById('tdImportResult');
+            try {
+                const text = await file.text();
+                const payload = JSON.parse(text);
+                const domains = Array.isArray(payload) ? payload
+                    : (Array.isArray(payload.domains) ? payload.domains : null);
+                if (!domains || !domains.length) {
+                    resultEl.style.display = '';
+                    resultEl.style.background = 'rgba(239,68,68,0.12)';
+                    resultEl.style.color = '#f87171';
+                    resultEl.textContent = '❌ Geçerli domain listesi bulunamadı.';
+                    return;
+                }
+                const merge = confirm(`${domains.length} domain içe aktarılacak.\n\n"Tamam" → Mevcut listeyle birleştir\n"İptal" → Önce listeyi temizle, sonra yükle`);
+                const res = await fetch('/api/admin/trusted-domains/import', {
+                    method: 'POST',
+                    headers: adminHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ domains, merge })
+                });
+                const data = await res.json();
+                if (!res.ok) { alert('Hata: ' + (data.error || res.status)); return; }
+                resultEl.style.display = '';
+                resultEl.style.background = 'rgba(16,185,129,0.12)';
+                resultEl.style.color = '#34d399';
+                resultEl.textContent = `✅ ${data.accepted?.length || 0} domain içe aktarıldı${data.rejected?.length ? `, ${data.rejected.length} geçersiz atlandı` : ''}.${data.replaced ? ' (Liste yenilendi)' : ''}`;
+                loadTrustedDomains();
+            } catch (e) {
+                resultEl.style.display = '';
+                resultEl.style.background = 'rgba(239,68,68,0.12)';
+                resultEl.style.color = '#f87171';
+                resultEl.textContent = '❌ ' + e.message;
+            }
         }
 
         // ─── BEKLEYEN FP ÖNERİLERİ ──────────────────────────────

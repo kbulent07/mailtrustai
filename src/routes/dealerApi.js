@@ -9,6 +9,10 @@ const router = express.Router();
 const { loadDealers, findDealer, upsertDealer, deleteDealer,
         getCredits, addCredits, generateLicenseTx,
         updateDealerWhiteLabel } = require('../storage/dealerStore');
+const {
+    listTrustedDomains, addTrustedDomain, addTrustedDomainsBulk,
+    importTrustedDomains, removeTrustedDomain, setEnabled
+} = require('../storage/trustedDomainStore');
 const { getSalesByDealer, getAllSales, getSalesStats } = require('../storage/dealerSales');
 const { recordTransaction, getTransactionsByDealer } = require('../storage/creditTransactionStore');
 const { generateLicenseKey, validateLicenseKey, getPriceTable, TIERS } = require('../license/license');
@@ -335,5 +339,76 @@ function buildRenewalList(sales, days) {
             expired: license.error === 'License expired' || Number(license.daysLeft || 0) <= 0
         }));
 }
+
+// ──────────────────────────────────────────────────────────
+// DEALER — Güvenilir Domain (OTX Whitelist) Yönetimi
+// Bayiler global trusted domain listesini okuyabilir ve yönetebilir.
+// ──────────────────────────────────────────────────────────
+
+router.get('/trusted-domains', requireDealerAuth, (req, res) => {
+    res.json(listTrustedDomains());
+});
+
+router.post('/trusted-domains', requireDealerAuth, (req, res) => {
+    const { domain, category, note } = req.body || {};
+    try {
+        const out = addTrustedDomain({ domain, category, note, addedBy: `dealer:${req.dealerCode}` });
+        res.json(out);
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
+router.post('/trusted-domains/bulk', requireDealerAuth, (req, res) => {
+    const { domains, category } = req.body || {};
+    if (!Array.isArray(domains) || !domains.length) {
+        return res.status(400).json({ error: 'domains[] zorunludur' });
+    }
+    const out = addTrustedDomainsBulk(domains, { category, addedBy: `dealer:${req.dealerCode}` });
+    res.json(out);
+});
+
+router.delete('/trusted-domains/:domain', requireDealerAuth, (req, res) => {
+    const out = removeTrustedDomain(decodeURIComponent(req.params.domain));
+    res.json(out);
+});
+
+router.patch('/trusted-domains/:domain/toggle', requireDealerAuth, (req, res) => {
+    setEnabled(decodeURIComponent(req.params.domain), req.body?.enabled !== false);
+    res.json({ success: true });
+});
+
+router.get('/trusted-domains/export', requireDealerAuth, (req, res) => {
+    const domains = listTrustedDomains();
+    const payload = {
+        version:    1,
+        exportedAt: new Date().toISOString(),
+        source:     `dealer:${req.dealerCode}`,
+        count:      domains.length,
+        domains:    domains.map(d => ({
+            domain:   d.domain,
+            category: d.category,
+            note:     d.note || '',
+            enabled:  d.enabled
+        }))
+    };
+    const filename = `mailtrustai-trusted-domains-${new Date().toISOString().slice(0,10)}.json`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(JSON.stringify(payload, null, 2));
+});
+
+router.post('/trusted-domains/import', requireDealerAuth, (req, res) => {
+    const { domains, merge = true } = req.body || {};
+    if (!Array.isArray(domains) || !domains.length) {
+        return res.status(400).json({ error: 'domains[] zorunludur' });
+    }
+    try {
+        const result = importTrustedDomains(domains, { addedBy: `dealer:${req.dealerCode}`, merge });
+        res.json(result);
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+});
 
 module.exports = router;
