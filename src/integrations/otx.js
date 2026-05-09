@@ -77,7 +77,13 @@ const OTX_DOMAIN_WHITELIST = new Set([
     'wikipedia.org', 'wikimedia.org', 'mozilla.org', 'firefox.com',
     'adobe.com', 'salesforce.com', 'jsdelivr.net', 'unpkg.com', 'jquery.com',
     'fontawesome.com', 'googletagmanager.com', 'google-analytics.com',
-    'mailchimp.com', 'sendgrid.net', 'mailgun.org', 'sendpulse.com'
+    'mailchimp.com', 'sendgrid.net', 'mailgun.org', 'sendpulse.com',
+    // Standart/namespace URI'ları (mail HTML'inde sık geçer, OTX'te gürültülü)
+    'w3.org', 'ietf.org', 'iana.org', 'rfc-editor.org',
+    'schema.org', 'json-schema.org', 'opensearch.org',
+    // AI / büyük tech ürün servisleri
+    'anthropic.com', 'claude.ai', 'openai.com', 'chatgpt.com',
+    'huggingface.co'
 ]);
 
 function isOtxWhitelisted(value) {
