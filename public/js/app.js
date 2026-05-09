@@ -35,6 +35,15 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeNavigationState();
     renderImapReportPlaceholder(t('imap_no_account'));
     updateScanSelectedButton();
+
+    // ─── OTX import dosya seçici — programmatik event bağlama ───
+    // (inline onchange'e güvenmek yerine addEventListener kullanıyoruz)
+    const _otxFileInput = document.getElementById('userTdImportFile');
+    if (_otxFileInput) {
+        _otxFileInput.addEventListener('change', function () {
+            if (this.files && this.files[0]) userTdImport(this);
+        });
+    }
 });
 
 // Servisteki kalıcı (kayıtlı) lisansı al; localStorage boşsa veya farklıysa eşitle.
@@ -4224,30 +4233,37 @@ async function loadUserTdCount() {
 
 /** Mevcut listeyi JSON dosyası olarak indirir */
 async function userTdExport() {
+    const statusEl = document.getElementById('userTdExportStatus');
     try {
+        if (statusEl) { statusEl.style.display = ''; statusEl.textContent = '⏳ İndiriliyor…'; }
         const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
         const res = await fetch('/api/trusted-domains/export', { headers });
-        if (!res.ok) { alert('Dışa aktarma başarısız: ' + res.status); return; }
+        if (!res.ok) {
+            if (statusEl) { statusEl.textContent = '❌ Hata: ' + res.status; setTimeout(() => { statusEl.style.display = 'none'; }, 4000); }
+            else alert('Dışa aktarma başarısız: ' + res.status);
+            return;
+        }
         const blob = await res.blob();
         const cd   = res.headers.get('Content-Disposition') || '';
         const fnMatch = cd.match(/filename="([^"]+)"/);
         const filename = fnMatch ? fnMatch[1] : 'trusted-domains.json';
         const url = URL.createObjectURL(blob);
         const a   = document.createElement('a');
-        a.href = url; a.download = filename; a.click();
-        URL.revokeObjectURL(url);
-    } catch (e) { alert('Hata: ' + e.message); }
+        a.href = url; a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 150);
+        if (statusEl) { statusEl.textContent = '✅ İndirildi'; setTimeout(() => { statusEl.style.display = 'none'; }, 3000); }
+    } catch (e) {
+        if (statusEl) { statusEl.textContent = '❌ ' + e.message; setTimeout(() => { statusEl.style.display = 'none'; }, 4000); }
+        else alert('Hata: ' + e.message);
+    }
 }
 
-/** Dosya seçildi — ismi göster */
-function userTdImportSelected(input) {
-    const nameEl = document.getElementById('userTdFileName');
-    if (nameEl) nameEl.textContent = input.files[0]?.name || 'Dosya seçilmedi';
-}
-
-/** İçe aktar butonu (dosya seçildikten sonra tetiklenir) */
-async function userTdImport() {
-    const input   = document.getElementById('userTdImportFile');
+/** Dosya seçildiğinde ya da butonla tetiklendiğinde import başlatır */
+async function userTdImport(inputEl) {
+    const input   = inputEl || document.getElementById('userTdImportFile');
     const resetCk = document.getElementById('userTdResetCheck');
     const resEl   = document.getElementById('userTdImportResult');
     const restoreBtn = document.getElementById('btnUserTdRestore');
@@ -4284,8 +4300,11 @@ async function userTdImport() {
                 const bkFilename = `mailtrustai-trusted-domains-onceki-yedek-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
                 const bkUrl = URL.createObjectURL(blob);
                 const bkA   = document.createElement('a');
-                bkA.href = bkUrl; bkA.download = bkFilename; bkA.click();
-                URL.revokeObjectURL(bkUrl);
+                bkA.href = bkUrl; bkA.download = bkFilename;
+                document.body.appendChild(bkA);
+                bkA.click();
+                bkA.remove();
+                setTimeout(() => URL.revokeObjectURL(bkUrl), 150);
                 if (restoreBtn) restoreBtn.style.display = '';
             }
             _userTdShowResult(resEl, null, '⏳ Liste sıfırlanıyor ve yeni domainler ekleniyor…');

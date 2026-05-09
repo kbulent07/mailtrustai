@@ -81,6 +81,7 @@
             <a href="#" onclick="showTab('revoke',event)">🚫 Lisans İptal</a>
             <a href="#" onclick="showTab('stats',event)">📊 İstatistik</a>
             <a href="#" onclick="showTab('trusted',event)">🛡️ Güvenilir Domainler</a>
+            <a href="#" onclick="showTab('backup',event)">💾 Yedek</a>
             <a href="/">← Uygulamaya Dön</a>
         </div>
         <div id="sessionBadge">
@@ -489,6 +490,69 @@
         </div>
     </div><!-- /tabTrusted -->
 
+    <!-- ──────────────────────────────────────────────────────── -->
+    <!-- YEDEK SEKMESİ                                            -->
+    <!-- ──────────────────────────────────────────────────────── -->
+    <div id="tabBackup" class="main-content" style="display:none">
+        <div style="max-width:700px">
+            <h2 style="margin-bottom:6px">💾 Tam Konfigürasyon Yedeği</h2>
+            <p class="text-muted" style="font-size:13px;margin-bottom:24px">
+                API anahtarları, şifreler ve lisans bilgisi <strong>hariç</strong> tüm kurulum ayarları, e-posta hesapları,
+                izin/engel listeleri ve OTX güvenilir domainler tek dosyaya yedeklenir.
+            </p>
+
+            <!-- EXPORT -->
+            <div class="card mb-16">
+                <div class="card-header"><span class="card-title">📤 Dışa Aktar</span></div>
+                <p style="font-size:13px;margin:0 0 16px;opacity:.85;line-height:1.6">
+                    Aşağıdakiler dahil edilir:<br>
+                    <span style="color:#2ee59d">✔</span> Şirket profili &nbsp;
+                    <span style="color:#2ee59d">✔</span> IMAP e-posta hesapları (şifreler dahil) &nbsp;
+                    <span style="color:#2ee59d">✔</span> Periyodik rapor ayarları &nbsp;
+                    <span style="color:#2ee59d">✔</span> Webhook yapılandırması<br>
+                    <span style="color:#2ee59d">✔</span> İzin listesi (allowlist) &nbsp;
+                    <span style="color:#2ee59d">✔</span> Engel listesi (blocklist) &nbsp;
+                    <span style="color:#2ee59d">✔</span> OTX güvenilir domainler<br>
+                    <span style="color:#f87171">✗</span> API anahtarları &nbsp;
+                    <span style="color:#f87171">✗</span> Admin / müşteri şifresi &nbsp;
+                    <span style="color:#f87171">✗</span> Lisans anahtarı
+                </p>
+                <button class="btn btn-primary" onclick="exportFullConfig()">📥 Konfigürasyonu İndir</button>
+                <span id="configExportStatus" style="display:none;font-size:12px;margin-left:12px"></span>
+            </div>
+
+            <!-- IMPORT -->
+            <div class="card">
+                <div class="card-header"><span class="card-title">📥 İçe Aktar</span></div>
+                <div style="background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px">
+                    ⚠️ <strong>Dikkat:</strong> Import işlemi mevcut ayarları değiştirir. Önce dışa aktararak yedek almanız önerilir.
+                    API anahtarları ve şifreler içe aktarma sırasında korunur (değiştirilmez).
+                </div>
+
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:16px;font-size:13px">
+                    <input type="checkbox" id="configMergeCheck" checked style="margin-top:3px;flex-shrink:0">
+                    <span>
+                        <strong>Birleştirme modu</strong> — mevcut verilerle birleştir (önerilen)<br>
+                        <span style="font-size:11px;color:var(--text-secondary)">
+                            İşaretsiz bırakırsanız: listeler ve domainler önce temizlenir, ayarlar tamamen değiştirilir
+                        </span>
+                    </span>
+                </label>
+
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <button class="btn btn-ghost btn-sm"
+                            onclick="document.getElementById('configImportFile').click()"
+                            style="border-color:#60a5fa;color:#60a5fa">
+                        📂 Konfigürasyon Dosyası Seç ve Uygula
+                    </button>
+                    <input type="file" accept=".json" id="configImportFile" style="display:none">
+                </div>
+
+                <div id="configImportStatus" style="display:none;margin-top:14px;padding:10px 14px;border-radius:8px;font-size:13px"></div>
+            </div>
+        </div>
+    </div><!-- /tabBackup -->
+
     <script>
         // ─── TOKEN YÖNETİMİ ─────────────────────────────────────
         const SESSION_KEY = 'msa_admin_token';
@@ -566,6 +630,7 @@
             document.getElementById('tabRevoke').style.display  = tab === 'revoke'  ? '' : 'none';
             document.getElementById('tabStats').style.display   = tab === 'stats'   ? '' : 'none';
             document.getElementById('tabTrusted').style.display = tab === 'trusted' ? '' : 'none';
+            document.getElementById('tabBackup').style.display  = tab === 'backup'  ? '' : 'none';
             document.querySelectorAll('.admin-nav a').forEach(a => a.classList.remove('active'));
             if (event && event.target) event.target.classList.add('active');
             if (tab === 'revoke')  loadRevokedList();
@@ -736,8 +801,11 @@
                 const filename = fnMatch ? fnMatch[1] : 'trusted-domains.json';
                 const url  = URL.createObjectURL(blob);
                 const a    = document.createElement('a');
-                a.href = url; a.download = filename; a.click();
-                URL.revokeObjectURL(url);
+                a.href = url; a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 150);
             } catch (e) { alert('Hata: ' + e.message); }
         }
 
@@ -1501,6 +1569,78 @@
             document.body.appendChild(a); a.click(); a.remove();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
+
+        // ─── TAM KONFİGÜRASYON YEDEĞİ ────────────────────────────
+        async function exportFullConfig() {
+            const statusEl = document.getElementById('configExportStatus');
+            try {
+                if (statusEl) { statusEl.style.display = ''; statusEl.style.color = '#a5b4fc'; statusEl.textContent = '⏳ Hazırlanıyor…'; }
+                const res = await fetch('/api/admin/config/export', { headers: adminHeaders() });
+                if (!res.ok) {
+                    if (statusEl) { statusEl.style.color = '#f87171'; statusEl.textContent = '❌ Hata: ' + res.status; }
+                    else alert('Dışa aktarma başarısız: ' + res.status);
+                    return;
+                }
+                const blob = await res.blob();
+                const cd   = res.headers.get('Content-Disposition') || '';
+                const fnMatch = cd.match(/filename="([^"]+)"/);
+                const filename = fnMatch ? fnMatch[1] : `mailtrustai-config-${new Date().toISOString().slice(0,10)}.json`;
+                const url = URL.createObjectURL(blob);
+                const a   = document.createElement('a');
+                a.href = url; a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 150);
+                if (statusEl) { statusEl.style.color = '#34d399'; statusEl.textContent = '✅ İndirildi'; setTimeout(() => { statusEl.style.display = 'none'; }, 3000); }
+            } catch (e) {
+                if (statusEl) { statusEl.style.color = '#f87171'; statusEl.textContent = '❌ ' + e.message; }
+                else alert('Hata: ' + e.message);
+            }
+        }
+
+        // Backup import dosya seçici — programmatik event bağlama
+        window.addEventListener('DOMContentLoaded', () => {
+            const _cfgFile = document.getElementById('configImportFile');
+            if (_cfgFile) {
+                _cfgFile.addEventListener('change', async function () {
+                    const file = this.files && this.files[0];
+                    this.value = '';
+                    if (!file) return;
+                    const statusEl = document.getElementById('configImportStatus');
+                    const show = (msg, color) => {
+                        statusEl.style.display = '';
+                        statusEl.style.background = color === 'green' ? 'rgba(16,185,129,0.12)' : color === 'red' ? 'rgba(239,68,68,0.12)' : 'rgba(99,102,241,0.12)';
+                        statusEl.style.color = color === 'green' ? '#34d399' : color === 'red' ? '#f87171' : '#a5b4fc';
+                        statusEl.textContent = msg;
+                    };
+                    show('⏳ Dosya okunuyor…', 'info');
+                    try {
+                        const text = await file.text();
+                        const payload = JSON.parse(text);
+                        if (!payload.settings && !payload.allowlist && !payload.trustedDomains) {
+                            show('❌ Geçerli MailTrustAI konfigürasyon dosyası değil', 'red'); return;
+                        }
+                        show('⏳ Uygulanıyor…', 'info');
+                        const merge = document.getElementById('configMergeCheck')?.checked !== false;
+                        const res = await fetch('/api/admin/config/import', {
+                            method:  'POST',
+                            headers: adminHeaders({ 'Content-Type': 'application/json' }),
+                            body:    JSON.stringify({ ...payload, merge })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) { show('❌ ' + (data.error || res.status), 'red'); return; }
+                        const lines = [];
+                        if (data.settingsApplied) lines.push(`Ayarlar: ${data.settingsApplied} alan güncellendi`);
+                        if (data.lists) lines.push(`Allowlist: +${data.lists.allowlistAdded} / Blocklist: +${data.lists.blocklistAdded}`);
+                        if (data.trustedDomains?.accepted) lines.push(`OTX Domainler: ${data.trustedDomains.accepted.length} kabul edildi`);
+                        show('✅ Konfigürasyon içe aktarıldı. ' + lines.join(' · '), 'green');
+                    } catch (e) {
+                        show('❌ ' + e.message, 'red');
+                    }
+                });
+            }
+        });
 
         // ─── YARDIMCI ─────────────────────────────────────────────
         function esc(v) { const d = document.createElement('span'); d.textContent = v || ''; return d.innerHTML; }

@@ -58,6 +58,7 @@ router.use((req, res, next) => {
 // ─── Sub-router mount ─────────────────────────────────────
 router.use(require('../interfaces/http/routes/meta.routes'));
 router.use(require('../interfaces/http/routes/admin.routes'));
+router.use(require('../interfaces/http/routes/configBackup.routes'));
 router.use(require('../interfaces/http/routes/trustedDomains.routes'));
 router.use(require('../interfaces/http/routes/fpSuggestions.routes'));
 router.use(require('../interfaces/http/routes/customer.routes'));
