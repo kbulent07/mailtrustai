@@ -2575,16 +2575,28 @@ function showExpiryAlert(daysLeft, info) {
 // ============================================================
 // SETTINGS
 // ============================================================
+let _settingsEscHandler = null;
+
 function showSettings() {
     document.getElementById('settingsModal').classList.remove('hidden');
     loadSettingsStatus();
     loadPeriodicReportSettings();
     loadServiceStatus();
     loadWebhookSettings();
+
+    // ESC ile kapat
+    if (_settingsEscHandler) document.removeEventListener('keydown', _settingsEscHandler);
+    _settingsEscHandler = (e) => { if (e.key === 'Escape') closeSettings(); };
+    document.addEventListener('keydown', _settingsEscHandler);
 }
 
 function closeSettings() {
     document.getElementById('settingsModal').classList.add('hidden');
+    // ESC dinleyiciyi temizle
+    if (_settingsEscHandler) {
+        document.removeEventListener('keydown', _settingsEscHandler);
+        _settingsEscHandler = null;
+    }
     // Reset panelini kapat ve temizle
     const panel = document.getElementById('resetPanel');
     if (panel) { panel.style.display = 'none'; _resetPanelOpen = false; }
