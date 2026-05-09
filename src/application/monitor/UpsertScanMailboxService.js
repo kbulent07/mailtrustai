@@ -17,7 +17,7 @@ const { scanMailboxMonitors, startScanMailboxMonitor } = require('../../services
  */
 async function upsertScanMailbox(input, license) {
     const {
-        imapHost, imapPort, imapEmail, imapPassword, imapTls,
+        imapHost, imapPort, imapEmail, imapPassword, imapTls, imapRejectUnauthorized,
         smtpHost, smtpPort, smtpPassword,
         reportLang, enabled, reportMode, reportTo, reportToForwarder,
         allowedDomains,
@@ -74,6 +74,7 @@ async function upsertScanMailbox(input, license) {
         imapPort:          Number(imapPort) || 993,
         imapPassword:      encryptedImapPassword,
         imapTls:           imapTls !== false && imapTls !== 'false',
+        imapRejectUnauthorized: imapRejectUnauthorized !== false && imapRejectUnauthorized !== 'false',
         smtpHost:          smtpHost || imapHost,
         smtpPort:          Number(smtpPort) || 587,
         smtpPassword:      smtpPassword ? encrypt(smtpPassword) : encryptedImapPassword,

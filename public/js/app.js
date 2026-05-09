@@ -1347,12 +1347,13 @@ async function saveImapAccount() {
         // Edit modunda şifre boş olabilir; o durumda server mevcut kayıttaki şifreyi yeniden kullanır.
         const payload = {
             ...alert_,
-            imapEmail:    targetEmail,
-            imapHost:     account.host,
-            imapPort:     account.port,
-            imapPassword: account.password,
-            imapTls:      account.secure,
-            realtimeAlert: true
+            imapEmail:              targetEmail,
+            imapHost:               account.host,
+            imapPort:               account.port,
+            imapPassword:           account.password,
+            imapTls:                account.secure,
+            imapRejectUnauthorized: account.rejectUnauthorized,
+            realtimeAlert:          true
         };
         try {
             const res = await fetch('/api/scan-mailboxes', {
