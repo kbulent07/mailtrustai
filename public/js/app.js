@@ -3513,6 +3513,88 @@ async function loadStatsPage() {
     await Promise.all([_cuLoadStats(), loadDetailedStatsCustomer()]);
 }
 
+// Üst tarih aralığı butonları — hem özet hem ayrıntılı raporu aynı aralıkla yükler
+function setStatsRange(value) {
+    // Aktif buton stil güncelleme
+    ['7','30','90','365','Custom'].forEach(k => {
+        const btn = document.getElementById('rangeBtn' + k);
+        if (btn) btn.style.borderColor = '';
+    });
+    const wrap = document.getElementById('topRangeWrap');
+
+    if (value === 'custom') {
+        const btn = document.getElementById('rangeBtnCustom');
+        if (btn) btn.style.borderColor = 'var(--accent)';
+        // Default 30 gün önce → bugün
+        const start = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+        const end   = new Date().toISOString().slice(0, 10);
+        const sIn = document.getElementById('topStatsStart');
+        const eIn = document.getElementById('topStatsEnd');
+        if (sIn && !sIn.value) sIn.value = start;
+        if (eIn && !eIn.value) eIn.value = end;
+        if (wrap) wrap.style.display = '';
+        return;
+    }
+
+    // Preset gün sayısı
+    if (wrap) wrap.style.display = 'none';
+    const days = String(value);
+    const btn  = document.getElementById('rangeBtn' + days);
+    if (btn) btn.style.borderColor = 'var(--accent)';
+
+    // Alttaki dropdown'u senkronla — eğer bu değer mevcut option'lardan biri değilse "30" varsayalım
+    const sel = document.getElementById('cuStatsDays');
+    if (sel) {
+        const has = Array.from(sel.options).some(o => o.value === days);
+        sel.value = has ? days : '30';
+        const subWrap = document.getElementById('cuCustomRangeWrap');
+        if (subWrap) subWrap.style.display = 'none';
+    }
+    loadStatsPage();
+}
+
+function applyTopCustomRange() {
+    const start = document.getElementById('topStatsStart')?.value;
+    const end   = document.getElementById('topStatsEnd')?.value;
+    const status = document.getElementById('topRangeStatus');
+    if (!start || !end) { if (status) status.textContent = '⚠ Başlangıç ve bitiş tarihini girin.'; return; }
+    if (start > end)    { if (status) status.textContent = '⚠ Başlangıç bitişten sonra olamaz.'; return; }
+    if (status) status.textContent = '';
+
+    // Alttaki Ayrıntılı Rapor seçicisini "Özel aralık" + aynı tarihlerle senkronla
+    const sel = document.getElementById('cuStatsDays');
+    if (sel) sel.value = 'custom';
+    const subWrap = document.getElementById('cuCustomRangeWrap');
+    if (subWrap) subWrap.style.display = 'inline-flex';
+    const sIn = document.getElementById('cuStatsStart');
+    const eIn = document.getElementById('cuStatsEnd');
+    if (sIn) sIn.value = start;
+    if (eIn) eIn.value = end;
+
+    // Hem özet (üst) hem ayrıntılı (alt) custom range'i kullansın
+    _cuLoadStatsRanged(start, end);
+    loadDetailedStatsCustomer();
+}
+
+async function _cuLoadStatsRanged(start, end) {
+    // /api/stats yalnızca toplamları döndürür (range desteği yok); şimdilik
+    // /api/stats/detailed sonuçlarından özet kartlar için tekrar render yap.
+    try {
+        const res = await fetch(`/api/stats/detailed?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+        if (!res.ok) return;
+        const d = await res.json();
+        // detailed'dan üst kartlara minimal projeksiyon
+        _cuRenderStatsCards({
+            totalScans: d.totalScans, todayScans: '-', monthlyScans: d.totalScans,
+            threats: d.byLevel?.high || 0, accounts: '-'
+        });
+        _cuRenderLevelBars(d.byLevel || {});
+        _cuRenderSourceBars((d.bySource || []).reduce((acc, x) => { acc[x.source] = x.count; return acc; }, {}));
+        // 7-gün trend ile haftalık dağılımı korumak için tüm range'i hourly'den türetmek pahalı —
+        // şimdilik trend'i yenilemiyoruz (alt blokta detaylı zaten var)
+    } catch {}
+}
+
 async function _cuLoadStats() {
     try {
         const res = await fetch('/api/stats');

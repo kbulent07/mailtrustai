@@ -346,9 +346,28 @@
          İSTATİSTİK PANELİ
          ═══════════════════════════════════════════════════════ -->
     <div id="statsPanel" style="display:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
             <h2 style="margin:0">📊 Sistem İstatistikleri</h2>
-            <button class="btn btn-ghost btn-sm" onclick="loadStatsPage()">🔄 Yenile</button>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:12px;color:var(--text-secondary)">⏱ Tarih aralığı:</span>
+                <button class="btn btn-ghost btn-sm" onclick="setStatsRange(7)" id="rangeBtn7">7g</button>
+                <button class="btn btn-ghost btn-sm" onclick="setStatsRange(30)" id="rangeBtn30" style="border-color:var(--accent)">30g</button>
+                <button class="btn btn-ghost btn-sm" onclick="setStatsRange(90)" id="rangeBtn90">90g</button>
+                <button class="btn btn-ghost btn-sm" onclick="setStatsRange(365)" id="rangeBtn365">1yıl</button>
+                <button class="btn btn-ghost btn-sm" onclick="setStatsRange('custom')" id="rangeBtnCustom" title="Başlangıç ve bitiş tarihi seçin">📅 Özel</button>
+                <button class="btn btn-ghost btn-sm" onclick="loadStatsPage()" title="Yenile">🔄</button>
+            </div>
+        </div>
+        <!-- Üst seviye custom range — açıkken hem üst hem alt bölümler aynı aralığı kullanır -->
+        <div id="topRangeWrap" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
+                <span style="color:var(--text-secondary)">Başlangıç:</span>
+                <input type="date" id="topStatsStart" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text-primary);font-size:13px">
+                <span style="color:var(--text-secondary)">— Bitiş:</span>
+                <input type="date" id="topStatsEnd" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text-primary);font-size:13px">
+                <button class="btn btn-primary btn-sm" onclick="applyTopCustomRange()">✓ Uygula</button>
+                <span id="topRangeStatus" style="font-size:12px;color:var(--text-secondary);margin-left:8px"></span>
+            </div>
         </div>
 
         <!-- Özet Kartlar -->
