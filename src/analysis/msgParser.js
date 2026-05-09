@@ -40,12 +40,17 @@ async function parseMsgBuffer(buffer) {
         const parsed = JSON.parse(jsonText);
         const attachments = (parsed.attachments || []).map((att) => {
             const content = fs.readFileSync(att.savedPath);
+            // .msg formatında embedded image flag'ı `att.isInline` veya
+            // `att.dispositionType` ile gelebilir (parser sürümüne göre değişir).
+            const inline = att.isInline === true
+                || String(att.dispositionType || att.contentDisposition || '').toLowerCase() === 'inline';
             return {
                 filename: att.filename || 'unnamed',
                 contentType: att.contentType || guessContentTypeFromFilename(att.filename),
                 size: att.size || content.length,
                 content,
-                contentDisposition: 'attachment',
+                contentDisposition: inline ? 'inline' : 'attachment',
+                cid: att.contentId || att.cid || null,
                 headers: {}
             };
         });

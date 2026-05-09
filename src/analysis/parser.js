@@ -80,6 +80,9 @@ function mapMailparserAttachment(att) {
         content: att.content,
         checksum: att.checksum,
         contentDisposition: att.contentDisposition || 'attachment',
+        // cid + related → inline (signature logoları, gömülü icon'lar)
+        cid: att.cid || att.contentId || null,
+        related: att.related === true,
         headers: att.headers
     };
 }

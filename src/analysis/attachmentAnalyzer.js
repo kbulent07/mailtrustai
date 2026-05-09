@@ -13,8 +13,33 @@ const SUSPICIOUS_EXTENSIONS = ['.zip','.rar','.7z','.tar','.gz','.iso','.img','.
 const MACRO_MIMES = ['application/vnd.ms-excel.sheet.macroEnabled','application/vnd.ms-word.document.macroEnabled'];
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg'];
 
+// Email signature/inline gömülü image'ler için skor sınırı.
+// Bunlar genellikle şirket logoları, sosyal medya ikonları, tracking pixel'lardır;
+// yarısı false-positive üretiyordu. Toplam image kaynaklı puanı sınırlandırırız.
+const INLINE_IMAGE_MAX_SIZE = 200 * 1024;       // 200 KB altı = signature/icon kabul et
+const IMAGE_FINDING_SCORE_CAP = 18;             // Bir email için TÜM image kaynaklı skor en fazla bu kadar
+
+function isInlineImage(att, ext, mime) {
+    if (!isImageAttachment(ext, mime)) return false;
+    // 1) MIME multipart/related içinde geliyorsa (signature/embedded image)
+    if (att.related === true) return true;
+    // 2) Content-ID set edilmiş → HTML body'den referans veriliyor (cid:)
+    if (att.cid) return true;
+    // 3) Content-Disposition: inline
+    if (String(att.contentDisposition || '').toLowerCase() === 'inline') return true;
+    // 4) Çok küçük image (≤ 200 KB) ve filename "logo/icon/footer/sig" gibi bir şey içeriyor
+    if (att.size <= INLINE_IMAGE_MAX_SIZE) {
+        const name = String(att.filename || '').toLowerCase();
+        if (/(logo|icon|footer|sig|signature|banner|spacer|pixel|avatar|emoji|tracking)/.test(name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function analyzeAttachments(attachments) {
     const findings = []; let score = 0; const results = [];
+    let imageScoreSubtotal = 0; // image kaynaklı toplam skor (cap için)
 
     for (const att of attachments) {
         const r = {
@@ -29,6 +54,7 @@ function analyzeAttachments(attachments) {
             vtSkipReason: null,
             localScanner: 'attachment-rules',
             imageAnalysis: null,
+            inline: false,
             imapPart: att.imapPart || null,
             imapDownloadError: att.imapDownloadError || null,
             gatewayDetection: att.gatewayDetection || '',
@@ -101,35 +127,46 @@ function analyzeAttachments(attachments) {
             r.vtSkipReason = 'image-local-scan';
             r.localScanner = 'image-integrity';
             r.imageAnalysis = inspectImagePayload(att);
+            r.inline = isInlineImage(att, ext, att.contentType);
+
+            // Inline image (signature, embedded, küçük icon, tracking pixel):
+            // false-positive kaynağı. Skor verme veya çok düşük; image-trailing-payload
+            // gibi gerçek-tehdit göstergeleri inline olsa bile geçerli kalır.
+            const inlineFactor = r.inline ? 0.25 : 1.0;
 
             if (!r.imageAnalysis.validSignature) {
                 findings.push({
-                    severity: 'warning',
+                    severity: r.inline ? 'info' : 'warning',
                     category: 'attachment',
-                    message: `Görüntü dosya imzası uyuşmuyor (bozuk veya sahte format): ${att.filename}`
+                    message: `Görüntü dosya imzası uyuşmuyor (bozuk veya sahte format): ${att.filename}${r.inline ? ' [inline]' : ''}`
                 });
                 r.issues.push('image-signature-mismatch');
-                score += 6;
+                const delta = Math.round(6 * inlineFactor); // inline: ~2, attachment: 6
+                imageScoreSubtotal += delta;
             }
 
             if (r.imageAnalysis.trailingPayload) {
+                // Steganografi: inline olsa bile gerçek tehdit göstergesi —
+                // yine de inline %50 ağırlık (false-positive nadiren)
+                const stegFactor = r.inline ? 0.5 : 1.0;
                 findings.push({
                     severity: 'critical',
                     category: 'attachment',
-                    message: `Görüntü dosyası sonunda şüpheli gizli yük tespit edildi (steganografi?): ${att.filename}`
+                    message: `Görüntü dosyası sonunda şüpheli gizli yük tespit edildi (steganografi?): ${att.filename}${r.inline ? ' [inline]' : ''}`
                 });
                 r.issues.push('image-trailing-payload');
-                score += 18;
+                imageScoreSubtotal += Math.round(18 * stegFactor);
             }
 
             if (r.imageAnalysis.suspiciousMarkers.length) {
+                // Marker artık SADECE trailing payload içinde aranıyor (gerçek polyglot)
                 findings.push({
                     severity: 'critical',
                     category: 'attachment',
-                    message: `Görüntü içinde şüpheli gömülü belirteç tespit edildi: ${att.filename} → ${r.imageAnalysis.suspiciousMarkers.join(', ')}`
+                    message: `Görüntü trailing payload'ında şüpheli belirteç tespit edildi: ${att.filename} → ${r.imageAnalysis.suspiciousMarkers.join(', ')}`
                 });
                 r.issues.push('image-embedded-marker');
-                score += 12;
+                imageScoreSubtotal += Math.round(12 * inlineFactor);
             }
         }
 
@@ -211,6 +248,11 @@ function analyzeAttachments(attachments) {
         if (r.issues.length === 0) r.issues.push('clean');
         results.push(r);
     }
+
+    // Image kaynaklı toplam skor cap'i (signature/inline image kombinasyonu
+    // çok sayıda küçük PNG ile false-positive büyütmesin)
+    const cappedImageScore = Math.min(imageScoreSubtotal, IMAGE_FINDING_SCORE_CAP);
+    score += cappedImageScore;
 
     if (attachments.length === 0) {
         findings.push({ severity: 'safe', category: 'attachment', message: 'Ek dosya bulunmuyor' });
@@ -332,19 +374,23 @@ function inspectImagePayload(att) {
     const content = att.content || Buffer.alloc(0);
     const ext = getExtension(att.filename);
     const mime = String(att.contentType || '').toLowerCase();
-    const suspiciousMarkers = detectSuspiciousMarkers(content);
 
+    // Marker arama yalnızca image yapısının DIŞINDAKİ baytlarda yapılır.
+    // Bütün dosyaya bakmak (eski davranış) PNG IDAT (sıkıştırılmış) ve
+    // JPEG entropy-coded segmentleri içinde yüksek false-positive üretiyordu.
     if (ext === '.png' || mime === 'image/png') {
         const signature = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
         const validSignature = content.subarray(0, 8).equals(signature);
         const iend = Buffer.from('49454e44ae426082', 'hex');
         const endIndex = content.lastIndexOf(iend);
         const trailingPayload = endIndex >= 0 && endIndex + iend.length < content.length;
+        // Marker yalnızca IEND'den SONRAKİ "ekstra" payload'a uygulanır.
+        const trailingBuf = trailingPayload ? content.subarray(endIndex + iend.length) : Buffer.alloc(0);
         return {
             type: 'png',
             validSignature,
             trailingPayload,
-            suspiciousMarkers
+            suspiciousMarkers: detectSuspiciousMarkers(trailingBuf)
         };
     }
 
@@ -352,11 +398,14 @@ function inspectImagePayload(att) {
         const validSignature = content.length >= 4
             && content[0] === 0xFF && content[1] === 0xD8
             && content[content.length - 2] === 0xFF && content[content.length - 1] === 0xD9;
+        // JPEG için marker tarama yapma — entropy-coded data'da false-positive olur.
+        // Polyglot saldırısı durumu: dosya FFD9 (EOI) ile bitmediyse trailing yok demektir;
+        // EOI sonrası ek payload nadir (validSignature zaten kontrol eder).
         return {
             type: 'jpeg',
             validSignature,
             trailingPayload: false,
-            suspiciousMarkers
+            suspiciousMarkers: []
         };
     }
 
@@ -366,15 +415,17 @@ function inspectImagePayload(att) {
             type: 'gif',
             validSignature: header === 'GIF87a' || header === 'GIF89a',
             trailingPayload: false,
-            suspiciousMarkers
+            suspiciousMarkers: []
         };
     }
 
+    // SVG/BMP/WebP gibi diğer image türleri — marker araması yapmıyoruz
+    // (bu format'lar text/binary karışımı, regex false-positive yaratır).
     return {
         type: ext.replace('.', '') || 'image',
         validSignature: true,
         trailingPayload: false,
-        suspiciousMarkers
+        suspiciousMarkers: []
     };
 }
 
