@@ -277,6 +277,19 @@
             </div>
         </div>
 
+        <!-- Onboarding Checklist (ilk kurulum yardımcısı) -->
+        <div class="onboarding-card" id="onboardingCard" style="display:none">
+            <button class="onboarding-dismiss" onclick="dismissOnboarding()" title="Kapat">✕</button>
+            <div class="onboarding-header">
+                <div class="onboarding-title">🚀 Hızlı Başlangıç Rehberi</div>
+                <div class="onboarding-progress" id="onboardingProgressLabel">0 / 5 tamamlandı</div>
+            </div>
+            <div class="onboarding-progress-bar">
+                <div class="onboarding-progress-fill" id="onboardingProgressFill" style="width:0%"></div>
+            </div>
+            <div class="onboarding-steps" id="onboardingSteps"></div>
+        </div>
+
         <!-- İstatistik kartları -->
         <div class="home-stat-grid" id="homeStatGrid">
             <div class="home-stat-card">
@@ -605,6 +618,9 @@
                 </div>
             </div>
             <div class="imap-report-column">
+                <button class="imap-mobile-back-btn" onclick="imapMobileBackToList()" title="Listeye dön">
+                    ← Mail Listesine Dön
+                </button>
                 <div class="imap-section-title">Mail Saglik Raporu</div>
                 <div id="imapReportPane" class="imap-report-pane">
                     <div class="imap-report-empty">

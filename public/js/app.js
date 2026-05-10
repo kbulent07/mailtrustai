@@ -2,6 +2,180 @@
 // MAILTRUSTAI - Frontend Application
 // ============================================================
 
+// ────────────────────────────────────────────────────────────
+// UI HELPERS — Toast & Dialog (alert/confirm replacement)
+// ────────────────────────────────────────────────────────────
+(function initToastContainer() {
+    if (document.getElementById('msaToastContainer')) return;
+    document.addEventListener('DOMContentLoaded', () => {
+        if (document.getElementById('msaToastContainer')) return;
+        const c = document.createElement('div');
+        c.id = 'msaToastContainer';
+        document.body.appendChild(c);
+    });
+})();
+
+function _ensureToastHost() {
+    let host = document.getElementById('msaToastContainer');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'msaToastContainer';
+        document.body.appendChild(host);
+    }
+    return host;
+}
+
+/**
+ * Profesyonel toast bildirim göster.
+ * @param {string} message - mesaj
+ * @param {'info'|'success'|'error'|'warning'} type
+ * @param {Object} [opts] - { title, duration }
+ */
+function showToast(message, type = 'info', opts = {}) {
+    const host = _ensureToastHost();
+    const icons = { info: 'ℹ️', success: '✅', error: '❌', warning: '⚠️' };
+    const duration = Number.isFinite(opts.duration) ? opts.duration : (type === 'error' ? 6000 : 3500);
+
+    const toast = document.createElement('div');
+    toast.className = `msa-toast ${type}`;
+    toast.innerHTML = `
+        <div class="msa-toast-icon">${icons[type] || 'ℹ️'}</div>
+        <div class="msa-toast-body">
+            ${opts.title ? `<div class="msa-toast-title">${_escHtml(opts.title)}</div>` : ''}
+            <div>${_escHtml(message)}</div>
+        </div>
+        <button class="msa-toast-close" aria-label="Kapat">✕</button>
+    `;
+
+    const close = () => {
+        toast.classList.add('leaving');
+        setTimeout(() => toast.remove(), 220);
+    };
+    toast.querySelector('.msa-toast-close').addEventListener('click', close);
+    host.appendChild(toast);
+    if (duration > 0) setTimeout(close, duration);
+    return toast;
+}
+
+/**
+ * Brand'li onay dialog. Promise<boolean> döner.
+ * @param {Object} opts - { title, message, confirmText, cancelText, danger, icon }
+ */
+function showConfirm(opts = {}) {
+    return new Promise((resolve) => {
+        const {
+            title = 'Onay Gerekli',
+            message = 'Devam etmek istediğinizden emin misiniz?',
+            confirmText = 'Onayla',
+            cancelText = 'İptal',
+            danger = false,
+            icon = danger ? '⚠️' : '❓',
+            type = danger ? 'danger' : ''
+        } = opts;
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'msaDialogBackdrop';
+        backdrop.innerHTML = `
+            <div class="msa-dialog ${type}" role="dialog" aria-modal="true">
+                <div class="msa-dialog-header">
+                    <div class="msa-dialog-icon">${icon}</div>
+                    <div class="msa-dialog-title">${_escHtml(title)}</div>
+                </div>
+                <div class="msa-dialog-body">${_escHtml(message)}</div>
+                <div class="msa-dialog-actions">
+                    <button class="msa-dialog-btn msa-dialog-btn-secondary" data-action="cancel">${_escHtml(cancelText)}</button>
+                    <button class="msa-dialog-btn ${danger ? 'msa-dialog-btn-danger' : 'msa-dialog-btn-primary'}" data-action="confirm">${_escHtml(confirmText)}</button>
+                </div>
+            </div>
+        `;
+
+        const cleanup = (val) => {
+            backdrop.remove();
+            document.removeEventListener('keydown', escHandler);
+            resolve(val);
+        };
+        const escHandler = (e) => {
+            if (e.key === 'Escape') cleanup(false);
+            if (e.key === 'Enter')  cleanup(true);
+        };
+
+        backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) cleanup(false);
+            const action = e.target.closest('[data-action]')?.getAttribute('data-action');
+            if (action === 'confirm') cleanup(true);
+            if (action === 'cancel')  cleanup(false);
+        });
+
+        document.body.appendChild(backdrop);
+        document.addEventListener('keydown', escHandler);
+        setTimeout(() => backdrop.querySelector('[data-action="confirm"]')?.focus(), 60);
+    });
+}
+
+/**
+ * Brand'li bilgi/uyarı dialog (tek butonlu). Promise<void> döner.
+ * @param {Object} opts - { title, message, buttonText, type, icon }
+ */
+function showAlert(opts = {}) {
+    if (typeof opts === 'string') opts = { message: opts };
+    return new Promise((resolve) => {
+        const {
+            title = 'Bilgi',
+            message = '',
+            buttonText = 'Tamam',
+            type = 'info',
+            icon = ({ info: 'ℹ️', success: '✅', error: '❌', warning: '⚠️' })[type] || 'ℹ️'
+        } = opts;
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'msaDialogBackdrop';
+        backdrop.innerHTML = `
+            <div class="msa-dialog ${type}" role="dialog" aria-modal="true">
+                <div class="msa-dialog-header">
+                    <div class="msa-dialog-icon">${icon}</div>
+                    <div class="msa-dialog-title">${_escHtml(title)}</div>
+                </div>
+                <div class="msa-dialog-body">${_escHtml(message)}</div>
+                <div class="msa-dialog-actions">
+                    <button class="msa-dialog-btn msa-dialog-btn-primary" data-action="ok">${_escHtml(buttonText)}</button>
+                </div>
+            </div>
+        `;
+        const cleanup = () => {
+            backdrop.remove();
+            document.removeEventListener('keydown', escHandler);
+            resolve();
+        };
+        const escHandler = (e) => { if (e.key === 'Escape' || e.key === 'Enter') cleanup(); };
+        backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) cleanup();
+            if (e.target.closest('[data-action="ok"]')) cleanup();
+        });
+        document.body.appendChild(backdrop);
+        document.addEventListener('keydown', escHandler);
+        setTimeout(() => backdrop.querySelector('[data-action="ok"]')?.focus(), 60);
+    });
+}
+
+function _escHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+// Teknik hata mesajlarını kullanıcı dostu Türkçeye çevirir
+function humanizeAnalyzeError(msg) {
+    const m = String(msg || '').toLowerCase();
+    if (m.includes('limit reached'))   return 'Aylık tarama limitiniz dolmuş. Lisansınızı yenileyin veya ay sonunu bekleyin.';
+    if (m.includes('daily'))           return 'Günlük tarama limitiniz dolmuş. Lütfen yarın tekrar deneyin.';
+    if (m.includes('failed to fetch')) return 'Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.';
+    if (m.includes('analysis failed')) return 'E-posta analiz edilemedi. Dosyanın geçerli bir .eml/.msg formatında olduğundan emin olun.';
+    if (m.includes('no eml file'))     return 'Lütfen bir e-posta dosyası seçin (.eml veya .msg).';
+    if (m.includes('parse'))           return 'E-posta dosyası okunamadı. Dosya bozulmuş olabilir.';
+    if (m.includes('license'))         return 'Lisansınızda bir sorun var. Yöneticinizle iletişime geçin.';
+    if (m.includes('http 4') || m.includes('http 5')) return 'Sunucu hatası. Lütfen birazdan tekrar deneyin.';
+    return msg || 'Bilinmeyen bir hata oluştu.';
+}
+
 let currentMode = 'upload';
 let currentResult = null;
 let licenseKey = localStorage.getItem('msa_license') || '';
@@ -74,22 +248,33 @@ function selectMode(mode, updateState = true) {
     // Lisans gate'leri — yetersizse güvenli mode'a düş, kullanıcı tetiklediyse uyar
     if (mode === 'imap' && !licenseInfo?.features?.imapConnection) {
         if (updateState) {
-            alert(currentLang === 'tr'
-                ? 'IMAP Tarama yalnızca Enterprise lisansında kullanılabilir.'
-                : 'IMAP Scan is available only with an Enterprise license.');
+            showToast(
+                currentLang === 'tr'
+                    ? 'IMAP Tarama yalnızca Enterprise lisansında kullanılabilir.'
+                    : 'IMAP Scan is available only with an Enterprise license.',
+                'warning',
+                { title: '🔒 Lisans Gerekli' }
+            );
         }
         mode = 'upload';
     }
     if (mode === 'scan-mailbox' && !licenseInfo?.features?.scanMailbox) {
         if (updateState) {
-            alert(currentLang === 'tr'
-                ? 'Tarama Posta Kutusu Pro veya Enterprise lisansı gerektirir.'
-                : 'Scan Mailbox requires a Pro or Enterprise license.');
+            showToast(
+                currentLang === 'tr'
+                    ? 'Tarama Posta Kutusu Pro veya Enterprise lisansı gerektirir.'
+                    : 'Scan Mailbox requires a Pro or Enterprise license.',
+                'warning',
+                { title: '🔒 Lisans Gerekli' }
+            );
         }
         mode = 'upload';
     }
 
     currentMode = mode;
+
+    // Mobil IMAP rapor modu sıfırla (mod değişimi)
+    document.body.removeAttribute('data-imap-mode');
 
     document.querySelectorAll('.scan-mode').forEach((el) => el.classList.remove('active'));
     document.querySelector(`[data-mode="${mode}"]`)?.classList.add('active');
@@ -168,7 +353,7 @@ async function analyzeFile(file) {
         showResults(data);
     } catch (error) {
         hideProgress();
-        alert(`Error: ${error.message}`);
+        showToast(humanizeAnalyzeError(error.message), 'error', { title: 'Analiz başarısız' });
     }
 }
 
@@ -194,7 +379,7 @@ async function analyzePaste() {
         showResults(data);
     } catch (error) {
         hideProgress();
-        alert(`Error: ${error.message}`);
+        showToast(humanizeAnalyzeError(error.message), 'error', { title: 'Analiz başarısız' });
     }
 }
 
@@ -473,13 +658,21 @@ async function requestDeepAiAnalysis(buttonEl) {
     const data = currentResult;
     const scanId = data?.id || data?.scanId;
     if (!scanId) {
-        alert('Bu rapor henüz kaydedilmemiş. Önce yenilemeyi deneyin.');
+        await showAlert({
+            title: 'Rapor henüz kaydedilmemiş',
+            message: 'Önce sayfayı yenileyip tekrar deneyin.',
+            type: 'warning'
+        });
         return;
     }
 
-    const confirmed = confirm(
-        `Bu işlem yapay zekâdan derinlemesine analiz alır ve aylık tarama hakkından ${DEEP_AI_COST} düşer.\n\nDevam edilsin mi?`
-    );
+    const confirmed = await showConfirm({
+        title: '🔬 Yapay Zekâ Derinlemesine İncele',
+        message: `Bu işlem yapay zekâdan kapsamlı bir forensic rapor (saldırı zinciri, IoC listesi, kullanıcı/IT/kurum tavsiyeleri) ister.\n\nAylık tarama hakkından ${DEEP_AI_COST} düşer.\n\nDevam edilsin mi?`,
+        confirmText: '🚀 Evet, derinlemesine analiz et',
+        cancelText: 'İptal',
+        icon: '🤖'
+    });
     if (!confirmed) return;
 
     // Hangi panel slotundan çağrıldığımızı bul (ana sayfa veya IMAP raporu)
@@ -828,7 +1021,14 @@ function renderFindings(findings, filter = 'all') {
 
 async function reportFalsePositive(domain, category, severity, idx) {
     if (!domain) return;
-    if (!confirm(`"${domain}" için yanlış pozitif raporu gönderilsin mi?\n\nAdmin onayından sonra bu domain güvenilir listeye eklenir ve bir daha tehdit olarak işaretlenmez.`)) return;
+    const ok = await showConfirm({
+        title: 'Yanlış Pozitif Bildir',
+        message: `"${domain}" için yanlış pozitif raporu gönderilsin mi?\n\nAdmin onayından sonra bu domain güvenilir listeye eklenir ve bir daha tehdit olarak işaretlenmez.`,
+        confirmText: '✅ Evet, raporla',
+        cancelText: 'İptal',
+        icon: '⚠️'
+    });
+    if (!ok) return;
 
     const item = document.querySelector(`.finding-item[data-finding-idx="${idx}"]`);
     const btn = item ? item.querySelector('.finding-fp-btn') : null;
@@ -851,7 +1051,7 @@ async function reportFalsePositive(domain, category, severity, idx) {
         const data = await res.json();
         if (!res.ok) {
             if (btn) { btn.disabled = false; btn.textContent = '⚠️ Yanlış pozitif'; }
-            alert('Hata: ' + (data.error || res.status));
+            showToast(data.error || `Hata: HTTP ${res.status}`, 'error', { title: 'FP raporu gönderilemedi' });
             return;
         }
         if (btn) {
@@ -859,17 +1059,22 @@ async function reportFalsePositive(domain, category, severity, idx) {
             if (data.alreadyDecided && data.status === 'approved') {
                 btn.textContent = '✅ Onaylanmış';
                 btn.style.color = '#4ade80';
+                showToast(`"${domain}" zaten onaylanmış güvenilir listede.`, 'info');
             } else if (data.alreadyDecided && data.status === 'rejected') {
                 btn.textContent = '🚫 Reddedilmiş';
                 btn.style.color = '#94a3b8';
+                showToast(`"${domain}" daha önce admin tarafından reddedilmiş.`, 'warning');
             } else {
                 btn.textContent = data.incremented ? '✓ Sayaç +1' : '✓ Gönderildi';
                 btn.style.color = '#4ade80';
+                showToast(`"${domain}" yanlış pozitif olarak raporlandı. Admin onayı bekleniyor.`, 'success', {
+                    title: '✅ Rapor gönderildi'
+                });
             }
         }
     } catch (e) {
         if (btn) { btn.disabled = false; btn.textContent = '⚠️ Yanlış pozitif'; }
-        alert('Bağlantı hatası: ' + e.message);
+        showToast(e.message, 'error', { title: 'Bağlantı hatası' });
     }
 }
 
@@ -2401,7 +2606,15 @@ function renderImapReport(data, message = null) {
 
     // Innerhtml ile yeni eklenen #imapDeepAiPanel slotuna deep AI butonu/sonucunu render et
     renderDeepAiPanel(data, 'imapDeepAiPanel');
+
+    // Mobilde rapor görünür olduğunda mail listesini sakla (CSS data attribute ile)
+    document.body.setAttribute('data-imap-mode', 'report');
 }
+
+// Mobilde "← Mail Listesine Dön" butonu için
+window.imapMobileBackToList = function() {
+    document.body.removeAttribute('data-imap-mode');
+};
 
 function renderImapAttachmentSection(data) {
     const rows = mergeAttachmentScanData(data);
@@ -5138,8 +5351,138 @@ function exportDetailedCsvCustomer() {
 }
 
 async function loadHomePage() {
-    await Promise.all([loadHomeStats(), loadHomeRecentScans(), loadHomeThreatIntel(), loadExecutiveDashboard()]);
+    await Promise.all([
+        loadHomeStats(), loadHomeRecentScans(), loadHomeThreatIntel(),
+        loadExecutiveDashboard(), renderOnboardingChecklist()
+    ]);
 }
+
+// ============================================================
+// ONBOARDING CHECKLIST — yeni kurulumda 5 adımlık rehber
+// ============================================================
+async function renderOnboardingChecklist() {
+    const card = document.getElementById('onboardingCard');
+    if (!card) return;
+    if (localStorage.getItem('msa_onboarding_dismissed') === '1') {
+        card.style.display = 'none';
+        return;
+    }
+
+    // Durumları topla
+    const state = {
+        license: false,
+        apiKey: false,
+        firstScan: false,
+        imapOrScanMailbox: false,
+        periodicReport: false
+    };
+
+    // 1) Lisans aktif mi?
+    state.license = !!(licenseInfo && licenseInfo.valid);
+
+    // 2) En az bir AI/VT/OTX anahtarı kayıtlı mı?
+    try {
+        const res = await fetch('/api/settings/status');
+        if (res.ok) {
+            const s = await res.json();
+            state.apiKey = !!(s.openaiConfigured || s.claudeConfigured || s.vtConfigured || s.otxConfigured);
+        }
+    } catch {}
+
+    // 3) İlk tarama yapıldı mı? (en az 1 history kaydı)
+    try {
+        const r = await fetch('/api/history');
+        const items = await r.json();
+        state.firstScan = Array.isArray(items) && items.length > 0;
+    } catch {}
+
+    // 4) IMAP veya Tarama Posta Kutusu kurulu mu?
+    try {
+        const r = await fetch('/api/imap/credentials');
+        if (r.ok) {
+            const list = await r.json();
+            state.imapOrScanMailbox = Array.isArray(list) && list.length > 0;
+        }
+    } catch {}
+    if (!state.imapOrScanMailbox) {
+        try {
+            const r = await fetch('/api/scan-mailbox/list');
+            if (r.ok) {
+                const list = await r.json();
+                state.imapOrScanMailbox = Array.isArray(list) && list.length > 0;
+            }
+        } catch {}
+    }
+
+    // 5) Periyodik rapor açık mı?
+    try {
+        const r = await fetch('/api/reports/settings');
+        if (r.ok) {
+            const s = await r.json();
+            state.periodicReport = !!(s && (s.daily || s.weekly || s.monthly));
+        }
+    } catch {}
+
+    const steps = [
+        { id: 'license',          done: state.license,          label: '✅ Lisans aktif',
+          action: () => { document.getElementById('licenseBtn')?.click() || openLicenseModal?.(); },
+          desc: 'Bayinizden aldığınız lisans kodunu girin' },
+        { id: 'apiKey',           done: state.apiKey,           label: '🔑 En az bir AI/VT/OTX anahtarı ekle',
+          action: () => openSettings?.(),
+          desc: 'OpenAI veya VirusTotal entegrasyonu güç katar' },
+        { id: 'firstScan',        done: state.firstScan,        label: '🔍 İlk taramanı yap',
+          action: () => { switchPage?.('scan') || selectMode('upload'); },
+          desc: 'Bir EML dosyası yükleyip test et' },
+        { id: 'imapOrScanMailbox',done: state.imapOrScanMailbox,label: '📨 IMAP veya Tarama Posta Kutusu kur',
+          action: () => { switchPage?.('scan'); selectMode('imap'); },
+          desc: 'Otomatik canlı izleme için' },
+        { id: 'periodicReport',   done: state.periodicReport,   label: '📅 Periyodik rapor aç',
+          action: () => openSettings?.(),
+          desc: 'Yöneticiye günlük/haftalık özet maili' }
+    ];
+
+    const doneCount = steps.filter(s => s.done).length;
+    const allDone = doneCount === steps.length;
+
+    document.getElementById('onboardingProgressLabel').textContent = `${doneCount} / ${steps.length} tamamlandı`;
+    document.getElementById('onboardingProgressFill').style.width = `${Math.round((doneCount / steps.length) * 100)}%`;
+
+    document.getElementById('onboardingSteps').innerHTML = steps.map((s, i) => `
+        <div class="onboarding-step ${s.done ? 'done' : ''}"
+             onclick="${s.done ? '' : `_onboardingStep(${i})`}"
+             title="${esc(s.desc)}">
+            <div class="onboarding-step-check">${s.done ? '✓' : (i + 1)}</div>
+            <div class="onboarding-step-text">${esc(s.label)}</div>
+            <div class="onboarding-step-arrow">→</div>
+        </div>
+    `).join('');
+
+    // Geçici globaller (onclick için)
+    window._onboardingSteps = steps;
+
+    // Tüm adımlar tamamlandıysa: 5 saniye göster + dismiss et
+    if (allDone) {
+        card.setAttribute('data-complete', 'false');
+        card.style.display = '';
+        setTimeout(() => {
+            localStorage.setItem('msa_onboarding_dismissed', '1');
+            card.setAttribute('data-complete', 'true');
+        }, 6000);
+    } else {
+        card.style.display = '';
+    }
+}
+
+window._onboardingStep = function(idx) {
+    const steps = window._onboardingSteps || [];
+    if (steps[idx] && typeof steps[idx].action === 'function') steps[idx].action();
+};
+
+window.dismissOnboarding = function() {
+    localStorage.setItem('msa_onboarding_dismissed', '1');
+    const card = document.getElementById('onboardingCard');
+    if (card) card.style.display = 'none';
+};
 
 async function loadHomeStats() {
     try {
