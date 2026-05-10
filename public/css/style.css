@@ -1346,3 +1346,26 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     .home-stat-grid { grid-template-columns: 1fr 1fr !important; }
     .home-bottom-grid { grid-template-columns: 1fr !important; }
 }
+
+/* ============================================================
+   AI GÖRÜŞLERI — tabbed card
+   ============================================================ */
+#aiViewsCard .tabs {
+    gap: 0;
+    padding-top: 0;
+}
+#aiViewsTabs .tab {
+    border-radius: 0;
+    border-bottom: 2px solid transparent;
+    padding: 10px 14px;
+    font-size: 12px;
+}
+#aiViewsTabs .tab.active {
+    border-bottom-color: var(--accent);
+    background: transparent;
+    color: var(--accent);
+}
+.ai-tab-body {
+    padding: 14px;
+    min-height: 60px;
+}

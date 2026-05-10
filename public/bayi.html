@@ -60,6 +60,7 @@
         <a class="active" onclick="showSection('dashboard')">📊 Dashboard</a>
         <a onclick="showSection('generate')">🔑 Yeni Lisans</a>
         <a onclick="showSection('sales')">📋 Satışlarım</a>
+        <a onclick="showSection('customers')">🏢 Müşterilerim</a>
         <a onclick="showSection('prices')">💰 Fiyatlar</a>
         <a onclick="showSection('branding')">White-label</a>
         <a onclick="showSection('trusted')">🛡️ Güvenilir Domainler</a>
@@ -142,6 +143,32 @@
         <div id="sectionSales" class="tab-content">
             <h2 style="margin-bottom:20px">📋 Satışlarım</h2>
             <div id="salesTable"></div>
+        </div>
+
+        <!-- MÜŞTERİLERİM -->
+        <div id="sectionCustomers" class="tab-content">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+                <h2>🏢 Müşteri Envanteri</h2>
+                <button class="btn btn-ghost btn-sm" onclick="loadCustomers()">🔄 Yenile</button>
+            </div>
+
+            <!-- Filtre + durum özeti -->
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+                <input class="form-input" id="custFilter" type="search"
+                    placeholder="🔍 Müşteri adı veya lisans ara…"
+                    style="flex:1;min-width:200px;margin:0"
+                    oninput="custRender()">
+                <select class="form-input" id="custStatusFilter" onchange="custRender()"
+                    style="margin:0;width:auto">
+                    <option value="">Tüm durumlar</option>
+                    <option value="active">✅ Aktif</option>
+                    <option value="expiring">⚠️ Yakında bitiyor (≤30 gün)</option>
+                    <option value="expired">❌ Süresi dolmuş</option>
+                </select>
+                <span id="custSummary" style="font-size:12px;color:var(--text-secondary)"></span>
+            </div>
+
+            <div id="custTable"></div>
         </div>
 
         <!-- PRICES -->

@@ -680,13 +680,20 @@
         <!-- Stat Cards -->
         <div class="stat-grid" id="statGrid"></div>
 
-        <!-- ChatGPT AI Değerlendirme (stat grid'in hemen altı) -->
-        <div class="card mt-16" id="openaiResults" style="border-color:rgba(99,102,241,0.5)">
-            <div class="card-header" style="cursor:pointer;user-select:none" onclick="toggleOpenaiCard()">
-                <span class="card-title">🤖 ChatGPT AI Tehdit Değerlendirmesi</span>
-                <span id="openaiCollapseIcon" style="margin-left:auto;font-size:18px;color:var(--text-secondary)">▾</span>
+        <!-- AI Görüşleri — Deep AI + OpenAI + Claude tek kart içinde -->
+        <div class="card mt-16" id="aiViewsCard">
+            <div class="card-header" style="padding-bottom:0;border-bottom:none">
+                <span class="card-title">🤖 AI Görüşleri</span>
+                <span style="margin-left:auto;font-size:11px;color:var(--text-secondary);align-self:center">Yapay zekâ analizleri</span>
             </div>
-            <div id="openaiContent"></div>
+            <div class="tabs" id="aiViewsTabs" style="margin:0;padding:6px 12px 0;border-bottom:1px solid var(--border)">
+                <button class="tab active" data-ai-tab="deep"   onclick="switchAiTab('deep')">🔬 Derinlemesine</button>
+                <button class="tab"        data-ai-tab="openai" onclick="switchAiTab('openai')">🤖 OpenAI</button>
+                <button class="tab"        data-ai-tab="claude" onclick="switchAiTab('claude')">🧠 Claude</button>
+            </div>
+            <div id="aiTab-deep"   class="ai-tab-body"></div>
+            <div id="aiTab-openai" class="ai-tab-body" style="display:none"></div>
+            <div id="aiTab-claude" class="ai-tab-body" style="display:none"></div>
         </div>
 
         <!-- Structured Report -->
@@ -713,13 +720,7 @@
             <div id="attachmentContent" class="findings-list"></div>
         </div>
 
-        <!-- Claude AI Results -->
-        <div class="card mt-24 hidden" id="claudeResults" style="border-color: rgba(217, 119, 87, 0.5)">
-            <div class="card-header">
-                <span class="card-title">🤖 Claude AI Semantik Analiz</span>
-            </div>
-            <div id="claudeContent"></div>
-        </div>
+        <!-- Claude AI Results: aiViewsCard içindeki aiTab-claude'a taşındı -->
 
         <!-- Virüs Tarama Sonuçları -->
         <div class="card mt-24 hidden" id="vtResults">

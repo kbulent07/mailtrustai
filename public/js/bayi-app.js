@@ -133,10 +133,11 @@ function showSection(name) {
     document.querySelectorAll('.bayi-nav a').forEach(a => a.classList.remove('active'));
     event.target.classList.add('active');
 
-    if (name === 'sales') loadSales();
-    if (name === 'prices') renderPrices();
-    if (name === 'branding') loadWhiteLabel();
-    if (name === 'trusted') tdLoad();
+    if (name === 'sales')     loadSales();
+    if (name === 'customers') loadCustomers();
+    if (name === 'prices')    renderPrices();
+    if (name === 'branding')  loadWhiteLabel();
+    if (name === 'trusted')   tdLoad();
 }
 
 // ─── KREDİ GÖSTERİMİ ─────────────────────────────────────
@@ -375,6 +376,96 @@ async function loadSales() {
         if (e.isSessionExpired) return;
         document.getElementById('salesTable').innerHTML = `<p class="text-red">${e.message}</p>`;
     }
+}
+
+// ─── MÜŞTERİ ENVANTERİ ───────────────────────────────────
+let _custData = [];   // tüm inventory, filtre için bellekte tutar
+
+async function loadCustomers() {
+    const el = document.getElementById('custTable');
+    if (el) el.innerHTML = '<p class="text-muted" style="padding:12px">Yükleniyor…</p>';
+    try {
+        const res = await apiFetch('/api/dealer/inventory', { headers: authHeaders() });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        _custData = await res.json();
+        custRender();
+    } catch (e) {
+        if (e.isSessionExpired) return;
+        if (el) el.innerHTML = `<p class="text-red">${escHtml(e.message)}</p>`;
+    }
+}
+
+function custRender() {
+    const el     = document.getElementById('custTable');
+    const summary = document.getElementById('custSummary');
+    if (!el) return;
+
+    const q      = (document.getElementById('custFilter')?.value || '').toLowerCase().trim();
+    const status = document.getElementById('custStatusFilter')?.value || '';
+
+    const rows = _custData.filter(c => {
+        // Metin filtresi
+        if (q) {
+            const hay = `${c.customerNote} ${c.licenseKey}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        // Durum filtresi
+        if (status === 'expired')  return c.expired;
+        if (status === 'expiring') return !c.expired && c.daysLeft <= 30;
+        if (status === 'active')   return !c.expired && c.daysLeft > 30;
+        return true;
+    });
+
+    const total   = _custData.length;
+    const active  = _custData.filter(c => !c.expired && c.daysLeft > 30).length;
+    const expiring = _custData.filter(c => !c.expired && c.daysLeft <= 30).length;
+    const expired  = _custData.filter(c => c.expired).length;
+    if (summary) summary.textContent =
+        `${total} müşteri · ${active} aktif · ${expiring} yakında bitiyor · ${expired} süresi dolmuş`;
+
+    if (!rows.length) {
+        el.innerHTML = '<p class="text-muted" style="padding:12px">Kayıt bulunamadı.</p>';
+        return;
+    }
+
+    const badgeHtml = (c) => {
+        if (c.expired)           return `<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(239,68,68,0.15);color:#f87171">❌ Sona Erdi</span>`;
+        if (c.daysLeft <= 7)     return `<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(239,68,68,0.12);color:#f87171">⚠️ ${c.daysLeft} gün</span>`;
+        if (c.daysLeft <= 30)    return `<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);color:#fbbf24">⚠️ ${c.daysLeft} gün</span>`;
+        return `<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(16,185,129,0.12);color:#10b981">✅ ${c.daysLeft} gün</span>`;
+    };
+
+    const maskKey = (k) => k ? k.slice(0, 8) + '…' + k.slice(-6) : '—';
+
+    el.innerHTML = `
+        <div class="card">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead><tr style="color:var(--text-secondary);border-bottom:1px solid var(--border)">
+                    <th style="text-align:left;padding:8px 6px">Müşteri</th>
+                    <th style="padding:6px;text-align:center">Plan</th>
+                    <th style="padding:6px;text-align:center">Tier</th>
+                    <th style="padding:6px;text-align:center">Süre</th>
+                    <th style="padding:6px;text-align:center">Bitiş</th>
+                    <th style="padding:6px;text-align:center">Durum</th>
+                    <th style="text-align:left;padding:6px">Lisans (kısmi)</th>
+                </tr></thead>
+                <tbody>
+                    ${rows.map(c => `<tr style="border-top:1px solid var(--border)">
+                        <td style="padding:8px 6px;font-weight:600">${escHtml(c.customerNote || '—')}</td>
+                        <td style="text-align:center;padding:6px">${escHtml(c.plan || '—')}</td>
+                        <td style="text-align:center;padding:6px">${escHtml(c.tier || '—')}</td>
+                        <td style="text-align:center;padding:6px">${c.duration === 'Y' ? 'Yıllık' : 'Aylık'}</td>
+                        <td style="text-align:center;padding:6px;color:var(--text-secondary);font-size:12px">
+                            ${c.expiryDate ? new Date(c.expiryDate).toLocaleDateString('tr') : '—'}
+                        </td>
+                        <td style="text-align:center;padding:6px">${badgeHtml(c)}</td>
+                        <td style="padding:6px;font-family:monospace;font-size:11px;color:var(--text-secondary)">
+                            ${escHtml(maskKey(c.licenseKey))}
+                        </td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>`;
 }
 
 // ─── LİSANS ÜRETİMİ ──────────────────────────────────────

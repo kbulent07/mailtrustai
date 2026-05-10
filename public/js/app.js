@@ -403,12 +403,13 @@ function showResults(data, options = {}) {
     renderMainMeta(data.emailMeta || {});
     renderMainStats(data);
     renderDeepAiPanel(data);
+    renderOpenAIAnalysis(data.openaiAnalysis);
+    renderClaudeAnalysis(data.claudeAnalysis);
+    _autoSelectAiTab(data);   // hangi AI sekmesi aktif olmalı?
     renderStructuredReport(data);
     renderFindings(data.findings || []);
     renderAttachmentDetails(data);
-    renderOpenAIAnalysis(data.openaiAnalysis);
     renderVirusTotal(data.virusTotal || [], data.vtStatus, data);
-    renderClaudeAnalysis(data.claudeAnalysis);
 
     loadHistory();
 
@@ -601,7 +602,30 @@ const DEEP_AI_COST = 5;
 
 // Hem ana sayfa raporu hem de IMAP rapor pane'i için tek panel render fonksiyonu.
 // Çağrı şekilleri:
-//   renderDeepAiPanel(data)                    → ana sayfa (riskBanner altına)
+// ============================================================
+// AI GÖRÜŞLERI — 3 AI blok (Deep AI / OpenAI / Claude) tek tabbed kart
+// ============================================================
+function switchAiTab(tabId) {
+    // Tab butonlarını güncelle
+    document.querySelectorAll('#aiViewsTabs .tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.aiTab === tabId);
+    });
+    // Panel gövdelerini göster/gizle
+    document.querySelectorAll('.ai-tab-body').forEach(body => {
+        body.style.display = body.id === `aiTab-${tabId}` ? '' : 'none';
+    });
+}
+
+// İlk yükleme sonrası hangi tab aktif olmalı?
+function _autoSelectAiTab(data) {
+    if (!document.getElementById('aiViewsCard')) return;
+    if (data?.deepAiAnalysis) switchAiTab('deep');
+    else if (data?.openaiAnalysis) switchAiTab('openai');
+    else if (data?.claudeAnalysis) switchAiTab('claude');
+    else switchAiTab('deep');   // varsayılan: "Derinlemesine" butonu göster
+}
+
+//   renderDeepAiPanel(data)                    → ana sayfa (aiTab-deep)
 //   renderDeepAiPanel(data, hostElementOrId)   → belirli bir hedef (örn IMAP slotu)
 function renderDeepAiPanel(data, target) {
     let host;
@@ -609,15 +633,9 @@ function renderDeepAiPanel(data, target) {
         host = (typeof target === 'string') ? document.getElementById(target) : target;
         if (!host) return;
     } else {
-        host = document.getElementById('deepAiPanel');
-        if (!host) {
-            const banner = document.getElementById('riskBanner');
-            if (!banner) return;
-            host = document.createElement('div');
-            host.id = 'deepAiPanel';
-            host.style.cssText = 'margin:14px 0 0';
-            banner.parentNode.insertBefore(host, banner.nextSibling);
-        }
+        // Ana sayfa: aiTab-deep içine render et
+        host = document.getElementById('aiTab-deep');
+        if (!host) return;
     }
 
     const scanId = data?.id || data?.scanId || null;
@@ -1332,12 +1350,14 @@ function renderLocalScannerSummary(row) {
 }
 
 function renderClaudeAnalysis(analysis) {
-    const claudeResults = document.getElementById('claudeResults');
-    const claudeContent = document.getElementById('claudeContent');
+    const claudeContent = document.getElementById('aiTab-claude');
+    if (!claudeContent) return;
 
     if (!analysis) {
-        claudeResults.classList.add('hidden');
-        claudeContent.innerHTML = '';
+        claudeContent.innerHTML = `
+            <div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px;">
+                🧠 Claude API anahtarı yapılandırılmamış veya bu analiz için çalıştırılmadı.
+            </div>`;
         return;
     }
 
@@ -1385,7 +1405,6 @@ function renderClaudeAnalysis(analysis) {
         `;
     }
 
-    claudeResults.classList.remove('hidden');
     claudeContent.innerHTML = html;
 }
 
@@ -1575,10 +1594,10 @@ function findAttachmentRowForEntry(entry, data) {
 }
 
 function renderOpenAIAnalysis(analysis) {
-    const openaiContent = document.getElementById('openaiContent');
+    const openaiContent = document.getElementById('aiTab-openai');
     if (!openaiContent) return;
 
-    // Kart her zaman görünür; sadece içerik değişir
+    // Tab her zaman dolu; içerik güncellenir
     if (!analysis) {
         openaiContent.innerHTML = `
             <div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px;">
@@ -1653,15 +1672,8 @@ function renderOpenAIAnalysis(analysis) {
     `;
 }
 
-/** Kart başlığına tıklanınca içeriği gizle/göster */
-function toggleOpenaiCard() {
-    const content = document.getElementById('openaiContent');
-    const icon    = document.getElementById('openaiCollapseIcon');
-    if (!content) return;
-    const collapsed = content.style.display === 'none';
-    content.style.display = collapsed ? '' : 'none';
-    if (icon) icon.textContent = collapsed ? '▾' : '▸';
-}
+/** Eski: OpenAI kartı toggle — artık tab sistemiyle çalışıyor */
+function toggleOpenaiCard() { switchAiTab('openai'); }
 
 function renderAnalysisList(title, items) {
     if (!items || !items.length) return '';
@@ -1706,10 +1718,9 @@ function hideSecondaryResultBlocks() {
     document.getElementById('attachmentContent').innerHTML = '';
     document.getElementById('vtResults').classList.add('hidden');
     document.getElementById('vtContent').innerHTML = '';
-    document.getElementById('claudeResults').classList.add('hidden');
-    document.getElementById('claudeContent').innerHTML = '';
-    // openaiResults kartı her zaman görünür kalır; sadece içeriği temizle
-    document.getElementById('openaiContent').innerHTML = '';
+    // AI sekmeleri temizle
+    const tabs = ['aiTab-deep', 'aiTab-openai', 'aiTab-claude'];
+    tabs.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
 }
 
 function restoreMainView(mode = currentMode, updateState = false) {
@@ -2574,12 +2585,28 @@ function renderImapReport(data, message = null) {
             </div>
         </div>
 
-        <div id="imapDeepAiPanel" data-deep-ai-slot="1" style="margin:14px 0"></div>
-
         ${renderImapAttachmentSection(data)}
 
-        ${renderImapAiSection(data.openaiAnalysis, data.openaiError)}
-        ${renderImapClaudeSection(data.claudeAnalysis)}
+        <!-- AI Görüşleri (IMAP) — 3 sekme: Derinlemesine / OpenAI / Claude -->
+        <div class="imap-finding-group" style="margin-bottom:16px;padding:0;overflow:hidden;border:1px solid rgba(99,102,241,0.25);border-radius:10px;">
+            <div style="display:flex;gap:0;border-bottom:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);">
+                <button onclick="switchImapAiTab(this,'imapAiTab-deep')"
+                    style="flex:1;border:none;background:transparent;padding:9px 4px;font-size:12px;font-weight:600;color:#a5b4fc;cursor:pointer;border-bottom:2px solid #a78bfa;">
+                    🔬 Derinlemesine
+                </button>
+                <button onclick="switchImapAiTab(this,'imapAiTab-openai')"
+                    style="flex:1;border:none;background:transparent;padding:9px 4px;font-size:12px;font-weight:600;color:var(--text-secondary);cursor:pointer;border-bottom:2px solid transparent;">
+                    🤖 OpenAI
+                </button>
+                <button onclick="switchImapAiTab(this,'imapAiTab-claude')"
+                    style="flex:1;border:none;background:transparent;padding:9px 4px;font-size:12px;font-weight:600;color:var(--text-secondary);cursor:pointer;border-bottom:2px solid transparent;">
+                    🧠 Claude
+                </button>
+            </div>
+            <div id="imapAiTab-deep"   style="padding:10px"></div>
+            <div id="imapAiTab-openai" style="padding:10px;display:none">${renderImapAiSection(data.openaiAnalysis, data.openaiError)}</div>
+            <div id="imapAiTab-claude" style="padding:10px;display:none">${renderImapClaudeSection(data.claudeAnalysis)}</div>
+        </div>
 
         <div class="imap-finding-groups">
             ${groups.map((group) => `
@@ -2604,12 +2631,43 @@ function renderImapReport(data, message = null) {
         </div>
     `;
 
-    // Innerhtml ile yeni eklenen #imapDeepAiPanel slotuna deep AI butonu/sonucunu render et
-    renderDeepAiPanel(data, 'imapDeepAiPanel');
+    // IMAP AI sekmeleri: Deep AI butonunu/sonucunu imapAiTab-deep içine render et
+    renderDeepAiPanel(data, 'imapAiTab-deep');
+    // IMAP: hangi AI sekmesi aktif olacak?
+    const _imapInitTab = data?.deepAiAnalysis ? 'imapAiTab-deep'
+        : (data?.openaiAnalysis ? 'imapAiTab-openai'
+        : (data?.claudeAnalysis ? 'imapAiTab-claude' : 'imapAiTab-deep'));
+    document.querySelectorAll('.imap-finding-group button[onclick^="switchImapAiTab"]').forEach((btn, i) => {
+        const targetId = ['imapAiTab-deep','imapAiTab-openai','imapAiTab-claude'][i];
+        btn.style.color = targetId === _imapInitTab ? '#a5b4fc' : 'var(--text-secondary)';
+        btn.style.borderBottomColor = targetId === _imapInitTab ? '#a78bfa' : 'transparent';
+    });
+    ['imapAiTab-deep','imapAiTab-openai','imapAiTab-claude'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = id === _imapInitTab ? '' : 'none';
+    });
 
     // Mobilde rapor görünür olduğunda mail listesini sakla (CSS data attribute ile)
     document.body.setAttribute('data-imap-mode', 'report');
 }
+
+// IMAP raporu içindeki AI sekme geçişi
+window.switchImapAiTab = function(btn, targetId) {
+    const container = btn.closest('.imap-finding-group');
+    if (!container) return;
+    // Buton stilleri
+    container.querySelectorAll('button[onclick^="switchImapAiTab"]').forEach(b => {
+        b.style.color = '#888';
+        b.style.borderBottomColor = 'transparent';
+    });
+    btn.style.color = '#a5b4fc';
+    btn.style.borderBottomColor = '#a78bfa';
+    // Panel görünürlüğü
+    ['imapAiTab-deep','imapAiTab-openai','imapAiTab-claude'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = id === targetId ? '' : 'none';
+    });
+};
 
 // Mobilde "← Mail Listesine Dön" butonu için
 window.imapMobileBackToList = function() {

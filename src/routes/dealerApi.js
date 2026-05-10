@@ -161,6 +161,37 @@ router.get('/prices', requireDealerAuth, (req, res) => {
     res.json({ prices: result, tierInfo, discountPct: discount });
 });
 
+// ─── MÜŞTERİ ENVANTERİ ──────────────────────────────────
+// Bayinin sattığı tüm lisansları geçerlilik/süre bilgisiyle döner
+router.get('/inventory', requireDealerAuth, (req, res) => {
+    const sales = getSalesByDealer(req.dealerCode, 1000);
+    const seen  = new Set();
+    const inventory = sales
+        .filter(sale => {
+            if (!sale.licenseKey || seen.has(sale.licenseKey)) return false;
+            seen.add(sale.licenseKey);
+            return true;
+        })
+        .map(sale => {
+            const license = validateLicenseKey(sale.licenseKey || '');
+            const daysLeft = Number(license.daysLeft ?? 0);
+            return {
+                licenseKey:   sale.licenseKey,
+                customerNote: sale.customerNote || '',
+                plan:         sale.plan,
+                tier:         sale.tier,
+                duration:     sale.duration,
+                createdAt:    sale.createdAt,
+                expiryDate:   license.expiryDate || null,
+                daysLeft,
+                expired:      license.error === 'License expired' || daysLeft <= 0,
+                valid:        !!license.valid
+            };
+        })
+        .sort((a, b) => a.daysLeft - b.daysLeft);   // yakın bitenler önce
+    res.json(inventory);
+});
+
 router.get('/white-label', requireDealerAuth, (req, res) => {
     const dealer = findDealer(req.dealerCode);
     if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
