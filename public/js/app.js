@@ -414,15 +414,25 @@ function renderMainStats(data) {
 // ============================================================
 const DEEP_AI_COST = 5;
 
-function renderDeepAiPanel(data) {
-    let host = document.getElementById('deepAiPanel');
-    if (!host) {
-        const banner = document.getElementById('riskBanner');
-        if (!banner) return;
-        host = document.createElement('div');
-        host.id = 'deepAiPanel';
-        host.style.cssText = 'margin:14px 0 0';
-        banner.parentNode.insertBefore(host, banner.nextSibling);
+// Hem ana sayfa raporu hem de IMAP rapor pane'i için tek panel render fonksiyonu.
+// Çağrı şekilleri:
+//   renderDeepAiPanel(data)                    → ana sayfa (riskBanner altına)
+//   renderDeepAiPanel(data, hostElementOrId)   → belirli bir hedef (örn IMAP slotu)
+function renderDeepAiPanel(data, target) {
+    let host;
+    if (target) {
+        host = (typeof target === 'string') ? document.getElementById(target) : target;
+        if (!host) return;
+    } else {
+        host = document.getElementById('deepAiPanel');
+        if (!host) {
+            const banner = document.getElementById('riskBanner');
+            if (!banner) return;
+            host = document.createElement('div');
+            host.id = 'deepAiPanel';
+            host.style.cssText = 'margin:14px 0 0';
+            banner.parentNode.insertBefore(host, banner.nextSibling);
+        }
     }
 
     const scanId = data?.id || data?.scanId || null;
@@ -437,37 +447,47 @@ function renderDeepAiPanel(data) {
         return;
     }
 
+    // Host'u panel olarak işaretle — requestDeepAiAnalysis butondan kalkıp bunu bulacak
+    host.setAttribute('data-deep-ai-slot', '1');
+
     // Buton görünümü — henüz yapılmadı
     host.innerHTML = `
-        <div style="background:linear-gradient(135deg,rgba(139,92,246,0.10),rgba(99,102,241,0.10));border:1px solid rgba(139,92,246,0.35);border-left:4px solid #a78bfa;border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
-            <div style="flex:1;min-width:280px">
+        <div style="background:linear-gradient(135deg,rgba(139,92,246,0.10),rgba(99,102,241,0.10));border:1px solid rgba(139,92,246,0.35);border-left:4px solid #a78bfa;border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:14px 0">
+            <div style="flex:1;min-width:240px">
                 <div style="font-size:14px;font-weight:700;color:#c4b5fd;margin-bottom:3px">🔬 Yapay Zekâ ile Derinlemesine İncele</div>
                 <div style="font-size:12px;color:#a5b4fc;line-height:1.55">
                     Saldırı zinciri, sosyal mühendislik kalıpları, marka taklidi, kullanıcı/IT/kurum tavsiyeleri ve IoC listesi içeren detaylı forensic rapor üretir.
                     <br><b style="color:#fbbf24">⚠️ Bu işlem aylık tarama hakkından <span style="color:#fcd34d">${DEEP_AI_COST}</span> düşer.</b>
                 </div>
             </div>
-            <button id="deepAiTriggerBtn" onclick="requestDeepAiAnalysis()" style="background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;border:none;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(124,58,237,0.35);white-space:nowrap">
+            <button class="deep-ai-trigger-btn" onclick="requestDeepAiAnalysis(this)" style="background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;border:none;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(124,58,237,0.35);white-space:nowrap">
                 🚀 Derinlemesine Analiz Et
             </button>
         </div>
-        <div id="deepAiStatus" style="margin-top:8px;font-size:12px;color:var(--text-secondary);text-align:center"></div>
+        <div class="deep-ai-status" style="margin-top:6px;font-size:12px;color:var(--text-secondary);text-align:center"></div>
     `;
     host.style.display = '';
 }
 
-async function requestDeepAiAnalysis() {
+async function requestDeepAiAnalysis(buttonEl) {
     const data = currentResult;
     const scanId = data?.id || data?.scanId;
-    if (!scanId) return;
+    if (!scanId) {
+        alert('Bu rapor henüz kaydedilmemiş. Önce yenilemeyi deneyin.');
+        return;
+    }
 
     const confirmed = confirm(
         `Bu işlem yapay zekâdan derinlemesine analiz alır ve aylık tarama hakkından ${DEEP_AI_COST} düşer.\n\nDevam edilsin mi?`
     );
     if (!confirmed) return;
 
-    const btn = document.getElementById('deepAiTriggerBtn');
-    const status = document.getElementById('deepAiStatus');
+    // Hangi panel slotundan çağrıldığımızı bul (ana sayfa veya IMAP raporu)
+    const host = buttonEl?.closest('[data-deep-ai-slot]')
+              || document.querySelector('[data-deep-ai-slot]');
+    const btn    = buttonEl || host?.querySelector('.deep-ai-trigger-btn');
+    const status = host?.querySelector('.deep-ai-status');
+
     if (btn) { btn.disabled = true; btn.innerHTML = '⏳ AI analiz yapıyor (~10-20 sn)...'; btn.style.opacity = '0.7'; btn.style.cursor = 'wait'; }
     if (status) status.textContent = 'Yapay zekâya delil paketi gönderildi, derinlemesine analiz hazırlanıyor...';
 
@@ -485,14 +505,25 @@ async function requestDeepAiAnalysis() {
             return;
         }
 
-        // Sonucu currentResult'a yaz ve panel'i güncelle
+        // Sonucu currentResult'a yaz; varsa imapReportCache'i de güncelle
         currentResult.deepAiAnalysis = json.analysis;
-        const host = document.getElementById('deepAiPanel');
+        try {
+            const cacheKey = currentResult.imapUid ? `${currentResult.imapEmail || currentImapEmail}:${currentResult.imapUid}` : null;
+            if (cacheKey && imapReportCache.has(cacheKey)) {
+                imapReportCache.set(cacheKey, currentResult);
+            }
+        } catch {}
+
+        // Aktif panel'i güncelle
         if (host) host.innerHTML = renderDeepAiResult(json.analysis, json.cached);
 
-        // Limit göstergesi
+        // Üst kısımdaki "Tarama hakkı 22/250" tipi göstergeyi güncelle
+        try { if (typeof refreshLicenseUsageBadge === 'function') refreshLicenseUsageBadge(); } catch {}
+
         const remaining = (json.monthlyLimit === Infinity ? '∞' : (json.monthlyLimit - json.monthlyUsed));
-        if (status) status.textContent = `✅ Tamamlandı. Aylık limit: ${json.monthlyUsed}/${json.monthlyLimit === Infinity ? '∞' : json.monthlyLimit} kullanıldı (kalan: ${remaining}).`;
+        // Status host yenilenince DOM'dan silinir; yine de varsa güncelle
+        const newStatus = host?.querySelector('.deep-ai-status');
+        if (newStatus) newStatus.textContent = `✅ Tamamlandı. Aylık limit: ${json.monthlyUsed}/${json.monthlyLimit === Infinity ? '∞' : json.monthlyLimit} (kalan: ${remaining}).`;
     } catch (e) {
         if (status) status.innerHTML = `<span style="color:#f87171">❌ Bağlantı hatası: ${esc(e.message)}</span>`;
         if (btn) { btn.disabled = false; btn.innerHTML = '🚀 Derinlemesine Analiz Et'; btn.style.opacity = ''; btn.style.cursor = ''; }
@@ -2338,6 +2369,8 @@ function renderImapReport(data, message = null) {
             </div>
         </div>
 
+        <div id="imapDeepAiPanel" data-deep-ai-slot="1" style="margin:14px 0"></div>
+
         ${renderImapAttachmentSection(data)}
 
         ${renderImapAiSection(data.openaiAnalysis, data.openaiError)}
@@ -2365,6 +2398,9 @@ function renderImapReport(data, message = null) {
             `).join('')}
         </div>
     `;
+
+    // Innerhtml ile yeni eklenen #imapDeepAiPanel slotuna deep AI butonu/sonucunu render et
+    renderDeepAiPanel(data, 'imapDeepAiPanel');
 }
 
 function renderImapAttachmentSection(data) {
