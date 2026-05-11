@@ -8,6 +8,7 @@ const { loadSettings, saveSettings } = require('../../../storage/settingsStore')
 const { state } = require('../../../services/appState');
 const { requireAdminAuth } = require('../../../middleware/adminAuth');
 const { OPENAI_MODEL, AVAILABLE_OPENAI_MODELS } = require('../../../integrations/openai');
+const { getThreatIntelStats } = require('../../../integrations/threatIntel');
 const { testWebhook } = require('../../../integrations/webhook');
 const { recordAudit } = require('../../../storage/auditLog');
 
@@ -93,6 +94,7 @@ router.post('/settings/otx/test', async (req, res) => {
 
 router.get('/settings/status', (req, res) => {
     const settings = loadSettings();
+    const threatIntel = getThreatIntelStats();
     res.json({
         vtConfigured:    !!state.vtApiKey,
         claudeConfigured:!!state.claudeApiKey,
@@ -100,6 +102,8 @@ router.get('/settings/status', (req, res) => {
         openaiModel:     state.openaiModel || OPENAI_MODEL,
         availableModels: AVAILABLE_OPENAI_MODELS,
         otxConfigured:   !!state.otxApiKey,
+        abuseFeedAvailable: !!threatIntel.available,
+        abuseFeedUpdatedAt: threatIntel.updatedAt,
         companyProfile:  settings.companyProfile || {},
         riskMode:        settings.riskMode || 'classic'
     });

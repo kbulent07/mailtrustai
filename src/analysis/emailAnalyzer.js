@@ -17,7 +17,7 @@ const { buildEvidencePack } = require('./evidencePack');
 const { loadSettings } = require('../storage/settingsStore');
 const { checkEmailIndicators, severityFromVerdict, scoreFromVerdict } = require('../integrations/otx');
 const { isAllowlisted, isBlocklisted } = require('../storage/allowlistStore');
-const { isThreatDomain, isThreatUrl } = require('../integrations/threatIntel');
+const { isThreatDomain, isThreatUrl, getThreatIntelStats } = require('../integrations/threatIntel');
 const { sendWebhook } = require('../integrations/webhook');
 const { state } = require('../services/appState');
 
@@ -158,7 +158,9 @@ function applyOtxInsights(result, otxData) {
     // Tehdit istihbaratı (threatIntel modülü) zaten bu domain/URL'yi yakaladıysa
     // OTX puanı çift sayılmaması için %50 indirimle uygula
     const existingTiCritical = result.findings.some(
-        f => f.category === 'link' && f.severity === 'critical' && /tehdit istihbaratı/i.test(f.message || '')
+        f => (f.category === 'abuse' || f.category === 'link')
+            && f.severity === 'critical'
+            && /(tehdit istihbaratı|abuse feed)/i.test(f.message || '')
     );
     const scoreToApply = existingTiCritical
         ? Math.round(totalScore * 0.5)
@@ -446,14 +448,24 @@ async function buildEmailAnalysisResult(parsedData, license) {
 
     // ─── Tehdit istihbaratı ───────────────────────────────
     const allUrls = extractUrls((parsedData.text || '') + ' ' + (parsedData.html || ''));
+    const threatIntelStats = getThreatIntelStats();
+    result.abuseStatus = {
+        available: !!threatIntelStats.available,
+        checked: allUrls.length > 0,
+        reason: threatIntelStats.available ? 'completed' : 'feed-unavailable',
+        source: 'URLhaus + OpenPhish',
+        hits: 0
+    };
+    result.abuseData = { matches: [] };
     let threatIntelHits = 0;
     for (const url of allUrls.slice(0, 50)) {
         if (threatIntelHits >= 3) break;
         if (isThreatUrl(url)) {
             result.findings.push({
-                severity: 'critical', category: 'link',
-                message: `Tehdit istihbaratı eşleşmesi (URL): ${url.length > 80 ? url.slice(0, 77) + '...' : url}`
+                severity: 'critical', category: 'abuse',
+                message: `Abuse feed eslesmesi (URL): ${url.length > 80 ? url.slice(0, 77) + '...' : url}`
             });
+            result.abuseData.matches.push({ type: 'url', value: url, source: 'URLhaus/OpenPhish' });
             result.score = Math.min(100, result.score + 15);
             threatIntelHits++;
             continue;
@@ -461,13 +473,16 @@ async function buildEmailAnalysisResult(parsedData, license) {
         const urlDomain = (() => { try { return new URL(url).hostname.toLowerCase(); } catch { return ''; } })();
         if (urlDomain && isThreatDomain(urlDomain)) {
             result.findings.push({
-                severity: 'critical', category: 'link',
-                message: `Tehdit istihbaratı eşleşmesi (domain): ${urlDomain}`
+                severity: 'critical', category: 'abuse',
+                message: `Abuse feed eslesmesi (domain): ${urlDomain}`
             });
+            result.abuseData.matches.push({ type: 'domain', value: urlDomain, source: 'URLhaus/OpenPhish' });
             result.score = Math.min(100, result.score + 15);
             threatIntelHits++;
         }
     }
+    result.abuseStatus.hits = threatIntelHits;
+    if (threatIntelHits > 0) recalculateResultMeta(result);
 
     // ─── URL kısaltıcı çözümleme (Pro+) ──────────────────
     if (license.features?.virusTotal) {

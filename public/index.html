@@ -927,6 +927,13 @@
             <h2 style="margin:0">⚙️ <span data-i18n="settings">Ayarlar</span></h2>
             <button onclick="closeSettings()" title="Kapat (ESC)" style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:22px;line-height:1;padding:4px 8px;border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">✕</button>
         </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 18px">
+            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="api" onclick="showSettingsTab('api')">API</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="general" onclick="showSettingsTab('general')">Genel</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="reports" onclick="showSettingsTab('reports')">Rapor</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="system" onclick="showSettingsTab('system')">Sistem</button>
+        </div>
+        <div data-settings-tab="api">
         <!-- ── Entegrasyon API Anahtarları ── -->
         <div style="border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:16px;padding-bottom:4px">
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">🔌 Entegrasyon API Anahtarları</div>
@@ -1002,6 +1009,12 @@
             </div>
         </div>
 
+        <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.22);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+            <div style="font-size:12px;font-weight:700;color:#fbbf24;margin-bottom:4px">Abuse / URLhaus Link Taraması</div>
+            <div class="text-muted" style="font-size:12px;line-height:1.55">Bu kontrol API anahtarı gerektirmez. Sistem URLhaus ve OpenPhish tehdit feed'lerini kullanarak e-postadaki bağlantıları otomatik eşleştirir.</div>
+        </div>
+        </div>
+        <div data-settings-tab="general" style="display:none">
         <!-- ─── RİSK HESAPLAMA MODU ───────────────────── -->
         <div class="form-group" style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.25);border-radius:10px;padding:14px">
             <label class="form-label" style="color:#a5b4fc">⚖️ Risk Hesaplama Modu</label>
@@ -1077,6 +1090,8 @@
         <div class="text-muted" style="font-size:12px; margin-bottom:12px;">
             Otomatik rapor alacak mail adresleri IMAP Gelen Kutusu ekranindaki hesap satirlarindan isaretlenir.
         </div>
+        </div>
+        <div data-settings-tab="reports" style="display:none">
         <div class="grid-3" style="gap:10px;margin-bottom:12px;">
             <label class="report-toggle"><input type="checkbox" id="periodicDaily"> Gunluk</label>
             <label class="report-toggle"><input type="checkbox" id="periodicWeekly"> Haftalik</label>
@@ -1125,12 +1140,14 @@
             </div>
         </div>
 
+        </div>
         <div id="settingsStatus" class="text-muted" style="font-size:12px; margin-bottom:12px;"></div>
         <div class="flex gap-16 mt-16">
             <button class="btn btn-primary" onclick="saveSettings()">💾 Kaydet</button>
             <button class="btn btn-ghost" onclick="closeSettings()">❌</button>
         </div>
 
+        <div data-settings-tab="system" style="display:none">
         <!-- SERVİS YÖNETİMİ -->
         <div style="border-top:1px solid rgba(255,255,255,0.1);margin-top:20px;padding-top:16px">
             <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:#f8fafc">🖥️ Servis Yönetimi</div>
@@ -1187,6 +1204,7 @@
             </div>
         </div>
 
+        </div>
     </div>
 </div>
 

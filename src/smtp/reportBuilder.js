@@ -48,7 +48,7 @@ function buildReportHtml(result, lang = 'tr') {
     const threatTags = buildThreatTags(result);
     const detailedFindings = buildDetailedFindingRows(result);
     const suspiciousLinks = findings
-        .filter((finding) => finding.category === 'link' && finding.severity !== 'safe')
+        .filter((finding) => (finding.category === 'link' || finding.category === 'abuse') && finding.severity !== 'safe')
         .map((finding) => finding.message);
     const summary = buildExecutiveSummary(result, isTR);
 
@@ -302,6 +302,7 @@ function buildThreatTags(result) {
         if (finding.category === 'virusTotal' && finding.severity === 'critical') tags.add('Zararli ek dosya');
         if (finding.category === 'attachment' && finding.severity === 'critical') tags.add('Potansiyel malware');
         if (finding.category === 'link' && finding.severity !== 'safe') tags.add('Supheli baglanti');
+        if (finding.category === 'abuse' && finding.severity !== 'safe') tags.add('Abuse blacklist eslesmesi');
         if (finding.category === 'ai' && /phishing|credential|fraud|bec/i.test(finding.message || '')) tags.add('Spear phishing');
         if (finding.category === 'otx' && finding.severity === 'critical') tags.add('Kotu itibarli altyapi');
         if (finding.category === 'otx' && finding.severity === 'warning') tags.add('Supheli IP/domain');
@@ -407,6 +408,7 @@ function localCategory(category) {
         header: 'Kimlik dogrulama',
         content: 'Icerik',
         link: 'Baglantilar',
+        abuse: 'Abuse / URLhaus',
         ai: 'Yapay zeka',
         otx: 'OTX IP/Domain'
     }[category] || category || 'Genel';

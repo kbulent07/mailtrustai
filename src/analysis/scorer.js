@@ -46,6 +46,8 @@ function forcedLevelFromFindings(findings = []) {
     const warningAttachment  = findings.some(f => f.category === 'attachment' && f.severity === 'warning');
     const criticalLink       = findings.some(f => f.category === 'link'       && f.severity === 'critical');
     const warningLink        = findings.some(f => f.category === 'link'       && f.severity === 'warning');
+    const criticalAbuse      = findings.some(f => f.category === 'abuse'      && f.severity === 'critical');
+    const warningAbuse       = findings.some(f => f.category === 'abuse'      && f.severity === 'warning');
     const vtCritical         = findings.some(f => f.category === 'virusTotal' && f.severity === 'critical');
     const vtWarning          = findings.some(f => f.category === 'virusTotal' && f.severity === 'warning');
 
@@ -74,9 +76,9 @@ function forcedLevelFromFindings(findings = []) {
     if (gatewayMalware)                                      return 'high';
     if (aiIndicatesCriticalFraud && aiConfidence >= 70)      return 'high';
     if (aiIndicatesMediumFraud && aiConfidence >= 75 && aiRedFlags >= 2) return 'medium';
-    if (vtCritical || otxCritical)                           return 'high';
+    if (vtCritical || otxCritical || criticalAbuse)          return 'high';
     if (criticalAttachment || criticalLink)                  return 'medium';
-    if (vtWarning || otxWarning || warningAttachment || warningLink) return 'low';
+    if (vtWarning || otxWarning || warningAttachment || warningLink || warningAbuse) return 'low';
     return 'safe';
 }
 
@@ -185,6 +187,12 @@ function levelEscalationReason(result) {
     } else if (otxSuspicious.length) {
         reasons.push(`OTX tehdit istihbaratında ${otxSuspicious.length} şüpheli gösterge işaretli`);
         sources.push('otx');
+    }
+
+    const abuseMatches = result?.abuseData?.matches || [];
+    if (abuseMatches.length) {
+        reasons.push(`Abuse feed tarafinda ${abuseMatches.length} tehditli baglanti eslesmesi bulundu`);
+        sources.push('abuse');
     }
 
     // VirusTotal

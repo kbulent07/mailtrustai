@@ -494,6 +494,9 @@ function _deriveLevelReason(data) {
     if (vtMal) parts.push(`VirusTotal'de ${vtMal} motor zararlı`);
     else if (vtSus) parts.push(`VirusTotal'de ${vtSus} motor şüpheli`);
 
+    const abuseHits = (data.abuseData?.matches || []).length;
+    if (abuseHits) parts.push(`Abuse feed'de ${abuseHits} tehditli bağlantı`);
+
     const ai = data.openaiAnalysis;
     if (ai?.threatLevel) {
         const t = String(ai.threatLevel).toLowerCase();
@@ -3205,6 +3208,7 @@ let _settingsEscHandler = null;
 
 function showSettings() {
     document.getElementById('settingsModal').classList.remove('hidden');
+    showSettingsTab('api');
     loadSettingsStatus();
     loadPeriodicReportSettings();
     loadServiceStatus();
@@ -3215,6 +3219,18 @@ function showSettings() {
     if (_settingsEscHandler) document.removeEventListener('keydown', _settingsEscHandler);
     _settingsEscHandler = (e) => { if (e.key === 'Escape') closeSettings(); };
     document.addEventListener('keydown', _settingsEscHandler);
+}
+
+function showSettingsTab(tab) {
+    document.querySelectorAll('[data-settings-tab]').forEach((panel) => {
+        panel.style.display = panel.dataset.settingsTab === tab ? '' : 'none';
+    });
+    document.querySelectorAll('[data-settings-tab-btn]').forEach((button) => {
+        const active = button.dataset.settingsTabBtn === tab;
+        button.style.background = active ? 'rgba(99,102,241,0.18)' : 'transparent';
+        button.style.borderColor = active ? 'rgba(99,102,241,0.55)' : 'rgba(255,255,255,0.1)';
+        button.style.color = active ? 'var(--text-primary)' : 'var(--text-secondary)';
+    });
 }
 
 function closeSettings() {
@@ -3475,6 +3491,7 @@ async function loadSettingsStatus() {
         statusEl.textContent = [
             `VirusTotal: ${status.vtConfigured ? '✅' : '—'}`,
             `OTX: ${status.otxConfigured ? '✅' : '—'}`,
+            `Abuse Feed: ${status.abuseFeedAvailable ? 'OK' : '-'}`,
             `Claude: ${status.claudeConfigured ? '✅' : '—'}`,
             `OpenAI: ${status.openaiConfigured ? `✅ (${status.openaiModel || 'default'})` : '—'}`,
             `Firma: ${profile.name || 'tanımsız'}`
@@ -3908,6 +3925,7 @@ function formatCategory(category) {
         header:      'BAŞLIK',
         content:     'İÇERİK',
         link:        'BAĞLANTI',
+        abuse:       'ABUSE / URLHAUS',
         attachment:  'EK DOSYA',
         ai:          'YAPAY ZEKA',
         general:     'GENEL'
@@ -5040,6 +5058,7 @@ function _cuRenderIntegrations(d) {
     const total  = d.totalScans || 0;
     const vtPct  = total > 0 ? (d.vtHits  / total * 100).toFixed(1) : '0.0';
     const otxPct = total > 0 ? (d.otxHits / total * 100).toFixed(1) : '0.0';
+    const abusePct = total > 0 ? (d.abuseHits / total * 100).toFixed(1) : '0.0';
     document.getElementById('cuStatsIntegrations').innerHTML = `
         <div style="margin-bottom:14px">
             <div style="cursor:pointer;user-select:none" onclick="showVtDetections()" title="Tespit edilen dosya ve antivirüsleri görüntüle">
@@ -5057,6 +5076,12 @@ function _cuRenderIntegrations(d) {
             <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">
                 İsabet oranı: ${otxPct}%
                 ${d.otxHits > 0 ? `<span style="margin-left:8px;color:#fb923c;cursor:pointer;text-decoration:underline" onclick="showOtxDomainList()">domain listesi →</span>` : ''}
+            </div>
+        </div>
+        <div>
+            ${_cuBar('🚨 Abuse / URLhaus Eşleşmesi', d.abuseHits || 0, total || 1, '#f59e0b')}
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">
+                İsabet oranı: ${abusePct}%
             </div>
         </div>
     `;
@@ -5562,6 +5587,7 @@ function _cuRenderCategories(cats) {
     }
     const catLabels = {
         virusTotal:  '🦠 VirusTotal', otx: '🌐 OTX',
+        abuse: '🚨 Abuse / URLhaus',
         spf: '📋 SPF', dkim: '🔏 DKIM', dmarc: '🛡️ DMARC',
         phishing: '🎣 Phishing', attachment: '📎 Şüpheli Ek',
         link: '🔗 Şüpheli Link', spoofing: '🎭 Sahtecilik',

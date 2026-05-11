@@ -137,8 +137,9 @@ router.get('/stats', (req, res) => {
         .slice(0, 8)
         .map(([category, count]) => ({ category, count }));
 
-    const vtHits  = history.filter(s => s.vtStatus?.checked && (s.findings || []).some(f => f.category === 'virusTotal' && f.severity === 'critical')).length;
-    const otxHits = history.filter(s => (s.findings || []).some(f => f.category === 'otx')).length;
+    const vtHits    = history.filter(s => s.vtStatus?.checked && (s.findings || []).some(f => f.category === 'virusTotal' && f.severity === 'critical')).length;
+    const otxHits   = history.filter(s => (s.findings || []).some(f => f.category === 'otx')).length;
+    const abuseHits = history.filter(s => (s.findings || []).some(f => f.category === 'abuse')).length;
 
     res.json({
         totalScans:    history.length,
@@ -146,7 +147,7 @@ router.get('/stats', (req, res) => {
         monthlyScans:  getMonthlyCount(),
         threats:       byLevel.high,
         accounts:      loadCredentials().length,
-        byLevel, bySource, trend7, topCategories, vtHits, otxHits
+        byLevel, bySource, trend7, topCategories, vtHits, otxHits, abuseHits
     });
 });
 
