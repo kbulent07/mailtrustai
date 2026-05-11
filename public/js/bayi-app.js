@@ -61,13 +61,13 @@ function _stopSessionWarning() {
 
 // ─── GİRİŞ / ÇIKIŞ ───────────────────────────────────────
 async function doLogin() {
-    const code = document.getElementById('loginCode').value.trim().toUpperCase();
-    const pin = document.getElementById('loginPin').value;
+    const username = document.getElementById('loginCode').value.trim().toLowerCase();
+    const password = document.getElementById('loginPin').value;
     const errEl = document.getElementById('loginError');
     errEl.style.display = 'none';
 
-    if (!code || !pin) {
-        errEl.textContent = 'Bayi kodu ve PIN gereklidir';
+    if (!username || !password) {
+        errEl.textContent = 'E-posta ve sifre gereklidir';
         errEl.style.display = '';
         return;
     }
@@ -76,7 +76,7 @@ async function doLogin() {
         const res = await fetch('/api/dealer/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code, pin })
+            body: JSON.stringify({ username, password, code: username, pin: password })
         });
         const data = await res.json();
         if (res.status === 429) {
@@ -121,7 +121,7 @@ function showPortal() {
     document.getElementById('loginWrap').style.display = 'none';
     document.getElementById('portalWrap').style.display = '';
     document.getElementById('dealerNameDisplay').textContent =
-        `👤 ${dealerData?.name || dealerData?.code || ''} | İndirim: %${dealerData?.discountPct || 0}`;
+        `Bayi: ${dealerData?.name || dealerData?.code || ''} | Indirim: %${dealerData?.discountPct || 0}${dealerData?.founderProxy ? ' | Kurucu erisimi' : ''}`;
     updateCreditDisplay();
     loadDashboard();
     loadPrices();

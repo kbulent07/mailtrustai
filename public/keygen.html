@@ -108,7 +108,7 @@
             <div class="card-header"><span class="card-title" id="dealerFormTitle">Yeni Bayi</span></div>
             <div class="grid-2">
                 <div class="form-group">
-                    <label class="form-label">Bayi Kodu</label>
+                    <label class="form-label">Kullanıcı Adı</label>
                     <input class="form-input" id="dfCode" placeholder="BAY001">
                 </div>
                 <div class="form-group">
@@ -1120,7 +1120,7 @@
             document.getElementById('dealerList').innerHTML = dealers.length ? `
                 <table style="width:100%;border-collapse:collapse;font-size:13px">
                     <thead><tr style="color:var(--text-secondary)">
-                        <th style="text-align:left;padding:6px">Kod</th><th style="text-align:left;padding:6px">Ad</th>
+                        <th style="text-align:left;padding:6px">Kullanıcı Adı</th><th style="text-align:left;padding:6px">Ad</th>
                         <th style="padding:6px">İndirim</th><th style="padding:6px">Satış</th>
                         <th style="padding:6px">Kredi</th>
                         <th style="padding:6px">Durum</th><th style="padding:6px">İşlem</th>
@@ -1135,6 +1135,7 @@
                         <td style="text-align:center;padding:6px;display:flex;gap:4px">
                             <button class="btn btn-primary btn-sm" style="font-size:11px" onclick="openCreditModal('${esc(d.code)}','${esc(d.name)}')">💳 Kredi</button>
                             <button class="btn btn-ghost btn-sm" onclick="deleteDealer('${esc(d.code)}')">🗑️</button>
+                            <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="resetDealerPassword('${esc(d.code)}','${esc(d.name)}')">Şifre</button>
                         </td>
                     </tr>`).join('')}</tbody>
                 </table>` : '<p class="text-muted">Henüz bayi eklenmedi</p>';
@@ -1149,20 +1150,41 @@
 
         async function saveDealer() {
             const data = {
-                code: document.getElementById('dfCode').value.trim().toUpperCase(),
-                pin: document.getElementById('dfPin').value,
+                username: document.getElementById('dfCode').value.trim().toUpperCase(),
+                password: document.getElementById('dfPin').value,
                 name: document.getElementById('dfName').value.trim(),
                 contactPerson: document.getElementById('dfContact').value.trim(),
                 email: document.getElementById('dfEmail').value.trim(),
                 discountPct: parseInt(document.getElementById('dfDiscount').value) || 0,
                 active: document.getElementById('dfActive').checked
             };
-            if (!data.code || !data.name || !data.pin) { alert('Kod, ad ve PIN zorunludur'); return; }
+            if (!data.username || !data.name || !data.password) { alert('Kullanıcı adı, ad ve şifre zorunludur'); return; }
             const res = await fetch('/api/dealer/admin/dealers', { method: 'POST', headers: adminHeaders(), body: JSON.stringify(data) });
             if (handle403(res)) return;
             const result = await res.json();
             if (result.success) { document.getElementById('dealerForm').style.display = 'none'; loadDealers(); }
             else alert(result.error || 'Hata');
+        }
+
+        async function resetDealerPassword(code, name) {
+            const password = prompt(`${name} (${code}) için yeni şifreyi girin:`);
+            if (password == null) return;
+            const trimmed = password.trim();
+            if (!trimmed) { alert('Yeni şifre boş olamaz.'); return; }
+
+            const res = await fetch(`/api/dealer/admin/dealers/${code}/reset-password`, {
+                method: 'POST',
+                headers: adminHeaders(),
+                body: JSON.stringify({ password: trimmed })
+            });
+            if (handle403(res)) return;
+            const result = await res.json();
+            if (result.success) {
+                alert(`Şifre sıfırlandı: ${name}`);
+                loadDealers();
+                return;
+            }
+            alert(result.error || 'Şifre sıfırlanamadı');
         }
 
         async function deleteDealer(code) {

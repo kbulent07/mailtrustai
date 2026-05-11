@@ -435,7 +435,7 @@ function renderMainRiskBanner(data) {
     riskLevel.textContent = currentLang === 'tr' ? data.labelTR : data.labelEN;
     riskLevel.style.color = data.color;
 
-    document.getElementById('riskDescription').textContent = riskDescriptionFor(data);
+    document.getElementById('riskDescription').textContent = buildExecutiveSummaryText(data);
 
     // Skor ↔ Seviye uyumsuzluk açıklaması (data.levelReason analizör tarafından üretilir)
     renderLevelEscalationBanner(data);
@@ -1008,6 +1008,24 @@ function renderStructuredReport(data) {
     `;
 }
 
+function jsString(value) {
+    return JSON.stringify(String(value || ''));
+}
+
+function canReportOtxFalsePositive(finding) {
+    return finding?.category === 'otx'
+        && finding.indicatorValue
+        && finding.indicatorType !== 'IPv4'
+        && (finding.severity === 'critical' || finding.severity === 'warning');
+}
+
+function renderFindingFpButton(finding, idx, buttonId = '') {
+    if (!canReportOtxFalsePositive(finding)) return '';
+    const idAttr = buttonId ? ` id="${esc(buttonId)}"` : '';
+    const argButtonId = buttonId ? jsString(buttonId) : 'null';
+    return `<button${idAttr} class="finding-fp-btn" onclick='reportFalsePositive(${jsString(finding.indicatorValue)},${jsString(finding.category)},${jsString(finding.severity)},${jsString(idx)},${argButtonId})' title="Bu domain yanlış pozitif — onay kuyruğuna gönder" style="margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#94a3b8;font-size:11px;padding:3px 8px;cursor:pointer;white-space:nowrap">⚠️ Yanlış pozitif</button>`;
+}
+
 function renderFindings(findings, filter = 'all') {
     const list = document.getElementById('findingsList');
     // 'ai' kategorisi ayrı ChatGPT kartında gösterildiği için burada tekrarlanmaz
@@ -1016,15 +1034,7 @@ function renderFindings(findings, filter = 'all') {
         : findings.filter((finding) => finding.category === filter);
 
     list.innerHTML = filtered.map((finding, idx) => {
-        // FP raporlama butonu — OTX kategorisinde IP olmayan (domain/hostname/eski veri) bulgular için
-        // indicatorType yoksa (eski tarama verisi) veya 'IPv4' değilse butonu göster
-        const canReportFp = finding.category === 'otx'
-            && finding.indicatorValue
-            && finding.indicatorType !== 'IPv4'
-            && (finding.severity === 'critical' || finding.severity === 'warning');
-        const fpBtn = canReportFp
-            ? `<button class="finding-fp-btn" onclick="reportFalsePositive('${esc(finding.indicatorValue)}','${esc(finding.category)}','${esc(finding.severity)}',${idx})" title="Bu domain yanlış pozitif — admin onayına gönder" style="margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#94a3b8;font-size:11px;padding:3px 8px;cursor:pointer;white-space:nowrap">⚠️ Yanlış pozitif</button>`
-            : '';
+        const fpBtn = renderFindingFpButton(finding, idx);
         return `
         <div class="finding-item" data-finding-idx="${idx}" style="display:flex;align-items:flex-start;gap:10px">
             <div class="finding-icon ${finding.severity}">${findingIcon(finding.severity)}</div>
@@ -1037,7 +1047,7 @@ function renderFindings(findings, filter = 'all') {
     }).join('');
 }
 
-async function reportFalsePositive(domain, category, severity, idx) {
+async function reportFalsePositive(domain, category, severity, idx, buttonId = null) {
     if (!domain) return;
     const ok = await showConfirm({
         title: 'Yanlış Pozitif Bildir',
@@ -1048,8 +1058,8 @@ async function reportFalsePositive(domain, category, severity, idx) {
     });
     if (!ok) return;
 
-    const item = document.querySelector(`.finding-item[data-finding-idx="${idx}"]`);
-    const btn = item ? item.querySelector('.finding-fp-btn') : null;
+    const item = buttonId ? null : document.querySelector(`.finding-item[data-finding-idx="${idx}"]`);
+    const btn = buttonId ? document.getElementById(buttonId) : (item ? item.querySelector('.finding-fp-btn') : null);
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Gönderiliyor…'; }
 
     try {
@@ -1062,7 +1072,7 @@ async function reportFalsePositive(domain, category, severity, idx) {
                 domain,
                 category,
                 severity,
-                scanId:  currentResult?.scanId || null,
+                scanId:  currentResult?.id || currentResult?.scanId || null,
                 message: (currentResult?.findings || []).find(f => f.indicatorValue === domain)?.message || ''
             })
         });
@@ -2539,7 +2549,7 @@ function renderImapReport(data, message = null) {
             </div>
             <div class="imap-health-copy">
                 <h3 style="color:${data.color}">${esc(currentLang === 'tr' ? data.labelTR : data.labelEN)}</h3>
-                <p>${esc(riskDescriptionFor(data))}</p>
+                <p>${esc(buildExecutiveSummaryText(data))}</p>
             </div>
             <div class="imap-health-actions">
                 <button class="btn btn-ghost btn-sm" onclick="exportPDF()">PDF</button>
@@ -2616,15 +2626,18 @@ function renderImapReport(data, message = null) {
                         <span class="text-muted">${group.items.length}</span>
                     </div>
                     <div class="findings-list">
-                        ${group.items.map((finding) => `
-                            <div class="finding-item compact">
+                        ${group.items.map((finding, findingIdx) => {
+                            const fpButtonId = `imap-fp-${group.category}-${findingIdx}`;
+                            return `
+                            <div class="finding-item compact" style="display:flex;align-items:flex-start;gap:10px">
                                 <div class="finding-icon ${finding.severity}">${findingIcon(finding.severity)}</div>
-                                <div>
+                                <div style="flex:1;min-width:0">
                                     <div class="finding-text">${esc(finding.message)}</div>
                                     <div class="finding-category">${esc(formatCategory(finding.category))}</div>
                                 </div>
-                            </div>
-                        `).join('')}
+                                ${renderFindingFpButton(finding, `imap-${group.category}-${findingIdx}`, fpButtonId)}
+                            </div>`;
+                        }).join('')}
                     </div>
                 </div>
             `).join('')}
@@ -3560,27 +3573,202 @@ function exportPDF() {
     if (!currentResult || !window.jspdf) return;
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     const result = currentResult;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 34;
+    const contentWidth = pageWidth - (margin * 2);
+    const sectionGap = 18;
+    const summary = buildExecutiveSummaryText(result);
+    const meta = result.emailMeta || {};
+    const from = meta.from?.[0]?.address || 'N/A';
+    const to = meta.to?.[0]?.address || currentImapEmail || 'N/A';
+    const attachments = mergeAttachmentScanData(result);
+    const authRows = buildAuthRows(result);
+    const threatTags = buildThreatTags(result);
+    const recommendations = buildRecommendations(result);
+    const risky = result.level !== 'safe';
+    const levelLabel = asciiPdfText(currentLang === 'tr' ? (result.labelTR || result.labelEN || result.level) : (result.labelEN || result.level));
+    const verdictLabel = risky ? 'RISKLI' : 'GUVENLI';
+    const bannerColor = pdfHexToRgb(result.color || '#94a3b8');
+    const dangerColor = risky ? [251, 113, 133] : [52, 211, 153];
+    let y = margin;
 
-    doc.setFontSize(20);
-    doc.text('MailTrustAI Security Report', 14, 20);
-    doc.setFontSize(12);
-    doc.text(`Risk Score: ${result.score}/100 - ${result.labelEN}`, 14, 35);
-    doc.text(`Subject: ${result.emailMeta?.subject || 'N/A'}`, 14, 45);
-    doc.text(`From: ${result.emailMeta?.from?.[0]?.address || 'N/A'}`, 14, 55);
-    doc.text(`Date: ${result.timestamp || new Date().toISOString()}`, 14, 65);
-    doc.text('---', 14, 72);
+    const ensureSpace = (needed) => {
+        if (y + needed <= pageHeight - margin) return;
+        doc.addPage();
+        y = margin;
+    };
 
-    let y = 80;
-    (result.findings || []).forEach((finding) => {
-        if (y > 270) {
-            doc.addPage();
-            y = 20;
+    const drawWrappedText = (text, x, top, maxWidth, lineHeight = 14, color = [229, 231, 235], font = 'normal', size = 11) => {
+        const safe = asciiPdfText(text || '');
+        if (!safe) return top;
+        doc.setFont('helvetica', font);
+        doc.setFontSize(size);
+        doc.setTextColor(...color);
+        const lines = doc.splitTextToSize(safe, maxWidth);
+        doc.text(lines, x, top);
+        return top + (lines.length * lineHeight);
+    };
+
+    const drawSectionTitle = (title) => {
+        ensureSpace(28);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.setTextColor(148, 163, 184);
+        doc.text(asciiPdfText(title), margin, y);
+        y += 16;
+    };
+
+    const drawMetricCard = (x, width, title, value, valueColor, bgColor) => {
+        const cardHeight = 72;
+        doc.setFillColor(...bgColor);
+        doc.setDrawColor(38, 50, 68);
+        doc.roundedRect(x, y, width, cardHeight, 12, 12, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(148, 163, 184);
+        doc.text(asciiPdfText(title), x + 14, y + 18);
+        doc.setFontSize(18);
+        doc.setTextColor(...valueColor);
+        doc.text(asciiPdfText(value), x + 14, y + 46);
+        return cardHeight;
+    };
+
+    ensureSpace(150);
+    doc.setFillColor(17, 24, 39);
+    doc.setDrawColor(...bannerColor);
+    doc.roundedRect(margin, y, contentWidth, 126, 18, 18, 'FD');
+    doc.setFillColor(11, 18, 32);
+    doc.circle(margin + 42, y + 42, 28, 'F');
+    doc.setDrawColor(...bannerColor);
+    doc.setLineWidth(1.2);
+    doc.circle(margin + 42, y + 42, 28, 'S');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(24);
+    doc.setTextColor(...bannerColor);
+    doc.text(asciiPdfText(String(result.score || 0)), margin + 29, y + 50);
+    doc.setFontSize(22);
+    doc.text(levelLabel, margin + 84, y + 42);
+    const verdictEndY = drawWrappedText(summary, margin + 84, y + 63, contentWidth - 180, 14, [209, 213, 219], 'normal', 11);
+    doc.setFillColor(31, 41, 55);
+    doc.setDrawColor(55, 65, 81);
+    doc.roundedRect(pageWidth - margin - 132, y + 30, 98, 32, 10, 10, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...dangerColor);
+    doc.text(verdictLabel, pageWidth - margin - 103, y + 50);
+    y += Math.max(126, verdictEndY - (y - 10)) + sectionGap;
+
+    const cardGap = 12;
+    const cardWidth = (contentWidth - (cardGap * 2)) / 3;
+    ensureSpace(90);
+    drawMetricCard(margin, cardWidth, 'RISK SEVIYESI', levelLabel, bannerColor, [11, 18, 32]);
+    drawMetricCard(margin + cardWidth + cardGap, cardWidth, 'SKOR', `${result.score || 0}/100`, [248, 250, 252], [11, 18, 32]);
+    drawMetricCard(margin + ((cardWidth + cardGap) * 2), cardWidth, 'SONUC', verdictLabel, dangerColor, risky ? [63, 20, 32] : [5, 46, 43]);
+    y += 72 + sectionGap;
+
+    ensureSpace(86);
+    doc.setFillColor(11, 18, 32);
+    doc.setDrawColor(38, 50, 68);
+    doc.roundedRect(margin, y, contentWidth, 70, 14, 14, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(148, 163, 184);
+    doc.text('YONETICI OZETI', margin + 16, y + 20);
+    y = drawWrappedText(summary, margin + 16, y + 40, contentWidth - 32, 15, [229, 231, 235], 'normal', 11) + sectionGap;
+
+    drawSectionTitle('INCELENEN E-POSTA');
+    const metaRows = [
+        ['Gonderen', from],
+        ['Alici', to],
+        ['Konu', meta.subject || 'N/A'],
+        ['Tarih', formatDate(meta.date || result.timestamp, true)],
+        ['Baglanti', `${buildLinkSummary(result).total} adet`],
+        ['Ekler', attachments.length ? attachments.map((item) => item.filename).join(', ') : 'Ek yok']
+    ];
+    metaRows.forEach(([label, value]) => {
+        ensureSpace(18);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(148, 163, 184);
+        doc.text(`${asciiPdfText(label)}:`, margin, y);
+        y = drawWrappedText(String(value || '-'), margin + 92, y, contentWidth - 92, 13, [229, 231, 235], 'normal', 10) + 4;
+    });
+    y += 6;
+
+    drawSectionTitle('KIMLIK DOGRULAMA VE GONDEREN ITIBARI');
+    authRows.forEach((row) => {
+        ensureSpace(18);
+        const severityColor = row.severity === 'critical'
+            ? [251, 113, 133]
+            : row.severity === 'warning'
+                ? [251, 191, 36]
+                : [52, 211, 153];
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(148, 163, 184);
+        doc.text(`${asciiPdfText(row.label)}:`, margin, y);
+        doc.setTextColor(...severityColor);
+        doc.text(asciiPdfText(row.value || '-'), margin + 110, y);
+        if (row.note) {
+            y = drawWrappedText(row.note, margin + 110, y + 13, contentWidth - 110, 12, [203, 213, 225], 'normal', 9) + 5;
+        } else {
+            y += 16;
         }
-        const icon = { critical: '[!]', warning: '[W]', info: '[i]', safe: '[OK]' };
-        doc.text(`${icon[finding.severity] || ''} [${finding.category}] ${finding.message}`, 14, y);
-        y += 8;
+    });
+    y += 6;
+
+    drawSectionTitle('ANTIVIRUS VE EK TARAMA SONUCLARI');
+    if (!attachments.length) {
+        y = drawWrappedText('Ek bulunamadi.', margin, y, contentWidth, 13, [148, 163, 184], 'normal', 10) + sectionGap;
+    } else {
+        attachments.slice(0, 8).forEach((row) => {
+            ensureSpace(30);
+            const verdict = renderAttachmentVerdictText(row, result.vtStatus);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(229, 231, 235);
+            doc.text(asciiPdfText(row.filename || 'Ek'), margin, y);
+            y = drawWrappedText(`SHA-256: ${shortHash(row.hash || '')} | ${verdict}`, margin + 14, y + 13, contentWidth - 14, 12, [148, 163, 184], 'normal', 9) + 6;
+        });
+        y += 4;
+    }
+
+    drawSectionTitle('TESPIT EDILEN TEHDIT TIPLERI');
+    if (!threatTags.length) {
+        y = drawWrappedText('Belirgin tehdit tipi tespit edilmedi.', margin, y, contentWidth, 13, [148, 163, 184], 'normal', 10) + sectionGap;
+    } else {
+        y = drawWrappedText(threatTags.map((tag) => tag.label).join(' | '), margin, y, contentWidth, 14, [229, 231, 235], 'normal', 10) + sectionGap;
+    }
+
+    drawSectionTitle('DETAYLI BULGULAR');
+    const findings = (result.findings || []).filter((finding) => finding.severity !== 'safe');
+    if (!findings.length) {
+        y = drawWrappedText('Detayli bulgu yok.', margin, y, contentWidth, 13, [148, 163, 184], 'normal', 10) + sectionGap;
+    } else {
+        findings.slice(0, 20).forEach((finding) => {
+            ensureSpace(26);
+            const severity = asciiPdfText((finding.severity || 'info').toUpperCase());
+            const category = asciiPdfText(finding.category || 'genel');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(229, 231, 235);
+            doc.text(`[${severity}] ${category}`, margin, y);
+            y = drawWrappedText(finding.message || '', margin + 14, y + 13, contentWidth - 14, 12, [209, 213, 219], 'normal', 9) + 6;
+        });
+        y += 4;
+    }
+
+    drawSectionTitle('GUVENLIK ONERILERI');
+    recommendations.forEach((item) => {
+        ensureSpace(22);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(229, 231, 235);
+        doc.text('-', margin, y);
+        y = drawWrappedText(item, margin + 10, y, contentWidth - 10, 13, [229, 231, 235], 'normal', 10) + 4;
     });
 
     doc.save(`mailtrustai-report-${result.id || 'scan'}.pdf`);
@@ -3733,8 +3921,74 @@ function severityFromThreatLevel(threatLevel) {
     return 'safe';
 }
 
+function buildExecutiveSummaryText(data) {
+    const vtBad = (data?.virusTotal || []).find((entry) =>
+        (entry.stats?.malicious || 0) > 0 || (entry.stats?.suspicious || 0) > 0
+    );
+    if (vtBad) {
+        const malicious = entryCount(vtBad.stats?.malicious) + entryCount(vtBad.stats?.suspicious);
+        const total = entryCount(vtBad.stats?.total);
+        return `${vtBad.filename || 'Ek dosya'} virus kontrolunde ${malicious}/${total} motor tarafindan zararli veya supheli olarak isaretlendi. Bu nedenle e-posta riskli kabul edilmelidir.`;
+    }
+
+    const critical = (data?.findings || []).find((finding) => finding.severity === 'critical');
+    if (critical?.message) return critical.message;
+
+    return 'E-posta basliklari, icerigi, baglantilari ve ekleri otomatik guvenlik kontrollerinden gecirildi.';
+}
+
+function entryCount(value) {
+    return Number(value) || 0;
+}
+
 function riskDescriptionFor(data) {
     return t(`risk_${data.level}_desc`);
+}
+
+function pdfHexToRgb(hex) {
+    const normalized = String(hex || '').replace('#', '');
+    if (!/^[0-9a-f]{6}$/i.test(normalized)) return [148, 163, 184];
+    return [
+        parseInt(normalized.slice(0, 2), 16),
+        parseInt(normalized.slice(2, 4), 16),
+        parseInt(normalized.slice(4, 6), 16)
+    ];
+}
+
+function asciiPdfText(value) {
+    return String(value ?? '')
+        .replace(/İ/g, 'I')
+        .replace(/I/g, 'I')
+        .replace(/ı/g, 'i')
+        .replace(/Ş/g, 'S')
+        .replace(/ş/g, 's')
+        .replace(/Ğ/g, 'G')
+        .replace(/ğ/g, 'g')
+        .replace(/Ü/g, 'U')
+        .replace(/ü/g, 'u')
+        .replace(/Ö/g, 'O')
+        .replace(/ö/g, 'o')
+        .replace(/Ç/g, 'C')
+        .replace(/ç/g, 'c')
+        .replace(/â€¦/g, '...')
+        .replace(/[^\x20-\x7E\n]/g, '?');
+}
+
+function renderAttachmentVerdictText(row, vtStatus) {
+    const status = row.vt || resolveAttachmentVtStatus(row, vtStatus) || {};
+    const stats = status.stats || {};
+    const malicious = entryCount(stats.malicious);
+    const suspicious = entryCount(stats.suspicious);
+    const total = entryCount(stats.total);
+
+    if (row.quarantined || malicious > 0) {
+        return malicious > 0
+            ? `Tehlikeli - ${malicious}/${total} motor`
+            : `Tehlikeli - ${row.gatewayDetection || 'gateway malware detection'}`;
+    }
+    if (suspicious > 0) return `Supheli - ${suspicious}/${total} motor`;
+    if (status.checked === false && status.reason) return `Taranamadi - ${status.reason}`;
+    return total > 0 ? `Temiz - 0/${total} motor` : 'Yerel kontrol temiz';
 }
 
 function mergeAttachmentScanData(data) {
@@ -4408,6 +4662,7 @@ async function updateScanMailboxReportMode(imapEmail, reportMode) {
 function showPage(page) {
     const homePanel  = document.getElementById('homePanel');
     const statsPanel = document.getElementById('statsPanel');
+    const otxPanel   = document.getElementById('otxApprovalPanel');
     const mainPanels = ['connectionBar','scanModes','panelUpload','panelPaste',
                         'panelImap','panelScanMailbox','scanProgress','resultsPanel',
                         'historyPanel','listsPanel'];
@@ -4415,11 +4670,13 @@ function showPage(page) {
     const tabHome  = document.getElementById('navTabHome');
     const tabScan  = document.getElementById('navTabScan');
     const tabStats = document.getElementById('navTabStats');
+    const tabOtx   = document.getElementById('navTabOtxApproval');
 
     // Önce her şeyi gizle
     if (homePanel)  homePanel.style.display  = 'none';
     if (statsPanel) statsPanel.style.display = 'none';
-    [tabHome, tabScan, tabStats].forEach(t => t && t.classList.remove('active'));
+    if (otxPanel)   otxPanel.style.display   = 'none';
+    [tabHome, tabScan, tabStats, tabOtx].forEach(t => t && t.classList.remove('active'));
 
     if (page === 'home') {
         if (homePanel) homePanel.style.display = '';
@@ -4431,6 +4688,11 @@ function showPage(page) {
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
         if (tabStats) tabStats.classList.add('active');
         loadStatsPage();
+    } else if (page === 'otx-approval') {
+        if (otxPanel) otxPanel.style.display = '';
+        mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+        if (tabOtx) tabOtx.classList.add('active');
+        loadUserFpSuggestions();
     } else {
         // 'scan' (varsayılan)
         // Her paneli inline style'dan arındır; görünürlüğü mevcut .hidden sınıfı yönetir
@@ -5009,6 +5271,124 @@ async function reportFpFromStats(domain, severity, message) {
 // ══════════════════════════════════════════════════════════
 // KULLANICI — OTX GÜVENİLİR DOMAİN EXPORT / IMPORT
 // ══════════════════════════════════════════════════════════
+async function loadUserFpSuggestions() {
+    const listEl = document.getElementById('userFpApprovalList');
+    const statusEl = document.getElementById('userFpApprovalStatus');
+    if (!listEl) return;
+
+    if (statusEl) statusEl.textContent = 'Yükleniyor...';
+    listEl.innerHTML = '';
+
+    try {
+        const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
+        const res = await fetch('/api/fp-suggestions', { headers });
+        const data = await res.json();
+        if (!res.ok) {
+            listEl.innerHTML = `<div class="imap-report-empty error">${esc(data.error || 'OTX onay listesi alınamadı.')}</div>`;
+            if (statusEl) statusEl.textContent = '';
+            return;
+        }
+        renderUserFpSuggestions(Array.isArray(data) ? data : []);
+    } catch (e) {
+        listEl.innerHTML = `<div class="imap-report-empty error">${esc(e.message)}</div>`;
+        if (statusEl) statusEl.textContent = '';
+    }
+}
+
+function renderUserFpSuggestions(items) {
+    const listEl = document.getElementById('userFpApprovalList');
+    const statusEl = document.getElementById('userFpApprovalStatus');
+    if (!listEl) return;
+
+    if (!items.length) {
+        if (statusEl) statusEl.textContent = 'Bekleyen OTX yanlış pozitif önerisi yok.';
+        listEl.innerHTML = '<div class="imap-report-empty">Onay bekleyen domain bulunmuyor.</div>';
+        return;
+    }
+
+    if (statusEl) statusEl.textContent = `${items.length} domain onay bekliyor.`;
+    listEl.innerHTML = items.map((item) => {
+        const count = Number(item.report_count || 1);
+        const lastSeen = item.last_seen_at
+            ? new Date(item.last_seen_at).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
+            : '-';
+        const severity = item.finding_severity || 'warning';
+        const severityColor = severity === 'critical' ? '#f87171' : '#fb923c';
+        return `
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:1px solid rgba(255,255,255,0.08);background:var(--surface2);border-radius:8px;margin-bottom:10px">
+                <div class="finding-icon ${esc(severity)}" style="flex-shrink:0">${findingIcon(severity)}</div>
+                <div style="flex:1;min-width:0">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                        <strong style="color:${severityColor};word-break:break-all">${esc(item.domain)}</strong>
+                        <span style="font-size:10px;background:rgba(251,146,60,0.15);color:#fb923c;border-radius:4px;padding:2px 6px">${count} bildirim</span>
+                    </div>
+                    <div class="finding-category">${esc(formatCategory(item.finding_category || 'otx'))} · ${esc(severity)} · Son: ${esc(lastSeen)}</div>
+                    <div class="finding-text" style="margin-top:6px">${esc(item.finding_message || 'OTX yanlış pozitif olarak bildirildi.')}</div>
+                </div>
+                <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+                    <button class="btn btn-primary btn-sm" onclick='userApproveFp(${jsString(item.domain)})'>Onayla</button>
+                    <button class="btn btn-ghost btn-sm" onclick='userRejectFp(${jsString(item.domain)})'>Reddet</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function userApproveFp(domain) {
+    if (!domain) return;
+    const ok = await showConfirm({
+        title: 'OTX Domain Onayı',
+        message: `"${domain}" güvenilir domain listesine eklensin mi?\n\nOnaydan sonra bu domain OTX tehdidi olarak değerlendirilmez.`,
+        confirmText: 'Onayla',
+        cancelText: 'İptal',
+        icon: '🛡️'
+    });
+    if (!ok) return;
+
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (licenseKey) headers['x-license-key'] = licenseKey;
+        const res = await fetch(`/api/fp-suggestions/${encodeURIComponent(domain)}/approve`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ category: 'custom', note: 'Kullanıcı OTX onayı' })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        showToast(`"${domain}" güvenilir listeye eklendi.`, 'success', { title: 'OTX onaylandı' });
+        loadUserFpSuggestions();
+    } catch (e) {
+        showToast(e.message, 'error', { title: 'OTX onayı başarısız' });
+    }
+}
+
+async function userRejectFp(domain) {
+    if (!domain) return;
+    const ok = await showConfirm({
+        title: 'OTX Önerisini Reddet',
+        message: `"${domain}" için yanlış pozitif önerisi reddedilsin mi?`,
+        confirmText: 'Reddet',
+        cancelText: 'İptal',
+        icon: '⚠️'
+    });
+    if (!ok) return;
+
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (licenseKey) headers['x-license-key'] = licenseKey;
+        const res = await fetch(`/api/fp-suggestions/${encodeURIComponent(domain)}/reject`, {
+            method: 'POST',
+            headers
+        });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+        showToast(`"${domain}" önerisi reddedildi.`, 'info', { title: 'OTX önerisi kapatıldı' });
+        loadUserFpSuggestions();
+    } catch (e) {
+        showToast(e.message, 'error', { title: 'Reddetme başarısız' });
+    }
+}
+
 let _userTdBackup = null; // sıfırlama öncesi otomatik yedek (bellek)
 
 /** Ayarlar açıldığında domain sayısını göster */

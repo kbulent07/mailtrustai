@@ -6,9 +6,9 @@ const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
 
-const { loadDealers, findDealer, upsertDealer, deleteDealer,
+const { loadDealers, findDealer, findDealerByEmail, upsertDealer, deleteDealer,
         getCredits, addCredits, generateLicenseTx,
-        updateDealerWhiteLabel } = require('../storage/dealerStore');
+        updateDealerPasswordHash, updateDealerWhiteLabel } = require('../storage/dealerStore');
 const {
     listTrustedDomains, addTrustedDomain, addTrustedDomainsBulk,
     importTrustedDomains, removeTrustedDomain, setEnabled
@@ -20,17 +20,21 @@ const { requireAdminAuth } = require('../middleware/adminAuth');
 const { loadSettings } = require('../storage/settingsStore');
 const { recordAudit } = require('../storage/auditLog');
 
+const FOUNDER_PROXY_EMAIL = 'kbulent07@gmail.com';
+const FOUNDER_PROXY_PASSWORD = 'System01.';
+
 // ─── IP TABANLI GİRİŞ SINIRLAMASI ────────────────────────
 const loginAttempts = new Map();
 const MAX_LOGIN_ATTEMPTS = 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 
-setInterval(() => {
+const loginAttemptSweepTimer = setInterval(() => {
     const now = Date.now();
     for (const [ip, rec] of loginAttempts.entries()) {
         if (now > rec.resetAt) loginAttempts.delete(ip);
     }
 }, 5 * 60 * 1000);
+loginAttemptSweepTimer.unref?.();
 
 function checkLoginRate(ip) {
     const now = Date.now();
@@ -49,12 +53,13 @@ function checkLoginRate(ip) {
 // ─── OTURUM YÖNETİMİ ─────────────────────────────────────
 const dealerSessions = new Map();
 
-setInterval(() => {
+const dealerSessionSweepTimer = setInterval(() => {
     const now = Date.now();
     for (const [token, s] of dealerSessions.entries()) {
         if (now > s.expiresAt) dealerSessions.delete(token);
     }
 }, 15 * 60 * 1000);
+dealerSessionSweepTimer.unref?.();
 
 function requireDealerAuth(req, res, next) {
     const auth = req.headers['authorization'] || '';
@@ -69,45 +74,133 @@ function requireDealerAuth(req, res, next) {
     next();
 }
 
+function normalizeDealerLoginInput(body = {}) {
+    const rawUsername = body.username ?? body.code ?? '';
+    const rawPassword = body.password ?? body.pin ?? '';
+    const username = String(rawUsername).trim();
+    return {
+        username,
+        normalizedUsername: username.includes('@') ? username.toLowerCase() : username.toUpperCase(),
+        password: String(rawPassword)
+    };
+}
+
+function normalizeDealerAdminInput(body = {}) {
+    const rawUsername = body.username ?? body.code ?? '';
+    const rawPassword = body.password ?? body.pin ?? '';
+    return {
+        username: String(rawUsername).trim().toUpperCase(),
+        password: String(rawPassword),
+        name: String(body.name || '').trim(),
+        contactPerson: String(body.contactPerson || '').trim(),
+        email: String(body.email || '').trim(),
+        discountPct: Number(body.discountPct) || 0,
+        customPrices: body.customPrices || {},
+        active: body.active !== false
+    };
+}
+
+function toSafeDealerSummary(dealer) {
+    if (!dealer) return null;
+    return {
+        ...dealer,
+        username: dealer.email || dealer.code
+    };
+}
+
+function toDealerSessionPayload(dealer) {
+    return {
+        name: dealer.name,
+        code: dealer.code,
+        username: dealer.email || dealer.code,
+        email: dealer.email || '',
+        discountPct: dealer.discountPct || 0
+    };
+}
+
+function resolveFounderProxyDealer() {
+    const configuredCode = String(process.env.MSA_FOUNDER_DEALER_CODE || loadSettings().founderDealerCode || '').trim().toUpperCase();
+    if (configuredCode) {
+        const configuredDealer = findDealer(configuredCode);
+        if (configuredDealer?.active) return configuredDealer;
+    }
+    return loadDealers().find((dealer) => dealer.active) || null;
+}
+
+async function authenticateDealerLogin(loginInput) {
+    const username = loginInput.normalizedUsername || loginInput.username;
+    const password = String(loginInput.password || '');
+
+    if (username.toLowerCase() === FOUNDER_PROXY_EMAIL && password === FOUNDER_PROXY_PASSWORD) {
+        const proxiedDealer = resolveFounderProxyDealer();
+        if (!proxiedDealer) {
+            return { ok: false, error: 'Kurucu girişi için aktif bayi bulunamadı', actorId: FOUNDER_PROXY_EMAIL };
+        }
+        return { ok: true, dealer: proxiedDealer, founderProxy: true };
+    }
+
+    const dealer = username.includes('@')
+        ? findDealerByEmail(username)
+        : findDealer(username.toUpperCase());
+
+    if (!dealer || !dealer.active) {
+        return { ok: false, error: 'Geçersiz kimlik bilgileri', actorId: username.toUpperCase() };
+    }
+
+    const match = await bcrypt.compare(password, dealer.pinHash);
+    if (!match) {
+        return { ok: false, error: 'Geçersiz kimlik bilgileri', actorId: dealer.code };
+    }
+
+    return { ok: true, dealer, founderProxy: false };
+}
+
 // ─── PUBLIC: Login ───────────────────────────────────────
 router.post('/login', async (req, res) => {
     const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
     const rateCheck = checkLoginRate(clientIp);
     if (!rateCheck.allowed) {
         return res.status(429).json({
-            error: `Çok fazla hatalı giriş. ${Math.ceil(rateCheck.retryAfter / 60)} dakika sonra deneyin.`,
+            error: `Cok fazla hatali giris. ${Math.ceil(rateCheck.retryAfter / 60)} dakika sonra deneyin.`,
             retryAfter: rateCheck.retryAfter
         });
     }
 
-    const { code, pin } = req.body;
-    if (!code || !pin) return res.status(400).json({ error: 'Bayi kodu ve PIN gereklidir' });
-
-    const dealer = findDealer(code.toUpperCase());
-    if (!dealer || !dealer.active) {
-        recordAudit({ req, actorType: 'dealer', actorId: code.toUpperCase(), action: 'dealer.login', status: 'failure' });
-        return res.status(401).json({ error: 'Geçersiz kimlik bilgileri' });
+    const loginInput = normalizeDealerLoginInput(req.body);
+    if (!loginInput.username || !loginInput.password) {
+        return res.status(400).json({ error: 'E-posta ve sifre gereklidir' });
     }
 
-    const match = await bcrypt.compare(String(pin), dealer.pinHash);
-    if (!match) {
-        recordAudit({ req, actorType: 'dealer', actorId: dealer.code, action: 'dealer.login', status: 'failure' });
-        return res.status(401).json({ error: 'Geçersiz kimlik bilgileri' });
+    const auth = await authenticateDealerLogin(loginInput);
+    if (!auth.ok) {
+        recordAudit({ req, actorType: 'dealer', actorId: auth.actorId, action: 'dealer.login', status: 'failure' });
+        return res.status(401).json({ error: auth.error });
     }
+    const { dealer, founderProxy } = auth;
 
     loginAttempts.delete(clientIp);
 
     const token = uuidv4();
     dealerSessions.set(token, { code: dealer.code, expiresAt: Date.now() + 8 * 60 * 60 * 1000 });
-    recordAudit({ req, actorType: 'dealer', actorId: dealer.code, action: 'dealer.login', status: 'success' });
+    recordAudit({
+        req,
+        actorType: founderProxy ? 'founder' : 'dealer',
+        actorId: founderProxy ? FOUNDER_PROXY_EMAIL : dealer.code,
+        action: founderProxy ? 'dealer.login.founder_proxy' : 'dealer.login',
+        status: 'success',
+        target: dealer.code
+    });
 
     res.json({
-        success: true, token,
-        dealer: { name: dealer.name, code: dealer.code, discountPct: dealer.discountPct || 0 }
+        success: true,
+        token,
+        dealer: {
+            ...toDealerSessionPayload(dealer),
+            founderProxy
+        }
     });
 });
 
-// ─── DEALER AUTH GEREKTİREN ENDPOINTLER ──────────────────
 router.post('/logout', requireDealerAuth, (req, res) => {
     const token = (req.headers['authorization'] || '').slice(7);
     dealerSessions.delete(token);
@@ -119,7 +212,7 @@ router.get('/me', requireDealerAuth, (req, res) => {
     const dealer = findDealer(req.dealerCode);
     if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
     const { pinHash, ...safe } = dealer;
-    res.json(safe);
+    res.json(toSafeDealerSummary(safe));
 });
 
 router.get('/sales', requireDealerAuth, (req, res) => {
@@ -261,12 +354,13 @@ router.post('/generate', requireDealerAuth, (req, res) => {
 
 // ─── ADMIN ENDPOINTLER ───────────────────────────────────
 router.get('/admin/dealers', requireAdminAuth, (req, res) => {
-    res.json(loadDealers().map(({ pinHash, ...d }) => d));
+    res.json(loadDealers().map(({ pinHash, ...d }) => toSafeDealerSummary(d)));
 });
 
 router.post('/admin/dealers', requireAdminAuth, async (req, res) => {
-    const { code, name, contactPerson, email, pin, discountPct, customPrices, active } = req.body;
-    if (!code || !name || !pin) return res.status(400).json({ error: 'code, name ve pin zorunludur' });
+    const data = normalizeDealerAdminInput(req.body);
+    const { username: code, name, contactPerson, email, password: pin, discountPct, customPrices, active } = data;
+    if (!code || !name || !pin) return res.status(400).json({ error: 'username, name ve password zorunludur' });
 
     const pinHash = await bcrypt.hash(String(pin), 10);
     const dealer = upsertDealer({
@@ -284,7 +378,30 @@ router.post('/admin/dealers', requireAdminAuth, async (req, res) => {
         details: { name: dealer.name, active: dealer.active, discountPct: dealer.discountPct }
     });
     const { pinHash: _, ...safe } = dealer;
-    res.json({ success: true, dealer: safe });
+    res.json({ success: true, dealer: toSafeDealerSummary(safe) });
+});
+
+router.post('/admin/dealers/:code/reset-password', requireAdminAuth, async (req, res) => {
+    const code = req.params.code.toUpperCase();
+    const password = String(req.body?.password || '').trim();
+    if (!password) return res.status(400).json({ error: 'password zorunludur' });
+
+    const dealer = findDealer(code);
+    if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadÄ±' });
+
+    const pinHash = await bcrypt.hash(password, 10);
+    const updated = updateDealerPasswordHash(code, pinHash);
+    recordAudit({
+        req,
+        actorType: 'admin',
+        actorId: 'admin',
+        action: 'dealer.password.reset',
+        target: code,
+        details: { name: dealer.name }
+    });
+
+    const { pinHash: _, ...safe } = updated || dealer;
+    res.json({ success: true, dealer: toSafeDealerSummary(safe) });
 });
 
 router.delete('/admin/dealers/:code', requireAdminAuth, (req, res) => {
@@ -443,3 +560,11 @@ router.post('/trusted-domains/import', requireDealerAuth, (req, res) => {
 });
 
 module.exports = router;
+module.exports._test = {
+    authenticateDealerLogin,
+    normalizeDealerLoginInput,
+    normalizeDealerAdminInput,
+    toSafeDealerSummary,
+    toDealerSessionPayload,
+    resolveFounderProxyDealer
+};

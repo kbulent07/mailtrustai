@@ -22,11 +22,13 @@ function rowToDealer(row) {
 }
 
 // ─── OKUMA ───────────────────────────────────────────────
-const _all    = db.prepare('SELECT * FROM dealers ORDER BY created_at DESC');
-const _byCode = db.prepare('SELECT * FROM dealers WHERE code = ?');
+const _all     = db.prepare('SELECT * FROM dealers ORDER BY created_at DESC');
+const _byCode  = db.prepare('SELECT * FROM dealers WHERE code = ?');
+const _byEmail = db.prepare('SELECT * FROM dealers WHERE lower(email) = lower(?) ORDER BY active DESC, created_at DESC');
 
 function loadDealers() { return _all.all().map(rowToDealer); }
 function findDealer(code) { return rowToDealer(_byCode.get(code)); }
+function findDealerByEmail(email) { return rowToDealer(_byEmail.get(email)); }
 
 // ─── YAZMA ───────────────────────────────────────────────
 const _update = db.prepare(`
@@ -75,6 +77,11 @@ function addCredits(code, amount) {
     db.prepare('UPDATE dealers SET credits=MAX(0,credits+?) WHERE code=?').run(amount, code);
     const row = db.prepare('SELECT credits FROM dealers WHERE code=?').get(code);
     return row ? row.credits : null;
+}
+
+function updateDealerPasswordHash(code, pinHash) {
+    const result = db.prepare('UPDATE dealers SET pin_hash=? WHERE code=?').run(pinHash, code);
+    return result.changes > 0 ? findDealer(code) : null;
 }
 
 // ─── ATOMİK LİSANS ÜRETİM İŞLEMİ ───────────────────────
@@ -149,6 +156,8 @@ function getDealerWhiteLabel(code) {
 
 module.exports = {
     loadDealers, findDealer, upsertDealer, deleteDealer,
+    findDealerByEmail,
     incrementSales, getCredits, addCredits, generateLicenseTx,
+    updateDealerPasswordHash,
     updateDealerWhiteLabel, getDealerWhiteLabel, normalizeWhiteLabel
 };

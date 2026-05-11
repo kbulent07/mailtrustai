@@ -245,6 +245,7 @@
         <button class="nav-tab" id="navTabHome" onclick="showPage('home')">🏠 Ana Sayfa</button>
         <button class="nav-tab active" id="navTabScan" onclick="showPage('scan')">🔍 Tarama</button>
         <button class="nav-tab" id="navTabStats" onclick="showPage('stats')">📊 İstatistik</button>
+        <button class="nav-tab" id="navTabOtxApproval" onclick="showPage('otx-approval')">🛡️ OTX Onay</button>
     </div>
     <div class="navbar-actions">
         <span class="license-badge free" id="licenseBadge">🆓 Free</span>
@@ -524,6 +525,21 @@
                 <div class="card-header"><span class="card-title">⚠️ En Riskli Göndericiler</span></div>
                 <div id="cuDetailedRiskySenders" style="padding:4px 0"></div>
             </div>
+        </div>
+    </div>
+
+    <div id="otxApprovalPanel" style="display:none">
+        <div class="card">
+            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                <span class="card-title">🛡️ OTX Yanlış Pozitif Onayları</span>
+                <button class="btn btn-ghost btn-sm" onclick="loadUserFpSuggestions()">Yenile</button>
+            </div>
+            <p class="text-muted" style="font-size:13px;line-height:1.6;margin-bottom:14px">
+                IMAP veya tarama raporlarında yanlış pozitif olarak işaretlenen OTX domainleri burada onaylayabilirsiniz.
+                Onaylanan domain güvenilir listeye eklenir ve sonraki taramalarda OTX tehdidi olarak değerlendirilmez.
+            </p>
+            <div id="userFpApprovalStatus" class="text-muted" style="font-size:12px;margin-bottom:10px"></div>
+            <div id="userFpApprovalList"></div>
         </div>
     </div>
 

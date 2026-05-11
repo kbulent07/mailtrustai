@@ -1,6 +1,9 @@
 // ============================================================
 // HTTP routes: False Positive (FP) suggestion akışı
 //   • POST /api/fp-suggestions          — kullanıcı tarama raporundan işaretler (license)
+//   • GET  /api/fp-suggestions          — bekleyen öneriler (kullanıcı)
+//   • POST /api/fp-suggestions/:domain/approve — kullanıcı onayı
+//   • POST /api/fp-suggestions/:domain/reject  — kullanıcı reddi
 //   • GET  /api/admin/fp-suggestions    — bekleyen öneriler (admin)
 //   • POST /api/admin/fp-suggestions/:domain/approve — trusted'a ekle (admin)
 //   • POST /api/admin/fp-suggestions/:domain/reject  — reddet (admin)
@@ -42,6 +45,37 @@ router.post('/fp-suggestions', (req, res) => {
     } catch (e) {
         res.status(400).json({ error: e.message });
     }
+});
+
+// Kullanıcı tarafı: bekleyen FP önerilerini görür ve kendi panelinden onaylayabilir.
+router.get('/fp-suggestions', (req, res) => {
+    const license = checkLicense(req);
+    if (!license || !license.valid) {
+        return res.status(401).json({ error: 'Lisans gerekli' });
+    }
+    res.json(listPending());
+});
+
+router.post('/fp-suggestions/:domain/approve', (req, res) => {
+    const license = checkLicense(req);
+    if (!license || !license.valid) {
+        return res.status(401).json({ error: 'Lisans gerekli' });
+    }
+    const { category, note } = req.body || {};
+    const out = approve(decodeURIComponent(req.params.domain), {
+        category: category || 'custom',
+        note: note || 'Kullanıcı OTX onayı'
+    });
+    if (!out.ok) return res.status(404).json(out);
+    res.json(out);
+});
+
+router.post('/fp-suggestions/:domain/reject', (req, res) => {
+    const license = checkLicense(req);
+    if (!license || !license.valid) {
+        return res.status(401).json({ error: 'Lisans gerekli' });
+    }
+    res.json(reject(decodeURIComponent(req.params.domain)));
 });
 
 // Admin tarafı

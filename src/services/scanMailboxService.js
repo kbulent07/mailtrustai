@@ -4,7 +4,7 @@
 // ============================================================
 const { ScanMailboxMonitor } = require('../imap/scanMailboxMonitor');
 const { decrypt } = require('../imap/connection');
-const { buildEmailAnalysisResult } = require('../analysis/emailAnalyzer');
+const { analyzeParsedEmailData } = require('../application/analyze/AnalyzeMessageService');
 
 // email → ScanMailboxMonitor  (dışa aktarılır, route'lar okur/yazar)
 const scanMailboxMonitors = new Map();
@@ -45,11 +45,22 @@ async function startScanMailboxMonitor(smb) {
         smtpFromName:          'MailTrustAI'
     };
 
-    const features = { virusTotal: true, contentAnalysis: 'advanced', linkLimit: Infinity };
+    const license = {
+        licenseKey: '',
+        features: { virusTotal: true, contentAnalysis: 'advanced', linkLimit: Infinity },
+        monthlyLimit: Infinity
+    };
     const monitor  = new ScanMailboxMonitor({
         account,
         smtpConfig,
-        buildAnalysisFn:   emailData => buildEmailAnalysisResult(emailData, { features, monthlyLimit: Infinity }),
+        buildAnalysisFn:   (emailData) => analyzeParsedEmailData({
+            parsedData: emailData,
+            license,
+            scanSource: 'scan-mailbox',
+            account: smb.imapEmail,
+            persist: false,
+            incrementCounts: false
+        }),
         lang:              smb.reportLang       || 'tr',
         reportMode:        smb.reportMode       || 'risky',
         reportToForwarder: smb.reportToForwarder === true,

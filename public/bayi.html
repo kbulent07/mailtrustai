@@ -33,15 +33,15 @@
         <div style="text-align:center;margin-bottom:24px">
             <div style="font-size:40px">🛡️</div>
             <h2>MailTrustAI Bayi Portalı</h2>
-            <p class="text-muted">Bayi hesabınızla giriş yapın</p>
+            <p class="text-muted">Bayi hesabinizla e-posta ve sifre kullanarak giris yapin</p>
         </div>
         <div class="form-group">
-            <label class="form-label">Bayi Kodu</label>
-            <input class="form-input" id="loginCode" placeholder="BAY001" style="text-transform:uppercase">
+            <label class="form-label">E-posta</label>
+            <input class="form-input" id="loginCode" placeholder="bayi@firma.com" autocomplete="username">
         </div>
         <div class="form-group">
-            <label class="form-label">PIN</label>
-            <input class="form-input" id="loginPin" type="password" placeholder="••••" onkeydown="if(event.key==='Enter')doLogin()">
+            <label class="form-label">Şifre</label>
+            <input class="form-input" id="loginPin" type="password" placeholder="****" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
         </div>
         <div id="loginError" class="text-red mb-16" style="display:none"></div>
         <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">🔐 Giriş Yap</button>
@@ -166,6 +166,12 @@
                     <option value="expired">❌ Süresi dolmuş</option>
                 </select>
                 <span id="custSummary" style="font-size:12px;color:var(--text-secondary)"></span>
+            </div>
+
+            <div class="card mb-16">
+                <div style="font-size:13px;line-height:1.6;opacity:0.88">
+                    Bu ekranda ürettiğiniz lisansların hangi müşteriye verildiğini, lisans durumunu ve bitiş tarihini birlikte görebilirsiniz.
+                </div>
             </div>
 
             <div id="custTable"></div>
