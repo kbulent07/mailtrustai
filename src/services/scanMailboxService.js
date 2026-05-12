@@ -3,7 +3,7 @@
 // Monitor yaşam döngüsü yönetimi
 // ============================================================
 const { ScanMailboxMonitor } = require('../imap/scanMailboxMonitor');
-const { decrypt } = require('../imap/connection');
+const { decrypt, loadCredentials } = require('../imap/connection');
 const { analyzeParsedEmailData } = require('../application/analyze/AnalyzeMessageService');
 
 // email → ScanMailboxMonitor  (dışa aktarılır, route'lar okur/yazar)
@@ -24,6 +24,7 @@ function safeDecrypt(value) {
 }
 
 async function startScanMailboxMonitor(smb) {
+    const imapAccount = loadCredentials().find((item) => item.email === smb.imapEmail);
     // Hesap nesnesini doğrudan kaydedilen IMAP bilgilerinden oluştur
     const account = {
         email:             smb.imapEmail,
@@ -31,7 +32,8 @@ async function startScanMailboxMonitor(smb) {
         port:              Number(smb.imapPort) || 993,
         secure:            smb.imapTls !== false,
         password:          safeDecrypt(smb.imapPassword),
-        rejectUnauthorized: smb.imapRejectUnauthorized !== false
+        rejectUnauthorized: smb.imapRejectUnauthorized !== false,
+        moveHighRiskToQuarantine: imapAccount?.moveHighRiskToQuarantine === true
     };
 
     const smtpConfig = {

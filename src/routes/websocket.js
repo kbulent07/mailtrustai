@@ -16,6 +16,7 @@ const { loadSettings } = require('../storage/settingsStore');
 const { analyzeWithClaude } = require('../integrations/claude');
 const { analyzeWithOpenAI } = require('../integrations/openai');
 const { scanAttachments: vtScan } = require('../integrations/virustotal');
+const { maybeMoveMessageToQuarantine } = require('../imap/quarantineService');
 const crypto = require('crypto');
 
 // ─── Application services ─────────────────────────────────
@@ -183,6 +184,12 @@ async function startMonitorForAccount(account, license) {
         } catch (e) {
             console.error('[WS-Monitor] enrichWithAI error:', e.message);
         }
+
+        result.quarantineMove = await maybeMoveMessageToQuarantine({
+            account,
+            uid: emailEvent.uid,
+            result
+        });
 
         recordScan(result);
         broadcast({ type: 'new-email-scanned', result });

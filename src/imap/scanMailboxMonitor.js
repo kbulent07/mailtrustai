@@ -6,6 +6,8 @@ const { listEmails, fetchAndParseEmail } = require('./scanner');
 const { sendReportEmail } = require('../smtp/sender');
 const { buildReportHtml, isRisky } = require('../smtp/reportBuilder');
 const { recordScan } = require('../storage/scanHistory');
+const { maybeMoveMessageToQuarantine } = require('./quarantineService');
+const { getImapSenderSkipInfo } = require('./scanExclusions');
 const fs = require('fs');
 const path = require('path');
 
@@ -73,11 +75,10 @@ class ScanMailboxMonitor {
             if (this.isProcessed(uid)) return;
 
             // Loop koruması 1: gönderici SMTP hesabımız veya kendi izleme hesabımızsa atla.
-            const fromAddr = extractEmailAddress(email.from);
-            const senderAddr = String(this.smtpConfig?.smtpUser || '').toLowerCase().trim();
-            const ownAddr = String(this.account?.email || '').toLowerCase().trim();
-            if (fromAddr && (fromAddr === senderAddr || fromAddr === ownAddr)) {
-                console.log(`[ScanMailbox] Self-loop atlandı (from=own): ${fromAddr}`);
+            const skipInfo = getImapSenderSkipInfo({ account: this.account, from: email.from });
+            const fromAddr = skipInfo.fromEmail;
+            if (skipInfo.skip) {
+                console.log(`[ScanMailbox] Gonderen tarama disi atlandi (${skipInfo.reason}): ${fromAddr}`);
                 this.markProcessed(uid);
                 return;
             }
@@ -104,6 +105,11 @@ class ScanMailboxMonitor {
             result.scanSource = 'scan-mailbox';
             result.account = account;
             result.scanMailboxUid = uid;
+            result.quarantineMove = await maybeMoveMessageToQuarantine({
+                account: this.account,
+                uid,
+                result
+            });
 
             // Rapor alıcısı:
             //   reportToForwarder=true  → iletilen mail geldi, göndereni (fromAddr) kullan

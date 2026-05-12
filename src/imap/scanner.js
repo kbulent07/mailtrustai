@@ -4,6 +4,7 @@
 const { createConnection } = require('./connection');
 const pool = require('./connectionPool');
 const { parseEmail } = require('../analysis/parser');
+const { getImapSenderSkipInfo } = require('./scanExclusions');
 
 const imapCooldowns = new Map();
 const IMAP_RESET_COOLDOWN_MS = 60 * 1000;
@@ -37,10 +38,18 @@ async function listEmailsOnce(account, folder = 'INBOX', limit = 50) {
             const startSeq = Math.max(mailboxSize - normalizedLimit + 1, 1);
             const range = `${startSeq}:${mailboxSize}`;
 
+            let skipped = 0;
             for await (const msg of client.fetch(range, { envelope: true, uid: true })) {
+                const from = msg.envelope.from?.[0] || {};
+                const skipInfo = getImapSenderSkipInfo({ account, from });
+                if (skipInfo.skip) {
+                    skipped += 1;
+                    continue;
+                }
+
                 messages.push({
                     uid: msg.uid, seq: msg.seq,
-                    from: msg.envelope.from?.[0] || {},
+                    from,
                     to: msg.envelope.to || [],
                     subject: msg.envelope.subject || '(No Subject)',
                     date: msg.envelope.date || new Date()
@@ -55,6 +64,7 @@ async function listEmailsOnce(account, folder = 'INBOX', limit = 50) {
                 messages: messages.reverse(),
                 total: mailboxSize,
                 loaded,
+                skipped,
                 hasMore
             };
         } finally {
@@ -105,6 +115,18 @@ async function fetchAndParseEmailOnce(account, uid, folder = 'INBOX') {
             const msg = await client.fetchOne(uid, { source: true, bodyStructure: true }, { uid: true });
             if (msg && msg.source) {
                 const parsed = await parseEmail(msg.source);
+                if (parsed.success) {
+                    const skipInfo = getImapSenderSkipInfo({ account, from: parsed.data.from });
+                    if (skipInfo.skip) {
+                        return {
+                            success: false,
+                            skipped: true,
+                            reason: skipInfo.reason,
+                            from: skipInfo.fromEmail,
+                            error: 'Bu mesaj, gonderen adresi tarama disi oldugu icin analiz edilmedi.'
+                        };
+                    }
+                }
                 if (parsed.success) {
                     try {
                         await supplementImapBodyStructureAttachments(client, uid, msg.bodyStructure, parsed.data);
