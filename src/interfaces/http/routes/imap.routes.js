@@ -19,10 +19,20 @@ router.post('/imap/test', async (req, res) => {
 });
 
 router.post('/imap/accounts', async (req, res) => {
-    if (!req.body?.email || !req.body?.password || !req.body?.host)
-        return res.status(400).json({ error: 'Email, password, and host are required' });
+    if (!req.body?.email || !req.body?.host)
+        return res.status(400).json({ error: 'Email and host are required' });
+
+    const existing = loadCredentials().find(a => a.email === req.body.email);
+    const requestedPassword = req.body?.password;
+    const keepExistingPassword = requestedPassword === '__KEEP_EXISTING_PASSWORD__';
+    const password = (!requestedPassword || keepExistingPassword) ? existing?.password : requestedPassword;
+    if (!password) {
+        return res.status(400).json({ error: 'Password is required' });
+    }
+
     const accounts = addAccount({
         ...req.body,
+        password,
         autoSummaryReport: req.body.autoSummaryReport === true || req.body.autoSummaryReport === 'true'
     });
     res.json({ success: true, count: accounts.length });
@@ -36,7 +46,8 @@ router.get('/imap/accounts', (req, res) => {
     res.json(loadCredentials().map(a => ({
         email: a.email, host: a.host, port: a.port,
         autoSummaryReport: a.autoSummaryReport === true,
-        rejectUnauthorized: a.rejectUnauthorized !== false
+        rejectUnauthorized: a.rejectUnauthorized !== false,
+        moveHighRiskToQuarantine: a.moveHighRiskToQuarantine === true
     })));
 });
 

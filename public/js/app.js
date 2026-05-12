@@ -1849,6 +1849,8 @@ function setAlertEmails(csvOrArray) {
 
 function closeImapModal() {
     document.getElementById('imapModal').classList.add('hidden');
+    const quarantineCheck = document.getElementById('imapMoveHighRiskToQuarantine');
+    if (quarantineCheck) quarantineCheck.checked = false;
     const alertCheck = document.getElementById('imapRealTimeAlert');
     if (alertCheck) { alertCheck.checked = false; toggleImapRealTimeAlertSection(false); }
     clearAlertEmails();
@@ -1941,24 +1943,28 @@ async function saveImapAccount() {
         return;
     }
 
+    if (!account.password && isEditMode) {
+        account.password = '__KEEP_EXISTING_PASSWORD__';
+    }
+
     // Yeni hesap eklerken şifre zorunlu; düzenlemede boş bırakılırsa IMAP kaydını atla
-    if (account.password) {
-        const res = await fetch('/api/imap/accounts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(account)
-        });
-        const data = await res.json();
-        if (!res.ok) {
-            alert(data.error || 'Failed to save IMAP account');
-            return;
-        }
-    } else if (!isEditMode) {
-        alert(currentLang === 'tr' ? 'Yeni hesap için şifre zorunludur' : 'Password is required for new accounts');
+    if (!account.password && !isEditMode) {
+        alert(currentLang === 'tr' ? 'Yeni hesap icin sifre zorunludur' : 'Password is required for new accounts');
         return;
     }
 
     // Anlık rapor ayarlarını kaydet / sil
+    const imapSaveRes = await fetch('/api/imap/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(account)
+    });
+    const imapSaveData = await imapSaveRes.json();
+    if (!imapSaveRes.ok) {
+        alert(imapSaveData.error || 'Failed to save IMAP account');
+        return;
+    }
+
     const alert_ = getImapAlertFormData();
     const targetEmail = account.email || editingImapAlertAccountEmail;
     if (alert_.enabled) {
@@ -2011,7 +2017,8 @@ function getImapFormData() {
         port: portVal,
         secure: portVal === 993,
         rejectUnauthorized: !document.getElementById('imapIgnoreSSL').checked,
-        autoSummaryReport: document.getElementById('imapAutoSummaryReport')?.checked === true
+        autoSummaryReport: document.getElementById('imapAutoSummaryReport')?.checked === true,
+        moveHighRiskToQuarantine: document.getElementById('imapMoveHighRiskToQuarantine')?.checked === true
     };
 }
 
@@ -2039,6 +2046,7 @@ async function loadImapAccounts() {
                     <span class="status-dot ${isMonitoring ? 'monitoring' : 'connected'}"></span>
                     <strong>${esc(account.email)}</strong>
                     <span class="text-muted">${esc(account.host)}:${account.port}</span>
+                    ${account.moveHighRiskToQuarantine ? '<span class="email-monitor-badge">Quarantine</span>' : ''}
                     <span style="flex:1"></span>
                     <button class="btn btn-ghost btn-sm" onclick='editImapAccount(${JSON.stringify(account.email)})'>Edit</button>
                     <button class="btn btn-danger btn-sm" onclick='deleteImapAccount(${JSON.stringify(account.email)})'>Delete</button>
@@ -2129,6 +2137,7 @@ async function editImapAccount(email) {
     document.getElementById('imapPort').value = account.port || 993;
     document.getElementById('imapIgnoreSSL').checked = account.rejectUnauthorized === false;
     document.getElementById('imapAutoSummaryReport').checked = account.autoSummaryReport === true;
+    document.getElementById('imapMoveHighRiskToQuarantine').checked = account.moveHighRiskToQuarantine === true;
 
     // Anlık rapor bölümünü temizle
     document.getElementById('imapRealTimeAlert').checked = false;
