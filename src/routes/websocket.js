@@ -17,79 +17,13 @@ const { analyzeWithClaude } = require('../integrations/claude');
 const { analyzeWithOpenAI } = require('../integrations/openai');
 const { scanAttachments: vtScan } = require('../integrations/virustotal');
 const { maybeMoveMessageToQuarantine } = require('../imap/quarantineService');
-const { sendReportEmail } = require('../smtp/sender');
-const { buildReportHtml } = require('../smtp/reportBuilder');
-const { getReportingSmtpConfig } = require('../services/reportService');
 const crypto = require('crypto');
 
-// ─── Auto-monitor rapor maili (Enterprise: realtimeAlert) ──────────────────
-// IMAP IDLE üzerinden gelen yeni mail taranır taranmaz, mail kutusu sahibine
-// (account.email) tarama sonucu HTML rapor olarak gönderilir.
-// Self-loop koruması: önceki rapor maillerini yeniden taramayı engeller.
-const REPORT_SUBJECT_TAG = '[MailTrustAI Auto-Report]';
-const RISKY_LEVELS = new Set(['low', 'medium', 'high', 'critical']);
-
-function _isOwnReport(emailSubject) {
-    const s = String(emailSubject || '');
-    return s.includes(REPORT_SUBJECT_TAG) || s.includes('[MailTrustAI Security Report]')
-        || s.includes('[MailTrustAI Güvenlik Raporu]');
-}
-
-async function _maybeSendAutoMonitorReport({ account, result, originalSubject }) {
-    try {
-        // Self-loop koruması: bizim daha önce gönderdiğimiz raporun kendisi geldiyse atla
-        if (_isOwnReport(originalSubject)) {
-            return { sent: false, skipped: 'self-loop' };
-        }
-
-        const settings = loadSettings();
-        const realtimeCfg = settings.realtimeAlerts || {};
-        // Varsayılan: kapalı. Kullanıcı UI'dan ya da settings.json'dan açar.
-        if (!realtimeCfg.enabled) {
-            return { sent: false, skipped: 'disabled' };
-        }
-
-        // 'risky' mode: yalnız riskli mailler için rapor gönder (safe atla)
-        const mode = realtimeCfg.reportMode || 'risky';
-        if (mode === 'risky' && !RISKY_LEVELS.has(result.level)) {
-            return { sent: false, skipped: 'non-risky' };
-        }
-
-        // SMTP yapılandırması: scan-mailbox ile aynı yardımcıyı kullan
-        const smtp = getReportingSmtpConfig();
-        if (!smtp) {
-            return { sent: false, skipped: 'smtp-not-configured' };
-        }
-
-        // Alıcı: önce ayarlardaki realtimeAlerts.recipient, yoksa mailbox sahibi
-        const recipient = String(realtimeCfg.recipient || '').trim() || account.email;
-        const lang = realtimeCfg.lang || 'tr';
-
-        const icon = { high: '🔴', critical: '🔴', medium: '🟠', low: '🟡', safe: '🟢' }[result.level] || '⚠️';
-        const subj = `${icon} ${REPORT_SUBJECT_TAG} ${result.labelTR || result.level} - ${originalSubject || '(Konu yok)'}`;
-        const html = buildReportHtml(result, lang);
-        const fromName = smtp.smtpFromName || 'MailTrustAI';
-        const from = `"${fromName}" <${smtp.smtpUser}>`;
-
-        const r = await sendReportEmail({
-            smtpConfig: smtp,
-            to: recipient,
-            from,
-            subject: subj,
-            htmlBody: html
-        });
-
-        if (!r.success) {
-            console.warn(`[AutoMonitor] Rapor gönderilemedi (${account.email}): ${r.error}`);
-            return { sent: false, error: r.error };
-        }
-        console.log(`[AutoMonitor] Rapor gönderildi → ${recipient}  (${account.email}, ${result.level})`);
-        return { sent: true, recipient };
-    } catch (e) {
-        console.error('[AutoMonitor] Rapor gönderim hatası:', e.message);
-        return { sent: false, error: e.message };
-    }
-}
+// NOT: Yeni mail geldiğinde mail sahibine otomatik HTML rapor gönderimi
+// 'realtime' purpose'lu scanMailbox kayıtları üzerinden yapılır (Enterprise).
+// UI'da IMAP hesabı modal'ındaki "🔔 Yeni mail geldiğinde anlık güvenlik raporu
+// gönder" checkbox'ı bu kaydı oluşturur ve scanMailboxMonitor.js akışı çalışır.
+// Bu modüldeki auto-monitor sadece WebSocket bildirimi + DB kaydı yapar.
 
 // ─── Application services ─────────────────────────────────
 const { startAutoMonitor } = require('../application/monitor/StartAutoMonitorService');
@@ -263,16 +197,10 @@ async function startMonitorForAccount(account, license) {
             result
         });
 
-        // Enterprise: realtimeAlert — mail kutusu sahibine otomatik rapor maili
-        if (license.features?.realtimeAlert) {
-            const reportOutcome = await _maybeSendAutoMonitorReport({
-                account,
-                result,
-                originalSubject: emailEvent.email.subject
-            });
-            result.autoReplySent = reportOutcome.sent;
-            if (!reportOutcome.sent) result.autoReplySkipReason = reportOutcome.skipped || reportOutcome.error;
-        }
+        // Otomatik mail raporu burada DEĞİL — scanMailboxMonitor (purpose='realtime')
+        // akışında yapılıyor. Kullanıcı IMAP hesabı eklerken "anlık güvenlik raporu"
+        // checkbox'ını işaretlerse otomatik olarak bir scanMailbox kaydı oluşur ve
+        // o monitör mail gönderimini üstlenir.
 
         recordScan(result);
         broadcast({ type: 'new-email-scanned', result });

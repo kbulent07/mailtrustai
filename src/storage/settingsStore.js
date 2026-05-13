@@ -146,17 +146,6 @@ function defaultSettings() {
         webhookEnabled:  false,
         webhookUrl:      '',
         webhookMinLevel: 'low',
-        // Auto-monitor (IMAP IDLE) yeni-mail rapor maili (Enterprise: realtimeAlert)
-        // enabled    : özellik açık mı
-        // reportMode : 'all' (her mail) | 'risky' (sadece low/medium/high/critical)
-        // recipient  : opsiyonel — boş ise mail kutusu sahibine gönderilir
-        // lang       : rapor HTML dili
-        realtimeAlerts: {
-            enabled:    false,
-            reportMode: 'risky',
-            recipient:  '',
-            lang:       'tr'
-        },
         customPrices:    null
     };
 }

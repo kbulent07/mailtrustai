@@ -163,43 +163,6 @@ router.post('/settings/webhook', requireAdminAuth, (req, res) => {
     res.json({ success: true });
 });
 
-// ─── Realtime Alert (auto-monitor mail raporu) — Enterprise feature ─────────
-router.get('/settings/realtime-alerts', (req, res) => {
-    const s = loadSettings();
-    const cfg = s.realtimeAlerts || {};
-    res.json({
-        enabled:    !!cfg.enabled,
-        reportMode: cfg.reportMode || 'risky',
-        recipient:  cfg.recipient  || '',
-        lang:       cfg.lang       || 'tr'
-    });
-});
-
-router.post('/settings/realtime-alerts', requireAdminAuth, (req, res) => {
-    const validModes = ['all', 'risky'];
-    const validLangs = ['tr', 'en'];
-    const incoming = req.body || {};
-    const current  = loadSettings();
-    const prev     = current.realtimeAlerts || {};
-
-    const next = {
-        enabled:    incoming.enabled !== undefined ? !!incoming.enabled : !!prev.enabled,
-        reportMode: validModes.includes(incoming.reportMode) ? incoming.reportMode : (prev.reportMode || 'risky'),
-        recipient:  String(incoming.recipient ?? prev.recipient ?? '').trim(),
-        lang:       validLangs.includes(incoming.lang) ? incoming.lang : (prev.lang || 'tr')
-    };
-
-    // Recipient validasyonu: boş veya basit email format
-    if (next.recipient && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next.recipient)) {
-        return res.status(400).json({ error: 'Geçersiz e-posta adresi: recipient' });
-    }
-
-    saveSettings({ ...current, realtimeAlerts: next });
-    recordAudit({ req, actorType: 'admin', actorId: 'settings', action: 'settings.realtime-alerts.update',
-        details: { enabled: next.enabled, reportMode: next.reportMode, customRecipient: !!next.recipient } });
-    res.json({ success: true, ...next });
-});
-
 router.post('/settings/webhook/test', requireAdminAuth, async (req, res) => {
     const url = req.body.webhookUrl || loadSettings().webhookUrl;
     if (!url) return res.status(400).json({ error: 'Webhook URL gerekli' });
