@@ -195,6 +195,13 @@
         }
     };
 
+    // URL'den setup_token oku (uzaktan ilk kurulum için)
+    function getSetupTokenFromUrl() {
+        try {
+            return new URLSearchParams(window.location.search).get('setup_token') || '';
+        } catch { return ''; }
+    }
+
     window.customerAuthSetup = async function() {
         errEl.textContent = '';
         const p1 = document.getElementById('customerAuthSetupPwd').value;
@@ -204,17 +211,27 @@
         const btn = document.getElementById('customerAuthSetupBtn');
         btn.disabled = true; btn.textContent = '⏳ Oluşturuluyor...';
         try {
+            const headers = { 'Content-Type': 'application/json' };
+            const setupToken = getSetupTokenFromUrl();
+            if (setupToken) headers['x-setup-token'] = setupToken;
+
             const res = await fetch('/api/customer/setup', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ password: p1 })
             });
             const data = await res.json();
             if (!res.ok) {
-                errEl.textContent = data.error || 'Kurulum başarısız.';
+                errEl.textContent = (data.error || 'Kurulum başarısız.') +
+                    (data.hint ? '  (' + data.hint + ')' : '');
                 return;
             }
             setToken(data.token);
+            // URL'den setup_token'ı temizle (history'de kalmasın)
+            if (setupToken && window.history?.replaceState) {
+                window.history.replaceState({}, document.title,
+                    window.location.pathname + window.location.hash);
+            }
             // Login/setup sonrası fresh start: app.js'in DOMContentLoaded init'i
             // token yokken yapıldığı için kalıcı state bozuk olabilir → reload.
             location.reload();

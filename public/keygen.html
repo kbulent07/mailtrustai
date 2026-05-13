@@ -54,20 +54,47 @@
 </head>
 <body>
 
-    <!-- ─── GİRİŞ OVERLAY ──────────────────────────────────── -->
+    <!-- ─── GİRİŞ / İLK KURULUM OVERLAY ──────────────────── -->
     <div id="loginOverlay">
         <div class="login-card">
             <div style="font-size:32px;margin-bottom:12px;text-align:center">🛡️</div>
-            <h2 style="text-align:center">Admin Girişi</h2>
-            <p class="subtitle" style="text-align:center">MailTrustAI yönetim paneline erişmek için giriş yapın.</p>
-            <div class="form-group">
-                <label class="form-label" for="loginPwd">Admin Şifresi</label>
-                <input class="form-input" type="password" id="loginPwd" placeholder="••••••••"
-                    onkeydown="if(event.key==='Enter')doLogin()">
+
+            <!-- Mod 1: Normal giriş -->
+            <div id="loginMode">
+                <h2 style="text-align:center" id="loginTitle">Admin Girişi</h2>
+                <p class="subtitle" style="text-align:center">MailTrustAI yönetim paneline erişmek için giriş yapın.</p>
+                <div class="form-group">
+                    <label class="form-label" for="loginPwd">Admin Şifresi</label>
+                    <input class="form-input" type="password" id="loginPwd" placeholder="••••••••"
+                        onkeydown="if(event.key==='Enter')doLogin()">
+                </div>
+                <button class="btn btn-primary btn-login" onclick="doLogin()" id="loginBtn">
+                    🔓 Giriş Yap
+                </button>
             </div>
-            <button class="btn btn-primary btn-login" onclick="doLogin()" id="loginBtn">
-                🔓 Giriş Yap
-            </button>
+
+            <!-- Mod 2: İlk kurulum (admin şifresi henüz yoksa) -->
+            <div id="setupMode" style="display:none">
+                <h2 style="text-align:center">İlk Kurulum</h2>
+                <p class="subtitle" style="text-align:center">Admin paneli için bir şifre belirleyin. Bu şifreyi güvenli bir yere not edin — sıfırlama yalnızca kurtarma e-postası (OTP) ile yapılır.</p>
+                <div style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#7dd3fc" id="setupTokenInfo">
+                    ℹ️ Uzaktan kurulum: URL'deki <code>?setup_token</code> parametresi tespit edildi.
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="setupPwd">Yeni Admin Şifresi <span style="font-size:11px;color:#94a3b8">(en az 6 karakter)</span></label>
+                    <input class="form-input" type="password" id="setupPwd" placeholder="••••••••">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="setupPwd2">Şifre Tekrar</label>
+                    <input class="form-input" type="password" id="setupPwd2" placeholder="••••••••"
+                        onkeydown="if(event.key==='Enter')doAdminSetup()">
+                </div>
+                <button class="btn btn-primary btn-login" onclick="doAdminSetup()" id="setupBtn"
+                    style="background:#10b981">
+                    ✨ Şifre Oluştur ve Devam Et
+                </button>
+            </div>
+
             <div id="loginError"></div>
         </div>
     </div>
@@ -583,6 +610,58 @@
             return false;
         }
 
+        // ─── URL'den setup_token oku (uzaktan ilk kurulum için) ─
+        function getSetupTokenFromUrl() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                return params.get('setup_token') || '';
+            } catch { return ''; }
+        }
+
+        // ─── İLK KURULUM: admin şifresi belirle ─────────────────
+        async function doAdminSetup() {
+            const errEl = document.getElementById('loginError');
+            const btn   = document.getElementById('setupBtn');
+            const p1    = document.getElementById('setupPwd').value;
+            const p2    = document.getElementById('setupPwd2').value;
+            errEl.textContent = '';
+
+            if (p1.length < 6) { errEl.textContent = '❌ Şifre en az 6 karakter olmalıdır.'; return; }
+            if (p1 !== p2)     { errEl.textContent = '❌ Şifreler uyuşmuyor.'; return; }
+
+            btn.disabled = true; btn.textContent = '⏳ Oluşturuluyor...';
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                const setupToken = getSetupTokenFromUrl();
+                if (setupToken) headers['x-setup-token'] = setupToken;
+
+                const res = await fetch('/api/admin/setup', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ password: p1 })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    errEl.textContent = '❌ ' + (data.error || 'Kurulum başarısız') +
+                        (data.hint ? '  (' + data.hint + ')' : '');
+                    return;
+                }
+                setToken(data.token);
+                document.getElementById('loginOverlay').style.display = 'none';
+                document.getElementById('sessionLabel').textContent =
+                    'Oturum aktif — ' + Math.round(data.expiresIn / 3600) + 's';
+                // URL'den setup_token'ı temizle (browser history'de kalmasın)
+                if (setupToken && window.history?.replaceState) {
+                    const cleanUrl = window.location.pathname + window.location.hash;
+                    window.history.replaceState({}, document.title, cleanUrl);
+                }
+            } catch (e) {
+                errEl.textContent = '❌ Bağlantı hatası: ' + e.message;
+            } finally {
+                btn.disabled = false; btn.textContent = '✨ Şifre Oluştur ve Devam Et';
+            }
+        }
+
         // ─── GİRİŞ / ÇIKIŞ ──────────────────────────────────────
         async function doLogin() {
             const pwd = document.getElementById('loginPwd').value;
@@ -622,16 +701,44 @@
             document.getElementById('loginPwd').focus();
         }
 
-        // ─── BAŞLANGIÇ: token varsa overlay'i gizle ─────────────
+        // ─── BAŞLANGIÇ: token varsa overlay'i gizle, yoksa setup/login durumunu sor ─
         (function checkExistingSession() {
             if (getToken()) {
                 document.getElementById('loginOverlay').style.display = 'none';
-            } else {
-                // Overlay görünür, odakla
-                window.addEventListener('DOMContentLoaded', () => {
-                    document.getElementById('loginPwd').focus();
-                });
+                return;
             }
+
+            // Setup endpoint'ine sorup admin şifresi var mı kontrol et
+            window.addEventListener('DOMContentLoaded', async () => {
+                const loginModeEl = document.getElementById('loginMode');
+                const setupModeEl = document.getElementById('setupMode');
+                const setupInfo   = document.getElementById('setupTokenInfo');
+                const setupToken  = getSetupTokenFromUrl();
+
+                try {
+                    const res = await fetch('/api/admin/setup/status');
+                    const data = await res.json();
+                    if (data && data.adminPasswordSet === false) {
+                        // İlk kurulum modu
+                        loginModeEl.style.display = 'none';
+                        setupModeEl.style.display = '';
+                        if (!setupToken) {
+                            // Token yoksa kullanıcıya doğru yönergeyi göster
+                            setupInfo.innerHTML = data.remoteSetupAvailable
+                                ? 'ℹ️ Uzaktan kurulum için URL\'ye <code>?setup_token=...</code> ekleyin veya sunucu konsolunda <code>localhost:3000/keygen.html</code> üzerinden açın.'
+                                : '⚠️ Uzaktan kurulum kapalı. Sunucudaki <code>.env</code> dosyasına <code>MSA_SETUP_TOKEN</code> ekleyip yeniden başlatın ya da yalnızca <code>localhost</code> üzerinden açın.';
+                            setupInfo.style.color = data.remoteSetupAvailable ? '#7dd3fc' : '#fbbf24';
+                            setupInfo.style.borderColor = data.remoteSetupAvailable ? 'rgba(56,189,248,.25)' : 'rgba(251,191,36,.3)';
+                            setupInfo.style.background  = data.remoteSetupAvailable ? 'rgba(56,189,248,.08)' : 'rgba(251,191,36,.08)';
+                        }
+                        setTimeout(() => document.getElementById('setupPwd')?.focus(), 50);
+                        return;
+                    }
+                } catch { /* setup/status erişilmezse normal login akışına düş */ }
+
+                // Normal login modu
+                document.getElementById('loginPwd')?.focus();
+            });
         })();
 
         // ─── SEKMELERİ YÖNETİMİ ─────────────────────────────────

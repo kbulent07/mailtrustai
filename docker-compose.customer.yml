@@ -1,13 +1,15 @@
 # ============================================================
-# MailTrustAI — Docker Compose (Üretim)
-# Nginx ters proxy + SSL ile tam üretim kurulumu
+# MailTrustAI — Docker Compose (MÜŞTERİ KURULUMU)
+#
+# Bu compose dosyası "customer-only" modu etkinleştirir:
+#   - /keygen.html ve /bayi.html → 404
+#   - /api/dealer/* ve /api/license/{generate,batch,trial,revoke,…} → 404
+#
+# Nginx reverse-proxy ile birlikte, sadece müşteri yönetim paneli (index.html)
+# erişilebilir kalır. SSL sertifikalarınızı nginx/certs/ altına bırakın.
 #
 # Kullanım:
-#   docker compose -f docker-compose.prod.yml up -d --build
-#
-# SSL sertifikaları:
-#   ./nginx/certs/fullchain.pem
-#   ./nginx/certs/privkey.pem
+#   docker compose -f docker-compose.customer.yml up -d --build
 # ============================================================
 
 services:
@@ -16,10 +18,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: runner
-    container_name: mailtrustai-app
+    container_name: mailtrustai-customer
     # Sabit hostname: settingsStore.js şifreleme anahtarını hostname'den türetir.
-    # Konteyner yeniden derlenince hostname değişmemeli, aksi halde kayıtlı
-    # API key/SMTP gibi şifrelenmiş ayarlar geri okunamaz.
+    # Konteyner yeniden derlenince hostname değişmemeli.
     hostname: mailtrustai
     restart: always
 
@@ -28,8 +29,8 @@ services:
 
     environment:
       - NODE_ENV=production
+      - MSA_CUSTOMER_ONLY=true
 
-    # Üretimde port dışarı açılmaz — sadece nginx erişir
     expose:
       - "3000"
 
@@ -56,7 +57,7 @@ services:
 
   nginx:
     image: nginx:1.27-alpine
-    container_name: mailtrustai-nginx
+    container_name: mailtrustai-customer-nginx
     restart: always
     depends_on:
       mailtrustai:
@@ -69,7 +70,6 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
-      # Let's Encrypt webroot doğrulaması için
       - ./nginx/webroot:/var/www/certbot:ro
 
     networks:
@@ -81,14 +81,12 @@ services:
       timeout: 5s
       retries: 3
 
-# ── Volumes ─────────────────────────────────────────────────
 volumes:
   mailtrustai_data:
     driver: local
   mailtrustai_logs:
     driver: local
 
-# ── Networks ────────────────────────────────────────────────
 networks:
   mailtrustai_net:
     driver: bridge

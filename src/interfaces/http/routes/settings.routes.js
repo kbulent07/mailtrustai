@@ -14,9 +14,11 @@ const { recordAudit } = require('../../../storage/auditLog');
 
 const router = express.Router();
 
-// Outer api.js guard zaten Bearer token (admin/customer) veya x-license-key
-// gerektirdiğinden, ayrıca admin şifresi sormuyoruz.
-router.post('/settings/keys', async (req, res) => {
+// /settings/keys — Hassas alanlar (adminPassword, API key'ler) yalnız admin
+// oturumuyla değiştirilebilir. Outer guard customer/license-key kabul ettiği
+// için ayrıca requireAdminAuth lazım — aksi halde customer token sahibi admin
+// şifresini değiştirebilir (privilege escalation).
+router.post('/settings/keys', requireAdminAuth, async (req, res) => {
     const updateKey = (current, incoming) => {
         if (incoming === undefined) return current;
         if (incoming === ':clear') return '';
@@ -118,11 +120,37 @@ router.get('/settings/webhook', (req, res) => {
     });
 });
 
-router.post('/settings/webhook', (req, res) => {
+// SSRF korumalı webhook URL doğrulayıcı — private/loopback IP'leri reddet
+function _isWebhookUrlSafe(rawUrl) {
+    if (!rawUrl) return { ok: true, url: '' };  // boş = devre dışı
+    let u;
+    try { u = new URL(rawUrl); } catch { return { ok: false, error: 'Geçersiz URL' }; }
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+        return { ok: false, error: 'Yalnız http(s) protokolü kabul edilir' };
+    }
+    const host = u.hostname.toLowerCase();
+    // IPv4 private/loopback/link-local + IPv6 loopback/private
+    const blocked = [
+        /^localhost$/, /^127\./, /^10\./, /^192\.168\./,
+        /^172\.(1[6-9]|2\d|3[01])\./, /^169\.254\./, /^0\.0\.0\.0$/,
+        /^::1$/, /^fc[0-9a-f]{2}:/i, /^fd[0-9a-f]{2}:/i, /^fe80:/i,
+        // AWS/GCP/Azure metadata
+        /^169\.254\.169\.254$/, /^metadata\.google\.internal$/
+    ];
+    if (blocked.some(rx => rx.test(host))) {
+        return { ok: false, error: `Yerel/özel adres webhook olarak kullanılamaz: ${host}` };
+    }
+    return { ok: true, url: u.toString() };
+}
+
+router.post('/settings/webhook', requireAdminAuth, (req, res) => {
+    const safety = _isWebhookUrlSafe(String(req.body.webhookUrl || '').trim());
+    if (!safety.ok) return res.status(400).json({ error: safety.error });
+
     const current = loadSettings();
     saveSettings({ ...current,
         webhookEnabled:  !!req.body.webhookEnabled,
-        webhookUrl:      String(req.body.webhookUrl || '').trim(),
+        webhookUrl:      safety.url,
         webhookMinLevel: ['safe','low','medium','high'].includes(req.body.webhookMinLevel) ? req.body.webhookMinLevel : 'low'
     });
     recordAudit({
@@ -135,10 +163,12 @@ router.post('/settings/webhook', (req, res) => {
     res.json({ success: true });
 });
 
-router.post('/settings/webhook/test', async (req, res) => {
+router.post('/settings/webhook/test', requireAdminAuth, async (req, res) => {
     const url = req.body.webhookUrl || loadSettings().webhookUrl;
     if (!url) return res.status(400).json({ error: 'Webhook URL gerekli' });
-    res.json(await testWebhook(url));
+    const safety = _isWebhookUrlSafe(url);
+    if (!safety.ok) return res.status(400).json({ error: safety.error });
+    res.json(await testWebhook(safety.url));
 });
 
 module.exports = router;

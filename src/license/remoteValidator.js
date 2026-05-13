@@ -14,6 +14,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const fetch = require('node-fetch');
 
 const REMOTE_URL = process.env.MSA_LICENSE_REMOTE_URL || '';
 const SHARED_SECRET = process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#';

@@ -14,6 +14,7 @@
 //   pulse_info.count 1-2  → bilgi
 //   reputation < -50      → itibarı düşük, kritik
 // ============================================================
+const fetch = require('node-fetch');
 const { getCachedResult, setCachedResult } = require('../storage/otxCacheStore');
 
 const OTX_BASE = 'https://otx.alienvault.com/api/v1/indicators';

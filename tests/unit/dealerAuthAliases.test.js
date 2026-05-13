@@ -62,7 +62,11 @@ test('toSafeDealerSummary exposes username alias without password hash', () => {
     assert.equal(safe.name, 'Demo');
 });
 
-test('authenticateDealerLogin allows founder proxy login against first active dealer', async () => {
+test('authenticateDealerLogin rejects founder proxy login when env vars are not set', async () => {
+    // Güvenlik regresyon testi: founder proxy artık env-tabanlı.
+    // MSA_FOUNDER_PROXY_EMAIL / MSA_FOUNDER_PROXY_PASSWORD_HASH set edilmeden
+    // hiçbir credential founder bypass'ına izin vermemeli — eski hardcoded
+    // şifre (System01.) artık tanınmamalı.
     const code = 'FOUNDERTEST';
     const pinHash = await bcrypt.hash('demo-pass', 10);
     upsertDealer({
@@ -80,9 +84,9 @@ test('authenticateDealerLogin allows founder proxy login against first active de
             password: 'System01.'
         });
 
-        assert.equal(auth.ok, true);
-        assert.equal(auth.founderProxy, true);
-        assert.equal(Boolean(auth.dealer?.code), true);
+        // Eski hardcoded backdoor → reddedilmeli
+        assert.equal(auth.ok, false);
+        assert.equal(auth.founderProxy, undefined);
     } finally {
         deleteDealer(code);
     }

@@ -15,11 +15,41 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Başlangıçta şifreleri kontrol et
-checkAndSeedInitialPasswords();
+// Müşteri-modu: keygen ve bayi panelleri tamamen kapatılır.
+// MSA_CUSTOMER_ONLY=true → /keygen.html, /bayi.html ve /api/dealer/* 404 döner.
+const CUSTOMER_ONLY = String(process.env.MSA_CUSTOMER_ONLY || '').toLowerCase() === 'true';
 
 // Reverse proxy arkasında doğru IP'yi alabilmek için (X-Forwarded-For). Localhost gate'i için kritik.
 app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+
+// Customer-only: keygen ve bayi panelleri ile dealer API'leri açıkça kapatılır.
+// Bu middleware static + route mount'lardan önce çalışmalı.
+if (CUSTOMER_ONLY) {
+    // Customer modunda kilitlenen lisans-üretici endpoint'leri (admin oturumu olsa bile çağrılamaz)
+    const BLOCKED_API = new Set([
+        '/api/license/generate',
+        '/api/license/batch',
+        '/api/license/trial',
+        '/api/license/revoke',
+        '/api/license/unrevoke',
+        '/api/license/revoked',
+        '/api/resellers',
+        '/api/audit-log'
+    ]);
+    app.use((req, res, next) => {
+        const p = (req.path || '').toLowerCase();
+        if (p === '/keygen.html' || p === '/bayi.html' || p.startsWith('/api/dealer')) {
+            return res.status(404).send('Not Found');
+        }
+        for (const blocked of BLOCKED_API) {
+            if (p === blocked || p.startsWith(blocked + '/')) {
+                return res.status(404).json({ error: 'Bu uç nokta müşteri kurulumunda devre dışı.' });
+            }
+        }
+        next();
+    });
+    console.log('[Mode] CUSTOMER_ONLY aktif — keygen/bayi panelleri ve lisans-üretici API\'leri devre dışı.');
+}
 
 // Security headers
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -64,6 +94,19 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
+// İlk şifre seed işlemi tamamlanmadan listen edilmemeli — aksi halde
+// startup'tan hemen sonra login denemeleri 403 alabilir.
+(async () => {
+    try {
+        await checkAndSeedInitialPasswords();
+    } catch (e) {
+        console.error('[Setup] İlk şifre seed işlemi başarısız:', e.message);
+    }
+    startListening();
+})();
+
+function startListening() {
 server.listen(PORT, () => {
     console.log(`\n🛡️  MailTrustAI`);
     console.log(`   Server running at http://localhost:${PORT}`);
@@ -104,3 +147,4 @@ server.listen(PORT, () => {
         console.log('   [License] Uzak doğrulama devre dışı (MSA_LICENSE_REMOTE_URL yok).');
     }
 });
+}

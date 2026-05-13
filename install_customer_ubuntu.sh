@@ -1,29 +1,22 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  MailTrustAI — Ubuntu Otomatik Docker Kurulum Scripti
-#  Sürüm   : 2.0  (2026-05)
+#  MailTrustAI — Ubuntu MÜŞTERİ Kurulum Scripti (Docker)
+#  Sürüm   : 1.0  (2026-05)
 #  Hedef OS: Ubuntu 22.04 / 24.04 LTS  (x86_64 / arm64)
 #
-#  Ne yapar?
-#    1. Sistem paketlerini günceller (curl, ca-certificates, jq, openssl, ufw…)
-#    2. Docker Engine + Compose plugin'ini resmî apt deposundan kurar
-#    3. /opt/mailtrustai dizinine projeyi klonlar (varsa pull eder)
-#    4. .env dosyasını güçlü rastgele anahtarlarla oluşturur
-#    5. data/ ve logs/ dizinlerini doğru sahiplik (UID 1001) ile hazırlar
-#    6. data/initial_creds.json üretir (ilk girişten sonra otomatik silinir)
-#    7. UFW kurallarını ekler (3000/4443 + SSH)
-#    8. systemd servisini etkinleştirir (mailtrustai.service)
-#    9. Docker imajını derler ve servisi başlatır
-#   10. Sağlık kontrolü yapar
+#  Bu script bir MÜŞTERİ kurulumu yapar:
+#    - /keygen.html ve /bayi.html paneller KAPALI
+#    - /api/dealer/* ve lisans-üretici API'leri KAPALI
+#    - Yalnız müşteri yönetim paneli (index.html) açık
 #
 #  Kullanım:
-#     chmod +x install_ubuntu.sh
-#     sudo ./install_ubuntu.sh
+#     chmod +x install_customer_ubuntu.sh
+#     sudo ./install_customer_ubuntu.sh
 # ==============================================================================
 
 set -euo pipefail
 
-# ── Renkler ───────────────────────────────────────────────────────────────────
+# ── Renkler ──────────────────────────────────────────────────────────────────
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
@@ -41,126 +34,195 @@ log_step()   { echo -e "\n${BOLD}${CYAN}▶ $*${NC}"; }
 trap 'log_error "Satır $LINENO: hata. Kurulum durduruldu."; exit 1' ERR
 
 # ── SSL otomasyon fonksiyonları ──────────────────────────────────────────────
+# Hem HOST nginx hem DOCKER nginx mod'ları için Let's Encrypt sertifikası alır
+# ve otomatik yenilemeyi kurar.
+# - HOST nginx: 'certbot --nginx' kullanır; certbot.timer otomatik yenileme yapar.
+# - DOCKER nginx: 'certbot certonly --webroot' + deploy-hook ile Docker nginx'i reload eder.
+
 setup_ssl_host_nginx() {
     local domain="$1" email="$2" staging="$3"
     log_step "Let's Encrypt SSL kurulumu (HOST nginx)"
+
     apt-get install -y -qq certbot python3-certbot-nginx
+    log_ok "certbot + python3-certbot-nginx kuruldu."
 
     local extra_args=()
-    [[ "$staging" == "true" ]] && extra_args+=(--staging)
+    if [[ "$staging" == "true" ]]; then
+        extra_args+=(--staging)
+        log_warn "STAGING modunda — sertifika tarayıcılarda güvenilir görünmeyecek."
+    fi
 
-    log_info "Sertifika alınıyor: $domain"
+    log_info "Sertifika alınıyor: $domain (e-posta: $email)"
     if certbot --nginx \
-        --non-interactive --agree-tos --redirect \
-        --domain "$domain" --email "$email" \
+        --non-interactive --agree-tos \
+        --redirect \
+        --domain "$domain" \
+        --email "$email" \
         "${extra_args[@]}" 2>&1 | tail -8; then
         log_ok "SSL sertifikası alındı ve nginx config güncellendi."
     else
-        log_warn "certbot --nginx başarısız. Manuel: sudo certbot --nginx -d $domain"
+        log_warn "certbot --nginx başarısız. Manuel deneyin:"
+        log_warn "  sudo certbot --nginx -d $domain --email $email"
         return 1
     fi
 
+    # certbot.timer Ubuntu 20.04+ varsayılan etkin; ek garanti:
     systemctl enable --now certbot.timer >/dev/null 2>&1 || true
     log_ok "Otomatik yenileme aktif (certbot.timer)."
+    log_info "Yenileme durumu görmek için: sudo systemctl status certbot.timer"
+    log_info "Manuel test için: sudo certbot renew --dry-run"
 }
 
 setup_ssl_docker_nginx() {
     local domain="$1" email="$2" staging="$3"
     log_step "Let's Encrypt SSL kurulumu (DOCKER nginx)"
-    apt-get install -y -qq certbot
 
+    apt-get install -y -qq certbot
+    log_ok "certbot kuruldu."
+
+    # Webroot dizini (compose tarafından /var/www/certbot olarak mount edilir)
     mkdir -p "$APP_DIR/nginx/webroot"
     chown -R "${APP_UID}:${APP_GID}" "$APP_DIR/nginx/webroot"
 
     local extra_args=()
-    [[ "$staging" == "true" ]] && extra_args+=(--staging)
+    if [[ "$staging" == "true" ]]; then
+        extra_args+=(--staging)
+        log_warn "STAGING modu."
+    fi
 
     log_info "Sertifika alınıyor (webroot mode): $domain"
     if certbot certonly --webroot \
         --webroot-path "$APP_DIR/nginx/webroot" \
         --non-interactive --agree-tos \
-        --domain "$domain" --email "$email" \
+        --domain "$domain" \
+        --email "$email" \
         "${extra_args[@]}" 2>&1 | tail -8; then
-        log_ok "Sertifika: /etc/letsencrypt/live/$domain/"
+        log_ok "Sertifika dosyaları: /etc/letsencrypt/live/$domain/"
     else
-        log_warn "certbot başarısız. Port 80 → $APP_DIR/nginx/webroot erişebilmeli."
+        log_warn "certbot başarısız. Domain'in $APP_DIR/nginx/webroot'a (port 80 üzerinden) erişebildiğinden emin olun."
         return 1
     fi
 
+    # İlk sefer sertifikayı Docker nginx volume'una kopyala
     cp -L "/etc/letsencrypt/live/$domain/fullchain.pem" "$APP_DIR/nginx/certs/"
     cp -L "/etc/letsencrypt/live/$domain/privkey.pem"   "$APP_DIR/nginx/certs/"
     chmod 644 "$APP_DIR/nginx/certs/fullchain.pem"
     chmod 640 "$APP_DIR/nginx/certs/privkey.pem"
+    log_ok "Sertifikalar Docker nginx volume'una kopyalandı."
 
-    # nginx.conf'taki HTTPS bloğunun yorumunu kaldır + domain ikamesi
+    # Docker nginx.conf'unu HTTPS açacak şekilde güncelle (yorum bloğunu kaldır + domain ikame)
     local conf="$APP_DIR/nginx/nginx.conf"
     if grep -q "# HTTPS Sunucusu" "$conf"; then
+        log_info "nginx.conf güncelleniyor: HTTPS bloğu aktif ediliyor..."
+        # Sadece HTTPS server bloğundaki "# " önek yorumunu kaldır
+        # Pattern: '#     ... satırları'
         python3 - <<PYEOF
-import re
+import re, sys
 p = "$conf"
-src = open(p, encoding='utf-8').read()
+with open(p, 'r', encoding='utf-8') as f:
+    src = f.read()
+
+# Belirli marker'lar arasındaki yorumları kaldır
 start = src.find("# ── HTTPS Sunucusu")
-if start != -1:
-    lines = src[start:].split("\n")
-    out = []
-    in_block = False
-    depth = 0
-    for ln in lines:
-        if not in_block:
-            if "server {" in ln and ln.lstrip().startswith("#"):
-                in_block = True; depth = 1
-                out.append(re.sub(r"^(\s*)#\s?", r"\1", ln)); continue
-            out.append(ln)
-        else:
-            new = re.sub(r"^(\s*)#\s?", r"\1", ln)
-            depth += new.count("{") - new.count("}")
-            out.append(new)
-            if depth <= 0: in_block = False
-    src = src[:start] + "\n".join(out)
-src = src.replace("server_name _;", "server_name $domain;", 2)
-open(p, 'w', encoding='utf-8').write(src)
+if start == -1:
+    sys.exit(0)
+# Bloğun sonu — son '# }' satırı
+# Daha basit: '#     server {' ten sonra her satırın başındaki '# ' veya '#' temizle, '# }' kapanışına kadar
+end = src.find("\n}\n", start)
+# Yorum bloğunu satır satır işle
+lines = src[start:].split("\n")
+out_lines = []
+in_block = False
+brace_depth = 0
+for ln in lines:
+    if not in_block:
+        if "server {" in ln and ln.lstrip().startswith("#"):
+            in_block = True
+            brace_depth = 1
+            out_lines.append(re.sub(r"^(\s*)#\s?", r"\1", ln))
+            continue
+        out_lines.append(ln)
+    else:
+        # Yorumu kaldır
+        new = re.sub(r"^(\s*)#\s?", r"\1", ln)
+        # { ve } sayımı
+        brace_depth += new.count("{") - new.count("}")
+        out_lines.append(new)
+        if brace_depth <= 0:
+            in_block = False
+
+new_block = "\n".join(out_lines)
+result = src[:start] + new_block
+
+# Domain ikamesi
+result = result.replace("server_name _;", "server_name $domain;", 2)  # http ve https blokları
+
+with open(p, 'w', encoding='utf-8') as f:
+    f.write(result)
 PYEOF
-        log_ok "nginx.conf HTTPS için güncellendi."
+        log_ok "nginx.conf HTTPS için güncellendi (server_name: $domain)."
     fi
 
-    # Deploy hook
-    mkdir -p /etc/letsencrypt/renewal-hooks/deploy
-    cat > "/etc/letsencrypt/renewal-hooks/deploy/mailtrustai.sh" <<HOOK
+    # Renewal deploy hook: cert yenilendiğinde Docker nginx'i reload et
+    local hook_dir="/etc/letsencrypt/renewal-hooks/deploy"
+    local hook_file="$hook_dir/mailtrustai-customer.sh"
+    mkdir -p "$hook_dir"
+    cat > "$hook_file" <<HOOK
 #!/usr/bin/env bash
+# MailTrustAI — Let's Encrypt deploy hook (otomatik yenileme sonrası)
+# install_customer_ubuntu.sh tarafından oluşturuldu.
 set -euo pipefail
+
 APP_DIR="$APP_DIR"
 COMPOSE_FILE="$COMPOSE_FILE"
 TARGET_DOMAIN="$domain"
+
+# certbot yalnız hedef domain için reload yapsın
 case " \${RENEWED_DOMAINS:-} " in
     *" \${TARGET_DOMAIN} "*) ;;
     *) exit 0 ;;
 esac
+
 cp -fL "/etc/letsencrypt/live/\${TARGET_DOMAIN}/fullchain.pem" "\$APP_DIR/nginx/certs/fullchain.pem"
 cp -fL "/etc/letsencrypt/live/\${TARGET_DOMAIN}/privkey.pem"   "\$APP_DIR/nginx/certs/privkey.pem"
 chmod 644 "\$APP_DIR/nginx/certs/fullchain.pem"
 chmod 640 "\$APP_DIR/nginx/certs/privkey.pem"
+
+# Docker nginx'i reload et (down/up değil — kesinti olmasın)
 if command -v docker >/dev/null 2>&1; then
     cd "\$APP_DIR"
     docker compose -f "\$COMPOSE_FILE" exec -T nginx nginx -s reload 2>/dev/null || \\
         docker compose -f "\$COMPOSE_FILE" restart nginx
 fi
-logger -t mailtrustai-ssl "Sertifika yenilendi: \$TARGET_DOMAIN"
-HOOK
-    chmod +x "/etc/letsencrypt/renewal-hooks/deploy/mailtrustai.sh"
-    log_ok "Yenileme hook'u: /etc/letsencrypt/renewal-hooks/deploy/mailtrustai.sh"
 
+logger -t mailtrustai-ssl "Sertifika yenilendi ve Docker nginx reload edildi: \$TARGET_DOMAIN"
+HOOK
+    chmod +x "$hook_file"
+    log_ok "Yenileme hook'u kuruldu: $hook_file"
+
+    # certbot.timer'ı aktif et (Ubuntu 20.04+ varsayılan zaten)
     systemctl enable --now certbot.timer >/dev/null 2>&1 || true
     log_ok "Otomatik yenileme aktif (certbot.timer)."
 
+    # Docker nginx'i HTTPS yeni config ile reload et
     cd "$APP_DIR"
     docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload 2>/dev/null \
         || docker compose -f "$COMPOSE_FILE" restart nginx
-    log_ok "Docker nginx reload — HTTPS aktif."
+    log_ok "Docker nginx reload edildi — HTTPS aktif."
 }
 
 setup_ssl() {
     local domain="$1" email="$2"
-    [[ -z "$domain" || -z "$email" ]] && { log_warn "SSL atlandı (domain/e-posta eksik)."; return 0; }
+    if [[ -z "$domain" || -z "$email" ]]; then
+        log_warn "SSL atlandı (domain veya e-posta eksik)."
+        return 0
+    fi
+
+    # 80 portuna ulaşılabilir mi (Let's Encrypt için zorunlu)?
+    if ! ss -ltn 2>/dev/null | grep -qE ':80\s' && ! command -v nginx >/dev/null 2>&1; then
+        log_warn "Port 80 dinlenmiyor görünüyor — ACME challenge başarısız olabilir."
+    fi
+
     if $USE_HOST_NGINX; then
         setup_ssl_host_nginx "$domain" "$email" "$SSL_STAGING"
     else
@@ -168,27 +230,28 @@ setup_ssl() {
     fi
 }
 
-# ── Sabitler ──────────────────────────────────────────────────────────────────
+# ── Sabitler ─────────────────────────────────────────────────────────────────
 readonly APP_DIR="/opt/mailtrustai"
 readonly REPO_URL="https://github.com/kbulent07/mailtrustai.git"
 readonly REPO_BRANCH="main"
-readonly APP_UID=1001           # Dockerfile'da non-root mailtrustai UID
+readonly APP_UID=1001
 readonly APP_GID=1001
-readonly HTTP_PORT=3000         # Dış HTTP portu (Nginx → app:3000)
-readonly HTTPS_PORT=4443        # Dış HTTPS portu
-readonly COMPOSE_FILE_DEFAULT="docker-compose.prod.yml"
-readonly COMPOSE_FILE_HOST_NGINX="docker-compose.prod.host-nginx.yml"
-readonly NGINX_SITE_NAME="mailtrustai"
+readonly HTTP_PORT=3000
+readonly HTTPS_PORT=4443
+readonly COMPOSE_FILE_DEFAULT="docker-compose.customer.yml"
+readonly COMPOSE_FILE_HOST_NGINX="docker-compose.customer.host-nginx.yml"
+readonly SERVICE_NAME="mailtrustai-customer"
+readonly NGINX_SITE_NAME="mailtrustai-customer"
 
-# Host nginx tespiti sonucuna göre doldurulur:
+# Bu iki değişken host nginx tespitinden sonra doldurulur:
 COMPOSE_FILE="$COMPOSE_FILE_DEFAULT"
 USE_HOST_NGINX=false
 
-# ── CLI parametreleri (SSL otomasyonu) ───────────────────────────────────────
+# ── CLI parametreleri (opsiyonel SSL otomasyonu) ────────────────────────────
 SSL_DOMAIN=""
 SSL_EMAIL=""
-SSL_AUTO=false
-SSL_STAGING=false
+SSL_AUTO=false   # --auto-ssl: domain & email verilmişse soru sormadan SSL kur
+SSL_STAGING=false  # --ssl-staging: Let's Encrypt staging (test) kullan
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --domain)      SSL_DOMAIN="$2"; shift 2 ;;
@@ -196,14 +259,14 @@ while [[ $# -gt 0 ]]; do
         --auto-ssl)    SSL_AUTO=true;   shift ;;
         --ssl-staging) SSL_STAGING=true; shift ;;
         -h|--help)
+            sed -n '2,17p' "$0"
             cat <<'HELP'
-Kullanım: sudo ./install_ubuntu.sh [seçenekler]
 
-Seçenekler:
+CLI Parametreleri:
   --domain <ad>      SSL için domain (örn: mailtrustai.sirketiniz.com)
-  --email  <adres>   Let's Encrypt için e-posta
-  --auto-ssl         Sorma, otomatik SSL kur (domain+email verilmişse)
-  --ssl-staging      Let's Encrypt test sunucusu (rate-limit testleri için)
+  --email  <adres>   Let's Encrypt için e-posta (yenileme uyarıları için)
+  --auto-ssl         Domain & email verilmişse soru sormadan SSL kur
+  --ssl-staging      Let's Encrypt'in test sunucusunu kullan (rate-limit testleri için)
 HELP
             exit 0
             ;;
@@ -211,19 +274,19 @@ HELP
     esac
 done
 
-# ── Banner ────────────────────────────────────────────────────────────────────
+# ── Banner ───────────────────────────────────────────────────────────────────
 echo -e "${BOLD}${CYAN}"
 cat <<'BANNER'
 ╔══════════════════════════════════════════════════════════════╗
-║       MailTrustAI — Ubuntu Docker Kurulum Scripti v2.0       ║
-║       AI Destekli E-Posta Güvenlik Platformu                 ║
+║   MailTrustAI — MÜŞTERİ Kurulum Scripti  (Ubuntu / Docker)   ║
+║   (keygen ve bayi panelleri devre dışı)                      ║
 ╚══════════════════════════════════════════════════════════════╝
 BANNER
 echo -e "${NC}"
 
-# ── Ön kontroller ─────────────────────────────────────────────────────────────
+# ── Ön kontroller ────────────────────────────────────────────────────────────
 if [[ $EUID -ne 0 ]]; then
-    log_error "Bu script root yetkisiyle çalıştırılmalıdır. Kullanım: sudo ./install_ubuntu.sh"
+    log_error "Bu script root yetkisiyle çalıştırılmalıdır. Kullanım: sudo ./install_customer_ubuntu.sh"
     exit 1
 fi
 
@@ -231,7 +294,6 @@ if [[ ! -f /etc/os-release ]]; then
     log_error "İşletim sistemi tespit edilemedi."
     exit 1
 fi
-
 # shellcheck disable=SC1091
 source /etc/os-release
 if [[ "${ID:-}" != "ubuntu" ]]; then
@@ -239,17 +301,15 @@ if [[ "${ID:-}" != "ubuntu" ]]; then
 fi
 log_ok "Sistem: ${PRETTY_NAME:-Ubuntu}"
 
-# Mimari kontrolü (Docker Compose plugin desteği için)
 ARCH="$(dpkg --print-architecture)"
 case "$ARCH" in
     amd64|arm64) log_ok "Mimari: $ARCH" ;;
-    *) log_error "Desteklenmeyen mimari: $ARCH (yalnız amd64/arm64)"; exit 1 ;;
+    *) log_error "Desteklenmeyen mimari: $ARCH"; exit 1 ;;
 esac
 
-# Non-interactive apt
 export DEBIAN_FRONTEND=noninteractive
 
-# ── Adım 1: Sistem paketleri ──────────────────────────────────────────────────
+# ── Adım 1: Sistem paketleri ─────────────────────────────────────────────────
 log_step "[1/9] Sistem paketleri güncelleniyor"
 apt-get update -qq
 apt-get install -y -qq \
@@ -258,10 +318,9 @@ apt-get install -y -qq \
     iproute2 python3
 log_ok "Sistem paketleri kuruldu."
 
-# ── Adım 2: Docker Engine + Compose plugin ────────────────────────────────────
+# ── Adım 2: Docker Engine ────────────────────────────────────────────────────
 log_step "[2/9] Docker Engine kuruluyor"
 
-# Eski sürümleri kaldır (varsa)
 for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do
     apt-get remove -y -qq "$pkg" 2>/dev/null || true
 done
@@ -287,28 +346,23 @@ else
 fi
 
 systemctl enable --now docker
-log_ok "Docker servisi aktif."
-
-# Docker Compose v2 kontrolü
-if ! docker compose version >/dev/null 2>&1; then
-    log_error "Docker Compose plugin bulunamadı."
-    exit 1
-fi
+docker compose version >/dev/null 2>&1 \
+    || { log_error "Docker Compose plugin bulunamadı."; exit 1; }
 log_ok "Docker Compose: $(docker compose version --short)"
 
-# ── Adım 3: Proje dizini ──────────────────────────────────────────────────────
+# ── Adım 3: Proje dizini ─────────────────────────────────────────────────────
 log_step "[3/9] Proje dizini hazırlanıyor: $APP_DIR"
 
 if [[ ! -d "$APP_DIR/.git" ]]; then
     if [[ -d "$APP_DIR" ]] && [[ -n "$(ls -A "$APP_DIR" 2>/dev/null)" ]]; then
-        log_warn "$APP_DIR mevcut ve boş değil — git klonu atlanacak, mevcut dosyalar kullanılacak."
+        log_warn "$APP_DIR boş değil — git klonu atlanıyor, mevcut dosyalar kullanılacak."
     else
         log_info "GitHub'dan klonlanıyor: $REPO_URL ($REPO_BRANCH)"
         mkdir -p "$APP_DIR"
         git clone --branch "$REPO_BRANCH" --depth 1 "$REPO_URL" "$APP_DIR"
     fi
 else
-    log_info "Mevcut depo güncelleniyor (git pull)…"
+    log_info "Mevcut depo güncelleniyor…"
     git -C "$APP_DIR" fetch --depth 1 origin "$REPO_BRANCH"
     git -C "$APP_DIR" reset --hard "origin/$REPO_BRANCH"
 fi
@@ -317,7 +371,10 @@ cd "$APP_DIR"
 
 # Her iki compose dosyası da deponun içinde olmalı
 for cf in "$COMPOSE_FILE_DEFAULT" "$COMPOSE_FILE_HOST_NGINX"; do
-    [[ -f "$cf" ]] || { log_error "$cf bulunamadı; depodaki güncel sürümü kullandığınızdan emin olun."; exit 1; }
+    if [[ ! -f "$cf" ]]; then
+        log_error "$cf bulunamadı; depodaki güncel sürümü kullandığınızdan emin olun."
+        exit 1
+    fi
 done
 log_ok "Proje dosyaları hazır."
 
@@ -343,13 +400,14 @@ if $HOST_NGINX_PRESENT; then
     echo ""
     echo -e "${BOLD}Kurulum modu seçimi:${NC}"
     echo "  1) HOST nginx (önerilen) — Docker nginx kurulmaz, mevcut nginx reverse proxy yapar"
-    echo "  2) DOCKER nginx          — Docker stack içine nginx eklenir (farklı portlarda)"
+    echo "  2) DOCKER nginx          — Docker stack içine nginx eklenir, host nginx ile farklı portlarda çalışır"
     if $HOST_NGINX_ACTIVE; then
+        echo "  Varsayılan: 1 (host nginx aktif)"
         DEFAULT_CHOICE=1
     else
+        echo "  Varsayılan: 2 (host nginx pasif)"
         DEFAULT_CHOICE=2
     fi
-    echo "  Varsayılan: ${DEFAULT_CHOICE}"
     read -rp "Seçim [1/2, varsayılan ${DEFAULT_CHOICE}]: " mode_choice
     mode_choice="${mode_choice:-$DEFAULT_CHOICE}"
 
@@ -365,32 +423,35 @@ if $HOST_NGINX_PRESENT; then
             log_ok "Mod: DOCKER nginx — port ${HTTP_PORT}/${HTTPS_PORT} dış IP'lere açılacak."
             ;;
     esac
+else
+    USE_HOST_NGINX=false
+    COMPOSE_FILE="$COMPOSE_FILE_DEFAULT"
 fi
 
-# ── Adım 4: Dizin yapısı + izinler ────────────────────────────────────────────
+# ── Adım 4: Dizin yapısı ─────────────────────────────────────────────────────
 log_step "[4/9] Veri ve log dizinleri oluşturuluyor"
-
 mkdir -p data logs nginx/certs nginx/webroot
-
-# Konteynerdeki mailtrustai (UID 1001) kullanıcısı için sahiplik
 chown -R "${APP_UID}:${APP_GID}" data logs
 chmod 750 data logs
-log_ok "Dizinler hazırlandı (sahip: ${APP_UID}:${APP_GID})."
+log_ok "Dizinler hazırlandı."
 
-# ── Adım 5: .env oluşturma ────────────────────────────────────────────────────
+# ── Adım 5: .env oluşturma ───────────────────────────────────────────────────
 log_step "[5/9] .env dosyası hazırlanıyor"
 
-SETUP_TOKEN=""   # show_summary'de kullanmak için dış kapsama taşı
+SETUP_TOKEN=""
 
 if [[ -f .env ]]; then
     log_warn ".env zaten mevcut — mevcut değerler korunacak."
-    # Mevcut .env'den setup token'ı oku (zaten varsa kullanıcıya tekrar göster)
     SETUP_TOKEN="$(grep -E '^MSA_SETUP_TOKEN=' .env | head -n1 | cut -d= -f2- || true)"
-else
-    if [[ ! -f .env.example ]]; then
-        log_error ".env.example bulunamadı; depo bozuk olabilir."
-        exit 1
+
+    # MSA_CUSTOMER_ONLY mutlaka true olsun
+    if grep -q '^MSA_CUSTOMER_ONLY=' .env; then
+        sed -i 's|^MSA_CUSTOMER_ONLY=.*|MSA_CUSTOMER_ONLY=true|' .env
+    else
+        echo 'MSA_CUSTOMER_ONLY=true' >> .env
     fi
+else
+    [[ -f .env.example ]] || { log_error ".env.example bulunamadı."; exit 1; }
 
     ENC_PASSWORD="$(openssl rand -hex 32)"
     ENC_SALT="$(openssl rand -hex 16)"
@@ -399,60 +460,58 @@ else
     SETUP_TOKEN="$(openssl rand -hex 24)"
 
     cp .env.example .env
-
-    # macOS/Linux uyumlu sed; örnekteki anahtarları üretilen değerlerle değiştir
     sed -i "s|^MSA_ENC_PASSWORD=.*|MSA_ENC_PASSWORD=${ENC_PASSWORD}|"                   .env
     sed -i "s|^MSA_ENC_SALT=.*|MSA_ENC_SALT=${ENC_SALT}|"                               .env
     sed -i "s|^MSA_LICENSE_SECRET=.*|MSA_LICENSE_SECRET=${LICENSE_SECRET}|"             .env
     sed -i "s|^MSA_ADMIN_TOKEN_SECRET=.*|MSA_ADMIN_TOKEN_SECRET=${ADMIN_TOKEN_SECRET}|" .env
     sed -i "s|^MSA_SETUP_TOKEN=.*|MSA_SETUP_TOKEN=${SETUP_TOKEN}|"                      .env
+    sed -i "s|^MSA_CUSTOMER_ONLY=.*|MSA_CUSTOMER_ONLY=true|"                            .env
     sed -i "s|^NODE_ENV=.*|NODE_ENV=production|"                                        .env
 
     chmod 600 .env
     chown root:root .env
-    log_ok ".env oluşturuldu ve güvenli anahtarlar yerleştirildi."
-    log_warn "ÖNEMLİ: MSA_LICENSE_SECRET değerini güvenli bir yere yedekleyin —"
-    log_warn "        yeniden kurulumda aynı değer kullanılmazsa kayıtlı şifrelenmiş"
-    log_warn "        ayarlar (API key/SMTP) geri okunamaz."
+    log_ok ".env oluşturuldu (MÜŞTERİ modu)."
+    log_warn "ÖNEMLİ: MSA_LICENSE_SECRET değerini güvenli yedekleyin."
 fi
 
-# Eski sürümlerden kalan initial_creds.json varsa temizle —
-# artık uzaktan-erişilebilir web-tabanlı setup token akışı kullanıyoruz.
-if [[ -f data/initial_creds.json ]]; then
-    log_info "Eski data/initial_creds.json siliniyor (yeni setup-token akışına geçildi)."
-    rm -f data/initial_creds.json
-fi
+# Eski sürümlerden kalan initial_creds.json varsa temizle
+[[ -f data/initial_creds.json ]] && { rm -f data/initial_creds.json; log_info "Eski initial_creds.json silindi."; }
 
 # ── Adım 6: UFW + (opsiyonel) host nginx site config ─────────────────────────
 log_step "[6/9] Güvenlik duvarı ve nginx yapılandırması"
-
 ufw allow OpenSSH                       >/dev/null 2>&1 || ufw allow 22/tcp >/dev/null
 
 if $USE_HOST_NGINX; then
+    # Docker uygulaması yalnız loopback'te dinler; dışa 3000/4443 açma.
+    # Host nginx zaten 80/443'ten dinliyor — UFW'da bu portların açık olduğunu varsayıyoruz.
     ufw allow 80/tcp  >/dev/null 2>&1 || true
     ufw allow 443/tcp >/dev/null 2>&1 || true
     log_ok "UFW kuralları: SSH, 80/tcp, 443/tcp (host nginx için)"
-    log_info "Docker uygulama portu (${HTTP_PORT}) dışa AÇILMADI — yalnız loopback'te."
+    log_info "Docker uygulama portu (${HTTP_PORT}) dışa AÇILMADI — loopback'te dinliyor."
 
+    # Host nginx site config oluştur
     NGINX_SITE_FILE="/etc/nginx/sites-available/${NGINX_SITE_NAME}"
     if [[ ! -f "$NGINX_SITE_FILE" ]]; then
         log_info "Host nginx site konfigürasyonu yazılıyor: $NGINX_SITE_FILE"
         cat > "$NGINX_SITE_FILE" <<NGINX_CONF
 # ============================================================
 # MailTrustAI — Host nginx reverse proxy (otomatik oluşturuldu)
-# Bu dosya install_ubuntu.sh tarafından yazıldı.
-# Alan adınız için 'server_name _' satırını değiştirin.
+# Bu dosya install_customer_ubuntu.sh tarafından yazıldı.
+# Alan adınızı kullanmak için 'server_name _' satırını değiştirin.
 # ============================================================
 
+# HTTP (Let's Encrypt sonrasında 443'e yönlendirilebilir)
 server {
     listen 80;
     listen [::]:80;
     server_name _;
 
+    # Let's Encrypt ACME-challenge için
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
+    # WebSocket upgrade
     location /ws {
         proxy_pass         http://127.0.0.1:${HTTP_PORT};
         proxy_http_version 1.1;
@@ -479,18 +538,25 @@ server {
     }
 }
 
-# HTTPS (SSL kurulduktan sonra yorum'dan çıkarın)
+# HTTPS (SSL sertifikası kurduktan sonra yorumdan çıkarın)
 # server {
 #     listen 443 ssl;
 #     listen [::]:443 ssl;
 #     http2 on;
 #     server_name your.domain.com;
+#
 #     ssl_certificate     /etc/letsencrypt/live/your.domain.com/fullchain.pem;
 #     ssl_certificate_key /etc/letsencrypt/live/your.domain.com/privkey.pem;
 #     ssl_protocols       TLSv1.2 TLSv1.3;
+#     ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
 #     ssl_prefer_server_ciphers off;
+#
 #     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+#     add_header X-Frame-Options           SAMEORIGIN always;
+#     add_header X-Content-Type-Options    nosniff   always;
+#
 #     client_max_body_size 60M;
+#
 #     location /ws {
 #         proxy_pass         http://127.0.0.1:${HTTP_PORT};
 #         proxy_http_version 1.1;
@@ -498,10 +564,11 @@ server {
 #         proxy_set_header   Connection "upgrade";
 #         proxy_set_header   Host       \$host;
 #         proxy_set_header   X-Real-IP  \$remote_addr;
-#         proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
+#         proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
 #         proxy_set_header   X-Forwarded-Proto \$scheme;
 #         proxy_read_timeout 86400s;
 #     }
+#
 #     location / {
 #         proxy_pass         http://127.0.0.1:${HTTP_PORT};
 #         proxy_http_version 1.1;
@@ -517,8 +584,10 @@ NGINX_CONF
         log_info "Mevcut site konfigürasyonu korundu: $NGINX_SITE_FILE"
     fi
 
+    # Site'ı etkinleştir
     ln -sf "$NGINX_SITE_FILE" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}"
 
+    # Nginx'i test et ve reload et
     if nginx -t >/dev/null 2>&1; then
         if $HOST_NGINX_ACTIVE; then
             systemctl reload nginx
@@ -528,22 +597,22 @@ NGINX_CONF
             log_ok "Host nginx başlatıldı."
         fi
     else
-        log_warn "nginx -t başarısız! Lütfen elle düzeltin: sudo nginx -t"
+        log_warn "nginx -t başarısız! Lütfen elle düzeltin:"
+        log_warn "  sudo nginx -t  (hatayı görmek için)"
     fi
 else
     ufw allow "${HTTP_PORT}/tcp"            >/dev/null
     ufw allow "${HTTPS_PORT}/tcp"           >/dev/null
-    log_ok "UFW kuralları eklendi: SSH, ${HTTP_PORT}/tcp, ${HTTPS_PORT}/tcp"
+    log_ok "UFW kuralları: SSH, ${HTTP_PORT}/tcp, ${HTTPS_PORT}/tcp"
 fi
 
-log_info "UFW şu an kapalı kalacak — etkinleştirmek için:  sudo ufw enable"
+log_info "UFW kapalı kalacak — etkinleştirmek için: sudo ufw enable"
 
-# ── Adım 7: systemd servisi ───────────────────────────────────────────────────
+# ── Adım 7: systemd servisi ──────────────────────────────────────────────────
 log_step "[7/9] systemd servisi oluşturuluyor"
-
-cat > /etc/systemd/system/mailtrustai.service <<UNIT
+cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<UNIT
 [Unit]
-Description=MailTrustAI Docker Stack
+Description=MailTrustAI Customer Docker Stack
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
@@ -562,38 +631,34 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable mailtrustai.service >/dev/null
-log_ok "systemd servisi etkinleştirildi: mailtrustai.service"
+systemctl enable "${SERVICE_NAME}.service" >/dev/null
+log_ok "systemd servisi etkin: ${SERVICE_NAME}.service"
 
-# ── Adım 8: Docker imajını derle + çalıştır ───────────────────────────────────
-log_step "[8/9] Docker imajı derleniyor ve servis başlatılıyor"
-log_info "İlk derleme birkaç dakika sürebilir (better-sqlite3 native derlemesi)…"
-
+# ── Adım 8: Docker imajını derle + çalıştır ──────────────────────────────────
+log_step "[8/9] Docker imajı derleniyor ve başlatılıyor"
+log_info "İlk derleme birkaç dakika sürebilir (better-sqlite3 native build)…"
 docker compose -f "$COMPOSE_FILE" build --pull
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
-
 log_ok "Konteyner çalışıyor."
 
-# ── Adım 9: Sağlık kontrolü ───────────────────────────────────────────────────
+# ── Adım 9: Sağlık kontrolü ──────────────────────────────────────────────────
 log_step "[9/9] Sağlık kontrolü"
-
-log_info "Uygulamanın hazır olması bekleniyor…"
 HEALTH_URL="http://127.0.0.1:${HTTP_PORT}/api/health"
 for i in $(seq 1 30); do
     HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 "$HEALTH_URL" 2>/dev/null || echo "000")"
     if [[ "$HTTP_CODE" == "200" ]]; then
-        log_ok "Sağlık kontrolü BAŞARILI (HTTP 200) — uygulama hazır."
+        log_ok "Sağlık kontrolü BAŞARILI — uygulama hazır."
         break
     fi
     sleep 2
     if [[ $i -eq 30 ]]; then
-        log_warn "Sağlık kontrolü zaman aşımına uğradı (HTTP $HTTP_CODE)."
-        log_warn "Logları incelemek için:"
-        log_warn "  cd $APP_DIR && docker compose -f $COMPOSE_FILE logs --tail=80"
+        log_warn "Sağlık kontrolü zaman aşımı (HTTP $HTTP_CODE)."
+        log_warn "Loglar: cd $APP_DIR && docker compose -f $COMPOSE_FILE logs --tail=80"
     fi
 done
 
 # ── (Opsiyonel) SSL kurulumu ────────────────────────────────────────────────
+# --domain ve --email verilmişse otomatik kur; verilmemişse interaktif sor.
 if [[ -n "$SSL_DOMAIN" && -n "$SSL_EMAIL" ]]; then
     if $SSL_AUTO; then
         setup_ssl "$SSL_DOMAIN" "$SSL_EMAIL" || log_warn "SSL kurulumu başarısız oldu."
@@ -621,36 +686,51 @@ elif [[ -t 0 ]] && ! $SSL_AUTO; then
     fi
 fi
 
-# ── Özet ──────────────────────────────────────────────────────────────────────
+# Verify customer-mode is active
+KEYGEN_CODE="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 "http://127.0.0.1:${HTTP_PORT}/keygen.html" 2>/dev/null || echo "000")"
+if [[ "$KEYGEN_CODE" == "404" ]]; then
+    log_ok "MÜŞTERİ modu doğrulandı: /keygen.html → 404"
+else
+    log_warn "MÜŞTERİ modu beklenen şekilde çalışmıyor — /keygen.html → $KEYGEN_CODE (404 olmalıydı)"
+fi
+
+# ── Özet ─────────────────────────────────────────────────────────────────────
 IP="$(hostname -I | awk '{print $1}')"
 
 echo ""
 echo -e "${BOLD}${GREEN}"
 cat <<'DONE'
 ╔══════════════════════════════════════════════════════════════╗
-║          Kurulum Başarıyla Tamamlandı!                       ║
+║          Müşteri Kurulumu Başarıyla Tamamlandı!              ║
 ╚══════════════════════════════════════════════════════════════╝
 DONE
 echo -e "${NC}"
 
 if $USE_HOST_NGINX; then
-    BASE_URL="http://${IP}"
+    PUBLIC_PORT_LABEL="80"
+    PUBLIC_URL="http://${IP}/"
+    SETUP_URL="http://${IP}/?setup_token=${SETUP_TOKEN}"
     echo -e "${BOLD}Çalışma Modu:${NC} HOST nginx (reverse proxy)"
     echo -e "${BOLD}Erişim Adresleri:${NC}"
-    echo "  Web Arayüzü     : ${BASE_URL}/"
-    echo "  Admin / Keygen  : ${BASE_URL}/keygen.html"
-    echo "  Bayi Portalı    : ${BASE_URL}/bayi.html"
-    echo "  HTTPS           : SSL sertifikası kurduktan sonra (certbot --nginx -d <domain>)"
-    echo "  Loopback (debug): http://127.0.0.1:${HTTP_PORT}/"
+    echo "  Müşteri Yönetimi : ${PUBLIC_URL}"
+    echo "  HTTPS            : SSL sertifikası sonrası nginx config'inin HTTPS server bloğunu yorum'dan çıkarın"
+    echo "  Loopback (debug) : http://127.0.0.1:${HTTP_PORT}/"
 else
-    BASE_URL="http://${IP}:${HTTP_PORT}"
+    PUBLIC_PORT_LABEL="${HTTP_PORT}"
+    PUBLIC_URL="http://${IP}:${HTTP_PORT}/"
+    SETUP_URL="http://${IP}:${HTTP_PORT}/?setup_token=${SETUP_TOKEN}"
     echo -e "${BOLD}Çalışma Modu:${NC} Docker nginx"
     echo -e "${BOLD}Erişim Adresleri:${NC}"
-    echo "  Web Arayüzü     : ${BASE_URL}/"
-    echo "  Admin / Keygen  : ${BASE_URL}/keygen.html"
-    echo "  Bayi Portalı    : ${BASE_URL}/bayi.html"
-    echo "  HTTPS (SSL kurulduktan sonra): https://${IP}:${HTTPS_PORT}/"
+    echo "  Müşteri Yönetimi : ${PUBLIC_URL}"
+    echo "  HTTPS            : https://${IP}:${HTTPS_PORT}/  (SSL kurulduktan sonra)"
 fi
+
+echo ""
+echo -e "${BOLD}KAPALI panel/uç noktalar (404):${NC}"
+echo "  /keygen.html          (lisans üretici)"
+echo "  /bayi.html            (bayi portalı)"
+echo "  /api/dealer/*         (bayi API)"
+echo "  /api/license/generate, /trial, /revoke, /unrevoke, /batch …"
 
 if [[ -n "$SETUP_TOKEN" ]]; then
     echo ""
@@ -658,68 +738,39 @@ if [[ -n "$SETUP_TOKEN" ]]; then
     echo -e "${BOLD}${YELLOW}║          İLK KURULUM — UZAKTAN ŞİFRE BELİRLEME              ║${NC}"
     echo -e "${BOLD}${YELLOW}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo "  Aşağıdaki URL'lere herhangi bir tarayıcıdan bağlanarak"
-    echo "  admin ve müşteri yönetim şifrelerini KENDİNİZ belirleyin:"
+    echo "  Aşağıdaki URL'ye tarayıcıdan bağlanıp müşteri yönetim şifresini"
+    echo "  KENDİNİZ belirleyin:"
     echo ""
-    echo -e "  ${BOLD}Admin Paneli:${NC}"
-    echo -e "    ${GREEN}${BASE_URL}/keygen.html?setup_token=${SETUP_TOKEN}${NC}"
+    echo -e "  ${GREEN}${SETUP_URL}${NC}"
     echo ""
-    echo -e "  ${BOLD}Müşteri Yönetimi:${NC}"
-    echo -e "    ${GREEN}${BASE_URL}/?setup_token=${SETUP_TOKEN}${NC}"
+    echo -e "  Setup Token: ${SETUP_TOKEN}"
     echo ""
-    echo -e "  ${YELLOW}Setup Token:${NC} ${SETUP_TOKEN}"
-    echo ""
-    echo "  Her iki şifre belirlendikten sonra güvenlik için:"
-    echo "    1) /opt/mailtrustai/.env içindeki MSA_SETUP_TOKEN satırını boşaltın"
-    echo "    2) sudo systemctl reload mailtrustai"
+    echo "  Şifre belirlendikten sonra:"
+    echo "    1) ${APP_DIR}/.env içindeki MSA_SETUP_TOKEN satırını boşaltın"
+    echo "    2) sudo systemctl reload ${SERVICE_NAME}"
 fi
 
 echo ""
 echo -e "${BOLD}Yönetim Komutları:${NC}"
-echo "  Durum    : sudo systemctl status mailtrustai"
-echo "  Loglar   : cd ${APP_DIR} && docker compose -f ${COMPOSE_FILE} logs -f"
-echo "  Yenile   : sudo systemctl reload mailtrustai"
-echo "  Durdur   : sudo systemctl stop mailtrustai"
-echo "  Başlat   : sudo systemctl start mailtrustai"
+echo "  Durum   : sudo systemctl status ${SERVICE_NAME}"
+echo "  Loglar  : cd ${APP_DIR} && docker compose -f ${COMPOSE_FILE} logs -f"
+echo "  Yenile  : sudo systemctl reload ${SERVICE_NAME}"
+echo "  Durdur  : sudo systemctl stop ${SERVICE_NAME}"
 
 echo ""
 echo -e "${BOLD}Önemli Dosyalar:${NC}"
-echo "  Uygulama       : ${APP_DIR}"
-echo "  .env           : ${APP_DIR}/.env  (chmod 600)"
+echo "  Uygulama : ${APP_DIR}"
+echo "  .env     : ${APP_DIR}/.env  (chmod 600)"
 if $USE_HOST_NGINX; then
-    echo "  Nginx config   : /etc/nginx/sites-available/${NGINX_SITE_NAME}  (HOST nginx)"
-    echo "  SSL            : Let's Encrypt için: sudo certbot --nginx -d <your.domain.com>"
+    echo "  Nginx    : /etc/nginx/sites-available/${NGINX_SITE_NAME}  (HOST nginx)"
+    echo ""
+    echo -e "${BOLD}HOST nginx ile çalışıyor:${NC}"
+    echo "  - Docker app yalnız 127.0.0.1:${HTTP_PORT}'a bağlı; dışarıdan doğrudan erişilemez"
+    echo "  - Domain için: sudo nano /etc/nginx/sites-available/${NGINX_SITE_NAME}"
+    echo "    server_name _; satırını domain adınıza değiştirin → sudo systemctl reload nginx"
+    echo "  - SSL için: sudo certbot --nginx -d your.domain.com"
 else
-    echo "  Nginx config   : ${APP_DIR}/nginx/nginx.conf  (DOCKER nginx)"
-    echo "  SSL sertif.    : ${APP_DIR}/nginx/certs/"
+    echo "  Nginx    : ${APP_DIR}/nginx/nginx.conf  (DOCKER nginx)"
+    echo "  SSL      : ${APP_DIR}/nginx/certs/"
 fi
-echo "  Veri (volume)  : docker volume mailtrustai_data"
-echo "  Loglar (volume): docker volume mailtrustai_logs"
-
-
-cat <<'NEXT'
-
-──────────────────────────────────────────────────────────────────
-SONRAKİ ADIMLAR (opsiyonel):
-
-1. Alan adı ile yayına almak için:
-   sudo nano /opt/mailtrustai/nginx/nginx.conf
-   (server_name _ → server_name mailtrustai.sirketiniz.com)
-   sudo systemctl reload mailtrustai
-
-2. Let's Encrypt SSL almak için (certbot standalone):
-   sudo apt-get install -y certbot
-   sudo systemctl stop mailtrustai
-   sudo certbot certonly --standalone -d mailtrustai.sirketiniz.com
-   sudo cp /etc/letsencrypt/live/mailtrustai.sirketiniz.com/fullchain.pem \
-           /opt/mailtrustai/nginx/certs/
-   sudo cp /etc/letsencrypt/live/mailtrustai.sirketiniz.com/privkey.pem \
-           /opt/mailtrustai/nginx/certs/
-   # nginx.conf içindeki HTTPS server bloğunun yorumunu kaldırın
-   sudo systemctl start mailtrustai
-
-3. UFW'yi aktif etmek için (SSH'a hâlâ izin verdiğinden emin olun):
-   sudo ufw enable
-
-──────────────────────────────────────────────────────────────────
-NEXT
+echo ""

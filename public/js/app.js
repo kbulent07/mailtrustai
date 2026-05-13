@@ -2872,7 +2872,17 @@ function groupFindingsByCategory(findings) {
 // ============================================================
 function connectWebSocket() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${location.host}`);
+    // Auth: müşteri token'ı varsa onu kullan, yoksa kayıtlı lisans anahtarı.
+    // Sunucu en az birini doğrulayamazsa bağlantıyı 1008 ile kapatır.
+    const params = new URLSearchParams();
+    try {
+        const t = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('msa_customer_token')) || '';
+        if (t) params.set('token', t);
+        const lic = (typeof localStorage !== 'undefined' && localStorage.getItem('msa_license')) || '';
+        if (lic) params.set('license', lic);
+    } catch { /* sessizce devam */ }
+    const qs = params.toString();
+    ws = new WebSocket(`${protocol}//${location.host}/${qs ? '?' + qs : ''}`);
 
     ws.onopen = () => updateMonitorButton();
 

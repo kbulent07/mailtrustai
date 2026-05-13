@@ -26,6 +26,8 @@ const { initThreatIntelFeed }       = require('../integrations/threatIntel');
 const PUBLIC_PATHS = new Set([
     '/health',
     '/admin/session',
+    '/admin/setup',
+    '/admin/setup/status',
     '/admin/send-reset-code',
     '/admin/verify-reset-code',
     '/customer/status',

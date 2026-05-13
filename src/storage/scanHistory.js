@@ -120,11 +120,31 @@ function recordScan(entry) {
 }
 
 function saveScanHistory(history) {
-    db.exec('DELETE FROM scan_history');
-    const tx = db.transaction((items) => {
-        for (const item of items) recordScan(item);
+    // DELETE + INSERT'i tek bir transaction'a sar — yarıda kalırsa rollback.
+    // Ayrıca recordScan içindeki rastgele _prune() çağrısını burada atla
+    // (transaction içinde yine bir transaction açmaktan kaçınıyoruz).
+    const items = Array.isArray(history) ? history : [];
+    const tx = db.transaction((rows) => {
+        db.exec('DELETE FROM scan_history');
+        for (const item of rows) {
+            const e = _normalizeEntry(item);
+            const fromEmail = (Array.isArray(e.emailMeta?.from) && e.emailMeta.from[0]?.address) || '';
+            const subject   = e.emailMeta?.subject || '';
+            const userKey   = _deriveUserKey(e);
+            _insert.run(
+                e.id || null,
+                e.timestamp,
+                e.level || null,
+                Number.isFinite(e.score) ? e.score : null,
+                e.scanSource || null,
+                fromEmail,
+                subject,
+                userKey,
+                JSON.stringify(e)
+            );
+        }
     });
-    tx(Array.isArray(history) ? history : []);
+    tx(items);
 }
 
 // ─── AYRINTILI İSTATİSTİK ────────────────────────────────

@@ -227,8 +227,44 @@ async function resumePersistedMonitors() {
     }
 }
 
+// WebSocket bağlantısı için authentication kontrolü.
+// Kabul edilen yöntemler (en az biri geçerli olmalı):
+//   1) ?token=<adminToken|customerToken>  (Bearer benzeri JWT-benzeri token)
+//   2) ?license=<licenseKey>              (geçerli lisans anahtarı)
+//   3) Authorization: Bearer <token>      (upgrade request header)
+// Hiçbiri geçerli değilse bağlantı 1008 (policy violation) ile kapatılır.
+function _authenticateWsClient(req) {
+    try {
+        const { verifyAdminToken } = require('../middleware/adminAuth');
+        const { verifyCustomerToken } = require('../middleware/customerAuth');
+
+        // 1) Authorization header (varsa)
+        const authHeader = req.headers['authorization'] || '';
+        const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+
+        // 2) Query string parse
+        const urlObj = new URL(req.url, 'http://localhost');
+        const qToken = urlObj.searchParams.get('token') || '';
+        const qLicense = urlObj.searchParams.get('license') || '';
+
+        const tokens = [bearerToken, qToken].filter(Boolean);
+        for (const t of tokens) {
+            if (verifyAdminToken(t) || verifyCustomerToken(t)) return true;
+        }
+        if (qLicense) {
+            const r = validateLicenseKey(qLicense);
+            if (r.valid) return true;
+        }
+    } catch { /* sessiz */ }
+    return false;
+}
+
 function setupWebSocket(wss) {
-    wss.on('connection', (ws) => {
+    wss.on('connection', (ws, req) => {
+        if (!_authenticateWsClient(req)) {
+            try { ws.close(1008, 'Unauthorized'); } catch {}
+            return;
+        }
         clients.add(ws);
         ws.send(JSON.stringify({
             type: 'monitor-status',

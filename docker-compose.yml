@@ -9,7 +9,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: runner
-    container_name: mailtrustai-app
+    container_name: mailtrustai-dev
+    # Şifreleme anahtarı hostname'den türetildiği için sabit olmalı.
+    hostname: mailtrustai
     restart: unless-stopped
 
     # .env dosyasından ortam değişkenlerini yükle

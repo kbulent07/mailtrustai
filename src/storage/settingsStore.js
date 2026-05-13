@@ -80,17 +80,48 @@ function loadSettings() {
     }
 }
 
+// Process-içi mutex: aralarına başka bir yazma sızmasın diye saveSettings
+// çağrılarını serileştirir (basit Promise chain).
+let _saveChain = Promise.resolve();
+
 function saveSettings(settings) {
+    // Senkron arayüzü koruyoruz (mevcut callers .then beklemiyor) ama yazımı
+    // mutex altında kuyruğa alıyoruz. Race olursa son çağrı kazanır.
     ensureDir();
     const toSave = { ...settings };
 
-    // Hassas alanları şifrele (henüz şifrelenmemişleri)
+    // Hassas alanlar: kullanıcı girişi ENC_PREFIX taşıyorsa (bypass denemesi)
+    // bunu plaintext gibi değerlendirme — düzgünce şifrele.
     for (const field of SENSITIVE) {
-        if (toSave[field] && !toSave[field].startsWith(ENC_PREFIX)) {
-            toSave[field] = encryptValue(toSave[field]);
+        const v = toSave[field];
+        if (typeof v !== 'string' || v === '') continue;
+        if (v.startsWith(ENC_PREFIX)) {
+            // Önce decrypt edip plaintext'i çek, sonra tekrar encrypt et.
+            // (Geçerli bir encrypted blob ise decrypt başarılı; değilse — yani
+            // saldırgan input'u — boş string döner, alan temizlenir.)
+            const plain = decryptValue(v);
+            toSave[field] = plain ? encryptValue(plain) : '';
+        } else {
+            toSave[field] = encryptValue(v);
         }
     }
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(toSave, null, 2), 'utf8');
+
+    // Atomic yazım: tmp dosyaya yaz + rename (POSIX'te atomic; Windows'ta da
+    // tek dosya için pratikte güvenli — yarım dosyaya kalma riski elimine).
+    const json = JSON.stringify(toSave, null, 2);
+    const tmp  = SETTINGS_FILE + '.tmp-' + process.pid + '-' + Date.now();
+
+    _saveChain = _saveChain.then(() => new Promise((resolve) => {
+        try {
+            fs.writeFileSync(tmp, json, { encoding: 'utf8', mode: 0o600 });
+            fs.renameSync(tmp, SETTINGS_FILE);
+        } catch (e) {
+            console.error('[Settings] saveSettings hatası:', e.message);
+            try { fs.unlinkSync(tmp); } catch {}
+        }
+        resolve();
+    })).catch(() => {});
+
     return settings; // orijinali (plaintext) döndür — in-memory state şifreli olmasın
 }
 

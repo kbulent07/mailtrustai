@@ -16,6 +16,9 @@
     "scanner"
   ],
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
     "bcrypt": "^6.0.0",

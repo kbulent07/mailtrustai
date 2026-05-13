@@ -85,10 +85,19 @@ ${context}
             })
         });
 
-        const data = await response.json();
+        // response.json() doğrudan çağırırsa OpenAI HTML/502 döndürdüğünde
+        // SyntaxError fırlatır ve internal error mesajı kullanıcıya sızabilir.
+        // Önce text olarak oku, sonra güvenli parse et.
+        const rawBody = await response.text();
+        let data;
+        try { data = rawBody ? JSON.parse(rawBody) : {}; }
+        catch {
+            recordCall({ provider: 'openai', model: resolvedModel, purpose: 'analysis', success: false });
+            return { success: false, error: `OpenAI yanıtı JSON değil (HTTP ${response.status})` };
+        }
         if (!response.ok) {
             recordCall({ provider: 'openai', model: resolvedModel, purpose: 'analysis', success: false });
-            return { success: false, error: data.error?.message || 'OpenAI request failed' };
+            return { success: false, error: data.error?.message || `OpenAI request failed (HTTP ${response.status})` };
         }
 
         const rawText = extractOutputText(data);

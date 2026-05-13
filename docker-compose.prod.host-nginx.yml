@@ -1,0 +1,54 @@
+# ============================================================
+# MailTrustAI — Docker Compose (Üretim + HOST NGINX)
+#
+# Bu varyantta Docker nginx KULLANILMAZ.
+# Uygulama yalnızca host loopback'ine (127.0.0.1:3000) bağlanır;
+# host üzerindeki mevcut nginx reverse proxy görevi yapar.
+#
+# Kullanım:
+#   docker compose -f docker-compose.prod.host-nginx.yml up -d --build
+# ============================================================
+
+services:
+  mailtrustai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: mailtrustai-app
+    hostname: mailtrustai
+    restart: always
+
+    env_file:
+      - .env
+
+    environment:
+      - NODE_ENV=production
+
+    # YALNIZ loopback'e bağla — host nginx reverse proxy yapacak.
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    volumes:
+      - mailtrustai_data:/app/data
+      - mailtrustai_logs:/app/logs
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+volumes:
+  mailtrustai_data:
+    driver: local
+  mailtrustai_logs:
+    driver: local

@@ -220,7 +220,10 @@ function validateLicenseKey(key) {
 
         const expectedChecksum = generateChecksum(payload);
 
-        if (checksum !== expectedChecksum) {
+        // Timing-safe karşılaştırma — `!==` karakter karakter erken çıkar ve
+        // response-time fingerprint'i ile checksum'un byte-by-byte tahmini mümkündür.
+        if (checksum.length !== expectedChecksum.length ||
+            !crypto.timingSafeEqual(Buffer.from(checksum), Buffer.from(expectedChecksum))) {
             return { valid: false, error: 'Invalid checksum' };
         }
 

@@ -55,4 +55,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 # tini ile PID 1 sorunlarını önle (zombie process temizleme)
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "server.js"]
+# --use-system-ca: kurumsal/Let's Encrypt CA'larını OS CA store'undan al
+CMD ["node", "--use-system-ca", "server.js"]

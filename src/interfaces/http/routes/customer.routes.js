@@ -2,11 +2,21 @@
 // HTTP routes: müşteri yönetim paneli (index.html erişim şifresi)
 // ============================================================
 const express = require('express');
+const crypto  = require('crypto');
 
 const customerAuth        = require('../../../middleware/customerAuth');
 const { requireAdminAuth } = require('../../../middleware/adminAuth');
 const { validateLicenseKey } = require('../../../license/license');
 const { cleanupInitialCredsFile } = require('../../../services/initialSetupService');
+
+// Timing-safe string karşılaştırma — setup token bilgi sızıntısını engeller.
+function _tokenEquals(a, b) {
+    if (!a || !b || typeof a !== 'string' || typeof b !== 'string') return false;
+    const ab = Buffer.from(a, 'utf8');
+    const bb = Buffer.from(b, 'utf8');
+    if (ab.length !== bb.length) return false;
+    try { return crypto.timingSafeEqual(ab, bb); } catch { return false; }
+}
 
 const router = express.Router();
 
@@ -48,8 +58,13 @@ router.post('/customer/setup', async (req, res) => {
         const ipRaw = String(req.ip || req.connection?.remoteAddress || '');
         const isLocal = /^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1|localhost)$/i.test(ipRaw);
         const expectedToken = process.env.MSA_SETUP_TOKEN || '';
-        const providedToken = String(req.headers['x-setup-token'] || '');
-        const tokenMatch = expectedToken && providedToken && providedToken === expectedToken;
+        const providedToken = String(
+            req.headers['x-setup-token'] ||
+            req.query?.setup_token ||
+            req.body?.setupToken ||
+            ''
+        );
+        const tokenMatch = _tokenEquals(expectedToken, providedToken);
 
         if (!isLocal && !tokenMatch) {
             return res.status(403).json({

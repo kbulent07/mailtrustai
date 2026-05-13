@@ -3,6 +3,16 @@
 // ============================================================
 const express = require('express');
 const bcrypt  = require('bcrypt');
+const crypto  = require('crypto');
+
+// Timing-safe string karşılaştırma — setup token bilgi sızıntısını engeller.
+function _tokenEquals(a, b) {
+    if (!a || !b || typeof a !== 'string' || typeof b !== 'string') return false;
+    const ab = Buffer.from(a, 'utf8');
+    const bb = Buffer.from(b, 'utf8');
+    if (ab.length !== bb.length) return false;
+    try { return crypto.timingSafeEqual(ab, bb); } catch { return false; }
+}
 
 const { requireAdminAuth, verifyAdminPassword, createAdminToken } =
     require('../../../middleware/adminAuth');
@@ -41,6 +51,68 @@ function _checkAdminLoginRate(ip) {
     }
     return { allowed: true };
 }
+
+// ─── İlk Kurulum: admin şifresi henüz ayarlanmadıysa belirleme ─
+// Şifre yoksa localhost'tan VEYA geçerli MSA_SETUP_TOKEN ile uzaktan ayarlanabilir.
+// x-setup-token header'ı veya ?setup_token query string'i kabul edilir.
+router.get('/admin/setup/status', (req, res) => {
+    const settings = loadSettings();
+    const adminSet = Boolean((settings.adminPassword || '').trim());
+    const setupTokenConfigured = Boolean(process.env.MSA_SETUP_TOKEN);
+    res.json({
+        adminPasswordSet: adminSet,
+        setupTokenConfigured,
+        // Uzaktan setup mümkün mü? (token configured AND password yok)
+        remoteSetupAvailable: setupTokenConfigured && !adminSet
+    });
+});
+
+router.post('/admin/setup', async (req, res) => {
+    try {
+        const settings = loadSettings();
+        if ((settings.adminPassword || '').trim()) {
+            return res.status(409).json({ error: 'Admin şifresi zaten ayarlanmış. Sıfırlamak için kurtarma kodu (OTP) akışını kullanın.' });
+        }
+
+        // İlk kurulum hijack koruması: localhost VEYA MSA_SETUP_TOKEN
+        const ipRaw = String(req.ip || req.connection?.remoteAddress || '');
+        const isLocal = /^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1|localhost)$/i.test(ipRaw);
+        const expectedToken = process.env.MSA_SETUP_TOKEN || '';
+        const providedToken = String(
+            req.headers['x-setup-token'] ||
+            req.query?.setup_token ||
+            req.body?.setupToken ||
+            ''
+        );
+        const tokenMatch = _tokenEquals(expectedToken, providedToken);
+
+        if (!isLocal && !tokenMatch) {
+            return res.status(403).json({
+                error: 'İlk kurulum yalnızca sunucuya yerel (localhost) erişimden veya geçerli MSA_SETUP_TOKEN ile yapılabilir.',
+                hint: 'Sunucudaki .env dosyasına MSA_SETUP_TOKEN değerini ekleyin ve x-setup-token header (veya ?setup_token=... query) olarak gönderin.'
+            });
+        }
+
+        const password = String(req.body?.password || '');
+        if (password.length < 6) {
+            return res.status(400).json({ error: 'Şifre en az 6 karakter olmalıdır.' });
+        }
+
+        const hash = await bcrypt.hash(password, 10);
+        saveSettings({ ...settings, adminPassword: hash });
+
+        const token = createAdminToken();
+        recordAudit({ req, actorType: 'admin', actorId: 'admin', action: 'admin.setup', status: 'success' });
+        console.log(`[Setup] Admin şifresi belirlendi (kaynak: ${isLocal ? 'localhost' : 'setup-token'}).`);
+
+        // İlk-giriş şifre dosyası varsa artık geçersiz — sil
+        cleanupInitialCredsFile();
+
+        res.json({ success: true, token, expiresIn: 8 * 3600 });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
 
 router.post('/admin/session', async (req, res) => {
     try {
@@ -97,13 +169,13 @@ router.get('/audit-log', requireAdminAuth, (req, res) => {
     res.json(loadAuditLog(limit));
 });
 
-// Restart: outer api.js guard (Bearer / x-license-key / x-admin-password)
-// yetkili kişi girişini zaten doğruladığı için burada ek admin auth aranmıyor.
+// Restart: admin oturumu zorunlu — aksi halde customer token sahibi sürekli
+// restart tetikleyerek DoS yapabilir (outer guard customer token kabul ediyor).
 //
 // İşleyiş: Mevcut süreci sonlandırmadan ÖNCE, aynı argümanlarla bağımsız (detached)
 // bir alt süreç fırlatıyoruz. Bu sayede npm start, doğrudan node, batch wrapper veya
 // Windows Service ile başlatılmış olsa bile yeniden başlatma çalışır.
-router.post('/admin/restart', (req, res) => {
+router.post('/admin/restart', requireAdminAuth, (req, res) => {
     res.json({ success: true, message: 'Servis yeniden başlatılıyor...' });
     res.on('finish', () => setTimeout(() => {
         try {

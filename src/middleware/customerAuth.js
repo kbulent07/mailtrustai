@@ -44,8 +44,12 @@ async function verifyCustomerPassword(provided) {
     const settings = loadSettings();
     const stored   = settings.customerPassword || '';
     if (!stored || !provided) return false;
-    const isBcrypt = stored.startsWith('$2b$') || stored.startsWith('$2a$');
-    return isBcrypt ? bcrypt.compare(provided, stored) : provided === stored;
+    // Yalnız bcrypt hash kabul edilir (plain-text fallback kaldırıldı).
+    if (!(stored.startsWith('$2b$') || stored.startsWith('$2a$') || stored.startsWith('$2y$'))) {
+        console.warn('[Auth] Müşteri şifresi bcrypt hash değil — giriş reddedildi.');
+        return false;
+    }
+    return bcrypt.compare(provided, stored);
 }
 
 function isCustomerPasswordSet() {

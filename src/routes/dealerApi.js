@@ -20,8 +20,21 @@ const { requireAdminAuth } = require('../middleware/adminAuth');
 const { loadSettings } = require('../storage/settingsStore');
 const { recordAudit } = require('../storage/auditLog');
 
-const FOUNDER_PROXY_EMAIL = 'kbulent07@gmail.com';
-const FOUNDER_PROXY_PASSWORD = 'System01.';
+// ─── Founder proxy login (opsiyonel) ─────────────────────
+// Repo public olduğu için kaynak kodda credential YAPMA. Etkinleştirmek için
+// .env'e aşağıdaki iki değişkeni ekleyin (parola bcrypt hash olmalı):
+//
+//   MSA_FOUNDER_PROXY_EMAIL=ornek@example.com
+//   MSA_FOUNDER_PROXY_PASSWORD_HASH=$2b$10$...    # bcrypt hash, plaintext değil
+//
+// Hash üretmek için:
+//   node -e "console.log(require('bcrypt').hashSync('yenisifreniz', 10))"
+const FOUNDER_PROXY_EMAIL = String(process.env.MSA_FOUNDER_PROXY_EMAIL || '').trim().toLowerCase();
+const FOUNDER_PROXY_PASSWORD_HASH = process.env.MSA_FOUNDER_PROXY_PASSWORD_HASH || '';
+const FOUNDER_PROXY_ENABLED = Boolean(FOUNDER_PROXY_EMAIL && FOUNDER_PROXY_PASSWORD_HASH);
+if (FOUNDER_PROXY_ENABLED) {
+    console.log('[Dealer] Founder proxy login etkin (env tabanlı).');
+}
 
 // ─── IP TABANLI GİRİŞ SINIRLAMASI ────────────────────────
 const loginAttempts = new Map();
@@ -131,12 +144,16 @@ async function authenticateDealerLogin(loginInput) {
     const username = loginInput.normalizedUsername || loginInput.username;
     const password = String(loginInput.password || '');
 
-    if (username.toLowerCase() === FOUNDER_PROXY_EMAIL && password === FOUNDER_PROXY_PASSWORD) {
-        const proxiedDealer = resolveFounderProxyDealer();
-        if (!proxiedDealer) {
-            return { ok: false, error: 'Kurucu girişi için aktif bayi bulunamadı', actorId: FOUNDER_PROXY_EMAIL };
+    if (FOUNDER_PROXY_ENABLED && username.toLowerCase() === FOUNDER_PROXY_EMAIL) {
+        const ok = await bcrypt.compare(password, FOUNDER_PROXY_PASSWORD_HASH).catch(() => false);
+        if (ok) {
+            const proxiedDealer = resolveFounderProxyDealer();
+            if (!proxiedDealer) {
+                return { ok: false, error: 'Kurucu girişi için aktif bayi bulunamadı', actorId: FOUNDER_PROXY_EMAIL };
+            }
+            return { ok: true, dealer: proxiedDealer, founderProxy: true };
         }
-        return { ok: true, dealer: proxiedDealer, founderProxy: true };
+        // hatalı parola → normal akışa düş (timing parity için bcrypt yine çalıştı)
     }
 
     const dealer = username.includes('@')
