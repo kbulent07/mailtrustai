@@ -14,11 +14,11 @@ const { recordAudit } = require('../../../storage/auditLog');
 
 const router = express.Router();
 
-// /settings/keys — Hassas alanlar (adminPassword, API key'ler) yalnız admin
-// oturumuyla değiştirilebilir. Outer guard customer/license-key kabul ettiği
-// için ayrıca requireAdminAuth lazım — aksi halde customer token sahibi admin
-// şifresini değiştirebilir (privilege escalation).
-router.post('/settings/keys', requireAdminAuth, async (req, res) => {
+// /settings/keys — Müşteri-erişilebilir API key'leri + companyProfile + riskMode.
+// Outer guard zaten admin/customer/license-key kontrolünü yapıyor.
+// HASSAS NOT: adminPassword bu endpoint'ten DEĞİŞTİRİLEMEZ (privilege escalation
+// önlemi). Admin şifresi için ayrı /settings/admin-password endpoint'i var.
+router.post('/settings/keys', async (req, res) => {
     const updateKey = (current, incoming) => {
         if (incoming === undefined) return current;
         if (incoming === ':clear') return '';
@@ -36,9 +36,11 @@ router.post('/settings/keys', requireAdminAuth, async (req, res) => {
     }
 
     const current = loadSettings();
-    let adminPassword = current.adminPassword;
+
+    // adminPassword artık bu endpoint'te kabul edilmiyor → sessiz görmezden gel.
+    // Eski client'lar gönderse bile değişiklik yapma; uyarı log'la.
     if (req.body.adminPassword !== undefined) {
-        adminPassword = req.body.adminPassword ? await bcrypt.hash(req.body.adminPassword, 10) : '';
+        console.warn('[Settings] /settings/keys: adminPassword alanı görmezden gelindi. /settings/admin-password endpoint\'ini kullanın.');
     }
 
     // Risk modu (classic | shadow | ai-judge)
@@ -53,7 +55,8 @@ router.post('/settings/keys', requireAdminAuth, async (req, res) => {
         openaiApiKey: state.openaiApiKey, openaiModel: state.openaiModel,
         otxApiKey: state.otxApiKey,
         companyProfile: { ...(current.companyProfile || {}), ...(req.body.companyProfile || {}) },
-        adminPassword,
+        // adminPassword KORUNUR — değiştirilmez
+        adminPassword: current.adminPassword,
         riskMode
     });
     recordAudit({
@@ -67,8 +70,7 @@ router.post('/settings/keys', requireAdminAuth, async (req, res) => {
             openaiConfigured: !!state.openaiApiKey,
             otxConfigured: !!state.otxApiKey,
             openaiModel: state.openaiModel || OPENAI_MODEL,
-            companyProfileUpdated: !!req.body.companyProfile,
-            adminPasswordChanged: req.body.adminPassword !== undefined && !!req.body.adminPassword
+            companyProfileUpdated: !!req.body.companyProfile
         }
     });
 
@@ -82,6 +84,30 @@ router.post('/settings/keys', requireAdminAuth, async (req, res) => {
         companyProfile:  loadSettings().companyProfile || {},
         riskMode:        riskMode
     });
+});
+
+// /settings/admin-password — ADMIN-ONLY: admin şifresini değiştirme.
+// /settings/keys'ten ayrıldı çünkü o endpoint customer token ile erişilebilir
+// kalmalı (API key kaydı için), ama admin şifresi değişimi privilege escalation
+// vektörü oluşturmamalı.
+router.post('/settings/admin-password', requireAdminAuth, async (req, res) => {
+    const next = String(req.body?.adminPassword || '');
+    if (!next) {
+        return res.status(400).json({ error: 'adminPassword zorunludur' });
+    }
+    if (next.length < 6) {
+        return res.status(400).json({ error: 'Yeni şifre en az 6 karakter olmalıdır.' });
+    }
+
+    const current = loadSettings();
+    const hashed = await bcrypt.hash(next, 10);
+    saveSettings({ ...current, adminPassword: hashed });
+
+    recordAudit({
+        req, actorType: 'admin', actorId: 'admin',
+        action: 'settings.admin-password.update', status: 'success'
+    });
+    res.json({ success: true });
 });
 
 // OTX bağlantı testi
