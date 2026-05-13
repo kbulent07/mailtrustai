@@ -258,7 +258,7 @@ function setupWebSocket(wss) {
                     broadcast({ type: 'monitor-stopped', email: msg.email });
                 }
             } catch (e) {
-                ws.send(JSON.stringify({ type: 'error', message: e.message }));
+                try { ws.send(JSON.stringify({ type: 'error', message: e.message })); } catch (_) {}
             }
         });
     });

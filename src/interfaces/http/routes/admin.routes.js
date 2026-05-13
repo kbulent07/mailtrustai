@@ -97,13 +97,12 @@ router.get('/audit-log', requireAdminAuth, (req, res) => {
     res.json(loadAuditLog(limit));
 });
 
-// Restart: outer api.js guard (Bearer / x-license-key / x-admin-password)
-// yetkili kişi girişini zaten doğruladığı için burada ek admin auth aranmıyor.
+// Restart: yalnızca admin token ile erişilebilir (müşteri token / lisans anahtarı yeterli değil).
 //
 // İşleyiş: Mevcut süreci sonlandırmadan ÖNCE, aynı argümanlarla bağımsız (detached)
 // bir alt süreç fırlatıyoruz. Bu sayede npm start, doğrudan node, batch wrapper veya
 // Windows Service ile başlatılmış olsa bile yeniden başlatma çalışır.
-router.post('/admin/restart', (req, res) => {
+router.post('/admin/restart', requireAdminAuth, (req, res) => {
     res.json({ success: true, message: 'Servis yeniden başlatılıyor...' });
     res.on('finish', () => setTimeout(() => {
         try {

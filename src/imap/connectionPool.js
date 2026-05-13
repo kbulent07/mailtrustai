@@ -43,6 +43,11 @@ class ImapConnectionPool {
         const key   = account.email;
         const entry = this._pool.get(key);
 
+        if (entry && entry.busy) {
+            // Başka bir istek bu bağlantıyı zaten kullanıyor; caller kendi bağlantısını açar.
+            throw new Error(`IMAP connection pool: ${account.email} bağlantısı zaten kullanımda`);
+        }
+
         if (entry && !entry.busy) {
             // Bağlantı var, boşta — sağlık kontrolü yap
             const healthy = await this._isHealthy(entry.client);

@@ -51,7 +51,7 @@ function decryptValue(stored) {
         const data     = payload.subarray(28);
         const decipher = crypto.createDecipheriv('aes-256-gcm', _key(), iv);
         decipher.setAuthTag(authTag);
-        return decipher.update(data) + decipher.final('utf8');
+        return decipher.update(data).toString('utf8') + decipher.final('utf8');
     } catch {
         // Farklı makine / bozuk kayıt → boş döner
         return '';
@@ -96,16 +96,17 @@ function saveSettings(settings) {
 
 function defaultSettings() {
     return {
-        vtApiKey:      '',
-        claudeApiKey:  '',
-        openaiApiKey:  '',
-        openaiModel:   '',
-        otxApiKey:     '',
-        adminPassword: '',
+        vtApiKey:         '',
+        claudeApiKey:     '',
+        openaiApiKey:     '',
+        openaiModel:      '',
+        otxApiKey:        '',
+        adminPassword:    '',
+        customerPassword: '',
         companyProfile: { name: '', details: '', contactInfo: '' },
         scanMailboxes: [],
         periodicReports: {
-            recipients:       [],
+            recipients:        [],
             enabledRecipients: [],
             daily:   true,
             weekly:  true,
