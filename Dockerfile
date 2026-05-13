@@ -1,11 +1,11 @@
 # ============================================================
 # MailTrustAI — Dockerfile
-# Node.js 20 Alpine tabanlı, better-sqlite3 native derleme
-# destekli, non-root kullanıcı ile güvenli imaj.
+# Node.js 22 LTS Alpine tabanlı (--use-system-ca için 22+ gerekli).
+# better-sqlite3 native derleme destekli, non-root kullanıcı.
 # ============================================================
 
 # ── Aşama 1: Bağımlılık derleyici ──────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 # better-sqlite3 ve diğer native modüller için derleme araçları
 RUN apk add --no-cache python3 make g++ sqlite-dev
@@ -19,7 +19,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 # ── Aşama 2: Çalışma imajı ─────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 # Güvenlik: küçük runtime bağımlılıkları
 RUN apk add --no-cache sqlite-libs tini
