@@ -99,46 +99,6 @@ db.exec(`
     }
 })();
 
-// fp_suggestions tablosunu yeni şemaya güncelleme (migration)
-(function ensureFpSuggestionsSchema() {
-    const cols = db.prepare('PRAGMA table_info(fp_suggestions)').all();
-    const colNames = new Set(cols.map(c => c.name));
-
-    // Yeni şemada beklenen kolonlar (albattani branch)
-    // NOT: SQLite ALTER TABLE ADD COLUMN yalnızca sabit default kabul eder
-    const toAdd = [
-        ['finding_category', "TEXT NOT NULL DEFAULT ''"],
-        ['finding_severity',  "TEXT NOT NULL DEFAULT ''"],
-        ['finding_message',   "TEXT NOT NULL DEFAULT ''"],
-        ['scan_id',           'TEXT'],
-        ['reporter',          "TEXT NOT NULL DEFAULT ''"],
-        ['first_seen_at',     "TEXT NOT NULL DEFAULT ''"],
-        ['last_seen_at',      "TEXT NOT NULL DEFAULT ''"],
-    ];
-    let migrated = false;
-    for (const [col, def] of toAdd) {
-        if (!colNames.has(col)) {
-            db.exec(`ALTER TABLE fp_suggestions ADD COLUMN ${col} ${def}`);
-            migrated = true;
-        }
-    }
-    if (migrated) {
-        // Eski kolon adlarından yeni adlara veri kopyala (bir seferlik)
-        if (colNames.has('finding_msg') && !colNames.has('_migrated')) {
-            db.exec(`UPDATE fp_suggestions SET finding_message = COALESCE(finding_msg, '') WHERE finding_message = ''`);
-        }
-        if (colNames.has('severity') && !colNames.has('finding_severity')) {
-            // severity kolonu hem yeni şemada hem eskilerde olabilir; finding_severity'yi doldur
-            db.exec(`UPDATE fp_suggestions SET finding_severity = COALESCE(severity, '') WHERE finding_severity = ''`);
-        }
-        if (colNames.has('reported_at')) {
-            db.exec(`UPDATE fp_suggestions SET first_seen_at = COALESCE(reported_at, first_seen_at), last_seen_at = COALESCE(reported_at, last_seen_at) WHERE first_seen_at = ''`);
-        }
-        // Index oluştur (IF NOT EXISTS güvenli)
-        try { db.exec(`CREATE INDEX IF NOT EXISTS idx_fp_status ON fp_suggestions(status, last_seen_at DESC)`); } catch {}
-        console.log('[DB] fp_suggestions şema migration tamamlandı.');
-    }
-})();
 
 // ─── TEHDİT PATERNI VE MARKA DOMAIN TABLOLARI ────────────
 db.exec(`
@@ -189,7 +149,43 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_patterns_category ON threat_patterns(category, enabled);
 `);
 
-// ─── BAŞLANGIÇ VERİSİ (SEED) ─────────────────────────────
+// fp_suggestions tablosunu yeni şemaya güncelleme (migration)
+(function ensureFpSuggestionsSchema() {
+    const cols = db.prepare('PRAGMA table_info(fp_suggestions)').all();
+    const colNames = new Set(cols.map(c => c.name));
+
+    // Yeni şemada beklenen kolonlar (albattani branch)
+    const toAdd = [
+        ['finding_category', "TEXT NOT NULL DEFAULT ''"],
+        ['finding_severity',  "TEXT NOT NULL DEFAULT ''"],
+        ['finding_message',   "TEXT NOT NULL DEFAULT ''"],
+        ['scan_id',           'TEXT'],
+        ['reporter',          "TEXT NOT NULL DEFAULT ''"],
+        ['first_seen_at',     "TEXT NOT NULL DEFAULT ''"],
+        ['last_seen_at',      "TEXT NOT NULL DEFAULT ''"],
+    ];
+    let migrated = false;
+    for (const [col, def] of toAdd) {
+        if (!colNames.has(col)) {
+            db.exec(`ALTER TABLE fp_suggestions ADD COLUMN ${col} ${def}`);
+            migrated = true;
+        }
+    }
+    if (migrated) {
+        if (colNames.has('finding_msg') && !colNames.has('_migrated')) {
+            db.exec(`UPDATE fp_suggestions SET finding_message = COALESCE(finding_msg, '') WHERE finding_message = ''`);
+        }
+        if (colNames.has('severity') && !colNames.has('finding_severity')) {
+            db.exec(`UPDATE fp_suggestions SET finding_severity = COALESCE(severity, '') WHERE finding_severity = ''`);
+        }
+        if (colNames.has('reported_at')) {
+            db.exec(`UPDATE fp_suggestions SET first_seen_at = COALESCE(reported_at, first_seen_at), last_seen_at = COALESCE(reported_at, last_seen_at) WHERE first_seen_at = ''`);
+        }
+        try { db.exec(`CREATE INDEX IF NOT EXISTS idx_fp_status ON fp_suggestions(status, last_seen_at DESC)`); } catch {}
+        console.log('[DB] fp_suggestions şema migration tamamlandı.');
+    }
+})();
+
 (function seedStaticData() {
     const brandCount = db.prepare('SELECT COUNT(*) AS n FROM brand_domains').get().n;
     if (brandCount === 0) {
