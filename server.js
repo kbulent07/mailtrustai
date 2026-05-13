@@ -9,10 +9,14 @@ const dealerRoutes = require('./src/routes/dealerApi');
 const { setupWebSocket } = require('./src/routes/websocket');
 const { startBackgroundRefresh } = require('./src/license/remoteValidator');
 const { loadSettings } = require('./src/storage/settingsStore');
+const { checkAndSeedInitialPasswords } = require('./src/services/initialSetupService');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+
+// Başlangıçta şifreleri kontrol et
+checkAndSeedInitialPasswords();
 
 // Reverse proxy arkasında doğru IP'yi alabilmek için (X-Forwarded-For). Localhost gate'i için kritik.
 app.set('trust proxy', 'loopback, linklocal, uniquelocal');

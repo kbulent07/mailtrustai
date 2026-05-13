@@ -6,6 +6,7 @@ const express = require('express');
 const customerAuth        = require('../../../middleware/customerAuth');
 const { requireAdminAuth } = require('../../../middleware/adminAuth');
 const { validateLicenseKey } = require('../../../license/license');
+const { cleanupInitialCredsFile } = require('../../../services/initialSetupService');
 
 const router = express.Router();
 
@@ -88,6 +89,10 @@ router.post('/customer/login', async (req, res) => {
 
         customerAuth.clearLoginRate(ip);
         const token = customerAuth.createCustomerToken();
+
+        // İlk şifre dosyasını temizle (varsa)
+        cleanupInitialCredsFile();
+
         res.json({ success: true, token, expiresIn: 12 * 3600 });
     } catch (e) {
         res.status(500).json({ error: e.message });

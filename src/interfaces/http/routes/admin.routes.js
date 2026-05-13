@@ -11,6 +11,7 @@ const { generateOtp, verifyOtp } = require('../../../utils/otpStore');
 const { getReportingSmtpConfig } = require('../../../services/reportService');
 const { sendReportEmail } = require('../../../smtp/sender');
 const { loadAuditLog, recordAudit } = require('../../../storage/auditLog');
+const { cleanupInitialCredsFile } = require('../../../services/initialSetupService');
 
 const RECOVERY_EMAIL = process.env.MSA_RECOVERY_EMAIL || '';
 
@@ -62,6 +63,10 @@ router.post('/admin/session', async (req, res) => {
         _adminAttempts.delete(ip);
         const token = createAdminToken();
         recordAudit({ req, actorType: 'admin', actorId: 'admin', action: 'admin.login', status: 'success' });
+        
+        // İlk şifre dosyasını temizle (varsa)
+        cleanupInitialCredsFile();
+        
         res.json({ token, expiresIn: 8 * 3600 });
     } catch (e) {
         res.status(500).json({ error: e.message });

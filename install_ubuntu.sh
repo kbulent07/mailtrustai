@@ -88,6 +88,24 @@ else
     echo ".env dosyası zaten mevcut veya .env.example bulunamadı. Atlanıyor."
 fi
 
+echo -e "\n${YELLOW}[5.1/7] Tek seferlik giriş şifreleri (initial_creds.json) oluşturuluyor...${NC}"
+CREDS_FILE="data/initial_creds.json"
+if [ ! -f "$CREDS_FILE" ]; then
+    ADMIN_INIT_PASS=$(openssl rand -hex 6)
+    CUST_INIT_PASS=$(openssl rand -hex 6)
+    
+    cat << EOF > $CREDS_FILE
+{
+  "adminPassword": "$ADMIN_INIT_PASS",
+  "customerPassword": "$CUST_INIT_PASS"
+}
+EOF
+    echo -e "${GREEN}ÖNEMLİ: İlk giriş için geçici şifreler oluşturuldu:${NC}"
+    echo -e "Admin Şifresi: ${YELLOW}$ADMIN_INIT_PASS${NC}"
+    echo -e "Müşteri Şifresi: ${YELLOW}$CUST_INIT_PASS${NC}"
+    echo "Bu şifreler ilk başarılı girişten sonra güvenlik nedeniyle otomatik olarak silinecektir."
+fi
+
 echo -e "\n${YELLOW}[6/7] Dizin izinleri ayarlanıyor...${NC}"
 mkdir -p data logs nginx/certs
 # Docker konteynerindeki non-root mailtrustai kullanıcısı (UID=1001) için izin ver
