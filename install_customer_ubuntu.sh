@@ -231,7 +231,12 @@ setup_ssl() {
 }
 
 # ── Sabitler ─────────────────────────────────────────────────────────────────
-readonly APP_DIR="/opt/mailtrustai"
+# Script bir git reposunun içinden çalıştırılıyorsa (ör. /opt/mailtrustai/app)
+# APP_DIR otomatik olarak o reponun köküne ayarlanır; aksi halde varsayılan kullanılır.
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_GIT_ROOT="$(git -C "$_SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+APP_DIR="${_GIT_ROOT:-/opt/mailtrustai}"
+readonly APP_DIR
 readonly REPO_URL="https://github.com/kbulent07/mailtrustai.git"
 readonly REPO_BRANCH="main"
 readonly APP_UID=1001
