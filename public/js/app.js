@@ -3261,89 +3261,13 @@ function closeSettings() {
         document.removeEventListener('keydown', _settingsEscHandler);
         _settingsEscHandler = null;
     }
-    // Reset panelini kapat ve temizle
-    const panel = document.getElementById('resetPanel');
-    if (panel) { panel.style.display = 'none'; _resetPanelOpen = false; }
-    const step2 = document.getElementById('resetStep2');
-    if (step2) step2.style.display = 'none';
-    ['resetCodeInput','resetNewPassword'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-    ['resetStep1Status','resetStep2Status'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ''; });
 }
 
-// ─── Admin Şifre Sıfırlama (OTP) ─────────────────────────
-let _resetPanelOpen = false;
-
-function toggleResetPanel() {
-    const panel = document.getElementById('resetPanel');
-    if (!panel) return;
-    _resetPanelOpen = !_resetPanelOpen;
-    panel.style.display = _resetPanelOpen ? '' : 'none';
-}
-
-async function sendAdminResetCode() {
-    const statusEl = document.getElementById('resetStep1Status');
-    if (statusEl) statusEl.textContent = '⏳ Kod gönderiliyor...';
-
-    try {
-        const res = await fetch('/api/admin/send-reset-code', { method: 'POST' });
-        const data = await res.json();
-
-        if (!res.ok) {
-            if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">${esc(data.error || 'Hata')}</span>`;
-            return;
-        }
-
-        if (statusEl) statusEl.innerHTML = `<span style="color:#34d399">✅ ${esc(data.message)}</span>`;
-        // Adım 2 göster
-        const step2 = document.getElementById('resetStep2');
-        if (step2) step2.style.display = '';
-        const codeInput = document.getElementById('resetCodeInput');
-        if (codeInput) codeInput.focus();
-    } catch (e) {
-        if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">Bağlantı hatası: ${esc(e.message)}</span>`;
-    }
-}
-
-async function verifyAdminResetCode() {
-    const code        = document.getElementById('resetCodeInput')?.value.trim() || '';
-    const newPassword = document.getElementById('resetNewPassword')?.value || '';
-    const statusEl    = document.getElementById('resetStep2Status');
-
-    if (!code || code.length !== 6) {
-        if (statusEl) statusEl.innerHTML = '<span style="color:#f87171">6 haneli kodu girin.</span>';
-        return;
-    }
-    if (!newPassword || newPassword.length < 6) {
-        if (statusEl) statusEl.innerHTML = '<span style="color:#f87171">Yeni şifre en az 6 karakter olmalıdır.</span>';
-        return;
-    }
-
-    if (statusEl) statusEl.textContent = '⏳ Doğrulanıyor...';
-
-    try {
-        const res = await fetch('/api/admin/verify-reset-code', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code, newPassword })
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-            if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">❌ ${esc(data.error || 'Hata')}</span>`;
-            return;
-        }
-
-        if (statusEl) statusEl.innerHTML = '<span style="color:#34d399;font-weight:700">✅ Şifre başarıyla değiştirildi! Panel kapanıyor...</span>';
-        // Alanları temizle
-        const codeInput = document.getElementById('resetCodeInput');
-        const pwInput   = document.getElementById('resetNewPassword');
-        if (codeInput) codeInput.value = '';
-        if (pwInput)   pwInput.value   = '';
-        setTimeout(() => closeSettings(), 2000);
-    } catch (e) {
-        if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">Bağlantı hatası: ${esc(e.message)}</span>`;
-    }
-}
+// NOT: Eski "Admin Şifresi" alanı ve OTP-tabanlı sıfırlama paneli müşteri
+// ayarlarından kaldırıldı. Yeni rol modelinde:
+//   - Müşteri admin şifresi → /keygen.html'deki sistem admin'inden bağımsız
+//   - Müşteri kullanıcı şifresi → 👥 Müşteri Kullanıcıları modal'ından sıfırlanır
+//   - Sistem admin (keygen.html) şifresi → keygen.html üzerinden yönetilir
 
 async function readApiJsonOrThrow(res, fallbackMessage) {
     let data = {};
@@ -3371,7 +3295,6 @@ async function saveSettings() {
     const otxKey    = document.getElementById('otxApiKeyInput')?.value.trim() || '';
     const claudeKey = document.getElementById('claudeApiKeyInput').value.trim();
     const openaiKey = document.getElementById('openaiApiKeyInput').value.trim();
-    const adminPwd  = document.getElementById('adminPasswordInput')?.value || '';
     const companyProfile = {
         name:        document.getElementById('companyNameInput')?.value.trim() || '',
         details:     document.getElementById('companyDetailsInput')?.value.trim() || '',
@@ -3382,9 +3305,6 @@ async function saveSettings() {
         weekly:  document.getElementById('periodicWeekly')?.checked !== false,
         monthly: document.getElementById('periodicMonthly')?.checked !== false
     };
-
-    // Giriş zaten yetkili kişi tarafından yapıldığı için ek admin şifresi sorulmuyor.
-    // Admin şifresi alanı yalnızca yeni şifre belirlemek için kullanılır (opsiyonel).
 
     // OpenAI model: "__custom__" seçiliyse text box'tan al, yoksa select değerini kullan
     const modelSel   = document.getElementById('openaiModelSelect');
@@ -3402,8 +3322,6 @@ async function saveSettings() {
         companyProfile,
         riskMode
     };
-    // Admin şifresi alanı doluysa yeni şifre olarak gönder (opsiyonel)
-    if (adminPwd) payload.adminPassword = adminPwd;
 
     const keysRes = await fetch('/api/settings/keys', {
         method: 'POST',
@@ -3411,10 +3329,6 @@ async function saveSettings() {
         body: JSON.stringify(payload)
     });
     await readApiJsonOrThrow(keysRes, 'Ayar anahtarlari kaydedilemedi');
-
-    // Admin şifresi alanını her kayıttan sonra temizle
-    const adminInput = document.getElementById('adminPasswordInput');
-    if (adminInput) adminInput.value = '';
 
     if (!keysRes.ok) {
         const statusEl = document.getElementById('settingsStatus');

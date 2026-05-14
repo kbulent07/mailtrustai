@@ -1142,50 +1142,6 @@
         </div>
 
         <div class="form-group">
-            <label class="form-label">🔒 Admin Şifresi <span style="font-size:11px;color:var(--text-secondary);font-weight:400">(opsiyonel — yeni şifre belirlemek için, /keygen.html ve /bayi.html'de kullanılır)</span></label>
-            <input class="form-input" id="adminPasswordInput" type="password" placeholder="Yeni şifre (boş bırakılırsa değişmez)">
-            <div style="margin-top:6px">
-                <button type="button" class="btn btn-ghost btn-sm" onclick="toggleResetPanel()" style="font-size:11px;padding:4px 10px;opacity:.8">
-                    🔑 Şifremi Unuttum (e-posta ile sıfırla)
-                </button>
-            </div>
-
-            <!-- OTP SIFIRLAMA PANELİ -->
-            <div id="resetPanel" style="display:none;margin-top:12px;background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.2);border-radius:10px;padding:14px">
-                <div style="font-size:13px;font-weight:700;color:#38bdf8;margin-bottom:10px">🔐 E-posta ile Şifre Sıfırlama</div>
-
-                <!-- Adım 1: Kod gönder -->
-                <div id="resetStep1">
-                    <div class="text-muted" style="font-size:12px;margin-bottom:10px">
-                        Kayıtlı kurtarma adresine 6 haneli doğrulama kodu gönderilecek.
-                    </div>
-                    <button type="button" class="btn btn-ghost btn-sm" onclick="sendAdminResetCode()" style="border-color:#38bdf8;color:#38bdf8">
-                        📨 Doğrulama Kodu Gönder
-                    </button>
-                    <div id="resetStep1Status" class="text-muted" style="font-size:12px;margin-top:8px"></div>
-                </div>
-
-                <!-- Adım 2: Kodu ve yeni şifreyi gir (başta gizli) -->
-                <div id="resetStep2" style="display:none;margin-top:12px">
-                    <div class="form-group" style="margin-bottom:8px">
-                        <label class="form-label" style="font-size:12px">Doğrulama Kodu</label>
-                        <input class="form-input" id="resetCodeInput" placeholder="6 haneli kod" maxlength="6"
-                               style="font-size:20px;letter-spacing:8px;font-weight:700;max-width:180px"
-                               oninput="this.value=this.value.replace(/\D/g,'')">
-                    </div>
-                    <div class="form-group" style="margin-bottom:10px">
-                        <label class="form-label" style="font-size:12px">Yeni Admin Şifresi</label>
-                        <input class="form-input" id="resetNewPassword" type="password" placeholder="En az 6 karakter" style="max-width:260px">
-                    </div>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <button type="button" class="btn btn-primary btn-sm" onclick="verifyAdminResetCode()">✅ Onayla ve Şifreyi Değiştir</button>
-                        <button type="button" class="btn btn-ghost btn-sm" onclick="sendAdminResetCode()" style="font-size:11px">🔄 Yeni Kod İste</button>
-                    </div>
-                    <div id="resetStep2Status" class="text-muted" style="font-size:12px;margin-top:8px"></div>
-                </div>
-            </div>
-        </div>
-        <div class="form-group">
             <label class="form-label">Firma Adi</label>
             <input class="form-input" id="companyNameInput" placeholder="Şirketinizin Adı">
         </div>
