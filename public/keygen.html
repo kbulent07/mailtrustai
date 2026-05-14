@@ -1510,7 +1510,7 @@
             const otxPct = total > 0 ? (d.otxHits / total * 100).toFixed(1) : '0.0';
             document.getElementById('statsIntegrations').innerHTML = `
                 <div style="margin-bottom:14px">
-                    ${_bar('🦠 VirusTotal Tespiti', d.vtHits || 0, total || 1, '#f87171')}
+                    ${_bar('🦠 AntiVirüs Tarama Tespiti', d.vtHits || 0, total || 1, '#f87171')}
                     <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">İsabet oranı: ${vtPct}%</div>
                 </div>
                 <div>
@@ -1526,7 +1526,7 @@
                 return;
             }
             const catLabels = {
-                virusTotal:    '🦠 VirusTotal',
+                virusTotal:    '🦠 AntiVirüs Tarama',
                 otx:           '🌐 AlienVault OTX',
                 spf:           '📋 SPF Başarısız',
                 dkim:          '🔏 DKIM Başarısız',

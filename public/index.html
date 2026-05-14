@@ -299,7 +299,7 @@
     <div class="navbar-actions">
         <span class="license-badge free" id="licenseBadge">🆓 Free</span>
         <span class="text-muted hidden" id="usageCounter" title="Aylık tarama kullanımı" style="font-size:12px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.05)">0 / ∞</span>
-        <span id="roleBadge" title="Oturum açık kullanıcı" style="font-size:11px;padding:3px 8px;border-radius:4px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);color:#c7d2fe;display:none">👤</span>
+        <span id="roleBadge" title="Oturum açık kullanıcı" style="font-size:11px;padding:3px 8px;border-radius:4px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);color:#c7d2fe;display:none;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0">👤</span>
         <button class="btn btn-ghost btn-sm" id="btnLang" onclick="toggleLang()">🌐 EN</button>
         <button class="btn btn-ghost btn-sm admin-only" id="btnCustomerUsers" onclick="showCustomerUsersModal()" title="Müşteri Kullanıcıları (admin)" style="display:none">👥</button>
         <button class="btn btn-ghost btn-sm admin-only" id="btnSettings" onclick="showSettings()">⚙️</button>
@@ -792,7 +792,7 @@
         <!-- Virüs Tarama Sonuçları -->
         <div class="card mt-24 hidden" id="vtResults">
             <div class="card-header">
-                <span class="card-title">🦠 Virüs Kontrolleri</span>
+                <span class="card-title">🦠 AntiVirüs Tarama Sonuçları</span>
             </div>
             <div id="vtContent"></div>
         </div>
@@ -1049,10 +1049,10 @@
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">🔌 Entegrasyon API Anahtarları</div>
 
             <div class="form-group">
-                <label class="form-label">🦠 VirusTotal API Anahtarı</label>
+                <label class="form-label">🦠 AntiVirüs Tarama API Anahtarı</label>
                 <input class="form-input" id="vtApiKeyInput" placeholder="Ücretsiz API anahtarınızı girin">
                 <div class="text-muted" style="font-size:11px;margin-top:4px">
-                    Ek dosya hash taraması — <a href="https://www.virustotal.com/gui/my-apikey" target="_blank" style="color:#60a5fa">virustotal.com</a>
+                    Ek dosya hash taraması — <a href="https://www.virustotal.com/gui/my-apikey" target="_blank" style="color:#60a5fa">API anahtarı al</a>
                 </div>
             </div>
 

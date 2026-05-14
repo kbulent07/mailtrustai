@@ -493,11 +493,11 @@ function _deriveLevelReason(data) {
     const vt = data.virusTotal || [];
     const vtMal = vt.reduce((n,e) => n + (e.stats?.malicious || 0), 0);
     const vtSus = vt.reduce((n,e) => n + (e.stats?.suspicious || 0), 0);
-    if (vtMal) parts.push(`VirusTotal'de ${vtMal} motor zararlı`);
-    else if (vtSus) parts.push(`VirusTotal'de ${vtSus} motor şüpheli`);
+    if (vtMal) parts.push(`AntiVirüs taramada ${vtMal} motor zararlı`);
+    else if (vtSus) parts.push(`AntiVirüs taramada ${vtSus} motor şüpheli`);
 
     const abuseHits = (data.abuseData?.matches || []).length;
-    if (abuseHits) parts.push(`Abuse feed'de ${abuseHits} tehditli bağlantı`);
+    if (abuseHits) parts.push(`Link Tarama Motorunda ${abuseHits} tehditli bağlantı`);
 
     const ai = data.openaiAnalysis;
     if (ai?.threatLevel) {
@@ -1136,8 +1136,8 @@ function renderVirusTotal(entries, vtStatus, data) {
             <div class="finding-item">
                 <div class="finding-icon warning">!</div>
                 <div>
-                    <div class="finding-text"><strong>Virüs tarama API anahtarı tanımlı değil</strong></div>
-                    <div class="finding-category">Ek dosyalar virüs taramasına gönderilmedi. Yalnızca yerel ek kontrolleri çalıştırıldı.</div>
+                    <div class="finding-text"><strong>AntiVirüs Tarama API anahtarı tanımlı değil</strong></div>
+                    <div class="finding-category">Ek dosyalar AntiVirüs taramasına gönderilmedi. Yalnızca yerel ek kontrolleri çalıştırıldı.</div>
                 </div>
             </div>
         `
@@ -1179,7 +1179,7 @@ function renderVirusTotal(entries, vtStatus, data) {
                 ${renderVirusTotalDetails(entry)}
                 ${renderArchiveWarningForEntry(entry, data)}
                 ${entry.link
-                    ? `<a href="${entry.link}" target="_blank" class="text-accent" style="font-size:12px">Virüs Tarama Raporunu Görüntüle →</a>`
+                    ? `<a href="${entry.link}" target="_blank" class="text-accent" style="font-size:12px">AntiVirüs Tarama Raporunu Görüntüle →</a>`
                     : ''}
             </div>
         </div>
@@ -1188,15 +1188,15 @@ function renderVirusTotal(entries, vtStatus, data) {
 
 function renderVirusTotalDetails(entry) {
     if (entry.error) {
-        return `<div class="text-orange">Virüs tarama hatası: ${esc(entry.error)}</div>`;
+        return `<div class="text-orange">AntiVirüs Tarama hatası: ${esc(entry.error)}</div>`;
     }
 
     if (!entry.checked) {
-        return '<div class="text-orange">Virüs tarama sorgusu tamamlanamadı.</div>';
+        return '<div class="text-orange">AntiVirüs Tarama sorgusu tamamlanamadı.</div>';
     }
 
     if (!entry.found) {
-        return '<div class="text-muted">Virüs tarama veritabanında kayıt bulunamadı.</div>';
+        return '<div class="text-muted">AntiVirüs Tarama veritabanında kayıt bulunamadı.</div>';
     }
 
     const stats = entry.stats || {};
@@ -1564,7 +1564,8 @@ function localizeCategory(category) {
         content: 'Icerik',
         link: 'Baglantilar',
         attachment: 'Ek Dosya',
-        virusTotal: 'Virüs Kontrolleri',
+        virusTotal: 'AntiVirüs Tarama Sonuçları',
+        abuse:      'Link Tarama Motoru Sonuçları',
         ai: 'Yapay Zeka'
     }[category] || category || 'Genel';
 }
@@ -2609,6 +2610,8 @@ function renderImapReport(data, message = null) {
             </div>
         </div>
 
+        ${renderImapAbuseSection(data)}
+
         ${renderImapAttachmentSection(data)}
 
         <!-- AI Görüşleri (IMAP) — 3 sekme: Derinlemesine / OpenAI / Claude -->
@@ -2700,6 +2703,65 @@ window.switchImapAiTab = function(btn, targetId) {
 window.imapMobileBackToList = function() {
     document.body.removeAttribute('data-imap-mode');
 };
+
+// ─── Link Tarama Motoru Sonuçları (abuse.ch URLhaus + OpenPhish) ──────────
+// Bu bölüm IMAP raporunda her zaman görünür; eşleşme yoksa "temiz" mesajı verir.
+// Eşleşme varsa tabloda URL/domain + kaynak feed ile birlikte listelenir.
+function renderImapAbuseSection(data) {
+    const status  = data?.abuseStatus  || {};
+    const matches = data?.abuseData?.matches || [];
+
+    // Bilgi durumu rozeti
+    let badge;
+    if (!status.checked) {
+        badge = `<span class="text-muted" style="font-size:11px">URL tespit edilmedi</span>`;
+    } else if (!status.available) {
+        badge = `<span style="font-size:11px;color:#fbbf24">⚠️ Feed kullanılamıyor</span>`;
+    } else if (matches.length === 0) {
+        badge = `<span style="font-size:11px;color:#34d399">✅ Tehdit eşleşmesi yok</span>`;
+    } else {
+        badge = `<span style="font-size:11px;color:#f87171;font-weight:600">${matches.length} tehdit eşleşmesi</span>`;
+    }
+
+    const source = status.source || 'URLhaus + OpenPhish';
+
+    const rows = matches.length === 0
+        ? `<div style="font-size:12px;color:var(--text-secondary);padding:8px 4px">
+              ${status.checked && status.available
+                ? '✅ Bu maildeki bağlantı(lar) bilinen tehdit veritabanlarında bulunamadı.'
+                : status.available === false
+                    ? '⚠️ Tehdit besleme önbelleği henüz hazır değil — kontroller atlandı.'
+                    : 'Bu mailde taranacak bağlantı bulunmuyor.'}
+           </div>`
+        : matches.map(m => {
+            const typeLabel = m.type === 'url' ? 'URL' : 'Domain';
+            const val = String(m.value || '');
+            const display = val.length > 90 ? val.slice(0, 87) + '…' : val;
+            return `
+              <div class="finding-item compact" style="display:flex;align-items:flex-start;gap:10px">
+                <div class="finding-icon critical">!!</div>
+                <div style="flex:1;min-width:0">
+                    <div class="finding-text"><strong>${esc(typeLabel)}:</strong> <code style="word-break:break-all">${esc(display)}</code></div>
+                    <div class="finding-category">${esc(m.source || source)}</div>
+                </div>
+              </div>`;
+        }).join('');
+
+    return `
+        <div class="imap-finding-group" style="margin-bottom:16px;">
+            <div class="imap-group-title">
+                <span>🔗 Link Tarama Motoru Sonuçları</span>
+                ${badge}
+            </div>
+            <div style="padding:0 4px 6px;font-size:11px;color:var(--text-secondary)">
+                Tehdit feed kaynağı: <strong>${esc(source)}</strong>
+            </div>
+            <div class="findings-list">
+                ${rows}
+            </div>
+        </div>
+    `;
+}
 
 function renderImapAttachmentSection(data) {
     const rows = mergeAttachmentScanData(data);
@@ -2841,12 +2903,13 @@ function renderImapClaudeSection(analysis) {
 
 function groupFindingsByCategory(findings) {
     const labels = {
-        header:      currentLang === 'tr' ? 'Header Kontrolleri'    : 'Header Checks',
-        content:     currentLang === 'tr' ? 'Icerik Kontrolleri'    : 'Content Checks',
-        link:        currentLang === 'tr' ? 'Link Kontrolleri'       : 'Link Checks',
-        attachment:  currentLang === 'tr' ? 'Ek Kontrolleri'        : 'Attachment Checks',
-        virusTotal:  currentLang === 'tr' ? 'Virüs Kontrolleri' : 'Virus Checks',
-        general:     currentLang === 'tr' ? 'Genel Kontroller'       : 'General Checks'
+        header:      currentLang === 'tr' ? 'Header Kontrolleri'             : 'Header Checks',
+        content:     currentLang === 'tr' ? 'Icerik Kontrolleri'             : 'Content Checks',
+        link:        currentLang === 'tr' ? 'Link Kontrolleri'                : 'Link Checks',
+        attachment:  currentLang === 'tr' ? 'Ek Kontrolleri'                 : 'Attachment Checks',
+        virusTotal:  currentLang === 'tr' ? 'AntiVirüs Tarama Sonuçları'    : 'Anti-Virus Scan Results',
+        abuse:       currentLang === 'tr' ? 'Link Tarama Motoru Sonuçları'  : 'Link Scan Engine Results',
+        general:     currentLang === 'tr' ? 'Genel Kontroller'                : 'General Checks'
         // 'ai' kategorisi IMAP görünümünde renderImapAiSection tarafından ayrıca gösterilir
     };
 
@@ -3424,9 +3487,9 @@ async function loadSettingsStatus() {
         if (riskModeSel) riskModeSel.value = status.riskMode || 'classic';
 
         statusEl.textContent = [
-            `VirusTotal: ${status.vtConfigured ? '✅' : '—'}`,
+            `AntiVirüs: ${status.vtConfigured ? '✅' : '—'}`,
             `OTX: ${status.otxConfigured ? '✅' : '—'}`,
-            `Abuse Feed: ${status.abuseFeedAvailable ? 'OK' : '-'}`,
+            `Link Tarama Motoru: ${status.abuseFeedAvailable ? 'OK' : '-'}`,
             `Claude: ${status.claudeConfigured ? '✅' : '—'}`,
             `OpenAI: ${status.openaiConfigured ? `✅ (${status.openaiModel || 'default'})` : '—'}`,
             `Firma: ${profile.name || 'tanımsız'}`
@@ -3856,11 +3919,11 @@ function findingIcon(severity) {
 
 function formatCategory(category) {
     const map = {
-        virusTotal:  'VİRÜS KONTROLLERİ',
+        virusTotal:  'ANTİVİRÜS TARAMA',
         header:      'BAŞLIK',
         content:     'İÇERİK',
         link:        'BAĞLANTI',
-        abuse:       'ABUSE / URLHAUS',
+        abuse:       'LİNK TARAMA MOTORU',
         attachment:  'EK DOSYA',
         ai:          'YAPAY ZEKA',
         general:     'GENEL'
@@ -4997,7 +5060,7 @@ function _cuRenderIntegrations(d) {
     document.getElementById('cuStatsIntegrations').innerHTML = `
         <div style="margin-bottom:14px">
             <div style="cursor:pointer;user-select:none" onclick="showVtDetections()" title="Tespit edilen dosya ve antivirüsleri görüntüle">
-                ${_cuBar('🦠 VirusTotal Antivirüs Tespitleri  ↗', d.vtHits || 0, total || 1, '#f87171')}
+                ${_cuBar('🦠 AntiVirüs Tarama Tespitleri  ↗', d.vtHits || 0, total || 1, '#f87171')}
             </div>
             <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">
                 İsabet oranı: ${vtPct}%
@@ -5014,7 +5077,7 @@ function _cuRenderIntegrations(d) {
             </div>
         </div>
         <div>
-            ${_cuBar('🚨 Abuse / URLhaus Eşleşmesi', d.abuseHits || 0, total || 1, '#f59e0b')}
+            ${_cuBar('🔗 Link Tarama Motoru Tespiti', d.abuseHits || 0, total || 1, '#f59e0b')}
             <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">
                 İsabet oranı: ${abusePct}%
             </div>
@@ -5048,7 +5111,7 @@ function closeListDetailModal() {
 
 // ─── VIRUSTOTAl TESPİT LİSTESİ ───────────────────────────
 async function showVtDetections() {
-    const body = _openListDetailModal('🦠 VirusTotal Antivirüs Tespitleri');
+    const body = _openListDetailModal('🦠 AntiVirüs Tarama Tespitleri');
     if (!body) return;
     try {
         const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
@@ -5063,7 +5126,7 @@ async function showVtDetections() {
 
 function _cuRenderVtDetections(panel, list) {
     if (!list.length) {
-        panel.innerHTML = '<p style="font-size:12px;color:var(--text-secondary);padding:8px 0">VirusTotal tespiti bulunamadı.</p>';
+        panel.innerHTML = '<p style="font-size:12px;color:var(--text-secondary);padding:8px 0">AntiVirüs tespiti bulunamadı.</p>';
         return;
     }
 
@@ -5087,7 +5150,7 @@ function _cuRenderVtDetections(panel, list) {
             : '';
 
         const vtLink = item.link
-            ? `<a href="${esc(item.link)}" target="_blank" style="font-size:11px;color:#60a5fa;text-decoration:none" title="VirusTotal'da görüntüle">🔗 VT</a>`
+            ? `<a href="${esc(item.link)}" target="_blank" style="font-size:11px;color:#60a5fa;text-decoration:none" title="Antivirüs raporunu aç">🔗 Rapor</a>`
             : '';
 
         const scanLink = item.scanId
@@ -5521,8 +5584,8 @@ function _cuRenderCategories(cats) {
         return;
     }
     const catLabels = {
-        virusTotal:  '🦠 VirusTotal', otx: '🌐 OTX',
-        abuse: '🚨 Abuse / URLhaus',
+        virusTotal:  '🦠 AntiVirüs Tarama', otx: '🌐 OTX',
+        abuse: '🔗 Link Tarama Motoru',
         spf: '📋 SPF', dkim: '🔏 DKIM', dmarc: '🛡️ DMARC',
         phishing: '🎣 Phishing', attachment: '📎 Şüpheli Ek',
         link: '🔗 Şüpheli Link', spoofing: '🎭 Sahtecilik',
@@ -5828,7 +5891,7 @@ async function renderOnboardingChecklist() {
           desc: 'Bayinizden aldığınız lisans kodunu girin' },
         { id: 'apiKey',           done: state.apiKey,           label: '🔑 En az bir AI/VT/OTX anahtarı ekle',
           action: () => openSettings?.(),
-          desc: 'OpenAI veya VirusTotal entegrasyonu güç katar' },
+          desc: 'OpenAI veya AntiVirüs entegrasyonu güç katar' },
         { id: 'firstScan',        done: state.firstScan,        label: '🔍 İlk taramanı yap',
           action: () => { switchPage?.('scan') || selectMode('upload'); },
           desc: 'Bir EML dosyası yükleyip test et' },
@@ -6349,22 +6412,23 @@ function applyCustomerRoleUI() {
     const email = getCustomerEmail();
     const isUser = role === 'user';
 
-    // Rol rozeti
+    // Rol rozeti — uzun e-postada @ öncesi kısa kullanıcı adı, tam adres title'da
     const badge = document.getElementById('roleBadge');
     if (badge) {
         badge.style.display = '';
+        const shortName = (email || '').split('@')[0] || (isUser ? 'user' : 'admin');
+        const icon = isUser ? '👤' : '🛡️';
+        badge.textContent = `${icon} ${shortName}`;
+        badge.title = (isUser ? 'Müşteri kullanıcı — sınırlı erişim' : 'Müşteri admin')
+            + (email ? `  (${email})` : '');
         if (isUser) {
-            badge.textContent = '👤 ' + (email || 'user');
             badge.style.background = 'rgba(245,158,11,0.15)';
             badge.style.borderColor = 'rgba(245,158,11,0.35)';
             badge.style.color = '#fcd34d';
-            badge.title = 'Müşteri kullanıcı — sınırlı erişim';
         } else {
-            badge.textContent = '🛡️ ' + (email || 'admin');
             badge.style.background = 'rgba(99,102,241,0.15)';
             badge.style.borderColor = 'rgba(99,102,241,0.35)';
             badge.style.color = '#c7d2fe';
-            badge.title = 'Müşteri admin';
         }
     }
 
