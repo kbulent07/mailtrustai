@@ -39,7 +39,11 @@ const PUBLIC_PATHS = new Set([
 // Customer admin = "müşteri admin" — kendi alanındaki her şeyi yönetir.
 // user rolü için izinli: belirli IMAP/analyze/scan endpoint'leri (aşağıda whitelist).
 const ADMIN_ONLY_PREFIXES = [
-    '/settings/',
+    // /settings/* spesifik yazma endpoint'leri (read-only /settings/status user için açık)
+    '/settings/keys',
+    '/settings/admin-password',
+    '/settings/otx/test',
+    '/settings/realtime-alerts',
     '/threat-intel/refresh',
     '/admin/config/',
     '/admin/trusted-domains',
@@ -54,8 +58,9 @@ const ADMIN_ONLY_PREFIXES = [
     '/license/revoked',
     '/reports/settings',
     '/scan-mailboxes',
-    '/webhook',  // /settings/webhook gibi alt path'ler de yukarıda yakalanır
     '/audit-log'
+    // /settings/webhook GET user'a açık (read-only); POST/test endpoint'leri
+    // route handler içinde zaten kendi auth'unu yapıyor.
 ];
 
 // user rolü için izinli path'ler (whitelist). Diğer her şey kapalı.
@@ -65,14 +70,18 @@ const USER_ROLE_ALLOWED_PREFIXES = [
     '/analyze/',       // mail analizi (kendi mailbox'ından)
     '/health',
     '/customer/status',
+    '/license',           // GET /license → kayıtlı aktif lisans (user da görmeli)
     '/license/validate',
     '/license/prices',
     '/license/activate',
     '/license/check',
     '/license/usage',
+    '/settings/status',   // ayar durumu (yalnız okuma) — user için gerekli
     '/stats/',
     '/lists/',
-    '/threat-intel/'   // istatistik okuma (refresh hariç yukarıda)
+    '/threat-intel/',     // istatistik okuma (refresh hariç ADMIN_ONLY'de)
+    '/scan-history',      // tarama geçmişi
+    '/monitor/'           // monitor durumu okuma
 ];
 
 function _isAdminOnlyPath(path) {
