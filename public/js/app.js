@@ -2648,13 +2648,8 @@ function renderImapReport(data, message = null) {
             </div>
         </div>
 
-        ${renderImapAbuseSection(data)}
-
-        ${renderImapThreatTypesSection(data)}
-
-        ${renderImapAttachmentSection(data)}
-
-        <!-- AI Görüşleri (IMAP) — 3 sekme: Derinlemesine / OpenAI / Claude -->
+        <!-- AI Görüşleri (IMAP) — 3 sekme: Derinlemesine / OpenAI / Claude
+             Link Tarama Motoru'nun ÜZERİNDE konumlandırılmıştır (kullanıcı talebi). -->
         <div class="imap-finding-group" style="margin-bottom:16px;padding:0;overflow:hidden;border:1px solid rgba(99,102,241,0.25);border-radius:10px;">
             <div style="display:flex;gap:0;border-bottom:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);">
                 <button onclick="switchImapAiTab(this,'imapAiTab-deep')"
@@ -2674,6 +2669,12 @@ function renderImapReport(data, message = null) {
             <div id="imapAiTab-openai" style="padding:10px;display:none">${renderImapAiSection(data.openaiAnalysis, data.openaiError)}</div>
             <div id="imapAiTab-claude" style="padding:10px;display:none">${renderImapClaudeSection(data.claudeAnalysis)}</div>
         </div>
+
+        ${renderImapAbuseSection(data)}
+
+        ${renderImapThreatTypesSection(data)}
+
+        ${renderImapAttachmentSection(data)}
 
         <div class="imap-finding-groups">
             ${groups.map((group) => `
