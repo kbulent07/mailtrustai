@@ -4,7 +4,12 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { recordCall } = require('../storage/llmUsageStore');
 
-const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
+// Kurucu (founder) tarafı yönetimi: model değiştirme .env üzerinden yapılır.
+// MSA_CLAUDE_MODEL veya MSA_LOCKED_CLAUDE_MODEL set'liyse o kullanılır.
+// Müşteri admin UI'dan bunu değiştiremez (claude.js içinden okunur, settings'te yok).
+const CLAUDE_MODEL = process.env.MSA_LOCKED_CLAUDE_MODEL
+                  || process.env.MSA_CLAUDE_MODEL
+                  || 'claude-haiku-4-5-20251001';
 const MAX_EMAIL_CHARS = 10000;
 
 function sanitizeForPrompt(text) {

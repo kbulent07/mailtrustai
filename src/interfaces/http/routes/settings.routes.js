@@ -30,9 +30,17 @@ router.post('/settings/keys', async (req, res) => {
     state.openaiApiKey = updateKey(state.openaiApiKey, req.body.openaiApiKey);
     state.otxApiKey    = updateKey(state.otxApiKey,    req.body.otxApiKey);
 
+    // Kurucu tarafı model kilidi: .env'de MSA_LOCKED_OPENAI_MODEL set'liyse
+    // müşteri admin UI'dan modeli değiştiremez — istek görmezden gelinir.
     if (req.body.openaiModel !== undefined) {
-        state.openaiModel = req.body.openaiModel === ':clear'
-            ? '' : (String(req.body.openaiModel || '').trim() || state.openaiModel);
+        if (process.env.MSA_LOCKED_OPENAI_MODEL) {
+            // Sessiz görmezden gel + uyarı logla (eski client'lar gönderse bile bozulmasın)
+            console.warn(`[Settings] OpenAI model değişikliği reddedildi — MSA_LOCKED_OPENAI_MODEL set (kilitli model: ${process.env.MSA_LOCKED_OPENAI_MODEL}).`);
+            state.openaiModel = process.env.MSA_LOCKED_OPENAI_MODEL;
+        } else {
+            state.openaiModel = req.body.openaiModel === ':clear'
+                ? '' : (String(req.body.openaiModel || '').trim() || state.openaiModel);
+        }
     }
 
     const current = loadSettings();
@@ -123,12 +131,20 @@ router.post('/settings/otx/test', async (req, res) => {
 router.get('/settings/status', (req, res) => {
     const settings = loadSettings();
     const threatIntel = getThreatIntelStats();
+    // Kurucu tarafı model kilidi durumu — UI bunu görüp seçeneği disable eder
+    const openaiModelLocked = Boolean(process.env.MSA_LOCKED_OPENAI_MODEL);
+    const claudeModelLocked = Boolean(process.env.MSA_LOCKED_CLAUDE_MODEL);
     res.json({
         vtConfigured:    !!state.vtApiKey,
         claudeConfigured:!!state.claudeApiKey,
         openaiConfigured:!!state.openaiApiKey,
         openaiModel:     state.openaiModel || OPENAI_MODEL,
         availableModels: AVAILABLE_OPENAI_MODELS,
+        openaiModelLocked,
+        claudeModel:     process.env.MSA_LOCKED_CLAUDE_MODEL
+                      || process.env.MSA_CLAUDE_MODEL
+                      || 'claude-haiku-4-5-20251001',
+        claudeModelLocked,
         otxConfigured:   !!state.otxApiKey,
         abuseFeedAvailable: !!threatIntel.available,
         abuseFeedUpdatedAt: threatIntel.updatedAt,

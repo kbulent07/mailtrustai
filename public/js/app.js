@@ -3921,6 +3921,29 @@ async function loadSettingsStatus() {
             } else {
                 if (modelInp) { modelInp.style.display = 'none'; modelInp.value = ''; }
             }
+
+            // Kurucu kilidi: MSA_LOCKED_OPENAI_MODEL .env'de set ise UI kilitlenir.
+            // Müşteri admin görür ama değiştiremez — "Sistem yöneticisi tarafından
+            // sabitlendi" notu eklenir.
+            const lockHintId = 'openaiModelLockHint';
+            const existingHint = document.getElementById(lockHintId);
+            if (existingHint) existingHint.remove();
+            modelSel.disabled = !!status.openaiModelLocked;
+            if (modelInp) modelInp.disabled = !!status.openaiModelLocked;
+            if (status.openaiModelLocked) {
+                modelSel.title = 'Bu model sunucu yöneticisi tarafından sabitlendi (.env: MSA_LOCKED_OPENAI_MODEL).';
+                modelSel.style.cursor = 'not-allowed';
+                modelSel.style.opacity = '0.7';
+                const hint = document.createElement('div');
+                hint.id = lockHintId;
+                hint.style.cssText = 'font-size:11px;color:#fbbf24;margin-top:4px;display:flex;align-items:center;gap:4px';
+                hint.innerHTML = '🔒 <span>Model kilidi: sistem yöneticisi <code>.env</code> üzerinden değiştirebilir.</span>';
+                modelSel.parentElement?.appendChild(hint);
+            } else {
+                modelSel.title = '';
+                modelSel.style.cursor = '';
+                modelSel.style.opacity = '';
+            }
         }
 
         // Risk modu select'ini güncel değere ayarla
