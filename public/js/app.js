@@ -5160,28 +5160,49 @@ function showPage(page) {
     if (statsPanel) statsPanel.style.display = 'none';
     if (otxPanel)   otxPanel.style.display   = 'none';
     [tabHome, tabScan, tabStats, tabOtx].forEach(t => t && t.classList.remove('active'));
+    ['mNavTabHome','mNavTabScan','mNavTabStats','mNavTabOtx'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.classList.remove('active');
+    });
 
     if (page === 'home') {
         if (homePanel) homePanel.style.display = '';
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
         if (tabHome) tabHome.classList.add('active');
+        const mh = document.getElementById('mNavTabHome'); if (mh) mh.classList.add('active');
         loadHomePage();
     } else if (page === 'stats') {
         if (statsPanel) statsPanel.style.display = '';
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
         if (tabStats) tabStats.classList.add('active');
+        const ms = document.getElementById('mNavTabStats'); if (ms) ms.classList.add('active');
         loadStatsPage();
     } else if (page === 'otx-approval') {
         if (otxPanel) otxPanel.style.display = '';
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
         if (tabOtx) tabOtx.classList.add('active');
+        const mo = document.getElementById('mNavTabOtx'); if (mo) mo.classList.add('active');
         loadUserFpSuggestions();
     } else {
-        // 'scan' (varsayılan)
-        // Her paneli inline style'dan arındır; görünürlüğü mevcut .hidden sınıfı yönetir
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
         if (tabScan) tabScan.classList.add('active');
+        const ms2 = document.getElementById('mNavTabScan'); if (ms2) ms2.classList.add('active');
     }
+}
+
+function toggleMobileMenu() {
+    const menu = document.getElementById('mobileNavMenu');
+    const btn  = document.getElementById('navHamburger');
+    const open = menu.classList.toggle('open');
+    btn.classList.toggle('open', open);
+    btn.setAttribute('aria-expanded', open);
+}
+
+function closeMobileMenu() {
+    const menu = document.getElementById('mobileNavMenu');
+    const btn  = document.getElementById('navHamburger');
+    menu.classList.remove('open');
+    btn.classList.remove('open');
+    btn.setAttribute('aria-expanded', 'false');
 }
 
 // ─── İSTATİSTİK SAYFASI ───────────────────────────────────

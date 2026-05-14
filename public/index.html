@@ -329,7 +329,26 @@
         <button class="btn btn-ghost btn-sm admin-only" id="btnLicense" onclick="showLicenseModal()">🔑</button>
         <button class="btn btn-ghost btn-sm" id="btnLogout" onclick="customerAuthLogout()" title="Oturumu Kapat">🚪</button>
     </div>
+    <!-- Hamburger — sadece mobilde görünür -->
+    <button class="navbar-hamburger" id="navHamburger" onclick="toggleMobileMenu()" aria-label="Menü" aria-expanded="false">
+        <span></span><span></span><span></span>
+    </button>
 </nav>
+
+<!-- Mobil açılır menü -->
+<div class="mobile-nav-menu" id="mobileNavMenu">
+    <button class="mobile-nav-tab" onclick="showPage('home');  closeMobileMenu()" id="mNavTabHome">🏠 Ana Sayfa</button>
+    <button class="mobile-nav-tab" onclick="showPage('scan');  closeMobileMenu()" id="mNavTabScan">🔍 Tarama</button>
+    <button class="mobile-nav-tab" onclick="showPage('stats'); closeMobileMenu()" id="mNavTabStats">📊 İstatistik</button>
+    <button class="mobile-nav-tab" onclick="showPage('otx-approval'); closeMobileMenu()" id="mNavTabOtx">🛡️ OTX Onay</button>
+    <div class="mobile-nav-divider"></div>
+    <div class="mobile-nav-actions">
+        <button class="btn btn-ghost btn-sm" onclick="toggleLang(); closeMobileMenu()">🌐 Dil</button>
+        <button class="btn btn-ghost btn-sm admin-only" id="mBtnSettings" onclick="showSettings(); closeMobileMenu()">⚙️ Ayarlar</button>
+        <button class="btn btn-ghost btn-sm admin-only" id="mBtnLicense" onclick="showLicenseModal(); closeMobileMenu()">🔑 Lisans</button>
+        <button class="btn btn-ghost btn-sm" onclick="customerAuthLogout()">🚪 Çıkış</button>
+    </div>
+</div>
 
 <!-- MAIN CONTENT -->
 <div class="main-content" id="mainContent">
