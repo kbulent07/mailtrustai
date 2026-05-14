@@ -88,6 +88,14 @@ router.post('/customer/setup', async (req, res) => {
         const tokenMatch = _tokenEquals(expectedToken, providedToken);
 
         if (!isLocal && !tokenMatch) {
+            // Debug log: 403 nedenini docker logs ile görebilmek için (token'lar maskeli)
+            const _mask = (s) => s ? (String(s).slice(0, 4) + '...' + String(s).slice(-4) + ` (len=${String(s).length})`) : '<empty>';
+            console.warn('[Setup-403] ip=' + ipRaw +
+                ' expected=' + _mask(expectedToken) +
+                ' provided=' + _mask(providedToken) +
+                ' src=' + (req.headers['x-setup-token'] ? 'header' :
+                           req.query?.setup_token ? 'query' :
+                           req.body?.setupToken ? 'body' : 'none'));
             return res.status(403).json({
                 error: 'İlk kurulum yalnızca localhost veya geçerli MSA_SETUP_TOKEN ile yapılabilir.',
                 hint: 'Sunucu .env dosyasına MSA_SETUP_TOKEN ekleyin ve URL\'ye ?setup_token=... ekleyin.'

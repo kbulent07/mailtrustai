@@ -392,10 +392,14 @@
             const setupToken = getSetupTokenFromUrl();
             if (setupToken) headers['x-setup-token'] = setupToken;
 
-            const res = await fetch('/api/customer/setup', {
+            // Belt-and-suspenders: token'ı 3 kanaldan da gönder (header + query + body)
+            // Bazı proxy/wrapper'lar custom header'ı düşürebiliyor → en az biri ulaşır.
+            const apiUrl = '/api/customer/setup' +
+                (setupToken ? '?setup_token=' + encodeURIComponent(setupToken) : '');
+            const res = await fetch(apiUrl, {
                 method: 'POST',
                 headers,
-                body: JSON.stringify({ email, password: p1 })
+                body: JSON.stringify({ email, password: p1, setupToken })
             });
             const data = await res.json();
             if (!res.ok) {
