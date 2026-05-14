@@ -74,7 +74,14 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public'), {
     etag: true,
     lastModified: true,
-    maxAge: '1h' // ~1 saat tarayıcı önbelleği; release'lerde URL versionlama yapılırsa daha uzun olabilir
+    // maxAge:0 + etag:true → tarayıcı her seferinde If-None-Match ile sorar,
+    // değişmemişse server 304 Not Modified döner (cache'lenmiş kopyayı kullanır,
+    // ama her zaman güncel). Değişmişse 200 ile yeni dosyayı alır. Hot-fix anında
+    // propagate eder; yalnızca trafik küçük bir gecikme yaşar.
+    maxAge: 0,
+    setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
 }));
 
 // API Routes
