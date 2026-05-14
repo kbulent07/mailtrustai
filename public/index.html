@@ -638,7 +638,7 @@
             <div class="mode-desc" data-i18n="mode_imap_desc">Gelen kutusunu tara ve izle</div>
             <span class="mode-badge badge-ent">Enterprise</span>
         </div>
-        <div class="scan-mode" data-mode="scan-mailbox" onclick="selectMode('scan-mailbox')">
+        <div class="scan-mode admin-only" data-mode="scan-mailbox" onclick="selectMode('scan-mailbox')">
             <div class="mode-icon">📬</div>
             <div class="mode-title" data-i18n="mode_scanmailbox">Tarama Posta Kutusu</div>
             <div class="mode-desc" data-i18n="mode_scanmailbox_desc">Gelen mail → otomatik rapor</div>
@@ -674,7 +674,7 @@
         <div class="card-header">
             <span class="card-title">📡 <span data-i18n="imap_title">IMAP Gelen Kutusu</span></span>
             <div class="flex gap-16">
-                <button class="btn btn-ghost btn-sm" onclick="showImapModal()">➕ Hesap Ekle</button>
+                <button class="btn btn-ghost btn-sm admin-only" onclick="showImapModal()">➕ Hesap Ekle</button>
                 <button class="btn btn-primary btn-sm" onclick="refreshInbox()">🔄 Yenile</button>
             </div>
         </div>
@@ -694,7 +694,7 @@
             <button class="btn btn-primary" onclick="scanSelected()" id="btnScanSelected" disabled>
                 ✅ <span data-i18n="btn_scan_selected">Seçilenleri Tara</span>
             </button>
-            <button class="btn btn-ghost" onclick="startMonitor()" id="btnMonitor">
+            <button class="btn btn-ghost admin-only" onclick="startMonitor()" id="btnMonitor">
                 📡 <span data-i18n="btn_monitor">Otomatik İzle</span>
             </button>
                 </div>

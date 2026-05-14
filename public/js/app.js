@@ -247,6 +247,20 @@ async function syncLicenseFromServer() {
 // MODE SWITCHING
 // ============================================================
 function selectMode(mode, updateState = true) {
+    // Müşteri user rolü: scan-mailbox panelini açamaz (admin işi).
+    // IMAP'i açabilir ama orada da admin butonları gizli.
+    if (mode === 'scan-mailbox' && getCustomerRole() === 'user') {
+        if (updateState) {
+            showToast(
+                currentLang === 'tr'
+                    ? 'Tarama Posta Kutusu yönetimi yalnız müşteri yönetici hesabında.'
+                    : 'Scan Mailbox management is admin-only.',
+                'warning',
+                { title: '🔒 Yetki Yok' }
+            );
+        }
+        mode = 'imap';
+    }
     // Lisans gate'leri — yetersizse güvenli mode'a düş, kullanıcı tetiklediyse uyar
     if (mode === 'imap' && !licenseInfo?.features?.imapConnection) {
         if (updateState) {
@@ -1755,7 +1769,17 @@ function restoreMainView(mode = currentMode, updateState = false) {
 // ============================================================
 // IMAP
 // ============================================================
+// Müşteri user rolü için ortak yetki kontrolü — admin-only işlemleri engeller.
+function _denyIfCustomerUser(actionLabel) {
+    if (getCustomerRole() !== 'user') return false;
+    alert(currentLang === 'tr'
+        ? `Bu işlem (${actionLabel}) yalnız müşteri yönetici hesabında yapılabilir.`
+        : `This action (${actionLabel}) is admin-only.`);
+    return true;
+}
+
 function showImapModal() {
+    if (_denyIfCustomerUser('IMAP Hesabı Ekle/Düzenle')) return;
     document.getElementById('imapModal').classList.remove('hidden');
 }
 
@@ -2041,16 +2065,13 @@ async function loadImapAccounts() {
         }
 
         if (accounts.length > 0) {
+            const isCustomerUserRole = getCustomerRole() === 'user';
             select.innerHTML = accounts.map((account) => {
                 const isMonitoring = activeMonitorEmails.has(account.email);
                 const isReportMenuOpen = activeReportMenuEmail === account.email;
-                return `
-                <div class="connection-bar imap-account-row ${isMonitoring ? 'monitoring' : ''}" data-account-email="${esc(account.email)}" style="margin-bottom:8px">
-                    <span class="status-dot ${isMonitoring ? 'monitoring' : 'connected'}"></span>
-                    <strong>${esc(account.email)}</strong>
-                    <span class="text-muted">${esc(account.host)}:${account.port}</span>
-                    ${account.moveHighRiskToQuarantine ? '<span class="email-monitor-badge">Quarantine</span>' : ''}
-                    <span style="flex:1"></span>
+                // Müşteri user rolünde: Edit, Delete, Rutin Rapor, Rapor Gönder
+                // gizli. Yalnız "Listele" butonu görünür — mailleri görüntüleyebilir.
+                const adminControls = isCustomerUserRole ? '' : `
                     <button class="btn btn-ghost btn-sm" onclick='editImapAccount(${JSON.stringify(account.email)})'>Edit</button>
                     <button class="btn btn-danger btn-sm" onclick='deleteImapAccount(${JSON.stringify(account.email)})'>Delete</button>
                     <label class="btn btn-ghost btn-sm imap-report-toggle" title="Günlük/haftalık/aylık özet rapor alır" onclick="event.stopPropagation()">
@@ -2067,7 +2088,15 @@ async function loadImapAccounts() {
                                 <button class="btn btn-ghost btn-sm" onclick='triggerMailboxReport(${JSON.stringify(account.email)}, "yearly")'>Yillik</button>
                             </div>
                         ` : ''}
-                    </div>
+                    </div>`;
+                return `
+                <div class="connection-bar imap-account-row ${isMonitoring ? 'monitoring' : ''}" data-account-email="${esc(account.email)}" style="margin-bottom:8px">
+                    <span class="status-dot ${isMonitoring ? 'monitoring' : 'connected'}"></span>
+                    <strong>${esc(account.email)}</strong>
+                    <span class="text-muted">${esc(account.host)}:${account.port}</span>
+                    ${account.moveHighRiskToQuarantine ? '<span class="email-monitor-badge">Quarantine</span>' : ''}
+                    <span style="flex:1"></span>
+                    ${adminControls}
                     <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick='refreshInbox(${JSON.stringify(account.email)})'>Listele</button>
                 </div>
             `;
@@ -2098,6 +2127,7 @@ async function loadImapAccounts() {
 }
 
 async function deleteImapAccount(email) {
+    if (_denyIfCustomerUser('IMAP Hesabı Sil')) return;
     const okay = confirm(
         currentLang === 'tr'
             ? `${email} hesabini silmek istediginize emin misiniz?`
@@ -2125,6 +2155,7 @@ async function deleteImapAccount(email) {
 }
 
 async function editImapAccount(email) {
+    if (_denyIfCustomerUser('IMAP Hesabı Düzenle')) return;
     const res = await fetch('/api/imap/accounts');
     const accounts = await res.json();
     const account = accounts.find((item) => item.email === email);
@@ -2178,6 +2209,7 @@ async function editImapAccount(email) {
 }
 
 async function toggleImapAutoReport(email, enabled) {
+    if (_denyIfCustomerUser('Rutin Rapor')) return;
     try {
         const res = await fetch(`/api/imap/accounts/${encodeURIComponent(email)}/report`, {
             method: 'PATCH',
@@ -2197,11 +2229,13 @@ async function toggleImapAutoReport(email, enabled) {
 }
 
 function toggleReportMenu(email) {
+    if (_denyIfCustomerUser('Rapor Gönder')) return;
     activeReportMenuEmail = activeReportMenuEmail === email ? null : email;
     loadImapAccounts();
 }
 
 async function triggerMailboxReport(email, period) {
+    if (_denyIfCustomerUser('Rapor Gönder')) return;
     const statusEl = document.getElementById('periodicReportStatus');
     activeReportMenuEmail = email;
     if (statusEl) {
@@ -3000,6 +3034,7 @@ function connectWebSocket() {
 }
 
 function startMonitor() {
+    if (_denyIfCustomerUser('Otomatik İzle')) return;
     fetch('/api/imap/accounts')
         .then((res) => res.json())
         .then((accounts) => {
@@ -4213,6 +4248,7 @@ function stopAutoMonitorFromList(email) {
 let editingScanMailboxEmail = null;
 
 async function showScanMailboxModal() {
+    if (_denyIfCustomerUser('Tarama Posta Kutusu Ekle')) return;
     editingScanMailboxEmail = null;
     const modal       = document.getElementById('scanMailboxModal');
     const limitBanner = document.getElementById('smProLimitBanner');
