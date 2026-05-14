@@ -17,6 +17,7 @@ const { analyzeWithClaude } = require('../integrations/claude');
 const { analyzeWithOpenAI } = require('../integrations/openai');
 const { scanAttachments: vtScan } = require('../integrations/virustotal');
 const { maybeMoveMessageToQuarantine } = require('../imap/quarantineService');
+const { getImapSenderSkipInfo } = require('../imap/scanExclusions');
 const crypto = require('crypto');
 
 // NOT: Yeni mail geldiğinde mail sahibine otomatik HTML rapor gönderimi
@@ -165,6 +166,21 @@ async function startMonitorForAccount(account, license) {
     if (existing?.isRunning?.()) return existing;
 
     const monitor = new ImapMonitor(account, async (emailEvent) => {
+        // Self-loop koruması: kendi gönderdiğimiz güvenlik raporları veya
+        // merkezi tarama kutusu kaynaklı mailler analiz edilmemeli/karantinaya
+        // alınmamalı — aksi halde rapor mailinin kendisi karantinaya taşınır.
+        const subject = String(emailEvent.email?.subject || '');
+        if (subject.includes('[MailTrustAI Güvenlik Raporu]') ||
+            subject.includes('[MailTrustAI Security Report]')) {
+            console.log(`[WS-Monitor] Self-loop atlandı (rapor konusu): "${subject.slice(0, 80)}"`);
+            return;
+        }
+        const skipInfo = getImapSenderSkipInfo({ account, from: emailEvent.email?.from });
+        if (skipInfo.skip) {
+            console.log(`[WS-Monitor] Gönderen tarama dışı atlandı (${skipInfo.reason}): ${skipInfo.fromEmail}`);
+            return;
+        }
+
         const h = analyzeHeaders(emailEvent.email);
         const c = analyzeContent(emailEvent.email, 'advanced');
         const l = analyzeLinks(emailEvent.email);
