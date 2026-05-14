@@ -169,7 +169,10 @@ function _isWebhookUrlSafe(rawUrl) {
     return { ok: true, url: u.toString() };
 }
 
-router.post('/settings/webhook', requireAdminAuth, (req, res) => {
+// Webhook ayarları müşteri-erişilebilir. SSRF korumasını _isWebhookUrlSafe
+// yapıyor (private/loopback IP'leri reddediyor) — admin auth gerektirmek
+// kullanılabilirliği kırardı (müşteri panelinden ayarlama).
+router.post('/settings/webhook', (req, res) => {
     const safety = _isWebhookUrlSafe(String(req.body.webhookUrl || '').trim());
     if (!safety.ok) return res.status(400).json({ error: safety.error });
 
@@ -189,7 +192,7 @@ router.post('/settings/webhook', requireAdminAuth, (req, res) => {
     res.json({ success: true });
 });
 
-router.post('/settings/webhook/test', requireAdminAuth, async (req, res) => {
+router.post('/settings/webhook/test', async (req, res) => {
     const url = req.body.webhookUrl || loadSettings().webhookUrl;
     if (!url) return res.status(400).json({ error: 'Webhook URL gerekli' });
     const safety = _isWebhookUrlSafe(url);
