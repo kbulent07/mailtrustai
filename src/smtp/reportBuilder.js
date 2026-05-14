@@ -68,7 +68,9 @@ function buildReportHtml(result, lang = 'tr') {
             kv('GONDEREN ITIBARI', senderReputation(result))
         ].join('')),
 
-        section('&#128737;&#65039; Virüs Kontrolleri', buildVirusTotalTable(vtRows)),
+        // 'Virüs Kontrolleri' bölümü kaldırıldı; AntiVirüs tarama bulgu(ları)
+        // 'Detayli Bulgular' tablosunda + 'Tespit Edilen Tehdit Tipleri' tag'lerinde
+        // zaten görünüyor — tek başlık altında topla.
 
         otxSection,
 
@@ -404,11 +406,11 @@ function localSeverity(severity) {
 function localCategory(category) {
     return {
         attachment: 'Ek dosya',
-        virusTotal: 'Virüs Kontrolleri',
+        virusTotal: 'Tespit Edilen Tehdit Tipleri',
         header: 'Kimlik dogrulama',
         content: 'Icerik',
         link: 'Baglantilar',
-        abuse: 'Abuse / URLhaus',
+        abuse: 'Link Tarama Motoru',
         ai: 'Yapay zeka',
         otx: 'OTX IP/Domain'
     }[category] || category || 'Genel';

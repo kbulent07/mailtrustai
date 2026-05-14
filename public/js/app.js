@@ -1564,7 +1564,7 @@ function localizeCategory(category) {
         content: 'Icerik',
         link: 'Baglantilar',
         attachment: 'Ek Dosya',
-        virusTotal: 'AntiVirüs Tarama Sonuçları',
+        virusTotal: 'Tespit Edilen Tehdit Tipleri',
         abuse:      'Link Tarama Motoru Sonuçları',
         ai: 'Yapay Zeka'
     }[category] || category || 'Genel';
@@ -2907,7 +2907,7 @@ function groupFindingsByCategory(findings) {
         content:     currentLang === 'tr' ? 'Icerik Kontrolleri'             : 'Content Checks',
         link:        currentLang === 'tr' ? 'Link Kontrolleri'                : 'Link Checks',
         attachment:  currentLang === 'tr' ? 'Ek Kontrolleri'                 : 'Attachment Checks',
-        virusTotal:  currentLang === 'tr' ? 'AntiVirüs Tarama Sonuçları'    : 'Anti-Virus Scan Results',
+        virusTotal:  currentLang === 'tr' ? 'Tespit Edilen Tehdit Tipleri'  : 'Detected Threat Types',
         abuse:       currentLang === 'tr' ? 'Link Tarama Motoru Sonuçları'  : 'Link Scan Engine Results',
         general:     currentLang === 'tr' ? 'Genel Kontroller'                : 'General Checks'
         // 'ai' kategorisi IMAP görünümünde renderImapAiSection tarafından ayrıca gösterilir
@@ -3919,7 +3919,7 @@ function findingIcon(severity) {
 
 function formatCategory(category) {
     const map = {
-        virusTotal:  'ANTİVİRÜS TARAMA',
+        virusTotal:  'TESPİT EDİLEN TEHDİT TİPLERİ',
         header:      'BAŞLIK',
         content:     'İÇERİK',
         link:        'BAĞLANTI',
@@ -5060,7 +5060,7 @@ function _cuRenderIntegrations(d) {
     document.getElementById('cuStatsIntegrations').innerHTML = `
         <div style="margin-bottom:14px">
             <div style="cursor:pointer;user-select:none" onclick="showVtDetections()" title="Tespit edilen dosya ve antivirüsleri görüntüle">
-                ${_cuBar('🦠 AntiVirüs Tarama Tespitleri  ↗', d.vtHits || 0, total || 1, '#f87171')}
+                ${_cuBar('🔍 Tespit Edilen Tehdit Tipleri  ↗', d.vtHits || 0, total || 1, '#f87171')}
             </div>
             <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">
                 İsabet oranı: ${vtPct}%
@@ -5111,7 +5111,7 @@ function closeListDetailModal() {
 
 // ─── VIRUSTOTAl TESPİT LİSTESİ ───────────────────────────
 async function showVtDetections() {
-    const body = _openListDetailModal('🦠 AntiVirüs Tarama Tespitleri');
+    const body = _openListDetailModal('🔍 Tespit Edilen Tehdit Tipleri');
     if (!body) return;
     try {
         const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
@@ -5584,7 +5584,7 @@ function _cuRenderCategories(cats) {
         return;
     }
     const catLabels = {
-        virusTotal:  '🦠 AntiVirüs Tarama', otx: '🌐 OTX',
+        virusTotal:  '🔍 Tespit Edilen Tehdit Tipleri', otx: '🌐 OTX',
         abuse: '🔗 Link Tarama Motoru',
         spf: '📋 SPF', dkim: '🔏 DKIM', dmarc: '🛡️ DMARC',
         phishing: '🎣 Phishing', attachment: '📎 Şüpheli Ek',
@@ -6075,6 +6075,13 @@ function exportHistoryCsv() {
 // ALLOWLIST / BLOCKLIST
 // ============================================================
 function openListsPanel() {
+    // Sadece müşteri admin açabilir. Müşteri user için 'sınırlı erişim' uyarısı.
+    if (getCustomerRole() === 'user') {
+        alert(currentLang === 'tr'
+            ? 'Allowlist / Blocklist yönetimi yalnız müşteri yönetici hesabıyla yapılabilir.'
+            : 'Allowlist / Blocklist management is admin-only.');
+        return;
+    }
     const panel = document.getElementById('listsPanel');
     if (!panel) return;
     panel.style.display = '';

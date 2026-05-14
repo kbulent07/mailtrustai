@@ -58,7 +58,9 @@ const ADMIN_ONLY_PREFIXES = [
     '/license/revoked',
     '/reports/settings',
     '/scan-mailboxes',
-    '/audit-log'
+    '/audit-log',
+    // Allowlist / Blocklist ekle/sil/listele — yalnız müşteri admin yapabilir
+    '/lists'
     // /settings/webhook GET user'a açık (read-only); POST/test endpoint'leri
     // route handler içinde zaten kendi auth'unu yapıyor.
 ];
@@ -78,7 +80,7 @@ const USER_ROLE_ALLOWED_PREFIXES = [
     '/license/usage',
     '/settings/status',   // ayar durumu (yalnız okuma) — user için gerekli
     '/stats/',
-    '/lists/',
+    // /lists/* admin-only listede; user'a kapalı (kullanıcı yöneticisinin işi).
     '/threat-intel/',     // istatistik okuma (refresh hariç ADMIN_ONLY'de)
     '/scan-history',      // tarama geçmişi
     '/monitor/'           // monitor durumu okuma

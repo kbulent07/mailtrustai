@@ -443,7 +443,7 @@
                         <button class="btn btn-ghost" style="justify-content:flex-start" onclick="showPage('scan');selectMode('imap')">
                             📡 IMAP Gelen Kutusunu Aç
                         </button>
-                        <button class="btn btn-ghost" style="justify-content:flex-start" onclick="openListsPanel()">
+                        <button class="btn btn-ghost admin-only" style="justify-content:flex-start" onclick="openListsPanel()">
                             🛡️ Allowlist / Blocklist Yönet
                         </button>
                         <button class="btn btn-ghost" style="justify-content:flex-start" onclick="exportHistoryCsv()">
@@ -807,7 +807,7 @@
         <!-- Virüs Tarama Sonuçları -->
         <div class="card mt-24 hidden" id="vtResults">
             <div class="card-header">
-                <span class="card-title">🦠 AntiVirüs Tarama Sonuçları</span>
+                <span class="card-title">🔍 Tespit Edilen Tehdit Tipleri</span>
             </div>
             <div id="vtContent"></div>
         </div>
@@ -1212,11 +1212,11 @@
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
                     <button class="btn btn-ghost btn-sm" onclick="testWebhookConnection()">🔄 Bağlantıyı Test Et</button>
-                    <button class="btn btn-ghost btn-sm" onclick="openListsPanel()">🛡️ Allowlist/Blocklist Yönet</button>
+                    <button class="btn btn-ghost btn-sm admin-only" onclick="openListsPanel()">🛡️ Allowlist/Blocklist Yönet</button>
                 </div>
                 <div id="webhookTestStatus" class="text-muted" style="font-size:12px;margin-top:8px"></div>
             </div>
-            <div id="listsShortcut" style="margin-top:10px" class="hidden">
+            <div id="listsShortcut" style="margin-top:10px" class="hidden admin-only">
                 <button class="btn btn-ghost btn-sm" onclick="openListsPanel()">🛡️ Allowlist / Blocklist Yönet</button>
             </div>
         </div>
