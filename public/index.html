@@ -306,10 +306,18 @@
         <span>MailTrustAI</span>
     </div>
     <div class="navbar-tabs">
-        <button class="nav-tab" id="navTabHome" onclick="showPage('home')">🏠 Ana Sayfa</button>
-        <button class="nav-tab active" id="navTabScan" onclick="showPage('scan')">🔍 Tarama</button>
-        <button class="nav-tab" id="navTabStats" onclick="showPage('stats')">📊 İstatistik</button>
-        <button class="nav-tab" id="navTabOtxApproval" onclick="showPage('otx-approval')">🛡️ OTX Onay</button>
+        <button class="nav-tab" id="navTabHome" onclick="showPage('home')" title="Ana Sayfa">
+            <span class="nav-tab-icon">🏠</span><span class="nav-tab-label">Ana Sayfa</span>
+        </button>
+        <button class="nav-tab active" id="navTabScan" onclick="showPage('scan')" title="Tarama">
+            <span class="nav-tab-icon">🔍</span><span class="nav-tab-label">Tarama</span>
+        </button>
+        <button class="nav-tab" id="navTabStats" onclick="showPage('stats')" title="İstatistik">
+            <span class="nav-tab-icon">📊</span><span class="nav-tab-label">İstatistik</span>
+        </button>
+        <button class="nav-tab" id="navTabOtxApproval" onclick="showPage('otx-approval')" title="OTX Onay">
+            <span class="nav-tab-icon">🛡️</span><span class="nav-tab-label">OTX Onay</span>
+        </button>
     </div>
     <div class="navbar-actions">
         <span class="license-badge free" id="licenseBadge">🆓 Free</span>
