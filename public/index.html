@@ -158,9 +158,12 @@
             const headers = {};
             const t = getToken();
             if (t) headers['Authorization'] = 'Bearer ' + t;
-            // Token yoksa lisans key'ini fallback olarak gönder
+            // Force-logout sonrası lisans köprüsünü atla (kullanıcı açıkça çıktı,
+            // email/şifre ile yeniden giriş yapana kadar otomatik login olmasın)
+            const forceLogout = (function(){ try { return sessionStorage.getItem('msa_force_logout') === '1'; } catch { return false; } })();
+            // Token yoksa VE force-logout yoksa: lisans key'ini fallback olarak gönder
             const lic = (typeof localStorage !== 'undefined') ? (localStorage.getItem('msa_license') || '') : '';
-            if (!t && lic) headers['x-license-key'] = lic;
+            if (!t && lic && !forceLogout) headers['x-license-key'] = lic;
 
             const res = await fetch('/api/customer/status', { headers });
             const data = await res.json();
@@ -209,6 +212,8 @@
             // Rol bilgisini cache et — frontend admin/user moduna göre UI gizler
             try { sessionStorage.setItem('msa_customer_role', data.role || 'admin'); } catch {}
             try { sessionStorage.setItem('msa_customer_email', data.email || ''); } catch {}
+            // Başarılı login — force-logout flag'ini temizle (lisans köprüsü tekrar aktif olur)
+            try { sessionStorage.removeItem('msa_force_logout'); } catch {}
             // Login/setup sonrası fresh start: app.js'in DOMContentLoaded init'i
             // token yokken yapıldığı için kalıcı state bozuk olabilir → reload.
             location.reload();
@@ -255,6 +260,7 @@
             setToken(data.token);
             try { sessionStorage.setItem('msa_customer_role', data.role || 'admin'); } catch {}
             try { sessionStorage.setItem('msa_customer_email', data.email || email); } catch {}
+            try { sessionStorage.removeItem('msa_force_logout'); } catch {}
             // URL'den setup_token'ı temizle (history'de kalmasın)
             if (setupToken && window.history?.replaceState) {
                 window.history.replaceState({}, document.title,
@@ -275,6 +281,10 @@
             sessionStorage.removeItem('msa_customer_role');
             sessionStorage.removeItem('msa_customer_email');
             sessionStorage.removeItem('msa_customer_imap');
+            // Force-logout flag: checkStatus bunu görürse lisans köprüsünü
+            // (otomatik giriş) atlayıp login formunu zorlar. Kullanıcı email/
+            // şifre ile yeniden giriş yapınca flag silinir (customerAuthLogin).
+            sessionStorage.setItem('msa_force_logout', '1');
         } catch {}
         location.reload();
     };
@@ -304,7 +314,7 @@
         <button class="btn btn-ghost btn-sm admin-only" id="btnCustomerUsers" onclick="showCustomerUsersModal()" title="Müşteri Kullanıcıları (admin)" style="display:none">👥</button>
         <button class="btn btn-ghost btn-sm admin-only" id="btnSettings" onclick="showSettings()">⚙️</button>
         <button class="btn btn-ghost btn-sm admin-only" id="btnLicense" onclick="showLicenseModal()">🔑</button>
-        <button class="btn btn-ghost btn-sm" id="btnLogout" onclick="customerAuthLogout()" title="Çıkış">🚪</button>
+        <button class="btn btn-ghost btn-sm" id="btnLogout" onclick="customerAuthLogout()" title="Oturumu Kapat">🚪 Oturumu Kapat</button>
     </div>
 </nav>
 
