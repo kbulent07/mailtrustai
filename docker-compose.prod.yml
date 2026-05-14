@@ -76,7 +76,7 @@ services:
       - mailtrustai_net
 
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
