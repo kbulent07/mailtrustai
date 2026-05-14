@@ -5082,12 +5082,14 @@ async function serviceAction(action) {
     if (statusEl) statusEl.textContent = `${labels[action] || action}...`;
 
     try {
+        const hdrs = { 'Content-Type': 'application/json' };
+        if (licenseKey) hdrs['x-license-key'] = licenseKey;
+        // Admin oturum token'ı — keygen.html'den sessionStorage'a kaydedilir
+        const adminTok = (function(){ try { return sessionStorage.getItem('msa_admin_token') || ''; } catch { return ''; } })();
+        if (adminTok) hdrs['Authorization'] = 'Bearer ' + adminTok;
         const res = await fetch(`/api/admin/${action}`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(licenseKey ? { 'x-license-key': licenseKey } : {})
-            }
+            headers: hdrs
         });
 
         // Sunucu bazen yanıt göndermeden çıkabilir (restart); JSON parse hatasına karşı güvenli

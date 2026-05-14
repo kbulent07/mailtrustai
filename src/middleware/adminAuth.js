@@ -57,16 +57,33 @@ async function verifyAdminPassword(provided) {
 
 // ─── MIDDLEWARE ───────────────────────────────────────────────
 // Hem eski x-admin-password header hem de yeni Bearer token desteklenir.
+// Ayrıca müşteri admin token'ı (customer role=admin) da kabul edilir.
 async function requireAdminAuth(req, res, next) {
     // 1) Bearer token kontrolü (keygen.html ve modern istemciler)
     const authHeader = req.headers['authorization'] || '';
     if (authHeader.startsWith('Bearer ')) {
         const token = authHeader.slice(7).trim();
+        // 1a) Sistem admin token (keygen.html)
         if (verifyAdminToken(token)) return next();
+
+        // 1b) Müşteri admin token — customer role=admin restart/stop yapabilmeli
+        try {
+            const customerAuth = require('./customerAuth');
+            const parsed = customerAuth.parseCustomerToken(token);
+            if (parsed && parsed.role === 'admin') {
+                const customerUserStore = require('../storage/customerUserStore');
+                const u = customerUserStore.findByEmail(parsed.email);
+                if (u && u.active && u.role === 'admin') return next();
+            }
+        } catch (_) { /* customerAuth modülü yoksa sessizce atla */ }
+
         return res.status(403).json({ error: 'Geçersiz veya süresi dolmuş oturum. Lütfen tekrar giriş yapın.' });
     }
 
-    // 2) Eski yöntem: x-admin-password header (geriye dönük uyum)
+    // 2) Outer guard'dan geçmiş customer admin (req.customerUser zaten set edilmiş)
+    if (req.customerUser && req.customerUser.role === 'admin') return next();
+
+    // 3) Eski yöntem: x-admin-password header (geriye dönük uyum)
     const provided = req.headers['x-admin-password'] || req.body?.adminPassword || '';
     if (!provided) {
         return res.status(403).json({ error: 'Admin kimlik doğrulaması gerekli' });
