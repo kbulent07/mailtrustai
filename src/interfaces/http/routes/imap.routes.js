@@ -112,10 +112,8 @@ router.post('/imap/list', async (req, res) => {
 router.post('/imap/scan', async (req, res) => {
     const license = checkLicense(req);
     if (!license.features?.inboxScan)   return res.status(403).json({ error: 'Inbox tarama Enterprise lisansı gerektirir' });
-    if (!checkDailyLimit(license))      return res.status(429).json({ error: 'Daily scan limit reached' });
-    if (!checkMonthlyLimit(license))    return res.status(429).json({ error: 'Monthly scan limit reached' });
 
-    const { email, uid, folder } = req.body;
+    const { email, uid, folder, forceRefresh } = req.body;
     // user rolü: yalnız kendi e-postası
     if (_isCustomerUser(req) && !_emailMatchesUser(req, email)) {
         return res.status(403).json({ error: 'Yalnız kendi IMAP hesabınızdan mail tarayabilirsiniz.' });
@@ -123,8 +121,25 @@ router.post('/imap/scan', async (req, res) => {
     const account = loadCredentials().find(a => a.email === email);
     if (!account) return res.status(404).json({ error: 'Account not found' });
 
-    const out = await runManualImapScan({ account, uid, folder, license });
+    // Quota check'i SADECE fresh scan'lerde yap — cache'ten dönüyorsak limit etkilemesin
+    const isForce = forceRefresh === true || forceRefresh === 'true';
+    const isFresh = isForce;  // not-force ise henüz cache var mı bilmiyoruz — service'de bakılır
+    // Service'e ilet; limit check'i fresh scan döndüğünde uygulanacak.
+    // Pratik yaklaşım: limit kontrolünü force durumunda yap, cache hit ise atla.
+    if (isForce) {
+        if (!checkDailyLimit(license))      return res.status(429).json({ error: 'Daily scan limit reached' });
+        if (!checkMonthlyLimit(license))    return res.status(429).json({ error: 'Monthly scan limit reached' });
+    }
+
+    const out = await runManualImapScan({ account, uid, folder, license, forceRefresh: isForce });
     if (!out.ok) return res.status(out.status).json(out.body);
+
+    // Eğer fresh scan yapıldıysa (cache'ten dönmediyse) ve force değilse — bu da bir
+    // yeni scan'di — limit kontrolü retrospektif yap (sayaç artırma zaten içeride).
+    if (!out.cached && !isForce) {
+        if (!checkDailyLimit(license))   return res.status(429).json({ error: 'Daily scan limit reached' });
+        if (!checkMonthlyLimit(license)) return res.status(429).json({ error: 'Monthly scan limit reached' });
+    }
     res.json(out.result);
 });
 

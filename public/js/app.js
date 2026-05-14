@@ -2524,7 +2524,7 @@ async function openImapMail(uid, email, forceRefresh = false) {
                 'Content-Type': 'application/json',
                 ...(licenseKey ? { 'x-license-key': licenseKey } : {})
             },
-            body: JSON.stringify({ email: targetEmail, uid, folder: 'INBOX' })
+            body: JSON.stringify({ email: targetEmail, uid, folder: 'INBOX', forceRefresh })
         });
         const data = await res.json();
         inFlightImapScans.delete(cacheKey);
@@ -3653,7 +3653,110 @@ function showSettingsTab(tab) {
         button.style.borderColor = active ? 'rgba(99,102,241,0.55)' : 'rgba(255,255,255,0.1)';
         button.style.color = active ? 'var(--text-primary)' : 'var(--text-secondary)';
     });
+    // Sistem sekmesi açıldığında disk bilgisini otomatik yükle
+    if (tab === 'system' && getCustomerRole() !== 'user') {
+        loadDiskUsage();
+    }
 }
+
+// ─── Disk Kullanımı & Tarama Geçmişi Silme ───────────────────────────────
+function _fmtBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes < 0) return '—';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let v = bytes, i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
+}
+
+async function loadDiskUsage() {
+    const box = document.getElementById('diskUsageInfo');
+    if (!box) return;
+    box.innerHTML = '<span class="text-muted">⏳ Disk bilgisi yükleniyor…</span>';
+    try {
+        const r = await fetch('/api/stats/disk-usage');
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            box.innerHTML = `<span style="color:#f87171">Yüklenemedi: ${esc(err.error || r.status)}</span>`;
+            return;
+        }
+        const d = await r.json();
+
+        // Disk doluluk yüzdesi varsa görsel bar
+        const usedPct = d.usedPercent;
+        const barHtml = usedPct != null
+            ? `<div style="margin-top:8px">
+                  <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">
+                      Disk Doluluk: <strong style="color:${usedPct > 85 ? '#f87171' : usedPct > 70 ? '#fbbf24' : '#34d399'}">${usedPct}%</strong>
+                      <span style="opacity:.7;margin-left:6px">(${_fmtBytes(d.totalBytes - (d.freeBytes||0))} / ${_fmtBytes(d.totalBytes)})</span>
+                  </div>
+                  <div style="background:rgba(255,255,255,0.06);height:6px;border-radius:3px;overflow:hidden">
+                      <div style="width:${Math.min(usedPct, 100)}%;height:100%;background:${usedPct > 85 ? '#f87171' : usedPct > 70 ? '#fbbf24' : '#34d399'}"></div>
+                  </div>
+               </div>`
+            : '<div style="margin-top:8px;font-size:11px;color:var(--text-secondary)">⚠️ Sistemde disk doluluk bilgisi alınamadı (Node 19+ gerekir)</div>';
+
+        box.innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+                <div>
+                    <div style="font-size:11px;color:var(--text-secondary)">📦 Uygulama Verisi</div>
+                    <div style="font-size:16px;font-weight:700;color:#cbd5e1">${esc(_fmtBytes(d.dataDir))}</div>
+                </div>
+                <div>
+                    <div style="font-size:11px;color:var(--text-secondary)">🗄️ SQLite DB</div>
+                    <div style="font-size:16px;font-weight:700;color:#cbd5e1">${esc(_fmtBytes(d.dbFile))}</div>
+                </div>
+                <div>
+                    <div style="font-size:11px;color:var(--text-secondary)">📋 Tarama Kaydı</div>
+                    <div style="font-size:16px;font-weight:700;color:#cbd5e1">${(d.historyCount || 0).toLocaleString('tr-TR')}</div>
+                </div>
+            </div>
+            ${barHtml}
+        `;
+    } catch (e) {
+        box.innerHTML = `<span style="color:#f87171">Hata: ${esc(e.message)}</span>`;
+    }
+}
+window.loadDiskUsage = loadDiskUsage;
+
+async function deleteScanHistoryByRange() {
+    const fromEl = document.getElementById('histDelFrom');
+    const toEl   = document.getElementById('histDelTo');
+    const status = document.getElementById('histDelStatus');
+    const from = fromEl?.value || '';
+    const to   = toEl?.value   || '';
+
+    status.textContent = '';
+
+    if (!from || !to) {
+        status.innerHTML = '<span style="color:#f87171">Başlangıç ve bitiş tarihi seçin</span>';
+        return;
+    }
+    if (from > to) {
+        status.innerHTML = '<span style="color:#f87171">Başlangıç bitişten büyük olamaz</span>';
+        return;
+    }
+    if (!confirm(`⚠️ ${from} → ${to} aralığındaki TÜM tarama kayıtları kalıcı olarak silinecek.\n\nDevam edilsin mi?`)) {
+        return;
+    }
+
+    status.innerHTML = '⏳ Siliniyor…';
+    try {
+        const r = await fetch(`/api/scan-history/range?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+            method: 'DELETE'
+        });
+        const data = await r.json();
+        if (!r.ok) {
+            status.innerHTML = `<span style="color:#f87171">${esc(data.error || 'Hata')}</span>`;
+            return;
+        }
+        status.innerHTML = `<span style="color:#34d399">✅ ${data.deleted} kayıt silindi (kalan: ${data.after.toLocaleString('tr-TR')})</span>`;
+        loadDiskUsage();           // disk bilgisini yenile
+        if (typeof loadHistory === 'function') loadHistory();
+    } catch (e) {
+        status.innerHTML = `<span style="color:#f87171">Bağlantı hatası: ${esc(e.message)}</span>`;
+    }
+}
+window.deleteScanHistoryByRange = deleteScanHistoryByRange;
 
 function closeSettings() {
     document.getElementById('settingsModal').classList.add('hidden');

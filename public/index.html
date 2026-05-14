@@ -1229,6 +1229,35 @@
         </div>
 
         <div data-settings-tab="system" style="display:none">
+        <!-- DİSK KULLANIMI + TARAMA GEÇMİŞİ TEMİZLİĞİ (admin-only) -->
+        <div class="admin-only" style="border:1px solid rgba(56,189,248,0.2);border-radius:10px;padding:14px;margin-bottom:16px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:#7dd3fc">💾 Disk Kullanımı &amp; Tarama Geçmişi</div>
+            <div id="diskUsageInfo" class="text-muted" style="font-size:12px;background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;margin-bottom:14px">
+                Yükleniyor...
+            </div>
+            <div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px">
+                <div style="font-size:13px;font-weight:600;color:#cbd5e1;margin-bottom:8px">🗑️ Eski Tarama Sonuçlarını Sil</div>
+                <p class="text-muted" style="font-size:11px;margin-bottom:10px;line-height:1.6">
+                    Seçilen tarih aralığındaki tüm tarama kayıtları kalıcı olarak silinir. Bu işlem geri alınamaz.
+                </p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                    <div>
+                        <label class="form-label" style="font-size:11px">Başlangıç tarihi</label>
+                        <input class="form-input" type="date" id="histDelFrom" style="font-size:13px">
+                    </div>
+                    <div>
+                        <label class="form-label" style="font-size:11px">Bitiş tarihi</label>
+                        <input class="form-input" type="date" id="histDelTo" style="font-size:13px">
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <button class="btn btn-ghost btn-sm" onclick="loadDiskUsage()" title="Disk bilgisini yenile">🔄 Yenile</button>
+                    <button class="btn btn-ghost btn-sm" onclick="deleteScanHistoryByRange()" style="color:#fca5a5;border-color:#f87171">🗑️ Aralığı Sil</button>
+                    <span id="histDelStatus" class="text-muted" style="font-size:11px"></span>
+                </div>
+            </div>
+        </div>
+
         <!-- SERVİS YÖNETİMİ -->
         <div style="border-top:1px solid rgba(255,255,255,0.1);margin-top:20px;padding-top:16px">
             <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:#f8fafc">🖥️ Servis Yönetimi</div>

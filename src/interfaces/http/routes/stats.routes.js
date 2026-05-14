@@ -2,8 +2,10 @@
 // HTTP routes: tarama geçmişi, istatistikler, CSV export
 // ============================================================
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 
-const { loadScanHistory, getDetailedStats } = require('../../../storage/scanHistory');
+const { loadScanHistory, getDetailedStats, deleteScanHistoryRange, countScanHistory } = require('../../../storage/scanHistory');
 const { loadCredentials } = require('../../../imap/connection');
 const { getMonthlyCount } = require('../../../storage/monthlyCounter');
 const { getDailyCount } = require('../../../storage/dailyScansStore');
@@ -12,6 +14,8 @@ const { loadSettings } = require('../../../storage/settingsStore');
 const { validateLicenseKey } = require('../../../license/license');
 const { buildRiskDashboard } = require('../../../services/riskDashboardService');
 const { getUsageSummary: getLlmUsageSummary } = require('../../../storage/llmUsageStore');
+const { requireCustomerAdmin } = require('../../../middleware/customerAuth');
+const { recordAudit } = require('../../../storage/auditLog');
 
 const router = express.Router();
 
@@ -74,6 +78,95 @@ router.get('/reports/executive/summary', (req, res) => {
 router.get('/history', (req, res) => {
     state.scanHistory = loadScanHistory();
     res.json(state.scanHistory.slice(0, 50));
+});
+
+// ─── Disk kullanımı (admin için bilgi) ───────────────────────────────────
+// data/ klasör boyutu + SQLite DB boyutu + scan_history kayıt sayısı.
+// Müşteri admin ayar sayfasında bunu görür → eski kayıtları temizlemeye karar verebilir.
+function _dirSizeBytes(dirPath) {
+    let total = 0;
+    try {
+        if (!fs.existsSync(dirPath)) return 0;
+        const stack = [dirPath];
+        while (stack.length) {
+            const cur = stack.pop();
+            const stat = fs.statSync(cur);
+            if (stat.isDirectory()) {
+                for (const f of fs.readdirSync(cur)) {
+                    stack.push(path.join(cur, f));
+                }
+            } else if (stat.isFile()) {
+                total += stat.size;
+            }
+        }
+    } catch { /* sessizce — yetki vs. atla */ }
+    return total;
+}
+
+router.get('/stats/disk-usage', (req, res) => {
+    try {
+        const dataDir = path.join(__dirname, '..', '..', '..', '..', 'data');
+        const dbFile  = path.join(dataDir, 'msa.db');
+
+        const dataDirSize = _dirSizeBytes(dataDir);
+        const dbSize      = fs.existsSync(dbFile) ? fs.statSync(dbFile).size : 0;
+        const historyCount = countScanHistory();
+
+        // Yaklaşık disk kapasitesi — Node'da basit bir bilgi yok, üst sınır olarak
+        // dataDir boyutu + 'kullanılabilir' alan tahmini sunuyoruz. Eğer statfs
+        // (Node 19+) yoksa sadece kullanım boyutu gösterilir.
+        let freeBytes = null;
+        let totalBytes = null;
+        try {
+            if (typeof fs.statfsSync === 'function') {
+                const sf = fs.statfsSync(dataDir);
+                freeBytes  = sf.bavail * sf.bsize;
+                totalBytes = sf.blocks * sf.bsize;
+            }
+        } catch { /* ignore */ }
+
+        res.json({
+            dataDir:     dataDirSize,
+            dbFile:      dbSize,
+            historyCount,
+            freeBytes,
+            totalBytes,
+            usedPercent: (totalBytes && freeBytes != null)
+                ? Number((((totalBytes - freeBytes) / totalBytes) * 100).toFixed(1))
+                : null
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── Scan history tarih aralıklı silme — ADMIN-ONLY ──────────────────────
+// Müşteri admin: ayarlar sayfasından eski tarama kayıtlarını seçili tarih
+// aralığında siler. Disk yer açma + GDPR retention politikası amaçlı.
+router.delete('/scan-history/range', requireCustomerAdmin, (req, res) => {
+    try {
+        const from = String(req.query.from || req.body?.from || '').trim();
+        const to   = String(req.query.to   || req.body?.to   || '').trim();
+        if (!from || !to) {
+            return res.status(400).json({ error: 'from ve to (ISO tarihleri) zorunludur.' });
+        }
+        if (!/^\d{4}-\d{2}-\d{2}/.test(from) || !/^\d{4}-\d{2}-\d{2}/.test(to)) {
+            return res.status(400).json({ error: 'Geçersiz tarih formatı (YYYY-MM-DD bekleniyor).' });
+        }
+        // to=YYYY-MM-DD ise gün sonuna kadar al
+        const fromISO = from.length === 10 ? from + 'T00:00:00.000Z' : from;
+        const toISO   = to.length === 10   ? to   + 'T23:59:59.999Z' : to;
+
+        const result = deleteScanHistoryRange(fromISO, toISO);
+        recordAudit({
+            req, actorType: 'customer-admin', actorId: req.customerUser?.email,
+            action: 'scan-history.range-delete',
+            details: { from: fromISO, to: toISO, deleted: result.deleted, beforeTotal: result.before, afterTotal: result.after }
+        });
+        res.json({ success: true, ...result });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 router.get('/stats/detailed', (req, res) => {

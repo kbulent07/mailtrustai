@@ -7,15 +7,42 @@ const fs = require('fs');
 const path = require('path');
 const db = require('./db');
 
-const RETENTION_DAYS = 35;
-const MAX_ITEMS = 1000;
+// Kullanıcı isteği üzerine retention sınırı yumuşatıldı:
+// - RETENTION_DAYS: 35 → 730 (2 yıl). Eski scan kayıtları korunur.
+// - MAX_ITEMS: 1000 → 50000. Sadece çok eski + sınır aşımında prune yapılır.
+// Müşteri admin, kullanıcı arayüzünden tarih aralığına göre manuel silebilir.
+const RETENTION_DAYS = 730;
+const MAX_ITEMS = 50000;
 
 // ─── Prepared statements ──────────────────────────────────
 const _insert = db.prepare(`
     INSERT INTO scan_history
-        (scan_id, timestamp, level, score, scan_source, from_email, subject, user_key, payload)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (scan_id, timestamp, level, score, scan_source, from_email, subject, user_key, payload,
+         imap_email, imap_uid)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
+
+// IMAP cache lookup — aynı (account + uid) için son kayıt
+const _selectImapCache = db.prepare(`
+    SELECT payload, timestamp FROM scan_history
+    WHERE imap_email = ? AND imap_uid = ?
+    ORDER BY timestamp DESC
+    LIMIT 1
+`);
+
+const _deleteImapCache = db.prepare(`
+    DELETE FROM scan_history
+    WHERE imap_email = ? AND imap_uid = ?
+`);
+
+// Tarih aralığına göre silme — admin'in 'eski kayıtları temizle' formu
+const _deleteByDateRange = db.prepare(`
+    DELETE FROM scan_history
+    WHERE timestamp >= ? AND timestamp <= ?
+`);
+
+const _countAll = db.prepare(`SELECT COUNT(*) AS n FROM scan_history`);
+const _countByDateRange = db.prepare(`SELECT COUNT(*) AS n FROM scan_history WHERE timestamp >= ? AND timestamp <= ?`);
 
 const _selectRecent = db.prepare(`
     SELECT payload FROM scan_history
@@ -100,6 +127,10 @@ function recordScan(entry) {
     const fromEmail = (Array.isArray(e.emailMeta?.from) && e.emailMeta.from[0]?.address) || '';
     const subject   = e.emailMeta?.subject || '';
     const userKey   = _deriveUserKey(e);
+    // IMAP cache anahtarları: account/imapEmail ve imap-uid (manual veya monitor)
+    const imapEmail = String(e.account || e.imapEmail || '').toLowerCase() || null;
+    const imapUid   = e.imapUid != null ? String(e.imapUid)
+                    : (e.scanMailboxUid != null ? String(e.scanMailboxUid) : null);
 
     _insert.run(
         e.id || null,
@@ -110,13 +141,61 @@ function recordScan(entry) {
         fromEmail,
         subject,
         userKey,
-        JSON.stringify(e)
+        JSON.stringify(e),
+        imapEmail,
+        imapUid
     );
 
     // Periyodik temizlik (her 50 yazıdan sonra ~)
     if (Math.random() < 0.02) _prune();
 
     return loadScanHistory();
+}
+
+// ─── IMAP cache API ──────────────────────────────────────────────────────
+/**
+ * Aynı (imapEmail, uid) için kayıtlı tarama sonucunu döner. Yoksa null.
+ * Frontend manuel tıklama sırasında tekrar tekrar tarama yapılmasın diye
+ * AnalyzeImapMailService bu fonksiyonu kullanır.
+ */
+function findCachedImapScan(imapEmail, uid) {
+    if (!imapEmail || uid == null) return null;
+    const row = _selectImapCache.get(String(imapEmail).toLowerCase(), String(uid));
+    if (!row) return null;
+    try {
+        const parsed = JSON.parse(row.payload);
+        parsed._cachedAt = row.timestamp;
+        return parsed;
+    } catch { return null; }
+}
+
+/**
+ * (imapEmail, uid) için tüm kayıtlı sonuçları siler — 'Yeniden Tara' akışında
+ * eski cache'i temizlemek için kullanılır.
+ */
+function clearCachedImapScan(imapEmail, uid) {
+    if (!imapEmail || uid == null) return 0;
+    const r = _deleteImapCache.run(String(imapEmail).toLowerCase(), String(uid));
+    return r.changes || 0;
+}
+
+// ─── Tarih aralığı silme API'si ──────────────────────────────────────────
+/**
+ * fromISO ile toISO (dahil) tarih aralığındaki scan_history kayıtlarını siler.
+ * Admin temizlik akışında kullanılır.
+ *
+ * @returns {{deleted: number, before: number, after: number}}
+ */
+function deleteScanHistoryRange(fromISO, toISO) {
+    const before = _countAll.get().n;
+    const inRange = _countByDateRange.get(fromISO, toISO).n;
+    const r = _deleteByDateRange.run(fromISO, toISO);
+    const after = _countAll.get().n;
+    return { deleted: r.changes || 0, before, after, inRange };
+}
+
+function countScanHistory() {
+    return _countAll.get().n;
 }
 
 function saveScanHistory(history) {
@@ -131,6 +210,9 @@ function saveScanHistory(history) {
             const fromEmail = (Array.isArray(e.emailMeta?.from) && e.emailMeta.from[0]?.address) || '';
             const subject   = e.emailMeta?.subject || '';
             const userKey   = _deriveUserKey(e);
+            const imapEmail = String(e.account || e.imapEmail || '').toLowerCase() || null;
+            const imapUid   = e.imapUid != null ? String(e.imapUid)
+                            : (e.scanMailboxUid != null ? String(e.scanMailboxUid) : null);
             _insert.run(
                 e.id || null,
                 e.timestamp,
@@ -140,7 +222,9 @@ function saveScanHistory(history) {
                 fromEmail,
                 subject,
                 userKey,
-                JSON.stringify(e)
+                JSON.stringify(e),
+                imapEmail,
+                imapUid
             );
         }
     });
@@ -402,5 +486,10 @@ module.exports = {
     saveScanHistory,
     getDetailedStats,
     findScanById,
-    updateScanById
+    updateScanById,
+    // IMAP cache + admin temizlik API'leri
+    findCachedImapScan,
+    clearCachedImapScan,
+    deleteScanHistoryRange,
+    countScanHistory
 };

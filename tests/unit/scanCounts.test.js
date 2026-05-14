@@ -130,7 +130,9 @@ test('runManualImapScan forwards IMAP mail into the shared analysis engine', asy
             parsedData: { subject: 'imap mail' },
             license,
             scanSource: 'imap-manual',
-            account: 'user@example.com'
+            account: 'user@example.com',
+            // IMAP cache anahtarları (imap_email + imap_uid scan_history'ye yazılsın)
+            extraFields: { imapEmail: 'user@example.com', imapUid: 42 }
         }]);
     } finally {
         clearModule(servicePath);

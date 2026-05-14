@@ -90,6 +90,19 @@ db.exec(`
     }
 })();
 
+// scan_history'e IMAP cache kolonları (imap_email + imap_uid)
+// Aynı maile tıklandığında DB'den cache lookup için kullanılır.
+(function ensureImapCacheColumns() {
+    const cols = db.prepare(`PRAGMA table_info(scan_history)`).all();
+    const names = new Set(cols.map(c => c.name));
+    if (!names.has('imap_email') || !names.has('imap_uid')) {
+        if (!names.has('imap_email')) db.exec(`ALTER TABLE scan_history ADD COLUMN imap_email TEXT`);
+        if (!names.has('imap_uid'))   db.exec(`ALTER TABLE scan_history ADD COLUMN imap_uid TEXT`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_history_imap ON scan_history(imap_email, imap_uid)`);
+        console.log('[DB] scan_history.imap_email + imap_uid kolonları eklendi (IMAP cache).');
+    }
+})();
+
 // dealers tablosuna white_label kolonu ekleme (migration)
 (function ensureWhiteLabelColumn() {
     const cols = db.prepare(`PRAGMA table_info(dealers)`).all();
