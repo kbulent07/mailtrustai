@@ -2739,33 +2739,53 @@ window.imapMobileBackToList = function() {
 };
 
 // ─── Link Tarama Motoru Sonuçları (abuse.ch URLhaus + OpenPhish) ──────────
-// Bu bölüm IMAP raporunda her zaman görünür; eşleşme yoksa "temiz" mesajı verir.
-// Eşleşme varsa tabloda URL/domain + kaynak feed ile birlikte listelenir.
+// X / Y sayacı: Y = maildeki toplam link sayısı, X = tehdit eşleşmesi (kırmızı)
+// 'Linkleri Göster' butonu — modal'da tüm linkleri listeler, sorunlular kırmızı
 function renderImapAbuseSection(data) {
-    const status  = data?.abuseStatus  || {};
-    const matches = data?.abuseData?.matches || [];
+    const status   = data?.abuseStatus  || {};
+    const matches  = data?.abuseData?.matches || [];
+    const allLinks = Array.isArray(data?.allLinks) ? data.allLinks : [];
+    const totalLinks = allLinks.length || (data?.breakdown?.linkCount || 0);
+    const threatCount = matches.length;
 
-    // Bilgi durumu rozeti
-    let badge;
-    if (!status.checked) {
-        badge = `<span class="text-muted" style="font-size:11px">URL tespit edilmedi</span>`;
-    } else if (!status.available) {
-        badge = `<span style="font-size:11px;color:#fbbf24">⚠️ Feed kullanılamıyor</span>`;
-    } else if (matches.length === 0) {
-        badge = `<span style="font-size:11px;color:#34d399">✅ Tehdit eşleşmesi yok</span>`;
-    } else {
-        badge = `<span style="font-size:11px;color:#f87171;font-weight:600">${matches.length} tehdit eşleşmesi</span>`;
+    // Tehditli URL/domain set'i — frontend hızlı eşleştirme için
+    const threatUrls    = new Set(matches.filter(m => m.type === 'url').map(m => m.value));
+    const threatDomains = new Set(matches.filter(m => m.type === 'domain').map(m => m.value));
+
+    function _isLinkThreat(url) {
+        if (threatUrls.has(url)) return true;
+        try {
+            const host = new URL(url).hostname.toLowerCase();
+            return threatDomains.has(host);
+        } catch { return false; }
     }
+
+    // X / Y sayacı (sorun varsa kırmızı, yoksa yeşil/gri)
+    let counterBadge;
+    if (totalLinks === 0) {
+        counterBadge = `<span class="text-muted" style="font-size:11px">0 link</span>`;
+    } else if (threatCount === 0 && status.available) {
+        counterBadge = `<span style="font-size:11px;color:#34d399;font-weight:600">0/${totalLinks} ✅</span>`;
+    } else if (threatCount === 0 && !status.available) {
+        counterBadge = `<span style="font-size:11px;color:#fbbf24">⚠️ ${totalLinks} link · feed kullanılamıyor</span>`;
+    } else {
+        counterBadge = `<span style="font-size:13px;color:#f87171;font-weight:800;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.35);padding:2px 8px;border-radius:4px">${threatCount}/${totalLinks} ⚠️</span>`;
+    }
+
+    const showButton = totalLinks > 0
+        ? `<button class="btn btn-ghost btn-sm" onclick='openLinkListModal(${JSON.stringify({ scanId: data?.id || null })})' style="font-size:11px;padding:3px 10px">🔍 Linkleri Göster</button>`
+        : '';
 
     const source = status.source || 'URLhaus + OpenPhish';
 
-    const rows = matches.length === 0
+    // Ana içerik — eşleşme yoksa kısa özet, varsa eşleşme listesi
+    const body = matches.length === 0
         ? `<div style="font-size:12px;color:var(--text-secondary);padding:8px 4px">
-              ${status.checked && status.available
-                ? '✅ Bu maildeki bağlantı(lar) bilinen tehdit veritabanlarında bulunamadı.'
-                : status.available === false
-                    ? '⚠️ Tehdit besleme önbelleği henüz hazır değil — kontroller atlandı.'
-                    : 'Bu mailde taranacak bağlantı bulunmuyor.'}
+              ${totalLinks === 0
+                ? 'Bu mailde taranacak bağlantı bulunmuyor.'
+                : (status.available
+                    ? `✅ ${totalLinks} bağlantının hiçbiri bilinen tehdit veritabanlarında bulunamadı.`
+                    : '⚠️ Tehdit besleme önbelleği henüz hazır değil — kontroller atlandı.')}
            </div>`
         : matches.map(m => {
             const typeLabel = m.type === 'url' ? 'URL' : 'Domain';
@@ -2775,27 +2795,128 @@ function renderImapAbuseSection(data) {
               <div class="finding-item compact" style="display:flex;align-items:flex-start;gap:10px">
                 <div class="finding-icon critical">!!</div>
                 <div style="flex:1;min-width:0">
-                    <div class="finding-text"><strong>${esc(typeLabel)}:</strong> <code style="word-break:break-all">${esc(display)}</code></div>
+                    <div class="finding-text"><strong>${esc(typeLabel)}:</strong> <code style="word-break:break-all;color:#f87171">${esc(display)}</code></div>
                     <div class="finding-category">${esc(m.source || source)}</div>
                 </div>
               </div>`;
         }).join('');
 
+    // Verileri sonraki modal açılışı için window'a koy (basit IPC)
+    window.__msaLastScanLinks = {
+        all:    allLinks,
+        threats: matches,
+        isThreatFn: _isLinkThreat,
+        source: source,
+        feedAvailable: !!status.available
+    };
+
     return `
         <div class="imap-finding-group" style="margin-bottom:16px;">
-            <div class="imap-group-title">
-                <span>🔗 Link Tarama Motoru Sonuçları</span>
-                ${badge}
+            <div class="imap-group-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="flex:1;min-width:160px">🔗 Link Tarama Motoru Sonuçları</span>
+                ${counterBadge}
+                ${showButton}
             </div>
             <div style="padding:0 4px 6px;font-size:11px;color:var(--text-secondary)">
                 Tehdit feed kaynağı: <strong>${esc(source)}</strong>
             </div>
             <div class="findings-list">
-                ${rows}
+                ${body}
             </div>
         </div>
     `;
 }
+
+// ─── Link liste modali ─────────────────────────────────────────────────────
+// renderImapAbuseSection tüm linkleri window.__msaLastScanLinks'e yazar;
+// buton tıklayınca burası popup modal açıp listeyi gösterir. Tehditli olan
+// linkler kırmızı, temizler nötr.
+function openLinkListModal() {
+    const payload = window.__msaLastScanLinks;
+    if (!payload || !payload.all?.length) {
+        alert('Listelenecek bağlantı yok.');
+        return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = '__msaLinkListOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(10,14,23,0.85);display:flex;align-items:center;justify-content:center;padding:24px';
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    const all = payload.all || [];
+    const threatCount = all.filter(u => payload.isThreatFn(u)).length;
+
+    const rows = all.map((url, idx) => {
+        const isThreat = payload.isThreatFn(url);
+        let host = '';
+        try { host = new URL(url).hostname; } catch { host = '—'; }
+        const display = url.length > 110 ? url.slice(0, 107) + '…' : url;
+        return `
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.06);${isThreat ? 'background:rgba(248,113,113,0.08)' : ''}">
+                <td style="padding:6px 8px;color:var(--text-secondary);font-size:11px;text-align:right;width:40px">${idx + 1}</td>
+                <td style="padding:6px 8px;width:90px">
+                    ${isThreat
+                        ? '<span style="color:#f87171;font-weight:700;font-size:11px">⚠️ TEHDİT</span>'
+                        : '<span style="color:#34d399;font-size:11px">✓ temiz</span>'}
+                </td>
+                <td style="padding:6px 8px;color:#94a3b8;font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(host)}">${esc(host)}</td>
+                <td style="padding:6px 8px;font-size:11px;word-break:break-all;${isThreat ? 'color:#f87171;font-weight:600' : 'color:#cbd5e1'}">
+                    <a href="${esc(url)}" target="_blank" rel="noopener noreferrer nofollow"
+                       style="text-decoration:none;${isThreat ? 'color:#f87171' : 'color:#60a5fa'}"
+                       title="Yeni sekmede aç (DİKKAT: tehditli olabilir)">
+                        ${esc(display)}
+                    </a>
+                </td>
+            </tr>`;
+    }).join('');
+
+    overlay.innerHTML = `
+        <div style="background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:18px 20px;width:min(900px,96vw);max-height:88vh;overflow:hidden;display:flex;flex-direction:column">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap">
+                <div>
+                    <div style="font-size:16px;font-weight:700;color:#f1f5f9">🔗 Maildeki Bağlantılar</div>
+                    <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">
+                        ${threatCount > 0
+                            ? `<span style="color:#f87171;font-weight:600">${threatCount}/${all.length} tehdit tespit edildi</span>`
+                            : `<span style="color:#34d399">${all.length} bağlantı, hepsi temiz</span>`}
+                        · Feed: ${esc(payload.source || 'URLhaus + OpenPhish')}
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <button class="btn btn-ghost btn-sm" onclick="(function(){const o=document.getElementById('__msaLinkListOverlay');if(o)o.remove();})()">✕ Kapat</button>
+                </div>
+            </div>
+            <div style="overflow-y:auto;flex:1;border:1px solid rgba(255,255,255,0.06);border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-family:'SF Mono',Consolas,monospace">
+                    <thead style="position:sticky;top:0;background:#1e293b;z-index:1">
+                        <tr style="text-align:left;font-size:11px;color:#94a3b8">
+                            <th style="padding:8px;text-align:right">#</th>
+                            <th style="padding:8px">Durum</th>
+                            <th style="padding:8px">Domain</th>
+                            <th style="padding:8px">URL</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:10px">
+                ⚠️ <strong>Uyarı:</strong> Linklere tıklamadan önce dikkatli olun; tehditli olarak işaretli olanlar zararlı içerik barındırabilir.
+                Tarayıcı tıklamayı yeni sekmede açar.
+            </div>
+        </div>`;
+
+    document.body.appendChild(overlay);
+
+    // ESC ile kapat
+    const escHandler = (e) => {
+        if (e.key === 'Escape') {
+            overlay.remove();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+}
+window.openLinkListModal = openLinkListModal;
 
 function renderImapAttachmentSection(data) {
     const rows = mergeAttachmentScanData(data);

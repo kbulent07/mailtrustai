@@ -384,6 +384,10 @@ async function buildEmailAnalysisResult(parsedData, license) {
         ...(result.breakdown || {}),
         linkCount: (linkResult.urls || []).length
     };
+    // Mail içindeki TÜM linkler — frontend "Link Tarama Motoru" panelinde
+    // 1/15 gibi sayaç ve modal liste için kullanır. Çift URL'leri kaldır,
+    // 200 ile sınırla (DoS koruması).
+    result.allLinks = Array.from(new Set(linkResult.urls || [])).slice(0, 200);
 
     // ─── VirusTotal ───────────────────────────────────────
     const vtCandidates = (attachmentResult.results || []).filter(item => item.vtEligible !== false);
