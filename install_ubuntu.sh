@@ -69,24 +69,46 @@ setup_ssl_docker_nginx() {
     log_step "Let's Encrypt SSL kurulumu (DOCKER nginx)"
     apt-get install -y -qq certbot
 
-    mkdir -p "$APP_DIR/nginx/webroot"
-    chown -R "${APP_UID}:${APP_GID}" "$APP_DIR/nginx/webroot"
+    mkdir -p "$APP_DIR/nginx/certs"
 
     local extra_args=()
     [[ "$staging" == "true" ]] && extra_args+=(--staging)
 
-    log_info "Sertifika alınıyor (webroot mode): $domain"
-    if certbot certonly --webroot \
-        --webroot-path "$APP_DIR/nginx/webroot" \
+    # --standalone modu: certbot kendi geçici HTTP sunucusunu başlatır.
+    # nginx port 80'i bırakması için geçici durdurulur.
+    log_info "Docker nginx geçici durduruluyor (port 80 certbot'a bırakılıyor)…"
+    docker compose -f "$COMPOSE_FILE" stop nginx 2>/dev/null || true
+
+    log_info "Sertifika alınıyor (standalone): $domain"
+    certbot certonly --standalone \
         --non-interactive --agree-tos \
         --domain "$domain" --email "$email" \
-        "${extra_args[@]}" 2>&1 | tail -8; then
-        log_ok "Sertifika: /etc/letsencrypt/live/$domain/"
-    else
-        log_warn "certbot başarısız. Port 80 → $APP_DIR/nginx/webroot erişebilmeli."
-        return 1
+        "${extra_args[@]}" 2>&1 | tail -10 || true
+
+    # Nginx'i hata olsa da yeniden başlat
+    log_info "Docker nginx yeniden başlatılıyor…"
+    cd "$APP_DIR"
+    docker compose -f "$COMPOSE_FILE" start nginx 2>/dev/null \
+        || docker compose -f "$COMPOSE_FILE" up -d nginx 2>/dev/null || true
+
+    # Sertifika dosyası yoksa hata ver ve devam et
+    if [[ ! -f "/etc/letsencrypt/live/$domain/fullchain.pem" ]]; then
+        log_error "SSL sertifikası alınamadı. Kurulum HTTP ile devam ediyor."
+        log_warn "Kontrol listesi:"
+        log_warn "  1) '$domain' bu sunucunun genel IP'sine A kaydıyla işaret ediyor mu?"
+        log_warn "     → nslookup $domain"
+        log_warn "  2) Port 80 (TCP gelen) bulut güvenlik grubunda/firewall'da açık mı?"
+        log_warn ""
+        log_warn "SSL'i daha sonra elle eklemek için:"
+        log_warn "  sudo docker compose -f $APP_DIR/$COMPOSE_FILE stop nginx"
+        log_warn "  sudo certbot certonly --standalone -d $domain --email $email"
+        log_warn "  sudo cp -L /etc/letsencrypt/live/$domain/fullchain.pem $APP_DIR/nginx/certs/"
+        log_warn "  sudo cp -L /etc/letsencrypt/live/$domain/privkey.pem   $APP_DIR/nginx/certs/"
+        log_warn "  sudo docker compose -f $APP_DIR/$COMPOSE_FILE start nginx"
+        return 0
     fi
 
+    log_ok "Sertifika alındı: /etc/letsencrypt/live/$domain/"
     cp -L "/etc/letsencrypt/live/$domain/fullchain.pem" "$APP_DIR/nginx/certs/"
     cp -L "/etc/letsencrypt/live/$domain/privkey.pem"   "$APP_DIR/nginx/certs/"
     chmod 644 "$APP_DIR/nginx/certs/fullchain.pem"
