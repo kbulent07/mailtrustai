@@ -193,8 +193,60 @@ let currentHistoryResults = [];
 let imapScanToken = 0;
 let resetFallbackTimer = null;
 let activeReportMenuEmail = null;
+// IMAP tarama önbelleği — in-memory + localStorage persist
+// Key: `${email}::${uid}`  Value: scan result objesi
+// LocalStorage'da tek key altında tutulur (JSON serialize). LRU benzeri:
+// max 200 entry, dolu olursa en eskileri silinir.
 const imapReportCache = new Map();
 const inFlightImapScans = new Set();
+const IMAP_CACHE_KEY = 'msa_imap_scan_cache_v1';
+const IMAP_CACHE_MAX = 200;
+
+(function _loadImapCacheFromStorage() {
+    try {
+        const raw = localStorage.getItem(IMAP_CACHE_KEY);
+        if (!raw) return;
+        const obj = JSON.parse(raw);
+        if (obj && typeof obj === 'object') {
+            for (const [k, v] of Object.entries(obj)) {
+                imapReportCache.set(k, v);
+            }
+        }
+    } catch { /* sessizce — bozuk cache ise yok say */ }
+})();
+
+function _persistImapCache() {
+    try {
+        // Map → plain object. Max 200 entry tut (en yenisi, fazlasını kes)
+        const entries = Array.from(imapReportCache.entries());
+        const trimmed = entries.length > IMAP_CACHE_MAX
+            ? entries.slice(-IMAP_CACHE_MAX)
+            : entries;
+        const obj = Object.fromEntries(trimmed);
+        localStorage.setItem(IMAP_CACHE_KEY, JSON.stringify(obj));
+        // imapReportCache'i de aynı trim ile güncelle
+        if (entries.length > IMAP_CACHE_MAX) {
+            imapReportCache.clear();
+            for (const [k, v] of trimmed) imapReportCache.set(k, v);
+        }
+    } catch (e) {
+        // QuotaExceededError → en eski yarısını sil ve yeniden dene
+        if (String(e?.name || '').includes('Quota')) {
+            try {
+                const entries = Array.from(imapReportCache.entries());
+                const keep = entries.slice(-Math.floor(IMAP_CACHE_MAX / 2));
+                imapReportCache.clear();
+                for (const [k, v] of keep) imapReportCache.set(k, v);
+                localStorage.setItem(IMAP_CACHE_KEY, JSON.stringify(Object.fromEntries(keep)));
+            } catch {}
+        }
+    }
+}
+
+function _deleteImapCacheEntry(key) {
+    imapReportCache.delete(key);
+    _persistImapCache();
+}
 let currentExecutiveDashboard = null;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -2450,7 +2502,10 @@ async function openImapMail(uid, email, forceRefresh = false) {
     const message = currentImapMessages.find((item) => item.uid === uid);
     const cacheKey = `${targetEmail}::${uid}`;
 
-    if (!forceRefresh && imapReportCache.has(cacheKey)) {
+    if (forceRefresh) {
+        // 'Yeniden Tara' tıklandı — eski cache'i sil, yeni tarama yapılacak
+        _deleteImapCacheEntry(cacheKey);
+    } else if (imapReportCache.has(cacheKey)) {
         currentResult = imapReportCache.get(cacheKey);
         renderImapReport(currentResult, message);
         return;
@@ -2481,6 +2536,7 @@ async function openImapMail(uid, email, forceRefresh = false) {
 
         const normalized = { ...data, imapEmail: targetEmail, imapUid: uid };
         imapReportCache.set(cacheKey, normalized);
+        _persistImapCache();
         loadHistory();
 
         const stillSelected = requestId === imapScanToken
@@ -2605,6 +2661,7 @@ function renderImapReport(data, message = null) {
                 <p>${esc(buildExecutiveSummaryText(data))}</p>
             </div>
             <div class="imap-health-actions">
+                <button class="btn btn-ghost btn-sm" onclick="reScanCurrentImapMail()" title="Önbelleği yok say, sunucudan yeni tarama iste">🔄 Yeniden Tara</button>
                 <button class="btn btn-ghost btn-sm" onclick="exportPDF()">PDF</button>
                 <button class="btn btn-ghost btn-sm" onclick="exportJSON()">JSON</button>
             </div>
@@ -2743,6 +2800,19 @@ window.switchImapAiTab = function(btn, targetId) {
 // Mobilde "← Mail Listesine Dön" butonu için
 window.imapMobileBackToList = function() {
     document.body.removeAttribute('data-imap-mode');
+};
+
+// 🔄 Yeniden Tara — mevcut IMAP mailini cache atlayarak yeniden tarar
+// Eski cache silinir, yeni tarama yapılır, sonuç kaydedilir ve gösterilir.
+window.reScanCurrentImapMail = function() {
+    if (!currentImapEmail || !currentImapUid) {
+        alert(currentLang === 'tr'
+            ? 'Yeniden taranacak mail seçili değil.'
+            : 'No selected mail to re-scan.');
+        return;
+    }
+    // forceRefresh=true → openImapMail eski cache'i siler, sunucudan yeni tarama yapar
+    openImapMail(currentImapUid, currentImapEmail, true);
 };
 
 // ─── Link Tarama Motoru Sonuçları (abuse.ch URLhaus + OpenPhish) ──────────
