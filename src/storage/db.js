@@ -100,6 +100,21 @@ db.exec(`
 })();
 
 
+// ─── MÜŞTERİ KULLANICILARI (admin + user rolleri) ────────
+db.exec(`
+    CREATE TABLE IF NOT EXISTS customer_users (
+        email      TEXT PRIMARY KEY,
+        pwd_hash   TEXT NOT NULL,
+        role       TEXT NOT NULL DEFAULT 'user',   -- 'admin' | 'user'
+        imap_email TEXT,                            -- yalnız 'user' rolünde dolu
+        active     INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        last_login TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_cuser_role ON customer_users(role);
+    CREATE INDEX IF NOT EXISTS idx_cuser_imap ON customer_users(imap_email);
+`);
+
 // ─── TEHDİT PATERNI VE MARKA DOMAIN TABLOLARI ────────────
 db.exec(`
     CREATE TABLE IF NOT EXISTS brand_domains (

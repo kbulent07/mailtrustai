@@ -24,9 +24,14 @@
 
         <!-- Giriş Formu -->
         <div id="customerAuthLoginForm" style="display:none">
+            <div style="margin-bottom:12px">
+                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">E-posta</label>
+                <input id="customerAuthEmail" type="email" placeholder="ornek@sirket.com" autocomplete="username"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px">
+            </div>
             <div style="margin-bottom:14px">
-                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yönetim Şifresi</label>
-                <input id="customerAuthPwd" type="password" placeholder="••••••••"
+                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Şifre</label>
+                <input id="customerAuthPwd" type="password" placeholder="••••••••" autocomplete="current-password"
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
                     onkeydown="if(event.key==='Enter')customerAuthLogin()">
             </div>
@@ -36,25 +41,30 @@
             </button>
         </div>
 
-        <!-- İlk Kurulum Formu -->
+        <!-- İlk Kurulum Formu (yalnız ilk admin oluşturulurken) -->
         <div id="customerAuthSetupForm" style="display:none">
             <div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#c7d2fe">
-                ℹ️ İlk kurulum: Müşteri yönetim paneline erişim için bir şifre oluşturun. Bu şifreyi unutmayın.
+                ℹ️ <strong>İlk Kurulum — Müşteri Admin oluştur.</strong> Bu hesap müşteri panelindeki her şeyi yönetir (API ayarları, IMAP hesapları, müşteri kullanıcıları). E-posta ve şifrenizi not edin.
             </div>
             <div style="margin-bottom:12px">
-                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yeni Şifre <span style="color:#94a3b8;font-size:11px">(en az 6 karakter)</span></label>
-                <input id="customerAuthSetupPwd" type="password" placeholder="••••••••"
+                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Admin E-postası</label>
+                <input id="customerAuthSetupEmail" type="email" placeholder="admin@sirketiniz.com" autocomplete="email"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px">
+            </div>
+            <div style="margin-bottom:12px">
+                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Şifre <span style="color:#94a3b8;font-size:11px">(en az 6 karakter)</span></label>
+                <input id="customerAuthSetupPwd" type="password" placeholder="••••••••" autocomplete="new-password"
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px">
             </div>
             <div style="margin-bottom:14px">
                 <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Şifre Tekrar</label>
-                <input id="customerAuthSetupPwd2" type="password" placeholder="••••••••"
+                <input id="customerAuthSetupPwd2" type="password" placeholder="••••••••" autocomplete="new-password"
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
                     onkeydown="if(event.key==='Enter')customerAuthSetup()">
             </div>
             <button onclick="customerAuthSetup()" id="customerAuthSetupBtn"
                 style="width:100%;padding:11px;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
-                ✨ Şifre Oluştur ve Devam Et
+                ✨ Admin Hesabını Oluştur
             </button>
         </div>
 
@@ -158,9 +168,18 @@
             // Sunucu lisans bridge ile yeni bir token döndürdüyse onu kaydet
             if (data.bridgeToken) setToken(data.bridgeToken);
 
+            // Rol / e-posta bilgisini cache et — app.js UI gizleme için kullanır
+            try {
+                if (data.role)      sessionStorage.setItem('msa_customer_role',  data.role);
+                if (data.email)     sessionStorage.setItem('msa_customer_email', data.email);
+                if (data.imapEmail) sessionStorage.setItem('msa_customer_imap',  data.imapEmail);
+                else                sessionStorage.removeItem('msa_customer_imap');
+            } catch {}
+
             if (data.sessionValid) { unlockApp(); return; }
-            if (data.passwordSet) { showLogin(); }
-            else { showSetup(); }
+            // initialized=false → henüz admin yok → setup formu; aksi halde login
+            if (data.initialized === false || data.passwordSet === false) { showSetup(); }
+            else { showLogin(); }
         } catch (e) {
             showLogin();
             errEl.textContent = 'Sunucuya bağlanılamadı. Sayfayı yenileyin.';
@@ -169,15 +188,17 @@
 
     window.customerAuthLogin = async function() {
         errEl.textContent = '';
+        const email    = (document.getElementById('customerAuthEmail').value || '').trim().toLowerCase();
         const password = document.getElementById('customerAuthPwd').value;
-        if (!password) { errEl.textContent = 'Şifre zorunludur.'; return; }
+        if (!email)    { errEl.textContent = 'E-posta zorunludur.'; return; }
+        if (!password) { errEl.textContent = 'Şifre zorunludur.';   return; }
         const btn = document.getElementById('customerAuthLoginBtn');
         btn.disabled = true; btn.textContent = '⏳ Giriş yapılıyor...';
         try {
             const res = await fetch('/api/customer/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password })
+                body: JSON.stringify({ email, password })
             });
             const data = await res.json();
             if (!res.ok) {
@@ -185,6 +206,9 @@
                 return;
             }
             setToken(data.token);
+            // Rol bilgisini cache et — frontend admin/user moduna göre UI gizler
+            try { sessionStorage.setItem('msa_customer_role', data.role || 'admin'); } catch {}
+            try { sessionStorage.setItem('msa_customer_email', data.email || ''); } catch {}
             // Login/setup sonrası fresh start: app.js'in DOMContentLoaded init'i
             // token yokken yapıldığı için kalıcı state bozuk olabilir → reload.
             location.reload();
@@ -204,10 +228,12 @@
 
     window.customerAuthSetup = async function() {
         errEl.textContent = '';
-        const p1 = document.getElementById('customerAuthSetupPwd').value;
-        const p2 = document.getElementById('customerAuthSetupPwd2').value;
+        const email = (document.getElementById('customerAuthSetupEmail').value || '').trim().toLowerCase();
+        const p1    = document.getElementById('customerAuthSetupPwd').value;
+        const p2    = document.getElementById('customerAuthSetupPwd2').value;
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { errEl.textContent = 'Geçerli bir e-posta adresi gerekli.'; return; }
         if (p1.length < 6) { errEl.textContent = 'Şifre en az 6 karakter olmalıdır.'; return; }
-        if (p1 !== p2) { errEl.textContent = 'Şifreler uyuşmuyor.'; return; }
+        if (p1 !== p2)     { errEl.textContent = 'Şifreler uyuşmuyor.'; return; }
         const btn = document.getElementById('customerAuthSetupBtn');
         btn.disabled = true; btn.textContent = '⏳ Oluşturuluyor...';
         try {
@@ -218,7 +244,7 @@
             const res = await fetch('/api/customer/setup', {
                 method: 'POST',
                 headers,
-                body: JSON.stringify({ password: p1 })
+                body: JSON.stringify({ email, password: p1 })
             });
             const data = await res.json();
             if (!res.ok) {
@@ -227,23 +253,29 @@
                 return;
             }
             setToken(data.token);
+            try { sessionStorage.setItem('msa_customer_role', data.role || 'admin'); } catch {}
+            try { sessionStorage.setItem('msa_customer_email', data.email || email); } catch {}
             // URL'den setup_token'ı temizle (history'de kalmasın)
             if (setupToken && window.history?.replaceState) {
                 window.history.replaceState({}, document.title,
                     window.location.pathname + window.location.hash);
             }
-            // Login/setup sonrası fresh start: app.js'in DOMContentLoaded init'i
-            // token yokken yapıldığı için kalıcı state bozuk olabilir → reload.
+            // Login/setup sonrası fresh start.
             location.reload();
         } catch (e) {
             errEl.textContent = 'Bağlantı hatası: ' + e.message;
         } finally {
-            btn.disabled = false; btn.textContent = '✨ Şifre Oluştur ve Devam Et';
+            btn.disabled = false; btn.textContent = '✨ Admin Hesabını Oluştur';
         }
     };
 
     window.customerAuthLogout = function() {
         clearToken();
+        try {
+            sessionStorage.removeItem('msa_customer_role');
+            sessionStorage.removeItem('msa_customer_email');
+            sessionStorage.removeItem('msa_customer_imap');
+        } catch {}
         location.reload();
     };
 
@@ -267,10 +299,12 @@
     <div class="navbar-actions">
         <span class="license-badge free" id="licenseBadge">🆓 Free</span>
         <span class="text-muted hidden" id="usageCounter" title="Aylık tarama kullanımı" style="font-size:12px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.05)">0 / ∞</span>
+        <span id="roleBadge" title="Oturum açık kullanıcı" style="font-size:11px;padding:3px 8px;border-radius:4px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);color:#c7d2fe;display:none">👤</span>
         <button class="btn btn-ghost btn-sm" id="btnLang" onclick="toggleLang()">🌐 EN</button>
-        <button class="btn btn-ghost btn-sm" id="btnSettings" onclick="showSettings()">⚙️</button>
-        <button class="btn btn-ghost btn-sm" id="btnLicense" onclick="showLicenseModal()">🔑</button>
-        <button class="btn btn-ghost btn-sm" id="btnLogout" onclick="customerAuthLogout()" title="Müşteri yönetiminden çık">🚪</button>
+        <button class="btn btn-ghost btn-sm admin-only" id="btnCustomerUsers" onclick="showCustomerUsersModal()" title="Müşteri Kullanıcıları (admin)" style="display:none">👥</button>
+        <button class="btn btn-ghost btn-sm admin-only" id="btnSettings" onclick="showSettings()">⚙️</button>
+        <button class="btn btn-ghost btn-sm admin-only" id="btnLicense" onclick="showLicenseModal()">🔑</button>
+        <button class="btn btn-ghost btn-sm" id="btnLogout" onclick="customerAuthLogout()" title="Çıkış">🚪</button>
     </div>
 </nav>
 
@@ -942,6 +976,56 @@
             <button class="btn btn-ghost" onclick="testImapConnection()">🔄 <span data-i18n="btn_test">Test Et</span></button>
             <button class="btn btn-primary" onclick="saveImapAccount()">💾 <span data-i18n="btn_save">Kaydet</span></button>
             <button class="btn btn-ghost" onclick="closeImapModal()">❌</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     MÜŞTERİ KULLANICILARI MODALI (admin-only)
+═══════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="customerUsersModal">
+    <div class="modal" style="max-width:840px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <h2 style="margin:0">👥 Müşteri Kullanıcıları</h2>
+            <button onclick="closeCustomerUsersModal()" title="Kapat (ESC)" style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:22px;line-height:1;padding:4px 8px;border-radius:6px">✕</button>
+        </div>
+        <div style="background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.25);border-radius:6px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#7dd3fc">
+            ℹ️ <strong>admin</strong>: müşteri panelindeki her şeyi yönetir.
+            <strong>user</strong>: yalnız atandığı IMAP hesabını görür ve mailleri manuel tarayabilir (Enterprise gerekli).
+        </div>
+
+        <!-- Yeni kullanıcı formu -->
+        <div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:14px;margin-bottom:18px">
+            <div style="font-size:13px;font-weight:600;margin-bottom:10px">➕ Yeni Kullanıcı</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                <div>
+                    <label class="form-label" style="font-size:12px">E-posta</label>
+                    <input class="form-input" type="email" id="cuEmail" placeholder="kullanici@sirket.com">
+                </div>
+                <div>
+                    <label class="form-label" style="font-size:12px">Şifre <span style="opacity:.6;font-size:11px">(min 6 karakter)</span></label>
+                    <input class="form-input" type="password" id="cuPassword" placeholder="••••••••">
+                </div>
+                <div>
+                    <label class="form-label" style="font-size:12px">Rol</label>
+                    <select class="form-input" id="cuRole" onchange="onCuRoleChange()">
+                        <option value="user">👤 user — yalnız kendi IMAP'ını görür</option>
+                        <option value="admin">🛡️ admin — her şeyi yönetir</option>
+                    </select>
+                </div>
+                <div id="cuImapEmailWrap">
+                    <label class="form-label" style="font-size:12px">IMAP E-postası <span style="opacity:.6;font-size:11px">(user için zorunlu)</span></label>
+                    <input class="form-input" type="email" id="cuImapEmail" placeholder="kullanici@sirket.com">
+                </div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="createCustomerUser()">💾 Kullanıcı Oluştur</button>
+            <span id="cuCreateStatus" style="margin-left:10px;font-size:12px"></span>
+        </div>
+
+        <!-- Mevcut kullanıcılar listesi -->
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px">📋 Mevcut Kullanıcılar</div>
+        <div id="cuListContainer">
+            <div class="text-muted" style="padding:14px">Yükleniyor...</div>
         </div>
     </div>
 </div>

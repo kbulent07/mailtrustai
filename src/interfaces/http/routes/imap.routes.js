@@ -14,11 +14,33 @@ const { checkLicense, checkDailyLimit, checkMonthlyLimit } =
 
 const router = express.Router();
 
+// ─── Role bazlı erişim kontrolü ──────────────────────────────────────────────
+// "user" rolü yalnız kendi imapEmail'ini görür / tarayabilir; ekleme/silme yapamaz.
+function _isCustomerUser(req) {
+    return req.customerUser && req.customerUser.role === 'user';
+}
+function _customerUserImapEmail(req) {
+    return req.customerUser?.imapEmail || null;
+}
+function _emailMatchesUser(req, email) {
+    const target = _customerUserImapEmail(req);
+    if (!target) return false;
+    return String(email || '').toLowerCase() === String(target).toLowerCase();
+}
+
 router.post('/imap/test', async (req, res) => {
+    // user rolü: sadece kendi e-postası için test yapabilir
+    if (_isCustomerUser(req) && !_emailMatchesUser(req, req.body?.email)) {
+        return res.status(403).json({ error: 'Yalnız kendi IMAP hesabınızı test edebilirsiniz.' });
+    }
     res.json(await testConnection(req.body));
 });
 
 router.post('/imap/accounts', async (req, res) => {
+    // user rolü: IMAP hesabı ekleyemez/değiştiremez (yalnız admin)
+    if (_isCustomerUser(req)) {
+        return res.status(403).json({ error: 'IMAP hesabı ekleme/güncelleme yalnız admin yetkisinde.' });
+    }
     if (!req.body?.email || !req.body?.host)
         return res.status(400).json({ error: 'Email and host are required' });
 
@@ -39,11 +61,20 @@ router.post('/imap/accounts', async (req, res) => {
 });
 
 router.delete('/imap/accounts/:email', (req, res) => {
+    if (_isCustomerUser(req)) {
+        return res.status(403).json({ error: 'IMAP hesabı silme yalnız admin yetkisinde.' });
+    }
     res.json({ success: true, count: removeAccount(req.params.email).length });
 });
 
 router.get('/imap/accounts', (req, res) => {
-    res.json(loadCredentials().map(a => ({
+    let list = loadCredentials();
+    // user rolü: yalnız kendi IMAP hesabını gör
+    if (_isCustomerUser(req)) {
+        const own = _customerUserImapEmail(req);
+        list = list.filter(a => String(a.email || '').toLowerCase() === String(own || '').toLowerCase());
+    }
+    res.json(list.map(a => ({
         email: a.email, host: a.host, port: a.port,
         autoSummaryReport: a.autoSummaryReport === true,
         rejectUnauthorized: a.rejectUnauthorized !== false,
@@ -52,7 +83,10 @@ router.get('/imap/accounts', (req, res) => {
 });
 
 router.patch('/imap/accounts/:email/report', (req, res) => {
-    const email   = decodeURIComponent(req.params.email);
+    const email = decodeURIComponent(req.params.email);
+    if (_isCustomerUser(req) && !_emailMatchesUser(req, email)) {
+        return res.status(403).json({ error: 'Yalnız kendi hesabınızın ayarını değiştirebilirsiniz.' });
+    }
     const updated = updateAccount(email, { autoSummaryReport: req.body.enabled === true || req.body.enabled === 'true' });
     if (!updated) return res.status(404).json({ error: 'Account not found' });
     res.json({ success: true, email, autoSummaryReport: updated.autoSummaryReport === true });
@@ -64,6 +98,10 @@ router.post('/imap/list', async (req, res) => {
         return res.status(403).json({ error: 'IMAP tarama Enterprise lisansı gerektirir' });
 
     const { email, folder, limit } = req.body;
+    // user rolü: yalnız kendi e-postası
+    if (_isCustomerUser(req) && !_emailMatchesUser(req, email)) {
+        return res.status(403).json({ error: 'Yalnız kendi IMAP hesabınızı listeleyebilirsiniz.' });
+    }
     const account = loadCredentials().find(a => a.email === email);
     if (!account) return res.status(404).json({ error: 'Account not found' });
 
@@ -78,6 +116,10 @@ router.post('/imap/scan', async (req, res) => {
     if (!checkMonthlyLimit(license))    return res.status(429).json({ error: 'Monthly scan limit reached' });
 
     const { email, uid, folder } = req.body;
+    // user rolü: yalnız kendi e-postası
+    if (_isCustomerUser(req) && !_emailMatchesUser(req, email)) {
+        return res.status(403).json({ error: 'Yalnız kendi IMAP hesabınızdan mail tarayabilirsiniz.' });
+    }
     const account = loadCredentials().find(a => a.email === email);
     if (!account) return res.status(404).json({ error: 'Account not found' });
 

@@ -199,6 +199,8 @@ let currentExecutiveDashboard = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     applyLang();
+    // Rol bazlı UI uygula (admin/user)
+    applyCustomerRoleUI();
     setupUploadZone();
     loadHistory();
     // Lisans önceliği: localStorage → server'da kayıtlı (restart/yeni cihaz korumalı)
@@ -6413,3 +6415,206 @@ async function testWebhookConnection() {
         if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">Bağlantı hatası: ${esc(e.message)}</span>`;
     }
 }
+
+// ============================================================
+// MÜŞTERİ ROLÜ / KULLANICI YÖNETİMİ
+// ============================================================
+
+function getCustomerRole() {
+    try { return sessionStorage.getItem('msa_customer_role') || 'admin'; } catch { return 'admin'; }
+}
+function getCustomerEmail() {
+    try { return sessionStorage.getItem('msa_customer_email') || ''; } catch { return ''; }
+}
+function getCustomerImapEmail() {
+    try { return sessionStorage.getItem('msa_customer_imap') || ''; } catch { return ''; }
+}
+
+function applyCustomerRoleUI() {
+    const role  = getCustomerRole();
+    const email = getCustomerEmail();
+    const isUser = role === 'user';
+
+    // Rol rozeti
+    const badge = document.getElementById('roleBadge');
+    if (badge) {
+        badge.style.display = '';
+        if (isUser) {
+            badge.textContent = '👤 ' + (email || 'user');
+            badge.style.background = 'rgba(245,158,11,0.15)';
+            badge.style.borderColor = 'rgba(245,158,11,0.35)';
+            badge.style.color = '#fcd34d';
+            badge.title = 'Müşteri kullanıcı — sınırlı erişim';
+        } else {
+            badge.textContent = '🛡️ ' + (email || 'admin');
+            badge.style.background = 'rgba(99,102,241,0.15)';
+            badge.style.borderColor = 'rgba(99,102,241,0.35)';
+            badge.style.color = '#c7d2fe';
+            badge.title = 'Müşteri admin';
+        }
+    }
+
+    // Admin-only butonları yönet
+    document.querySelectorAll('.admin-only').forEach(el => {
+        el.style.display = isUser ? 'none' : '';
+    });
+
+    // User rolünde sekmeleri sınırla: sadece "Tarama" (IMAP) bırak
+    if (isUser) {
+        const hideTabs = ['navTabHome', 'navTabStats', 'navTabOtxApproval'];
+        hideTabs.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+        // Açılırken Tarama sekmesini göster
+        if (typeof showPage === 'function') {
+            try { showPage('scan'); } catch {}
+        }
+    }
+}
+
+// ─── Müşteri Kullanıcıları Modal ─────────────────────────────────────────────
+
+function showCustomerUsersModal() {
+    const m = document.getElementById('customerUsersModal');
+    if (!m) return;
+    m.classList.remove('hidden');
+    document.getElementById('cuCreateStatus').textContent = '';
+    onCuRoleChange();
+    loadCustomerUsersList();
+}
+window.showCustomerUsersModal = showCustomerUsersModal;
+
+function closeCustomerUsersModal() {
+    const m = document.getElementById('customerUsersModal');
+    if (m) m.classList.add('hidden');
+}
+window.closeCustomerUsersModal = closeCustomerUsersModal;
+
+function onCuRoleChange() {
+    const roleSel = document.getElementById('cuRole');
+    const wrap    = document.getElementById('cuImapEmailWrap');
+    if (!roleSel || !wrap) return;
+    wrap.style.display = roleSel.value === 'user' ? '' : 'none';
+}
+window.onCuRoleChange = onCuRoleChange;
+
+async function _cuFetch(path, opts = {}) {
+    const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+    const token = window.__msaCustomerToken || (function(){ try { return sessionStorage.getItem('msa_customer_token') || ''; } catch { return ''; } })();
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch(path, Object.assign({}, opts, { headers }));
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+}
+
+async function loadCustomerUsersList() {
+    const cont = document.getElementById('cuListContainer');
+    if (!cont) return;
+    cont.innerHTML = '<div class="text-muted" style="padding:14px">Yükleniyor...</div>';
+    const r = await _cuFetch('/api/customer-users');
+    if (!r.ok) {
+        cont.innerHTML = `<div style="color:#f87171;padding:12px">Yüklenemedi: ${esc(r.data.error || r.status)}</div>`;
+        return;
+    }
+    const users = r.data.users || [];
+    if (!users.length) {
+        cont.innerHTML = '<div class="text-muted" style="padding:12px">Henüz kullanıcı yok.</div>';
+        return;
+    }
+    const meEmail = getCustomerEmail();
+    const rows = users.map(u => {
+        const isMe   = u.email === meEmail;
+        const roleColor = u.role === 'admin' ? '#c7d2fe' : '#fcd34d';
+        const roleBg   = u.role === 'admin' ? 'rgba(99,102,241,0.15)' : 'rgba(245,158,11,0.15)';
+        const statusBadge = u.active ? '<span style="color:#86efac">● aktif</span>' : '<span style="color:#fda4af">● pasif</span>';
+        const created = u.createdAt ? new Date(u.createdAt).toLocaleString('tr-TR') : '—';
+        const lastLogin = u.lastLogin ? new Date(u.lastLogin).toLocaleString('tr-TR') : '—';
+        return `
+        <div style="border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:240px">
+                <div style="font-weight:600">${esc(u.email)} ${isMe ? '<span style="font-size:11px;color:#86efac;margin-left:6px">(siz)</span>' : ''}</div>
+                <div style="font-size:11px;opacity:0.7;margin-top:2px">
+                    <span style="background:${roleBg};color:${roleColor};padding:1px 6px;border-radius:3px">${u.role}</span>
+                    ${u.imapEmail ? ' · IMAP: <code>' + esc(u.imapEmail) + '</code>' : ''}
+                    · ${statusBadge}
+                </div>
+                <div style="font-size:10px;opacity:0.5;margin-top:2px">oluşturuldu: ${esc(created)} · son giriş: ${esc(lastLogin)}</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button class="btn btn-ghost btn-sm" onclick="cuResetPassword('${esc(u.email)}')" title="Şifre sıfırla">🔑</button>
+                ${u.role === 'user' ? '<button class="btn btn-ghost btn-sm" onclick="cuEditImap(\'' + esc(u.email) + '\', \'' + esc(u.imapEmail || '') + '\')" title="IMAP düzenle">📧</button>' : ''}
+                <button class="btn btn-ghost btn-sm" onclick="cuToggleActive('${esc(u.email)}', ${u.active ? 'false' : 'true'})" ${isMe ? 'disabled title="Kendinizi pasifleştiremezsiniz"' : ''}>${u.active ? '⏸️' : '▶️'}</button>
+                <button class="btn btn-ghost btn-sm" style="color:#fca5a5" onclick="cuDelete('${esc(u.email)}')" ${isMe ? 'disabled title="Kendinizi silemezsiniz"' : ''}>🗑️</button>
+            </div>
+        </div>`;
+    }).join('');
+    cont.innerHTML = rows;
+}
+window.loadCustomerUsersList = loadCustomerUsersList;
+
+async function createCustomerUser() {
+    const email     = (document.getElementById('cuEmail').value || '').trim().toLowerCase();
+    const password  = document.getElementById('cuPassword').value;
+    const role      = document.getElementById('cuRole').value;
+    const imapEmail = (document.getElementById('cuImapEmail').value || '').trim().toLowerCase();
+    const statusEl  = document.getElementById('cuCreateStatus');
+    statusEl.textContent = '';
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { statusEl.innerHTML = '<span style="color:#f87171">Geçerli bir e-posta gerekli</span>'; return; }
+    if (!password || password.length < 6) { statusEl.innerHTML = '<span style="color:#f87171">Şifre en az 6 karakter</span>'; return; }
+    if (role === 'user' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(imapEmail)) {
+        statusEl.innerHTML = '<span style="color:#f87171">user rolü için IMAP e-postası zorunlu</span>'; return;
+    }
+
+    const r = await _cuFetch('/api/customer-users', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, role, imapEmail: role === 'user' ? imapEmail : null })
+    });
+    if (!r.ok) { statusEl.innerHTML = `<span style="color:#f87171">${esc(r.data.error || 'Hata')}</span>`; return; }
+
+    statusEl.innerHTML = '<span style="color:#86efac">✓ Kullanıcı oluşturuldu</span>';
+    document.getElementById('cuEmail').value = '';
+    document.getElementById('cuPassword').value = '';
+    document.getElementById('cuImapEmail').value = '';
+    loadCustomerUsersList();
+}
+window.createCustomerUser = createCustomerUser;
+
+async function cuResetPassword(email) {
+    const pwd = prompt(`${email} için yeni şifre (en az 6 karakter):`);
+    if (!pwd) return;
+    if (pwd.length < 6) return alert('Şifre en az 6 karakter olmalı.');
+    const r = await _cuFetch('/api/customer-users/' + encodeURIComponent(email), {
+        method: 'PATCH', body: JSON.stringify({ password: pwd })
+    });
+    if (!r.ok) return alert('Hata: ' + (r.data.error || r.status));
+    alert('Şifre güncellendi.');
+}
+window.cuResetPassword = cuResetPassword;
+
+async function cuEditImap(email, current) {
+    const imap = prompt(`${email} için IMAP e-postası:`, current || '');
+    if (imap === null) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(imap)) return alert('Geçerli bir e-posta girin.');
+    const r = await _cuFetch('/api/customer-users/' + encodeURIComponent(email), {
+        method: 'PATCH', body: JSON.stringify({ imapEmail: imap })
+    });
+    if (!r.ok) return alert('Hata: ' + (r.data.error || r.status));
+    loadCustomerUsersList();
+}
+window.cuEditImap = cuEditImap;
+
+async function cuToggleActive(email, makeActive) {
+    const r = await _cuFetch('/api/customer-users/' + encodeURIComponent(email), {
+        method: 'PATCH', body: JSON.stringify({ active: makeActive === true || makeActive === 'true' })
+    });
+    if (!r.ok) return alert('Hata: ' + (r.data.error || r.status));
+    loadCustomerUsersList();
+}
+window.cuToggleActive = cuToggleActive;
+
+async function cuDelete(email) {
+    if (!confirm(`${email} kullanıcısı silinsin mi?`)) return;
+    const r = await _cuFetch('/api/customer-users/' + encodeURIComponent(email), { method: 'DELETE' });
+    if (!r.ok) return alert('Hata: ' + (r.data.error || r.status));
+    loadCustomerUsersList();
+}
+window.cuDelete = cuDelete;

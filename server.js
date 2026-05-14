@@ -10,6 +10,7 @@ const { setupWebSocket } = require('./src/routes/websocket');
 const { startBackgroundRefresh } = require('./src/license/remoteValidator');
 const { loadSettings } = require('./src/storage/settingsStore');
 const { checkAndSeedInitialPasswords } = require('./src/services/initialSetupService');
+const customerUserStore = require('./src/storage/customerUserStore');
 
 const app = express();
 const server = http.createServer(app);
@@ -102,6 +103,12 @@ const PORT = process.env.PORT || 3000;
         await checkAndSeedInitialPasswords();
     } catch (e) {
         console.error('[Setup] İlk şifre seed işlemi başarısız:', e.message);
+    }
+    // Eski settings.customerPassword → DB'deki customer_users tablosuna admin olarak taşı
+    try {
+        await customerUserStore.migrateFromLegacySettings();
+    } catch (e) {
+        console.error('[Setup] customer_users migration başarısız:', e.message);
     }
     startListening();
 })();

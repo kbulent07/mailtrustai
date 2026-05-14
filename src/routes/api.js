@@ -35,26 +35,101 @@ const PUBLIC_PATHS = new Set([
     '/customer/login'
 ]);
 
+// Sadece müşteri ADMIN rolü erişebilen path prefix'leri (user rolü için 403).
+// Customer admin = "müşteri admin" — kendi alanındaki her şeyi yönetir.
+// user rolü için izinli: belirli IMAP/analyze/scan endpoint'leri (aşağıda whitelist).
+const ADMIN_ONLY_PREFIXES = [
+    '/settings/',
+    '/threat-intel/refresh',
+    '/admin/config/',
+    '/admin/trusted-domains',
+    '/admin/fp-suggestions',
+    '/customer-users',
+    '/resellers',
+    '/license/generate',
+    '/license/batch',
+    '/license/trial',
+    '/license/revoke',
+    '/license/unrevoke',
+    '/license/revoked',
+    '/reports/settings',
+    '/scan-mailboxes',
+    '/webhook',  // /settings/webhook gibi alt path'ler de yukarıda yakalanır
+    '/audit-log'
+];
+
+// user rolü için izinli path'ler (whitelist). Diğer her şey kapalı.
+// "user" rolü = müşterinin kullanıcısı = sadece kendi IMAP'ını kullanır.
+const USER_ROLE_ALLOWED_PREFIXES = [
+    '/imap/',          // sadece kendi IMAP hesabını (imap.routes.js içinde filtre)
+    '/analyze/',       // mail analizi (kendi mailbox'ından)
+    '/health',
+    '/customer/status',
+    '/license/validate',
+    '/license/prices',
+    '/license/activate',
+    '/license/check',
+    '/license/usage',
+    '/stats/',
+    '/lists/',
+    '/threat-intel/'   // istatistik okuma (refresh hariç yukarıda)
+];
+
+function _isAdminOnlyPath(path) {
+    return ADMIN_ONLY_PREFIXES.some(p => path === p || path.startsWith(p));
+}
+
+function _isUserAllowedPath(path) {
+    return USER_ROLE_ALLOWED_PREFIXES.some(p => path === p || path.startsWith(p));
+}
+
 router.use(async (req, res, next) => {
     if (PUBLIC_PATHS.has(req.path)) return next();
     if (req.path.startsWith('/dealer/') || req.path === '/dealer') return next();
 
-    // Bearer token: admin oturumu veya müşteri oturumu
+    // Bearer token: admin token (keygen) veya müşteri token (admin/user role)
     const auth = req.headers['authorization'] || '';
     if (auth.startsWith('Bearer ')) {
         const token = auth.slice(7).trim();
+
+        // 1) Sistem admin token (keygen.html → license üretim için)
         if (verifyAdminToken(token)) return next();
-        if (customerAuth.verifyCustomerToken(token)) return next();
+
+        // 2) Müşteri token (email + role + imapEmail)
+        const parsed = customerAuth.parseCustomerToken(token);
+        if (parsed) {
+            // DB'de hâlâ aktif mi?
+            const customerUserStore = require('../storage/customerUserStore');
+            const u = customerUserStore.findByEmail(parsed.email);
+            if (u && u.active) {
+                req.customerUser = { email: u.email, role: u.role, imapEmail: u.imapEmail };
+
+                // Rol-bazlı path kontrolü
+                if (u.role === 'admin') {
+                    return next();   // her yere erişebilir
+                }
+                // user role: sadece whitelist + admin-only DEĞİL
+                if (_isUserAllowedPath(req.path) && !_isAdminOnlyPath(req.path)) {
+                    return next();
+                }
+                return res.status(403).json({
+                    error: 'Bu işlem için yetkiniz yok. Yalnız müşteri admin erişebilir.',
+                    role: u.role
+                });
+            }
+            // Token geçerli ama DB'de aktif değil → reddet
+            return res.status(401).json({ error: 'Oturum geçersiz. Yeniden giriş yapın.' });
+        }
     }
 
-    // x-license-key: geçerli lisans anahtarı ile doğrudan API erişimi
+    // x-license-key: geçerli lisans anahtarı ile doğrudan API erişimi (admin gibi davranır)
     const licKey = req.headers['x-license-key'] || req.body?.licenseKey || '';
     if (licKey) {
         const result = validateLicenseKey(licKey);
         if (result.valid) return next();
     }
 
-    // x-admin-password: doğrudan admin şifresi ile erişim (index.html ayarlar formu)
+    // x-admin-password: doğrudan admin şifresi ile erişim (geriye uyumluluk)
     const adminPwdHeader = req.headers['x-admin-password'] || '';
     if (adminPwdHeader) {
         const { verifyAdminPassword } = require('../middleware/adminAuth');
@@ -72,6 +147,7 @@ router.use(require('../interfaces/http/routes/configBackup.routes'));
 router.use(require('../interfaces/http/routes/trustedDomains.routes'));
 router.use(require('../interfaces/http/routes/fpSuggestions.routes'));
 router.use(require('../interfaces/http/routes/customer.routes'));
+router.use(require('../interfaces/http/routes/customerUsers.routes'));
 router.use(require('../interfaces/http/routes/analyze.routes'));
 router.use(require('../interfaces/http/routes/imap.routes'));
 router.use(require('../interfaces/http/routes/monitor.routes'));
