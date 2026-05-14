@@ -118,6 +118,13 @@
 </div>
 
 <script>
+// setup_token'ı app.js URL'yi temizlemeden önce sakla
+(function() {
+    try {
+        const _st = new URLSearchParams(window.location.search).get('setup_token') || '';
+        if (_st) sessionStorage.setItem('msa_setup_token_temp', _st);
+    } catch {}
+})();
 (function() {
     const SESSION_KEY = 'msa_customer_token';
     const overlay     = document.getElementById('customerAuthOverlay');
@@ -361,10 +368,12 @@
         }
     };
 
-    // URL'den setup_token oku (uzaktan ilk kurulum için)
+    // URL'den setup_token oku — app.js URL'yi temizlemiş olabilir, sessionStorage fallback
     function getSetupTokenFromUrl() {
         try {
-            return new URLSearchParams(window.location.search).get('setup_token') || '';
+            return new URLSearchParams(window.location.search).get('setup_token')
+                || sessionStorage.getItem('msa_setup_token_temp')
+                || '';
         } catch { return ''; }
     }
 
@@ -398,6 +407,7 @@
             try { sessionStorage.setItem('msa_customer_role', data.role || 'admin'); } catch {}
             try { sessionStorage.setItem('msa_customer_email', data.email || email); } catch {}
             try { sessionStorage.removeItem('msa_force_logout'); } catch {}
+            try { sessionStorage.removeItem('msa_setup_token_temp'); } catch {}
             // URL'den setup_token'ı temizle (history'de kalmasın)
             if (setupToken && window.history?.replaceState) {
                 window.history.replaceState({}, document.title,
