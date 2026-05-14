@@ -6198,8 +6198,11 @@ async function renderOnboardingChecklist() {
     } catch {}
 
     // 4) IMAP veya Tarama Posta Kutusu kurulu mu?
+    // Doğru endpoint adları: /api/imap/accounts ve /api/scan-mailboxes
+    // (Önceki sürümde /api/imap/credentials ve /api/scan-mailbox/list yanlış
+    //  isimler kullanılıyordu → her zaman 404 → checklist üzeri çizilmiyordu.)
     try {
-        const r = await fetch('/api/imap/credentials');
+        const r = await fetch('/api/imap/accounts');
         if (r.ok) {
             const list = await r.json();
             state.imapOrScanMailbox = Array.isArray(list) && list.length > 0;
@@ -6207,7 +6210,7 @@ async function renderOnboardingChecklist() {
     } catch {}
     if (!state.imapOrScanMailbox) {
         try {
-            const r = await fetch('/api/scan-mailbox/list');
+            const r = await fetch('/api/scan-mailboxes');
             if (r.ok) {
                 const list = await r.json();
                 state.imapOrScanMailbox = Array.isArray(list) && list.length > 0;
