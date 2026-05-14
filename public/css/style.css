@@ -227,9 +227,16 @@ body::before {
 }
 
 .home-bottom-grid {
-    display: grid; grid-template-columns: 1fr 360px; gap: 20px;
+    display: grid;
+    /* minmax(0, 1fr) → sol kart genişlemediği zaman sıkışabilir;
+       minmax(280px, 320px) → sağ kart en az 280px, en fazla 320px (kompakt) */
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+    gap: 20px;
 }
-@media (max-width: 900px) { .home-bottom-grid { grid-template-columns: 1fr; } }
+/* Orta-dar ekranda iki sütun sığmıyor → tek sütuna geç (1280→1200→tek) */
+@media (max-width: 1200px) {
+    .home-bottom-grid { grid-template-columns: 1fr; }
+}
 
 .home-recent-item {
     display: flex; align-items: center; gap: 12px;
