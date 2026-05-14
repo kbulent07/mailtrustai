@@ -123,14 +123,19 @@
                 const url = typeof input === 'string' ? input : (input && input.url) || '';
                 const token = window.__msaCustomerToken || getToken();
                 const lic = (typeof localStorage !== 'undefined') ? (localStorage.getItem('msa_license') || '') : '';
+                // force_logout: kullanıcı 'Oturumu Kapat'a bastıktan sonra otomatik
+                // lisans-bridge ile yeniden giriş yapmasın. Yeni email/şifre login'i
+                // bu flag'i siler. Flag aktifken token YOK ise lisans header'ı da
+                // gönderilmez — sunucu sessionValid:false döner ve login formu çıkar.
+                const forceLogout = (function(){ try { return sessionStorage.getItem('msa_force_logout') === '1'; } catch { return false; } })();
                 if (url.startsWith('/api/')) {
                     init = init || {};
                     const headers = new Headers(init.headers || (typeof input !== 'string' && input.headers) || {});
                     if (token && !headers.has('Authorization')) {
                         headers.set('Authorization', 'Bearer ' + token);
                         init.headers = headers;
-                    } else if (!token && lic && !headers.has('x-license-key') && !headers.has('Authorization')) {
-                        // Token yok ama lisans var → lisansla yetkilen
+                    } else if (!token && lic && !forceLogout && !headers.has('x-license-key') && !headers.has('Authorization')) {
+                        // Token yok ama lisans var ve force_logout YOK → lisansla yetkilen
                         headers.set('x-license-key', lic);
                         init.headers = headers;
                     }
