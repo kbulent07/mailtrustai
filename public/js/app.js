@@ -2750,7 +2750,26 @@ window.imapMobileBackToList = function() {
 function renderImapAbuseSection(data) {
     const status   = data?.abuseStatus  || {};
     const matches  = data?.abuseData?.matches || [];
-    const allLinks = Array.isArray(data?.allLinks) ? data.allLinks : [];
+
+    // Linkleri 3 kaynaktan da topla (geriye uyumluluk: eski scan'ler allLinks
+    // alanı yok, sadece findings içinde URL'ler yer alıyor olabilir):
+    //   1) data.allLinks                              (yeni backend)
+    //   2) data.findings içinde URL geçen mesajlar    (regex çıkarımı)
+    //   3) abuseData.matches'taki tehditler           (en azından bunlar olsun)
+    function _collectLinks() {
+        const set = new Set();
+        if (Array.isArray(data?.allLinks)) data.allLinks.forEach(u => set.add(u));
+        const urlRx = /https?:\/\/[^\s<>"'`]+/gi;
+        for (const f of (data?.findings || [])) {
+            const m = String(f.message || '').match(urlRx);
+            if (m) m.forEach(u => set.add(u.replace(/[.,;:!?\)]+$/, '')));
+        }
+        for (const m of matches) {
+            if (m.type === 'url' && m.value) set.add(m.value);
+        }
+        return Array.from(set);
+    }
+    const allLinks = _collectLinks();
     const totalLinks = allLinks.length || (data?.breakdown?.linkCount || 0);
     const threatCount = matches.length;
 
