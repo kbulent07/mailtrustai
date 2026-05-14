@@ -2589,7 +2589,11 @@ function renderImapReport(data, message = null) {
     const meta = data.emailMeta || {};
     const from = meta.from?.[0] || {};
     const to = meta.to?.[0] || {};
-    const groups = groupFindingsByCategory(data.findings || []);
+    // 'virusTotal' kategorisindeki bulguları (= Tespit Edilen Tehdit Tipleri)
+    // groups'tan ayır → renderImapThreatTypesSection ile Link Tarama Motoru'nun
+    // hemen altında ayrı bir bölüm olarak göstereceğiz.
+    const allGroups = groupFindingsByCategory(data.findings || []);
+    const groups    = allGroups.filter(g => g.category !== 'virusTotal');
 
     pane.innerHTML = `
         <div class="imap-health-banner ${data.level}">
@@ -2645,6 +2649,8 @@ function renderImapReport(data, message = null) {
         </div>
 
         ${renderImapAbuseSection(data)}
+
+        ${renderImapThreatTypesSection(data)}
 
         ${renderImapAttachmentSection(data)}
 
@@ -2917,6 +2923,92 @@ function openLinkListModal() {
     document.addEventListener('keydown', escHandler);
 }
 window.openLinkListModal = openLinkListModal;
+
+// ─── Tespit Edilen Tehdit Tipleri (virusTotal kategorisi) ─────────────────
+// renderImapReport içinde Link Tarama Motoru'nun HEMEN ALTINDA gösterilir.
+// data.findings içindeki category='virusTotal' bulguları + virusTotal scan
+// sonuçları (motor sayıları) birleşik şekilde tek panelde sunulur.
+function renderImapThreatTypesSection(data) {
+    const findings = (data?.findings || []).filter(f => f.category === 'virusTotal');
+    const vtEntries = Array.isArray(data?.virusTotal) ? data.virusTotal : [];
+
+    // VT entry istatistikleri özeti
+    const vtStats = vtEntries.reduce((acc, e) => {
+        acc.malicious  += (e.stats?.malicious  || 0);
+        acc.suspicious += (e.stats?.suspicious || 0);
+        return acc;
+    }, { malicious: 0, suspicious: 0 });
+
+    const hasAny = findings.length > 0 || vtEntries.length > 0 || vtStats.malicious > 0 || vtStats.suspicious > 0;
+
+    // Üst rozet
+    let badge;
+    if (vtStats.malicious > 0) {
+        badge = `<span style="font-size:11px;color:#f87171;font-weight:700;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.35);padding:2px 8px;border-radius:4px">${vtStats.malicious} zararlı motor tespiti</span>`;
+    } else if (vtStats.suspicious > 0) {
+        badge = `<span style="font-size:11px;color:#fbbf24;font-weight:600;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);padding:2px 8px;border-radius:4px">${vtStats.suspicious} şüpheli motor tespiti</span>`;
+    } else if (findings.length > 0) {
+        badge = `<span style="font-size:11px;color:#fbbf24;font-weight:600">${findings.length} bulgu</span>`;
+    } else {
+        badge = `<span style="font-size:11px;color:#34d399">✅ Tehdit tipi tespit edilmedi</span>`;
+    }
+
+    // Eğer hiçbir bulgu yoksa kısa "temiz" mesajı, varsa findings listesi
+    const findingsHtml = findings.length === 0
+        ? ''
+        : findings.map(f => `
+            <div class="finding-item compact" style="display:flex;align-items:flex-start;gap:10px">
+                <div class="finding-icon ${esc(f.severity)}">${findingIcon(f.severity)}</div>
+                <div style="flex:1;min-width:0">
+                    <div class="finding-text">${esc(f.message)}</div>
+                </div>
+            </div>
+        `).join('');
+
+    // VT entry'leri (dosya bazlı motor sonuçları)
+    const vtHtml = vtEntries.length === 0
+        ? ''
+        : vtEntries.map(e => {
+            const stats = e.stats || {};
+            const mal = stats.malicious || 0;
+            const sus = stats.suspicious || 0;
+            const tot = stats.total || (mal + sus + (stats.harmless || 0) + (stats.undetected || 0));
+            const isClean = mal === 0 && sus === 0;
+            const summary = isClean
+                ? `<span style="color:#34d399">✅ Temiz</span> — ${tot} motor taradı`
+                : `<span style="color:#f87171;font-weight:600">⚠️ ${mal} zararlı</span> · ${sus} şüpheli · toplam ${tot} motor`;
+            return `
+                <div class="finding-item compact" style="display:flex;align-items:flex-start;gap:10px">
+                    <div class="finding-icon ${isClean ? 'safe' : 'critical'}">${isClean ? 'OK' : '!!'}</div>
+                    <div style="flex:1;min-width:0">
+                        <div class="finding-text"><strong>${esc(e.filename || 'ek')}</strong></div>
+                        <div class="finding-text">${summary}</div>
+                        ${e.maliciousEngines?.length
+                            ? `<div class="finding-category" style="color:#fca5a5;margin-top:4px">Zararlı bulan motorlar: ${e.maliciousEngines.slice(0,5).map(m => esc(m.engine)).join(', ')}${e.maliciousEngines.length>5?`, … +${e.maliciousEngines.length-5}`:''}</div>`
+                            : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    const body = hasAny
+        ? (findingsHtml + vtHtml)
+        : `<div style="font-size:12px;color:var(--text-secondary);padding:8px 4px">
+              ✅ Bu mailde tespit edilen tehdit tipi yok. Belirgin antivirüs/itibar uyarısı bulunmadı.
+           </div>`;
+
+    return `
+        <div class="imap-finding-group" style="margin-bottom:16px;">
+            <div class="imap-group-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="flex:1;min-width:160px">🔍 Tespit Edilen Tehdit Tipleri</span>
+                ${badge}
+            </div>
+            <div class="findings-list">
+                ${body}
+            </div>
+        </div>
+    `;
+}
 
 function renderImapAttachmentSection(data) {
     const rows = mergeAttachmentScanData(data);
