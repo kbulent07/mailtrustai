@@ -414,14 +414,102 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ## 6. İlk Yapılandırma
 
-Uygulama başladıktan sonra:
+### 6.1 Kurulum Scripti Çıktısından URL'yi Okuma
 
-1. **Admin Paneli:** `http://localhost:3000/keygen.html`
-2. **Admin şifresi:** İlk girişte `.env`'de belirtilen varsayılan şifre olmadığından,
-   keygen sayfasından "Admin Şifre Sıfırla" ile `MSA_RECOVERY_EMAIL` adresine kod gönderin.
-3. **Lisans üret:** Keygen panelinden `MSA-PRO-T2-M-DIRECT-...` formatında lisans oluşturun.
-4. **Ana arayüze gidin:** `http://localhost:3000` → Lisans Ekle (🔑)
-5. **VirusTotal API** (İsteğe bağlı): Ayarlar → VirusTotal API Key
+Kurulum scripti (`install_server_ubuntu.sh` / `install_ubuntu.sh` / `install_customer_ubuntu.sh`) başarıyla tamamlandığında terminalin **en altında** şuna benzer bir blok çıkar:
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║       İLK KURULUM — TARAYICIDAN ŞİFRE BELİRLEME             ║
+╚══════════════════════════════════════════════════════════════╝
+
+  Admin paneli   : http://1.2.3.4/keygen.html?setup_token=abc123...
+  Müşteri paneli : http://1.2.3.4/?setup_token=abc123...
+
+  Setup Token: abc123...
+
+  Her iki şifre belirlendikten sonra:
+    sudo sed -i 's|^MSA_SETUP_TOKEN=.*|MSA_SETUP_TOKEN=|' /opt/mailtrustai/app/.env
+    sudo systemctl reload mailtrustai
+```
+
+> **Bu URL'yi kopyalayıp tarayıcıya yapıştırın.** Token URL'de olduğu sürece ilk kurulum formu internet üzerinden erişimde de gösterilir.
+
+---
+
+### 6.2 Token'ı Kaçırdıysanız — Elle Okuma / Yenileme
+
+Script çıktısı kaydırıldıysa veya oturum kapandıysa token'ı `.env` dosyasından okuyun:
+
+```bash
+sudo grep MSA_SETUP_TOKEN /opt/mailtrustai/app/.env
+# → MSA_SETUP_TOKEN=abc123def456...
+```
+
+Ardından tarayıcıda şu URL'yi kullanın:
+
+```
+http://<SUNUCU_IP_VEYA_DOMAIN>/?setup_token=<TOKEN_BURAYA>
+```
+
+**Token boşsa** (daha önce temizlendiyse) yeni bir tane üretin:
+
+```bash
+NEW_TOKEN=$(openssl rand -hex 24)
+sudo sed -i "s|^MSA_SETUP_TOKEN=.*|MSA_SETUP_TOKEN=${NEW_TOKEN}|" /opt/mailtrustai/app/.env
+sudo systemctl restart mailtrustai   # veya: docker compose ... restart
+echo "Yeni token: $NEW_TOKEN"
+```
+
+---
+
+### 6.3 Adım Adım İlk Kurulum Akışı
+
+#### Adım 1 — Müşteri Admin Hesabı Oluşturma
+
+1. Tarayıcıda şu adresi açın:
+   ```
+   http://<IP>/?setup_token=<TOKEN>
+   ```
+2. "İlk Kurulum" formu açılır — **Admin E-postası** ve **Şifre** girin (en az 6 karakter)
+3. **✨ Admin Hesabını Oluştur** butonuna basın
+4. Başarılıysa doğrudan müşteri paneline yönlendirilirsiniz
+
+#### Adım 2 — Admin (Keygen) Paneli Şifresi
+
+1. Tarayıcıda şu adresi açın:
+   ```
+   http://<IP>/keygen.html?setup_token=<TOKEN>
+   ```
+2. "Admin Şifre Belirle" formu açılır — şifrenizi girin
+3. Kaydedin
+
+#### Adım 3 — Lisans Oluşturma ve Ekleme
+
+1. Admin (keygen) panelinde → **Lisans Üret** → Uygun plan seçin
+2. Oluşturulan `MSA-...` kodunu kopyalayın
+3. Müşteri panelinde → sağ üst **🔑 Lisans** butonuna tıklayın → kodu yapıştırın
+
+#### Adım 4 — Setup Token'ı Devre Dışı Bırakın ⚠️
+
+Her iki şifre belirlendikten sonra token'ı **mutlaka** temizleyin — aksi halde herkes ilk kurulum formunu açabilir:
+
+```bash
+sudo sed -i 's|^MSA_SETUP_TOKEN=.*|MSA_SETUP_TOKEN=|' /opt/mailtrustai/app/.env
+sudo systemctl reload mailtrustai
+# veya Docker için:
+# sudo docker compose -f /opt/mailtrustai/app/docker-compose.prod.yml restart
+```
+
+---
+
+### 6.4 Güvenlik Notu
+
+| Durum | Risk |
+|---|---|
+| `MSA_SETUP_TOKEN` dolu + port 80/443 açık | ⚠️ Herkes ilk kurulum yapabilir — kurulumdan sonra **hemen temizleyin** |
+| `MSA_SETUP_TOKEN` boş | ✅ İlk kurulum yalnızca `localhost`'tan yapılabilir |
+| Şifreler belirlendi + token temizlendi | ✅ Normal çalışma modu |
 
 ---
 
