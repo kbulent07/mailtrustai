@@ -216,4 +216,45 @@ router.post('/settings/webhook/test', async (req, res) => {
     res.json(await testWebhook(safety.url));
 });
 
+// ─── SİSTEM SMTP ─────────────────────────────────────────────
+const { testSystemSmtp } = require('../../../smtp/sender');
+
+router.get('/settings/system-smtp', requireAdminAuth, (req, res) => {
+    const s = loadSettings();
+    const cfg = s.systemSmtp || {};
+    res.json({
+        host:     cfg.host     || '',
+        port:     cfg.port     || 587,
+        secure:   cfg.secure   || false,
+        user:     cfg.user     || '',
+        fromName: cfg.fromName || 'MailTrustAI',
+        hasPassword: !!(s.systemSmtpPassword)
+    });
+});
+
+router.post('/settings/system-smtp', requireAdminAuth, (req, res) => {
+    const { host, port, secure, user, fromName, password } = req.body;
+    const s = loadSettings();
+    const current = s.systemSmtp || {};
+    const updated = {
+        ...s,
+        systemSmtp: {
+            host:     typeof host     === 'string' ? host.trim()     : current.host     || '',
+            port:     Number(port)    || current.port                                   || 587,
+            secure:   secure === true || secure === 'true',
+            user:     typeof user     === 'string' ? user.trim()     : current.user     || '',
+            fromName: typeof fromName === 'string' ? fromName.trim() : current.fromName || 'MailTrustAI'
+        },
+        systemSmtpPassword: (typeof password === 'string' && password.trim())
+            ? password.trim()
+            : (s.systemSmtpPassword || '')
+    };
+    saveSettings(updated);
+    res.json({ ok: true });
+});
+
+router.post('/settings/system-smtp/test', requireAdminAuth, async (req, res) => {
+    res.json(await testSystemSmtp());
+});
+
 module.exports = router;

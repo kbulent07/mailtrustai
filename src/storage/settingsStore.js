@@ -11,7 +11,7 @@ const SETTINGS_FILE = path.join(__dirname, '..', '..', 'data', 'settings.json');
 
 // ─── ŞİFRELEME ───────────────────────────────────────────────
 const ENC_PREFIX = 'enc:v1:';
-const SENSITIVE   = ['vtApiKey', 'claudeApiKey', 'openaiApiKey', 'otxApiKey', 'webhookUrl'];
+const SENSITIVE   = ['vtApiKey', 'claudeApiKey', 'openaiApiKey', 'otxApiKey', 'webhookUrl', 'systemSmtpPassword'];
 
 function _deriveKey() {
     const secret   = process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#';
@@ -146,7 +146,15 @@ function defaultSettings() {
         webhookEnabled:  false,
         webhookUrl:      '',
         webhookMinLevel: 'low',
-        customPrices:    null
+        customPrices:    null,
+        systemSmtp: {
+            host:     '',
+            port:     587,
+            secure:   false,
+            user:     '',
+            fromName: 'MailTrustAI'
+        },
+        systemSmtpPassword: ''
     };
 }
 

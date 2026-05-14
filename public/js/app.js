@@ -3657,6 +3657,9 @@ function showSettingsTab(tab) {
     if (tab === 'system' && getCustomerRole() !== 'user') {
         loadDiskUsage();
     }
+    if (tab === 'system-smtp') {
+        loadSystemSmtp();
+    }
 }
 
 // ─── Disk Kullanımı & Tarama Geçmişi Silme ───────────────────────────────
@@ -6798,6 +6801,69 @@ async function loadWebhookSettings() {
         if (levelEl) levelEl.value = data.webhookMinLevel || 'low';
     } catch (e) {
         console.error('loadWebhookSettings error:', e);
+    }
+}
+
+// ─── SİSTEM SMTP ─────────────────────────────────────────────
+async function loadSystemSmtp() {
+    try {
+        const res  = await fetch('/api/settings/system-smtp');
+        if (!res.ok) return;
+        const data = await res.json();
+        const f = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
+        f('sysSmtpHost',     data.host);
+        f('sysSmtpPort',     data.port || 587);
+        f('sysSmtpUser',     data.user);
+        f('sysSmtpFromName', data.fromName || 'MailTrustAI');
+        const secEl = document.getElementById('sysSmtpSecure');
+        if (secEl) secEl.checked = !!data.secure;
+        const pwdEl = document.getElementById('sysSmtpPassword');
+        if (pwdEl) pwdEl.placeholder = data.hasPassword
+            ? '••••••••  (boş bırakılırsa mevcut şifre korunur)'
+            : 'Şifre giriniz';
+    } catch(e) { console.error('loadSystemSmtp:', e); }
+}
+
+async function saveSystemSmtp() {
+    const statusEl = document.getElementById('sysSmtpStatus');
+    if (statusEl) statusEl.textContent = '⏳ Kaydediliyor…';
+    try {
+        const body = {
+            host:     document.getElementById('sysSmtpHost')?.value.trim()     || '',
+            port:     Number(document.getElementById('sysSmtpPort')?.value)     || 587,
+            secure:   document.getElementById('sysSmtpSecure')?.checked        || false,
+            user:     document.getElementById('sysSmtpUser')?.value.trim()     || '',
+            fromName: document.getElementById('sysSmtpFromName')?.value.trim() || 'MailTrustAI',
+            password: document.getElementById('sysSmtpPassword')?.value        || ''
+        };
+        const res  = await fetch('/api/settings/system-smtp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Hata');
+        if (statusEl) statusEl.innerHTML = '<span style="color:#34d399">✅ Kaydedildi.</span>';
+        const pwdEl = document.getElementById('sysSmtpPassword');
+        if (pwdEl) { pwdEl.value = ''; pwdEl.placeholder = '••••••••  (boş bırakılırsa mevcut şifre korunur)'; }
+    } catch(e) {
+        if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">❌ ${e.message}</span>`;
+    }
+}
+
+async function testSystemSmtp() {
+    const statusEl = document.getElementById('sysSmtpStatus');
+    if (statusEl) statusEl.textContent = '⏳ Test ediliyor…';
+    try {
+        const res  = await fetch('/api/settings/system-smtp/test', { method: 'POST' });
+        const data = await res.json();
+        if (statusEl) {
+            statusEl.innerHTML = data.success
+                ? '<span style="color:#34d399">✅ Bağlantı başarılı.</span>'
+                : `<span style="color:#f87171">❌ ${esc(data.message || 'Bağlantı hatası')}</span>`;
+        }
+    } catch(e) {
+        if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">❌ ${esc(e.message)}</span>`;
     }
 }
 

@@ -128,6 +128,14 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_cuser_imap ON customer_users(imap_email);
 `);
 
+// customer_users: şifre sıfırlama token kolonları (migration)
+(function ensureResetTokenColumns() {
+    const cols = db.prepare(`PRAGMA table_info(customer_users)`).all();
+    const names = new Set(cols.map(c => c.name));
+    if (!names.has('reset_token'))         db.exec(`ALTER TABLE customer_users ADD COLUMN reset_token TEXT`);
+    if (!names.has('reset_token_expires')) db.exec(`ALTER TABLE customer_users ADD COLUMN reset_token_expires TEXT`);
+})();
+
 // ─── TEHDİT PATERNI VE MARKA DOMAIN TABLOLARI ────────────
 db.exec(`
     CREATE TABLE IF NOT EXISTS brand_domains (

@@ -3,12 +3,14 @@
 // ============================================================
 const express = require('express');
 const crypto  = require('crypto');
+const { v4: uuidv4 } = require('uuid');
 
 const customerAuth = require('../../../middleware/customerAuth');
 const { requireAdminAuth } = require('../../../middleware/adminAuth');
 const { validateLicenseKey } = require('../../../license/license');
 const { cleanupInitialCredsFile } = require('../../../services/initialSetupService');
 const customerUserStore = require('../../../storage/customerUserStore');
+const { sendSystemEmail } = require('../../../smtp/sender');
 
 // Timing-safe string karşılaştırma — setup token bilgi sızıntısını engeller.
 function _tokenEquals(a, b) {
@@ -155,6 +157,88 @@ router.post('/customer/login', async (req, res) => {
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+// ─── MAGIC LINK: şifremi unuttum ─────────────────────────────
+// Aynı e-postaya 5 dk cooldown uygulanır.
+const _forgotCooldown = new Map(); // email → timestamp
+
+router.post('/customer/forgot-password', async (req, res) => {
+    // Her zaman 200 dön — kullanıcıya e-posta varlığını sızdırma.
+    const genericOk = () => res.json({ ok: true });
+
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!customerUserStore._isValidEmail(email)) return genericOk();
+
+    const user = customerUserStore.findByEmail(email);
+    if (!user || !user.active) return genericOk();
+
+    // 5 dakika cooldown
+    const now = Date.now();
+    const lastSent = _forgotCooldown.get(email) || 0;
+    if (now - lastSent < 5 * 60 * 1000) return genericOk();
+
+    const token   = uuidv4().replace(/-/g, '');
+    const expires = new Date(now + 60 * 60 * 1000).toISOString(); // 1 saat
+    customerUserStore.setResetToken(email, token, expires);
+    _forgotCooldown.set(email, now);
+
+    // Sunucu kökenini belirle
+    const proto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+    const host  = req.headers['x-forwarded-host'] || req.headers['host'] || 'localhost:3000';
+    const resetUrl = `${proto}://${host}/?reset_token=${token}`;
+
+    const html = `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+          <h2 style="color:#6366f1">MailTrustAI — Şifre Sıfırlama</h2>
+          <p>Merhaba,</p>
+          <p>Hesabınız için şifre sıfırlama talebinde bulunuldu.</p>
+          <p style="margin:24px 0">
+            <a href="${resetUrl}"
+               style="background:#6366f1;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+              Şifremi Sıfırla
+            </a>
+          </p>
+          <p style="color:#888;font-size:13px">Bu bağlantı <strong>1 saat</strong> geçerlidir.<br>
+          Talebi siz yapmadıysanız bu e-postayı görmezden gelebilirsiniz.</p>
+        </div>`;
+
+    await sendSystemEmail({
+        to:      email,
+        subject: 'MailTrustAI — Şifre Sıfırlama Bağlantısı',
+        htmlBody: html
+    });
+
+    return genericOk();
+});
+
+router.post('/customer/reset-password', async (req, res) => {
+    try {
+        const token    = String(req.body?.token || '').trim();
+        const password = String(req.body?.password || '');
+
+        if (!token)           return res.status(400).json({ error: 'Token gerekli.' });
+        if (password.length < 6) return res.status(400).json({ error: 'Şifre en az 6 karakter olmalıdır.' });
+
+        const row = customerUserStore.findByResetToken(token);
+        if (!row) return res.status(400).json({ error: 'Geçersiz veya süresi dolmuş bağlantı.' });
+
+        await customerUserStore.setPassword(row.email, password);
+        customerUserStore.clearResetToken(row.email);
+        _forgotCooldown.delete(row.email);
+
+        res.json({ ok: true, email: row.email });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// validate token endpoint — sayfa yüklenirken tokenin hâlâ geçerli olup olmadığını kontrol eder
+router.get('/customer/reset-password/validate', (req, res) => {
+    const token = String(req.query.token || '').trim();
+    const row   = customerUserStore.findByResetToken(token);
+    if (!row) return res.status(400).json({ valid: false, error: 'Geçersiz veya süresi dolmuş bağlantı.' });
+    res.json({ valid: true, email: row.email });
 });
 
 // Eski endpoint — admin paneli üzerinden müşteri şifre sıfırlama.

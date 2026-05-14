@@ -39,6 +39,51 @@
                 style="width:100%;padding:11px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
                 🔓 Giriş Yap
             </button>
+            <div style="text-align:center;margin-top:12px">
+                <button onclick="showForgotPasswordView()" style="background:none;border:none;color:#6366f1;font-size:13px;cursor:pointer;text-decoration:underline">
+                    Şifremi Unuttum
+                </button>
+            </div>
+        </div>
+
+        <!-- Şifremi Unuttum Formu -->
+        <div id="customerAuthForgotForm" style="display:none">
+            <p style="font-size:13px;color:#94a3b8;margin:0 0 16px">Kayıtlı e-posta adresinizi girin. Şifre sıfırlama bağlantısı gönderilecek.</p>
+            <div style="margin-bottom:14px">
+                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">E-posta</label>
+                <input id="customerAuthForgotEmail" type="email" placeholder="ornek@sirket.com"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
+                    onkeydown="if(event.key==='Enter')customerAuthForgotSend()">
+            </div>
+            <button onclick="customerAuthForgotSend()" id="customerAuthForgotBtn"
+                style="width:100%;padding:11px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+                📧 Bağlantı Gönder
+            </button>
+            <div style="text-align:center;margin-top:12px">
+                <button onclick="showLogin()" style="background:none;border:none;color:#6366f1;font-size:13px;cursor:pointer;text-decoration:underline">
+                    ← Giriş Yap
+                </button>
+            </div>
+        </div>
+
+        <!-- Şifre Sıfırlama Formu (magic link) -->
+        <div id="customerAuthResetForm" style="display:none">
+            <p style="font-size:13px;color:#94a3b8;margin:0 0 16px">Yeni şifrenizi belirleyin.</p>
+            <div style="margin-bottom:12px">
+                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yeni Şifre <span style="color:#94a3b8;font-size:11px">(en az 6 karakter)</span></label>
+                <input id="customerAuthResetPwd" type="password" placeholder="••••••••" autocomplete="new-password"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px">
+            </div>
+            <div style="margin-bottom:14px">
+                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yeni Şifre Tekrar</label>
+                <input id="customerAuthResetPwd2" type="password" placeholder="••••••••" autocomplete="new-password"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
+                    onkeydown="if(event.key==='Enter')customerAuthResetSubmit()">
+            </div>
+            <button onclick="customerAuthResetSubmit()" id="customerAuthResetBtn"
+                style="width:100%;padding:11px;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+                ✅ Şifremi Güncelle
+            </button>
         </div>
 
         <!-- İlk Kurulum Formu (yalnız ilk admin oluşturulurken) -->
@@ -86,21 +131,108 @@
     function setToken(t) { sessionStorage.setItem(SESSION_KEY, t); }
     function clearToken() { sessionStorage.removeItem(SESSION_KEY); }
 
+    const forgotForm = document.getElementById('customerAuthForgotForm');
+    const resetForm  = document.getElementById('customerAuthResetForm');
+    let _resetToken  = '';
+
+    function _hideAll() {
+        loginForm.style.display  = 'none';
+        setupForm.style.display  = 'none';
+        forgotForm.style.display = 'none';
+        resetForm.style.display  = 'none';
+    }
+
     function showLogin() {
         titleEl.textContent = 'Müşteri Yönetimi';
         subEl.textContent   = 'Devam etmek için giriş yapın.';
+        _hideAll();
         loginForm.style.display = '';
-        setupForm.style.display = 'none';
         setTimeout(() => document.getElementById('customerAuthPwd')?.focus(), 50);
     }
+    window.showLogin = showLogin;
 
     function showSetup() {
         titleEl.textContent = 'İlk Kurulum';
         subEl.textContent   = 'Yönetim paneli için şifre oluşturun.';
-        loginForm.style.display = 'none';
+        _hideAll();
         setupForm.style.display = '';
         setTimeout(() => document.getElementById('customerAuthSetupPwd')?.focus(), 50);
     }
+
+    window.showForgotPasswordView = function() {
+        titleEl.textContent = 'Şifremi Unuttum';
+        subEl.textContent   = 'Sıfırlama bağlantısı e-postanıza gönderilecek.';
+        _hideAll();
+        forgotForm.style.display = '';
+        errEl.textContent = '';
+        setTimeout(() => document.getElementById('customerAuthForgotEmail')?.focus(), 50);
+    };
+
+    window.customerAuthForgotSend = async function() {
+        errEl.textContent = '';
+        const email = (document.getElementById('customerAuthForgotEmail').value || '').trim().toLowerCase();
+        if (!email) { errEl.textContent = 'E-posta zorunludur.'; return; }
+        const btn = document.getElementById('customerAuthForgotBtn');
+        btn.disabled = true; btn.textContent = '⏳ Gönderiliyor...';
+        try {
+            await fetch('/api/customer/forgot-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            // Güvenlik: başarı/hata ayırt etme, her zaman aynı mesaj
+            _hideAll();
+            titleEl.textContent = '📧 E-posta Gönderildi';
+            subEl.textContent   = '';
+            errEl.style.color   = '#34d399';
+            errEl.textContent   = 'Kayıtlı bir hesap varsa şifre sıfırlama bağlantısı gönderildi. Gelen kutunuzu kontrol edin.';
+        } catch(e) {
+            errEl.textContent = 'Bağlantı hatası: ' + e.message;
+        } finally {
+            btn.disabled = false; btn.textContent = '📧 Bağlantı Gönder';
+        }
+    };
+
+    function showResetForm(token) {
+        _resetToken = token;
+        titleEl.textContent = 'Yeni Şifre Belirle';
+        subEl.textContent   = 'Hesabınız için yeni şifrenizi girin.';
+        _hideAll();
+        resetForm.style.display = '';
+        errEl.textContent = '';
+        errEl.style.color = '#f87171';
+        setTimeout(() => document.getElementById('customerAuthResetPwd')?.focus(), 50);
+    }
+
+    window.customerAuthResetSubmit = async function() {
+        errEl.textContent = '';
+        const p1 = document.getElementById('customerAuthResetPwd').value;
+        const p2 = document.getElementById('customerAuthResetPwd2').value;
+        if (p1.length < 6) { errEl.textContent = 'Şifre en az 6 karakter olmalıdır.'; return; }
+        if (p1 !== p2)     { errEl.textContent = 'Şifreler uyuşmuyor.'; return; }
+        const btn = document.getElementById('customerAuthResetBtn');
+        btn.disabled = true; btn.textContent = '⏳ Güncelleniyor...';
+        try {
+            const res  = await fetch('/api/customer/reset-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: _resetToken, password: p1 })
+            });
+            const data = await res.json();
+            if (!res.ok) { errEl.textContent = data.error || 'Hata oluştu.'; return; }
+            // URL'den token'ı temizle ve login formuna geç
+            if (window.history?.replaceState) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+            errEl.style.color = '#34d399';
+            errEl.textContent = '✅ Şifreniz güncellendi. Giriş yapabilirsiniz.';
+            setTimeout(() => { errEl.style.color = '#f87171'; errEl.textContent = ''; showLogin(); }, 2000);
+        } catch(e) {
+            errEl.textContent = 'Bağlantı hatası: ' + e.message;
+        } finally {
+            btn.disabled = false; btn.textContent = '✅ Şifremi Güncelle';
+        }
+    };
 
     function unlockApp() {
         overlay.style.display = 'none';
@@ -294,8 +426,23 @@
         location.reload();
     };
 
+    // URL'de reset_token varsa doğrula ve reset formunu göster
+    async function checkResetToken() {
+        try {
+            const token = new URLSearchParams(window.location.search).get('reset_token') || '';
+            if (!token) return false;
+            const res  = await fetch('/api/customer/reset-password/validate?token=' + encodeURIComponent(token));
+            const data = await res.json();
+            if (data.valid) { showResetForm(token); return true; }
+            // Geçersiz token — login'e düş, hata göster
+            errEl.textContent = 'Şifre sıfırlama bağlantısı geçersiz veya süresi dolmuş.';
+            if (window.history?.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
+            return false;
+        } catch { return false; }
+    }
+
     // Sayfa yüklendiğinde otomatik kontrol
-    checkStatus();
+    checkResetToken().then(isReset => { if (!isReset) checkStatus(); });
 })();
 </script>
 
@@ -1084,6 +1231,7 @@
             <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="general" onclick="showSettingsTab('general')">Genel</button>
             <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="reports" onclick="showSettingsTab('reports')">Rapor</button>
             <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="system" onclick="showSettingsTab('system')">Sistem</button>
+            <button type="button" class="btn btn-ghost btn-sm admin-only" data-settings-tab-btn="system-smtp" onclick="showSettingsTab('system-smtp')">📧 Sistem SMTP</button>
         </div>
         <div data-settings-tab="api">
         <!-- ── Entegrasyon API Anahtarları ── -->
@@ -1341,6 +1489,47 @@
             </div>
         </div>
 
+        </div>
+
+        <!-- ─── SİSTEM SMTP TAB ──────────────────────────────── -->
+        <div data-settings-tab="system-smtp" style="display:none">
+            <p class="text-muted" style="font-size:13px;margin-bottom:18px;line-height:1.6">
+                Şifre sıfırlama e-postaları bu SMTP sunucusu üzerinden gönderilir.<br>
+                Tarama posta kutusundan bağımsız, sadece sistem bildirimleri için kullanılır.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:12px">
+                <div class="form-group" style="margin:0">
+                    <label class="form-label">SMTP Sunucu (host)</label>
+                    <input class="form-input" id="sysSmtpHost" placeholder="mail.sirketiniz.com">
+                </div>
+                <div class="form-group" style="margin:0;width:90px">
+                    <label class="form-label">Port</label>
+                    <input class="form-input" id="sysSmtpPort" type="number" value="587" min="1" max="65535">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Kullanıcı (e-posta adresi)</label>
+                <input class="form-input" id="sysSmtpUser" type="email" placeholder="no-reply@sirketiniz.com">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Şifre</label>
+                <input class="form-input" id="sysSmtpPassword" type="password" placeholder="••••••••  (boş bırakılırsa mevcut şifre korunur)">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Gönderen Adı</label>
+                <input class="form-input" id="sysSmtpFromName" placeholder="MailTrustAI">
+            </div>
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#cbd5e1">
+                    <input type="checkbox" id="sysSmtpSecure">
+                    <span>SSL/TLS kullan (port 465)</span>
+                </label>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+                <button class="btn btn-primary btn-sm" onclick="saveSystemSmtp()">💾 Kaydet</button>
+                <button class="btn btn-ghost btn-sm" onclick="testSystemSmtp()">🔄 Bağlantıyı Test Et</button>
+            </div>
+            <div id="sysSmtpStatus" class="text-muted" style="font-size:12px;margin-top:10px"></div>
         </div>
     </div>
 </div>

@@ -55,6 +55,19 @@ const _stmtTouchLogin = db.prepare(
     `UPDATE customer_users SET last_login = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE email = ?`
 );
 
+const _stmtSetResetToken = db.prepare(
+    `UPDATE customer_users SET reset_token = ?, reset_token_expires = ? WHERE email = ?`
+);
+
+const _stmtFindByToken = db.prepare(
+    `SELECT email, reset_token AS resetToken, reset_token_expires AS resetTokenExpires, active
+       FROM customer_users WHERE reset_token = ?`
+);
+
+const _stmtClearResetToken = db.prepare(
+    `UPDATE customer_users SET reset_token = NULL, reset_token_expires = NULL WHERE email = ?`
+);
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 function findByEmail(email) {
     const e = _normEmail(email);
@@ -162,6 +175,27 @@ function isInitialized() {
     return countActiveAdmins() > 0;
 }
 
+// ─── Şifre Sıfırlama Token ────────────────────────────────
+function setResetToken(email, token, expiresAt) {
+    _stmtSetResetToken.run(token, expiresAt, _normEmail(email));
+}
+
+function findByResetToken(token) {
+    if (!token) return null;
+    const row = _stmtFindByToken.get(token);
+    if (!row) return null;
+    if (!row.active) return null;
+    if (new Date(row.resetTokenExpires) < new Date()) {
+        _stmtClearResetToken.run(row.email);
+        return null;
+    }
+    return row;
+}
+
+function clearResetToken(email) {
+    _stmtClearResetToken.run(_normEmail(email));
+}
+
 // ─── Migration: eski settings.customerPassword → DB'ye admin olarak taşı ─────
 async function migrateFromLegacySettings() {
     try {
@@ -207,6 +241,9 @@ module.exports = {
     verifyPassword,
     isInitialized,
     migrateFromLegacySettings,
+    setResetToken,
+    findByResetToken,
+    clearResetToken,
     _normEmail,
     _isValidEmail
 };
