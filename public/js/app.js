@@ -4464,12 +4464,37 @@ async function scanListOpenDetail(scanId) {
         if (result && result.level) {
             showPage('scan');
             showResults(result);
+            _scanListInjectBackButton();
         } else {
             showToast('Tarama detayı bulunamadı.', 'warning');
         }
     } catch (e) {
         showToast('Detay yüklenirken hata: ' + e.message, 'error');
     }
+}
+
+function _scanListInjectBackButton() {
+    // Mevcut butonu sil (tekrar girişlerde duplikasyon olmasın)
+    document.getElementById('scanListBackBtn')?.remove();
+    const panel = document.getElementById('resultsPanel');
+    if (!panel) return;
+    const bar = document.createElement('div');
+    bar.id = 'scanListBackBtn';
+    bar.style.cssText = 'display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px';
+    bar.innerHTML = `
+        <button class="btn btn-ghost btn-sm" onclick="scanListGoBack()" style="display:flex;align-items:center;gap:6px">
+            <span>←</span><span>Tarama Geçmişine Dön</span>
+        </button>
+        <span style="font-size:12px;color:var(--text-secondary)">Geçmişten açılan tarama detayı görüntüleniyor.</span>
+    `;
+    panel.insertBefore(bar, panel.firstChild);
+    // Sayfanın üstüne kaydır
+    try { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
+}
+
+function scanListGoBack() {
+    document.getElementById('scanListBackBtn')?.remove();
+    showPage('scan-list');
 }
 
 function scanListReset() {
