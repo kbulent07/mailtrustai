@@ -7,6 +7,7 @@ const { getDailyCount, incrementDailyCount, todayKey } = require('../storage/dai
 const { getMonthlyCount, incrementMonthlyCount } = require('../storage/monthlyCounter');
 const { validateLicenseKey, UNLICENSED_FEATURES, UNLICENSED_MONTHLY_LIMIT } = require('../license/license');
 const { getCachedStatus } = require('../license/remoteValidator');
+const { loadLicenseFile } = require('../license/licenseFile');
 const crypto = require('crypto');
 
 const persistedSettings = loadSettings();
@@ -24,13 +25,21 @@ const state = {
 
 // ─── LİSANS KONTROL FONKSİYONLARI ───────────────────────
 function checkLicense(req) {
-    const key = req.headers['x-license-key'] || req.body?.licenseKey || '';
     const fallback = {
         valid: false,
         features: { ...UNLICENSED_FEATURES },
         monthlyLimit: UNLICENSED_MONTHLY_LIMIT,
         usageScope: 'unlicensed'
     };
+
+    // Öncelik 1: imzalı + parmak izi bağlı .lic dosyası
+    const licFile = loadLicenseFile();
+    if (licFile && licFile.valid) {
+        return { ...licFile, usageScope: licenseUsageScope(licFile.serial || 'lic-file') };
+    }
+
+    // Öncelik 2: eski HMAC anahtarı (header veya body)
+    const key = req.headers['x-license-key'] || req.body?.licenseKey || '';
     if (!key) return fallback;
 
     const result = validateLicenseKey(key);

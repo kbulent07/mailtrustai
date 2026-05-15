@@ -36,6 +36,7 @@ services:
     volumes:
       - mailtrustai_data:/app/data
       - mailtrustai_logs:/app/logs
+      - /etc/machine-id:/app/data/host_machine_id:ro
 
     networks:
       - mailtrustai_net

@@ -10,6 +10,8 @@ const {
     revokeKey, unRevokeKey, loadRevocationList
 } = require('../../../license/license');
 const { checkRemoteLicense, getCachedStatus } = require('../../../license/remoteValidator');
+const { collectFactors, computeFingerprint } = require('../../../license/fingerprint');
+const { loadLicenseFile, validateLicenseFile, invalidateCache } = require('../../../license/licenseFile');
 const { loadSettings, saveSettings } = require('../../../storage/settingsStore');
 const { getMonthlyCount, getCurrentMonthKey } = require('../../../storage/monthlyCounter');
 const { getDailyCount } = require('../../../storage/dailyScansStore');
@@ -223,6 +225,78 @@ router.get('/license/revoked', requireAdminAuth, (req, res) => {
 router.get('/license/usage', (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
     res.json({ monthlyCount: getMonthlyCount(), monthKey: getCurrentMonthKey(), dailyCount: getDailyCount(today) });
+});
+
+// ── Parmak İzi — müşteri aktivasyon bilgisi ──────────────────
+router.get('/license/fingerprint', (req, res) => {
+    try {
+        const factors     = collectFactors();
+        const fingerprint = computeFingerprint(factors);
+        res.json({
+            fingerprint,
+            factors: {
+                machineId: factors.machineId ? factors.machineId.slice(0, 8) + '...' : '(okunamadı)',
+                installId: factors.installId ? factors.installId.slice(0, 8) + '...' : '(okunamadı)',
+                hostname:  factors.hostname  || '(okunamadı)',
+            },
+            raw: factors,    // tam değerler — lisans üretimi için gerekli
+            info: 'Bu bilgileri lisans aktivasyonu için satıcınıza iletin.'
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ── .lic dosyası yükleme (base64 veya JSON) ──────────────────
+router.post('/license/activate-lic', requireAdminAuth, (req, res) => {
+    try {
+        const body = req.body;
+        let licObj;
+
+        if (body.licenseData) {
+            // JSON string veya base64 olarak gönderilmiş olabilir
+            try {
+                licObj = typeof body.licenseData === 'string'
+                    ? JSON.parse(body.licenseData)
+                    : body.licenseData;
+            } catch {
+                return res.status(400).json({ error: 'Geçersiz JSON formatı' });
+            }
+        } else if (body.payload && body.signature) {
+            licObj = body;
+        } else {
+            return res.status(400).json({ error: 'licenseData veya payload+signature gerekli' });
+        }
+
+        const result = validateLicenseFile(licObj);
+        if (!result.valid) {
+            return res.status(400).json({ error: result.error, detail: result });
+        }
+
+        // data/license.lic olarak kaydet
+        const fs   = require('fs');
+        const path = require('path');
+        const dest = path.join(__dirname, '..', '..', '..', '..', 'data', 'license.lic');
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.writeFileSync(dest, JSON.stringify(licObj, null, 2), 'utf8');
+        invalidateCache();
+
+        recordAudit('license-lic-activated', { serial: result.serial, company: result.company });
+        res.json({ success: true, license: result });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ── Aktif .lic dosyası bilgisi ────────────────────────────────
+router.get('/license/lic-status', (req, res) => {
+    try {
+        const result = loadLicenseFile(undefined, { force: true });
+        if (!result) return res.json({ active: false, message: 'license.lic dosyası bulunamadı' });
+        res.json({ active: result.valid, license: result });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 module.exports = router;
