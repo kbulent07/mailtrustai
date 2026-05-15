@@ -54,8 +54,10 @@ function buildPayload(opts) {
         duration:     (opts.duration    || 'Y').toUpperCase(),
         issued,
         expires,
-        fingerprint: opts.fingerprint || null,  // { machineId, installId, hostname }
-        monthlyLimit: opts.monthlyLimit ?? null, // null → tier'dan türetilir
+        // fingerprint artık standart fingerprint.json formatında:
+        // { fingerprint_version, type, platform, generated_at, signals: {*_hash} }
+        fingerprint:  opts.fingerprint  || null,
+        monthlyLimit: opts.monthlyLimit ?? null,
         notes:        opts.notes        || '',
     };
 }
@@ -94,11 +96,12 @@ MailTrustAI Lisans Araçları
     --domain  "firma.com" \\
     --contact "it@firma.com" \\
     --plan ENT --tier T3 --duration Y \\
-    --machine-id <machine_id> \\
-    --install-id <install_id> \\
-    --hostname   <hostname> \\
+    --fingerprint-file /path/to/customer-fingerprint.json \\
     --private-key /path/to/private.pem \\
     --out /path/to/license.lic
+
+      --fingerprint-file: müşteriden /api/license/fingerprint ile alınan
+                          JSON dosyası (signals: { *_hash } içerir)
 
   node keygenTool.js verify /path/to/license.lic
       Lisans dosyasını doğrular (parmak izi kontrolü dahil).
@@ -142,11 +145,14 @@ async function main() {
         if (!fingerprintModule) {
             console.error('fingerprint.js yüklenemedi.'); process.exit(1);
         }
-        const factors = fingerprintModule.collectFactors();
-        const fp      = fingerprintModule.computeFingerprint(factors);
-        console.log('\n=== SUNUCU PARMAK İZİ ===');
-        console.log(JSON.stringify({ fingerprint: fp, factors }, null, 2));
-        console.log('\nBu bilgileri lisans üretimi için satıcınıza iletin.');
+        const fp = fingerprintModule.buildFingerprintJson();
+        const out = args.out;
+        if (out) {
+            fs.writeFileSync(out, JSON.stringify(fp, null, 2), 'utf8');
+            console.log(`Parmak izi dosyaya yazıldı: ${out}`);
+        } else {
+            console.log(JSON.stringify(fp, null, 2));
+        }
         return;
     }
 
@@ -158,9 +164,19 @@ async function main() {
 
         const privateKeyPem = fs.readFileSync(privateKeyPath, 'utf8');
 
-        const fingerprintFactors = (args.machineId || args.installId || args.hostname)
-            ? { machineId: args.machineId || '', installId: args.installId || '', hostname: args.hostname || '' }
-            : null;
+        // Fingerprint kaynağı: --fingerprint-file (öncelik) veya stdin
+        let fingerprintJson = null;
+        if (args.fingerprintFile) {
+            if (!fs.existsSync(args.fingerprintFile)) {
+                console.error('Fingerprint dosyası bulunamadı:', args.fingerprintFile); process.exit(1);
+            }
+            fingerprintJson = JSON.parse(fs.readFileSync(args.fingerprintFile, 'utf8'));
+            if (!fingerprintJson.signals || !fingerprintJson.fingerprint_version) {
+                console.error('Geçersiz fingerprint.json formatı'); process.exit(1);
+            }
+        } else {
+            console.warn('UYARI: --fingerprint-file verilmedi, lisans makineye bağlanmadan üretilecek');
+        }
 
         const lic = generateLicenseFile({
             company:      args.company,
@@ -172,7 +188,7 @@ async function main() {
             issued:       args.issued,
             expires:      args.expires,
             serial:       args.serial,
-            fingerprint:  fingerprintFactors,
+            fingerprint:  fingerprintJson,
             notes:        args.notes,
         }, privateKeyPem);
 
@@ -183,8 +199,11 @@ async function main() {
         console.log(`   Firma    : ${lic.payload.company}`);
         console.log(`   Plan     : ${lic.payload.plan} / ${lic.payload.tier}`);
         console.log(`   Geçerlik : ${lic.payload.issued} → ${lic.payload.expires}`);
-        if (lic.payload.fingerprint) {
-            console.log(`   Bağlı    : machine-id=${lic.payload.fingerprint.machineId?.slice(0, 8)}... install-id=${lic.payload.fingerprint.installId?.slice(0, 8)}...`);
+        if (lic.payload.fingerprint?.signals) {
+            const s = lic.payload.fingerprint.signals;
+            console.log(`   Platform : ${lic.payload.fingerprint.platform}`);
+            console.log(`   Bağlı    : install_id=${s.install_id_hash?.slice(7, 19)}... os_machine_id=${s.os_machine_id_hash?.slice(7, 19)}...`);
+            console.log(`   Bonus    : system_uuid=${s.system_uuid_hash ? 'var (+3 puan)' : 'yok'}`);
         }
         return;
     }

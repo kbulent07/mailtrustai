@@ -10,7 +10,7 @@ const {
     revokeKey, unRevokeKey, loadRevocationList
 } = require('../../../license/license');
 const { checkRemoteLicense, getCachedStatus } = require('../../../license/remoteValidator');
-const { collectFactors, computeFingerprint } = require('../../../license/fingerprint');
+const { buildFingerprintJson } = require('../../../license/fingerprint');
 const { loadLicenseFile, validateLicenseFile, invalidateCache } = require('../../../license/licenseFile');
 const { loadSettings, saveSettings } = require('../../../storage/settingsStore');
 const { getMonthlyCount, getCurrentMonthKey } = require('../../../storage/monthlyCounter');
@@ -228,20 +228,11 @@ router.get('/license/usage', (req, res) => {
 });
 
 // ── Parmak İzi — müşteri aktivasyon bilgisi ──────────────────
+// Standart fingerprint.json formatı döner (hash'lenmiş sinyaller).
 router.get('/license/fingerprint', (req, res) => {
     try {
-        const factors     = collectFactors();
-        const fingerprint = computeFingerprint(factors);
-        res.json({
-            fingerprint,
-            factors: {
-                machineId: factors.machineId ? factors.machineId.slice(0, 8) + '...' : '(okunamadı)',
-                installId: factors.installId ? factors.installId.slice(0, 8) + '...' : '(okunamadı)',
-                hostname:  factors.hostname  || '(okunamadı)',
-            },
-            raw: factors,    // tam değerler — lisans üretimi için gerekli
-            info: 'Bu bilgileri lisans aktivasyonu için satıcınıza iletin.'
-        });
+        const fp = buildFingerprintJson();
+        res.json(fp);
     } catch (e) {
         res.status(500).json({ error: e.message });
     }

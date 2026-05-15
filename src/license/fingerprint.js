@@ -1,27 +1,56 @@
 // ============================================================
-// FINGERPRINT — Sunucu parmak izi toplama ve doğrulama
+// FINGERPRINT — Sunucu parmak izi (Linux + Windows uyumlu)
 //
-// Faktörler (Docker + VPS kurulumu için optimize):
-//   machine-id  : Host /etc/machine-id → volume mount ile gelir (%50)
-//   install-id  : İlk kurulumda üretilir, volume'da kalır        (%30)
-//   hostname    : HOST_HOSTNAME env veya os.hostname()            (%20)
+// Final Skor Modeli:
+//   install_id       4 puan, ZORUNLU
+//   os_machine_id    4 puan, ZORUNLU
+//   system_uuid      3 puan, opsiyonel (bonus)
+//   hostname         0 puan, bilgi amaçlı (değişse bile lisans bozulmaz)
 //
-// Tolerans eşiği: 70 puan → en az 2 faktörün eşleşmesi yeterli.
-// machine-id tek başına yetmez (50 < 70), başka bir faktör şart.
+// Geçerlilik Kuralı:
+//   install_id + os_machine_id BOTH must match  →  taban skor 8
+//   total >= 8  →  geçerli
+//
+// Ortak JSON Format (Linux + Windows aynısını üretir):
+//   {
+//     "fingerprint_version": 1,
+//     "type": "docker-host",
+//     "platform": "linux" | "windows",
+//     "generated_at": "ISO 8601",
+//     "signals": {
+//       "install_id_hash":    "sha256:...",
+//       "os_machine_id_hash": "sha256:...",
+//       "system_uuid_hash":   "sha256:..."   (null ise yok),
+//       "hostname_hash":      "sha256:..."
+//     }
+//   }
 // ============================================================
 const fs     = require('fs');
 const os     = require('os');
 const crypto = require('crypto');
 const path   = require('path');
 
-const DATA_DIR            = path.join(__dirname, '..', '..', 'data');
-const INSTALL_ID_FILE     = path.join(DATA_DIR, '.install-id');
-const HOST_MACHINE_ID_FILE = path.join(DATA_DIR, 'host_machine_id'); // volume: /etc/machine-id → /app/data/host_machine_id
+const FINGERPRINT_VERSION = 1;
 
-const WEIGHTS   = { machineId: 50, installId: 30, hostname: 20 };
-const THRESHOLD = 70;
+const DATA_DIR              = path.join(__dirname, '..', '..', 'data');
+const INSTALL_ID_FILE       = path.join(DATA_DIR, '.install-id');
+const HOST_MACHINE_ID_FILE  = path.join(DATA_DIR, 'host_machine_id');   // volume: /etc/machine-id
+const HOST_SYSTEM_UUID_FILE = path.join(DATA_DIR, 'host_system_uuid');  // opsiyonel: setup.sh ile yazılır
 
-// İlk başlatmada üretilir, Docker volume'unda kalıcı olarak saklanır.
+const WEIGHTS = {
+    install_id:    { points: 4, mandatory: true },
+    os_machine_id: { points: 4, mandatory: true },
+    system_uuid:   { points: 3, mandatory: false },
+    hostname:      { points: 0, mandatory: false }, // bilgi amaçlı
+};
+const THRESHOLD = 8;
+
+// ── Sinyal Toplayıcılar ──────────────────────────────────────
+function sha256(value) {
+    if (!value) return null;
+    return 'sha256:' + crypto.createHash('sha256').update(String(value)).digest('hex');
+}
+
 function getOrCreateInstallId() {
     try {
         if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -29,66 +58,125 @@ function getOrCreateInstallId() {
             fs.writeFileSync(INSTALL_ID_FILE, crypto.randomUUID(), 'utf8');
         }
         return fs.readFileSync(INSTALL_ID_FILE, 'utf8').trim();
-    } catch {
-        return '';
-    }
+    } catch { return ''; }
 }
 
-function getMachineId() {
+function getOsMachineId() {
+    // Linux: /etc/machine-id (Docker'da volume mount ile gelir)
     if (fs.existsSync(HOST_MACHINE_ID_FILE)) {
         return fs.readFileSync(HOST_MACHINE_ID_FILE, 'utf8').trim();
     }
-    // setup.sh tarafından .env'e yazılmış olabilir
+    // Fallback: .env
     return (process.env.HOST_MACHINE_ID || '').trim();
+}
+
+function getSystemUuid() {
+    // Linux: /sys/class/dmi/id/product_uuid (root gerektirir, setup.sh ile dosyaya yazılır)
+    // Windows: wmic csproduct get uuid (setup.ps1 ile yazılır)
+    if (fs.existsSync(HOST_SYSTEM_UUID_FILE)) {
+        return fs.readFileSync(HOST_SYSTEM_UUID_FILE, 'utf8').trim();
+    }
+    return (process.env.HOST_SYSTEM_UUID || '').trim();
 }
 
 function getHostname() {
     return (process.env.HOST_HOSTNAME || os.hostname() || '').trim();
 }
 
-// Mevcut sunucunun faktörlerini toplar.
-function collectFactors() {
+function getPlatform() {
+    return process.platform === 'win32' ? 'windows' : 'linux';
+}
+
+// ── Ham Sinyaller ────────────────────────────────────────────
+function collectRawSignals() {
     return {
-        machineId: getMachineId(),
-        installId: getOrCreateInstallId(),
-        hostname:  getHostname(),
+        install_id:    getOrCreateInstallId(),
+        os_machine_id: getOsMachineId(),
+        system_uuid:   getSystemUuid(),
+        hostname:      getHostname(),
     };
 }
 
-// Faktörleri tek bir 32-karakter hex parmak izine indirger.
-function computeFingerprint(factors) {
-    const raw = [factors.machineId, factors.installId, factors.hostname].join('|');
-    return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 32);
+// ── Standart JSON Format (hash'lenmiş) ────────────────────────
+function buildFingerprintJson() {
+    const raw = collectRawSignals();
+    return {
+        fingerprint_version: FINGERPRINT_VERSION,
+        type:                'docker-host',
+        platform:            getPlatform(),
+        generated_at:        new Date().toISOString(),
+        signals: {
+            install_id_hash:    sha256(raw.install_id),
+            os_machine_id_hash: sha256(raw.os_machine_id),
+            system_uuid_hash:   sha256(raw.system_uuid),
+            hostname_hash:      sha256(raw.hostname),
+        },
+    };
 }
 
-// Mevcut faktörleri lisanstaki kayıtlı faktörlerle karşılaştırır.
+// ── Skor Hesaplama ───────────────────────────────────────────
+// current/licensed: fingerprint.json formatında nesneler
 function scoreMatch(current, licensed) {
-    let score = 0;
-    if (current.machineId && licensed.machineId && current.machineId === licensed.machineId) score += WEIGHTS.machineId;
-    if (current.installId && licensed.installId && current.installId === licensed.installId) score += WEIGHTS.installId;
-    if (current.hostname  && licensed.hostname  && current.hostname  === licensed.hostname)  score += WEIGHTS.hostname;
-    return score;
-}
-
-// Ana doğrulama — lisanstaki fingerprint faktörleriyle mevcut sunucuyu karşılaştırır.
-function verifyFingerprint(licensedFactors) {
-    if (!licensedFactors || typeof licensedFactors !== 'object') {
-        return { valid: false, score: 0, threshold: THRESHOLD, reason: 'Lisansta fingerprint yok' };
+    if (!current?.signals || !licensed?.signals) {
+        return { valid: false, score: 0, threshold: THRESHOLD, error: 'Eksik sinyal yapısı' };
     }
-    const current = collectFactors();
-    const score   = scoreMatch(current, licensedFactors);
-    const missing = [];
-    if (!current.machineId) missing.push('machine-id okunamadı (volume mount eksik?)');
-    if (!current.installId) missing.push('install-id oluşturulamadı');
+    const cur = current.signals;
+    const lic = licensed.signals;
+
+    const matches = {
+        install_id:    !!(cur.install_id_hash    && lic.install_id_hash    && cur.install_id_hash    === lic.install_id_hash),
+        os_machine_id: !!(cur.os_machine_id_hash && lic.os_machine_id_hash && cur.os_machine_id_hash === lic.os_machine_id_hash),
+        system_uuid:   !!(cur.system_uuid_hash   && lic.system_uuid_hash   && cur.system_uuid_hash   === lic.system_uuid_hash),
+        hostname:      !!(cur.hostname_hash      && lic.hostname_hash      && cur.hostname_hash      === lic.hostname_hash),
+    };
+
+    // Zorunlu sinyaller — biri bile eşleşmezse lisans geçersiz
+    if (!matches.install_id || !matches.os_machine_id) {
+        const missing = [];
+        if (!matches.install_id)    missing.push('install_id');
+        if (!matches.os_machine_id) missing.push('os_machine_id');
+        return {
+            valid:    false,
+            score:    0,
+            threshold: THRESHOLD,
+            matches,
+            missing,
+            error:    `Zorunlu sinyal eşleşmedi: ${missing.join(', ')}`,
+        };
+    }
+
+    let score = WEIGHTS.install_id.points + WEIGHTS.os_machine_id.points; // 8
+    if (matches.system_uuid) score += WEIGHTS.system_uuid.points;          // +3 = 11
 
     return {
-        valid:     score >= THRESHOLD,
+        valid:           score >= THRESHOLD,
         score,
-        threshold: THRESHOLD,
-        current,
-        licensed:  licensedFactors,
-        missing,
+        threshold:       THRESHOLD,
+        matches,
+        hostnameChanged: !matches.hostname,                                // sadece bilgi
     };
 }
 
-module.exports = { collectFactors, computeFingerprint, scoreMatch, verifyFingerprint, getOrCreateInstallId, WEIGHTS, THRESHOLD };
+// ── Üst-seviye Doğrulama ─────────────────────────────────────
+function verifyFingerprint(licensedFingerprint) {
+    const current = buildFingerprintJson();
+    const result  = scoreMatch(current, licensedFingerprint);
+
+    // hostname değişikliği → uyarı, lisans bozulmaz
+    if (result.valid && result.hostnameChanged) {
+        console.warn('[Fingerprint] hostname değişmiş — lisans hâlâ geçerli (bilgi amaçlı).');
+    }
+    return { ...result, current };
+}
+
+module.exports = {
+    FINGERPRINT_VERSION,
+    WEIGHTS,
+    THRESHOLD,
+    buildFingerprintJson,
+    collectRawSignals,
+    scoreMatch,
+    verifyFingerprint,
+    getOrCreateInstallId,
+    sha256,
+};

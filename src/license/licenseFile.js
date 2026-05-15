@@ -102,14 +102,14 @@ function validateLicenseFile(licObj, opts = {}) {
         return { valid: false, error: 'Lisans süresi dolmuş', payload, daysLeft: 0 };
     }
 
-    // 4. Parmak izi doğrulama
+    // 4. Parmak izi doğrulama — payload.fingerprint artık fingerprint.json formatında olmalı
     let fingerprintResult = null;
     if (!skipFingerprint && payload.fingerprint) {
         fingerprintResult = verifyFingerprint(payload.fingerprint);
         if (!fingerprintResult.valid) {
             return {
                 valid: false,
-                error: `Parmak izi eşleşmedi (skor: ${fingerprintResult.score}/${fingerprintResult.threshold})`,
+                error: fingerprintResult.error || `Parmak izi eşleşmedi (skor: ${fingerprintResult.score}/${fingerprintResult.threshold})`,
                 fingerprintResult,
                 payload
             };
