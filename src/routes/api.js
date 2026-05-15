@@ -32,7 +32,8 @@ const PUBLIC_PATHS = new Set([
     '/admin/verify-reset-code',
     '/customer/status',
     '/customer/setup',
-    '/customer/login'
+    '/customer/login',
+    '/license/fingerprint'   // yalnız SHA256 hash — kimlik bilgisi içermez, auth gerekmez
 ]);
 
 // Sadece müşteri ADMIN rolü erişebilen path prefix'leri (user rolü için 403).
