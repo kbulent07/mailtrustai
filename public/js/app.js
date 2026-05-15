@@ -6319,7 +6319,7 @@ async function loadFingerprintCard() {
     if (!body) return;
 
     try {
-        const res = await fetch('/api/license/fingerprint', { headers: buildHeaders() });
+        const res = await fetch('/api/license/fingerprint');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const fp = await res.json();
         const sig = fp.signals || {};
