@@ -6378,13 +6378,26 @@ async function loadFingerprintCard() {
 function copyFingerprintJson() {
     const json = window._lastFingerprintJson;
     if (!json) return;
-    navigator.clipboard.writeText(json)
-        .then(() => showToast && showToast('success', 'Kopyalandı', 'Parmak izi JSON panoya kopyalandı.'))
-        .catch(() => {
-            // Fallback: textarea select
-            const ta = document.getElementById('fpJsonHidden');
-            if (ta) { ta.style.opacity = '1'; ta.select(); document.execCommand('copy'); ta.style.opacity = '0'; }
-        });
+
+    function onSuccess() {
+        showToast('Parmak izi JSON panoya kopyalandı.', 'success', { title: 'Kopyalandı' });
+    }
+    function onFail() {
+        // Fallback: geçici textarea ile execCommand
+        const ta = document.createElement('textarea');
+        ta.value = json;
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        try { document.execCommand('copy'); onSuccess(); } catch {}
+        document.body.removeChild(ta);
+    }
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(json).then(onSuccess).catch(onFail);
+    } else {
+        onFail();
+    }
 }
 
 // ============================================================
