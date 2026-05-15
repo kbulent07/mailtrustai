@@ -6306,8 +6306,85 @@ function exportDetailedCsvCustomer() {
 async function loadHomePage() {
     await Promise.all([
         loadHomeStats(), loadHomeRecentScans(), loadHomeThreatIntel(),
-        loadExecutiveDashboard(), renderOnboardingChecklist()
+        loadExecutiveDashboard(), renderOnboardingChecklist(),
+        loadFingerprintCard()
     ]);
+}
+
+// ============================================================
+// CİHAZ PARMAK İZİ KARTI
+// ============================================================
+async function loadFingerprintCard() {
+    const body = document.getElementById('fpCardBody');
+    if (!body) return;
+
+    try {
+        const res = await fetch('/api/license/fingerprint', { headers: buildHeaders() });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const fp = await res.json();
+        const sig = fp.signals || {};
+
+        function shortHash(h) {
+            if (!h) return '<span style="color:var(--text-muted);font-style:italic">—</span>';
+            // "sha256:abcdef..." → ilk 12 + son 4 karakter göster
+            const hex = h.replace('sha256:', '');
+            return `<span style="font-family:monospace;font-size:11px;color:#a5b4fc">${hex.slice(0,12)}…${hex.slice(-4)}</span>`;
+        }
+
+        const platformIcon = fp.platform === 'windows' ? '🪟' : '🐧';
+        const rows = [
+            { label: 'install_id',    hash: sig.install_id_hash,    required: true },
+            { label: 'os_machine_id', hash: sig.os_machine_id_hash, required: true },
+            { label: 'system_uuid',   hash: sig.system_uuid_hash,   required: false },
+        ];
+
+        const rowsHtml = rows.map(r => {
+            const ok = !!r.hash;
+            const badge = r.required
+                ? (ok ? '<span style="font-size:10px;color:var(--green)">✓ zorunlu</span>' : '<span style="font-size:10px;color:var(--red)">✗ eksik</span>')
+                : (ok ? '<span style="font-size:10px;color:var(--text-muted)">✓ opsiyonel</span>' : '<span style="font-size:10px;color:var(--text-muted)">— opsiyonel</span>');
+            return `<tr>
+                <td style="padding:5px 0;font-size:12px;color:var(--text-secondary);white-space:nowrap;padding-right:10px">${r.label}</td>
+                <td style="padding:5px 0">${shortHash(r.hash)}</td>
+                <td style="padding:5px 8px;text-align:right">${badge}</td>
+            </tr>`;
+        }).join('');
+
+        const fpJson = JSON.stringify(fp, null, 2);
+
+        body.innerHTML = `
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+                <span>${platformIcon}</span>
+                <span style="font-size:12px;color:var(--text-secondary)">${fp.platform || '—'} • v${fp.fingerprint_version || 1}</span>
+                <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">${fp.type || ''}</span>
+            </div>
+            <table style="width:100%;border-collapse:collapse;margin-bottom:12px">${rowsHtml}</table>
+            <div style="font-size:11px;color:var(--text-secondary);background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.18);border-radius:6px;padding:8px 10px;margin-bottom:10px;line-height:1.5">
+                💡 Bayinize bu parmak izini gönderin — lisans bu cihaza kilitlenecek.
+            </div>
+            <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center" onclick="copyFingerprintJson()">
+                📋 Parmak İzini Kopyala (JSON)
+            </button>
+            <textarea id="fpJsonHidden" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" aria-hidden="true">${fpJson.replace(/</g,'&lt;')}</textarea>
+        `;
+        // JSON'ı script-erişilebilir yerde sakla
+        window._lastFingerprintJson = fpJson;
+
+    } catch (e) {
+        body.innerHTML = `<p class="text-muted" style="font-size:13px">❌ Parmak izi alınamadı: ${e.message}</p>`;
+    }
+}
+
+function copyFingerprintJson() {
+    const json = window._lastFingerprintJson;
+    if (!json) return;
+    navigator.clipboard.writeText(json)
+        .then(() => showToast && showToast('success', 'Kopyalandı', 'Parmak izi JSON panoya kopyalandı.'))
+        .catch(() => {
+            // Fallback: textarea select
+            const ta = document.getElementById('fpJsonHidden');
+            if (ta) { ta.style.opacity = '1'; ta.select(); document.execCommand('copy'); ta.style.opacity = '0'; }
+        });
 }
 
 // ============================================================
