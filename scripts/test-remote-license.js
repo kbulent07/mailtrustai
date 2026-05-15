@@ -2,7 +2,7 @@
 // MSA_LICENSE_REMOTE_URL — UÇTAN UCA TEST
 //
 // Calistir:
-//   MSA_LICENSE_REMOTE_URL=https://keygen.example.com node scripts/test-remote-license.js
+//   MSA_LICENSE_REMOTE_URL=https://mailtrustai.com node scripts/test-remote-license.js
 //   ya da .env'de tanimliysa:
 //   node scripts/test-remote-license.js
 //
@@ -37,7 +37,7 @@ function section(t) { console.log(`\n\x1b[1;36m${t}\x1b[0m`); console.log('─'.
 
     if (!process.env.MSA_LICENSE_REMOTE_URL) {
         bad('MSA_LICENSE_REMOTE_URL tanımlı değil — test edilemez.');
-        console.log('\nDeneyin: MSA_LICENSE_REMOTE_URL=https://keygen.example.com node scripts/test-remote-license.js');
+        console.log('\nDeneyin: MSA_LICENSE_REMOTE_URL=https://mailtrustai.com node scripts/test-remote-license.js');
         return;
     }
 
@@ -48,10 +48,10 @@ function section(t) { console.log(`\n\x1b[1;36m${t}\x1b[0m`); console.log('─'.
 
     // Beklenen normalize: host-only → /api/license/check eklenir
     const cases = [
-        { in: 'https://keygen.example.com',                  expected: 'https://keygen.example.com/api/license/check' },
-        { in: 'https://keygen.example.com/',                 expected: 'https://keygen.example.com/api/license/check' },
-        { in: 'https://keygen.example.com/api/license/check',expected: 'https://keygen.example.com/api/license/check' },
-        { in: 'https://keygen.example.com/custom/endpoint',  expected: 'https://keygen.example.com/custom/endpoint' },
+        { in: 'https://mailtrustai.com',                  expected: 'https://mailtrustai.com/api/license/check' },
+        { in: 'https://mailtrustai.com/',                 expected: 'https://mailtrustai.com/api/license/check' },
+        { in: 'https://mailtrustai.com/api/license/check',expected: 'https://mailtrustai.com/api/license/check' },
+        { in: 'https://mailtrustai.com/custom/endpoint',  expected: 'https://mailtrustai.com/custom/endpoint' },
     ];
     // Bu modul-level değişken yani test edemiyoruz dogrudan — sadece dokümantasyon icin
     cases.forEach(c => info(`"${c.in}"  →  "${c.expected}"`));

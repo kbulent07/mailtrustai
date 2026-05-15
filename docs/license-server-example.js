@@ -1,7 +1,12 @@
 // ============================================================
 // MERKEZİ LİSANS SUNUCUSU — Örnek Uygulama
 // ============================================================
-// Bu dosyayı kendi sunucunuzda (örn. license.example.com)
+// NOT: Bu dosya tarihi referans — MailTrustAI ana sunucusu artik kendi
+// icinde POST /api/license/check endpoint'ini sunuyor (license.routes.js).
+// Merkezi keygen sunucusu: mailtrustai.com
+//
+// Bu ornek yalniz baska bir teknoloji ile (Python/Go/PHP) lisans sunucusu
+// kurmak isteyenler icin protokol referansidir.
 // ayrı bir Node.js servisi olarak çalıştırın.
 //
 // Müşteri sunucuları bu servise sorgu atar.
