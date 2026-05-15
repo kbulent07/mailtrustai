@@ -148,12 +148,16 @@ function scoreMatch(current, licensed) {
     let score = WEIGHTS.install_id.points + WEIGHTS.os_machine_id.points; // 8
     if (matches.system_uuid) score += WEIGHTS.system_uuid.points;          // +3 = 11
 
+    // system_uuid lisansta kayıtlıydı ama şimdi eşleşmiyor → donanım değişimi olabilir
+    const systemUuidChanged = !!(lic.system_uuid_hash && !matches.system_uuid);
+
     return {
-        valid:           score >= THRESHOLD,
+        valid:             score >= THRESHOLD,
         score,
-        threshold:       THRESHOLD,
+        threshold:         THRESHOLD,
         matches,
-        hostnameChanged: !matches.hostname,                                // sadece bilgi
+        hostnameChanged:   !matches.hostname,    // sadece bilgi
+        systemUuidChanged,                        // sadece bilgi — lisansı bozmaz
     };
 }
 
@@ -166,6 +170,19 @@ function verifyFingerprint(licensedFingerprint) {
     if (result.valid && result.hostnameChanged) {
         console.warn('[Fingerprint] hostname değişmiş — lisans hâlâ geçerli (bilgi amaçlı).');
     }
+
+    // system_uuid değişikliği → uyarı, lisans bozulmaz (opsiyonel sinyal)
+    if (result.valid && result.systemUuidChanged) {
+        const cur  = current.signals?.system_uuid_hash  || '(yok)';
+        const lic  = licensedFingerprint?.signals?.system_uuid_hash || '(yok)';
+        console.warn(
+            '[Fingerprint] system_uuid değişti — donanım değişimi veya UUID okunamıyor.',
+            `\n  Lisanstaki : ${lic}`,
+            `\n  Şimdiki    : ${cur}`,
+            '\n  Lisans hâlâ geçerli (opsiyonel sinyal).'
+        );
+    }
+
     return { ...result, current };
 }
 
