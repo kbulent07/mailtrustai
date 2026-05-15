@@ -5,7 +5,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 
-const { loadScanHistory, getDetailedStats, deleteScanHistoryRange, countScanHistory } = require('../../../storage/scanHistory');
+const { loadScanHistory, getDetailedStats, deleteScanHistoryRange, countScanHistory, searchScanHistory, findScanById } = require('../../../storage/scanHistory');
 const { loadCredentials } = require('../../../imap/connection');
 const { getMonthlyCount } = require('../../../storage/monthlyCounter');
 const { getDailyCount } = require('../../../storage/dailyScansStore');
@@ -14,7 +14,7 @@ const { loadSettings } = require('../../../storage/settingsStore');
 const { validateLicenseKey } = require('../../../license/license');
 const { buildRiskDashboard } = require('../../../services/riskDashboardService');
 const { getUsageSummary: getLlmUsageSummary } = require('../../../storage/llmUsageStore');
-const { requireCustomerAdmin } = require('../../../middleware/customerAuth');
+const { requireCustomerAdmin, requireCustomerUser, loadCustomerUser } = require('../../../middleware/customerAuth');
 const { recordAudit } = require('../../../storage/auditLog');
 
 const router = express.Router();
@@ -327,6 +327,47 @@ router.get('/stats/otx-domains', (req, res) => {
         .slice(0, 100);
 
     res.json(list);
+});
+
+// ─── Tek tarama detayı (scan_id ile) ─────────────────────────────────────────
+router.get('/scan/:scanId', requireCustomerUser, (req, res) => {
+    const u = loadCustomerUser(req);
+    const scan = findScanById(req.params.scanId);
+    if (!scan) return res.status(404).json({ error: 'Tarama bulunamadı.' });
+    // 'user' rolü: yalnız kendi imap hesabına ait taramayı görebilir
+    if (u && u.role === 'user') {
+        const ownEmail = (u.imapEmail || '').toLowerCase();
+        const scanImap = (scan.account || scan.imapEmail || '').toLowerCase();
+        if (ownEmail && scanImap && scanImap !== ownEmail) {
+            return res.status(403).json({ error: 'Bu taramaya erişim yetkiniz yok.' });
+        }
+    }
+    res.json(scan);
+});
+
+// ─── Tarama geçmişi arama — admin tümünü, user sadece kendininkini görür ──────
+router.get('/scan-history/search', requireCustomerUser, (req, res) => {
+    const u = loadCustomerUser(req);
+    const { from_email, subject, start, end, level, page, limit } = req.query;
+
+    // 'user' rolü: yalnız kendi imap_email'ine ait taramaları görebilir
+    const imapEmailFilter = (u && u.role === 'user') ? (u.imapEmail || '__none__') : null;
+
+    try {
+        const result = searchScanHistory({
+            fromEmail: from_email || '',
+            subject:   subject    || '',
+            start:     start      || '',
+            end:       end        || '',
+            level:     level      || '',
+            page:      parseInt(page,  10) || 1,
+            limit:     parseInt(limit, 10) || 50,
+            imapEmailFilter
+        });
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 router.get('/history/export.csv', (req, res) => {

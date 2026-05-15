@@ -476,6 +476,9 @@
         <button class="nav-tab" id="navTabStats" onclick="showPage('stats')" title="İstatistik">
             <span class="nav-tab-icon">📊</span><span class="nav-tab-label">İstatistik</span>
         </button>
+        <button class="nav-tab" id="navTabScanList" onclick="showPage('scan-list')" title="Tarama Geçmişi">
+            <span class="nav-tab-icon">📋</span><span class="nav-tab-label">Geçmiş</span>
+        </button>
         <button class="nav-tab" id="navTabOtxApproval" onclick="showPage('otx-approval')" title="OTX Onay">
             <span class="nav-tab-icon">🛡️</span><span class="nav-tab-label">OTX Onay</span>
         </button>
@@ -501,6 +504,7 @@
     <button class="mobile-nav-tab" onclick="showPage('home');  closeMobileMenu()" id="mNavTabHome">🏠 Ana Sayfa</button>
     <button class="mobile-nav-tab" onclick="showPage('scan');  closeMobileMenu()" id="mNavTabScan">🔍 Tarama</button>
     <button class="mobile-nav-tab" onclick="showPage('stats'); closeMobileMenu()" id="mNavTabStats">📊 İstatistik</button>
+    <button class="mobile-nav-tab" onclick="showPage('scan-list'); closeMobileMenu()" id="mNavTabScanList">📋 Geçmiş</button>
     <button class="mobile-nav-tab" onclick="showPage('otx-approval'); closeMobileMenu()" id="mNavTabOtx">🛡️ OTX Onay</button>
     <div class="mobile-nav-divider"></div>
     <div class="mobile-nav-actions">
@@ -792,6 +796,92 @@
                 <div id="cuDetailedRiskySenders" style="padding:4px 0"></div>
             </div>
         </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         TARAMA GEÇMİŞİ PANELİ
+    ══════════════════════════════════════════════════════════ -->
+    <div id="scanListPanel" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
+            <h2 style="margin:0">📋 Tarama Geçmişi</h2>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-ghost btn-sm" onclick="scanListLoad(1)">🔄 Yenile</button>
+                <button class="btn btn-ghost btn-sm" id="scanListExportBtn" onclick="scanListExportCsv()">⬇️ CSV</button>
+            </div>
+        </div>
+
+        <!-- Filtre Kartı -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-header"><span class="card-title">🔎 Filtrele</span></div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;padding:4px 0 8px">
+                <div>
+                    <label style="display:block;font-size:11px;color:var(--text-secondary);margin-bottom:4px">Gönderen (e-posta)</label>
+                    <input id="slFromEmail" type="text" placeholder="ornek@domain.com"
+                        style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px"
+                        onkeydown="if(event.key==='Enter')scanListLoad(1)">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;color:var(--text-secondary);margin-bottom:4px">Konu</label>
+                    <input id="slSubject" type="text" placeholder="Konu ara..."
+                        style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px"
+                        onkeydown="if(event.key==='Enter')scanListLoad(1)">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;color:var(--text-secondary);margin-bottom:4px">Başlangıç Tarihi</label>
+                    <input id="slDateStart" type="date"
+                        style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;color:var(--text-secondary);margin-bottom:4px">Bitiş Tarihi</label>
+                    <input id="slDateEnd" type="date"
+                        style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;color:var(--text-secondary);margin-bottom:4px">Risk Seviyesi</label>
+                    <select id="slLevel"
+                        style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
+                        <option value="">Tümü</option>
+                        <option value="high">🔴 Yüksek</option>
+                        <option value="medium">🟠 Orta</option>
+                        <option value="low">🟡 Düşük</option>
+                        <option value="safe">🟢 Güvenli</option>
+                    </select>
+                </div>
+                <div style="display:flex;align-items:flex-end;gap:6px">
+                    <button class="btn btn-primary btn-sm" style="flex:1;padding:8px" onclick="scanListLoad(1)">🔍 Ara</button>
+                    <button class="btn btn-ghost btn-sm" style="padding:8px 10px" onclick="scanListReset()" title="Filtreleri temizle">✕</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sonuç bilgi satırı -->
+        <div id="scanListInfo" style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;min-height:18px"></div>
+
+        <!-- Tablo -->
+        <div class="card" style="padding:0;overflow:hidden">
+            <div style="overflow-x:auto">
+                <table id="scanListTable" style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead>
+                        <tr style="background:var(--surface2);border-bottom:1px solid var(--border)">
+                            <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--text-secondary);white-space:nowrap">Tarih</th>
+                            <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--text-secondary)">Gönderen</th>
+                            <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--text-secondary)">Konu</th>
+                            <th style="padding:10px 12px;text-align:center;font-weight:600;color:var(--text-secondary)">Risk</th>
+                            <th style="padding:10px 12px;text-align:center;font-weight:600;color:var(--text-secondary)">Skor</th>
+                            <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--text-secondary)" id="slColAccount">Hesap</th>
+                            <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--text-secondary)">Kaynak</th>
+                            <th style="padding:10px 4px;text-align:center;font-weight:600;color:var(--text-secondary)"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="scanListBody">
+                        <tr><td colspan="8" style="padding:24px;text-align:center;color:var(--text-secondary)">Yükleniyor…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Sayfalama -->
+        <div id="scanListPager" style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;flex-wrap:wrap"></div>
     </div>
 
     <div id="otxApprovalPanel" style="display:none">

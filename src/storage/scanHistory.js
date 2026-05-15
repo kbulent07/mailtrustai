@@ -480,11 +480,78 @@ function updateScanById(scanId, patch) {
     }
 }
 
+// ─── Filtrelenmiş tarama listesi ─────────────────────────────────────────────
+/**
+ * Mail adresi, konu, tarih aralığı ve risk seviyesine göre sayfalanmış arama.
+ *
+ * @param {object} opts
+ *   fromEmail      – gönderen adresi (LIKE, kısmi eşleşme)
+ *   subject        – konu (LIKE, kısmi eşleşme)
+ *   start          – ISO tarih başlangıcı (dahil)
+ *   end            – ISO tarih bitişi (gün sonu eklenir)
+ *   level          – 'high'|'medium'|'low'|'safe'|'' (boş = tümü)
+ *   page           – sayfa numarası (1-based)
+ *   limit          – sayfa başı satır (max 100)
+ *   imapEmailFilter – null = tümü, string = sadece bu imap_email (user rolü)
+ */
+function searchScanHistory({ fromEmail = '', subject = '', start = '', end = '',
+                              level = '', page = 1, limit = 50, imapEmailFilter = null } = {}) {
+    const conditions = [];
+    const params     = [];
+
+    if (start) {
+        conditions.push('timestamp >= ?');
+        params.push(start.length === 10 ? start + 'T00:00:00.000Z' : start);
+    }
+    if (end) {
+        conditions.push('timestamp <= ?');
+        params.push(end.length === 10 ? end + 'T23:59:59.999Z' : end);
+    }
+    if (fromEmail.trim()) {
+        conditions.push('from_email LIKE ?');
+        params.push('%' + fromEmail.trim().toLowerCase() + '%');
+    }
+    if (subject.trim()) {
+        conditions.push('subject LIKE ?');
+        params.push('%' + subject.trim() + '%');
+    }
+    if (level && ['high','medium','low','safe'].includes(level)) {
+        conditions.push('level = ?');
+        params.push(level);
+    }
+    if (imapEmailFilter) {
+        conditions.push('(imap_email = ? OR user_key LIKE ?)');
+        params.push(imapEmailFilter.toLowerCase(), '%' + imapEmailFilter.toLowerCase() + '%');
+    }
+
+    const where  = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+    const safeLimit  = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+    const safePage   = Math.max(parseInt(page,  10) || 1, 1);
+    const offset     = (safePage - 1) * safeLimit;
+
+    const rows = db.prepare(
+        `SELECT scan_id, timestamp, level, score, scan_source,
+                from_email, subject, user_key, imap_email
+         FROM scan_history
+         ${where}
+         ORDER BY timestamp DESC
+         LIMIT ? OFFSET ?`
+    ).all(...params, safeLimit, offset);
+
+    const { n: total } = db.prepare(
+        `SELECT COUNT(*) AS n FROM scan_history ${where}`
+    ).get(...params);
+
+    return { rows, total, page: safePage, limit: safeLimit,
+             totalPages: Math.ceil(total / safeLimit) };
+}
+
 module.exports = {
     loadScanHistory,
     recordScan,
     saveScanHistory,
     getDetailedStats,
+    searchScanHistory,
     findScanById,
     updateScanById,
     // IMAP cache + admin temizlik API'leri

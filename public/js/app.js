@@ -4256,6 +4256,274 @@ function exportPDF() {
     doc.save(`mailtrustai-report-${result.id || 'scan'}.pdf`);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TARAMA GEÇMİŞİ SAYFASI
+// ═══════════════════════════════════════════════════════════════════════════
+
+const _slState = { page: 1, total: 0, totalPages: 1, loading: false, initialized: false };
+
+function scanListInit() {
+    if (!_slState.initialized) {
+        _slState.initialized = true;
+        // Kullanıcı rolüne göre "Hesap" sütununu gizle
+        _scanListApplyRoleUI();
+    }
+    scanListLoad(1);
+}
+
+function _scanListApplyRoleUI() {
+    try {
+        const token = sessionStorage.getItem('msa_customer_token') || '';
+        if (!token) return;
+        const payloadB64 = token.split('.')[0];
+        const payload = JSON.parse(atob(payloadB64.replace(/-/g,'+').replace(/_/g,'/')));
+        if (payload.r === 'user') {
+            // user rolü: Hesap sütununu gizle
+            const col = document.getElementById('slColAccount');
+            if (col) col.style.display = 'none';
+        }
+    } catch {}
+}
+
+function _scanListHeaders() {
+    const token = sessionStorage.getItem('msa_customer_token') || '';
+    return token ? { 'Authorization': 'Bearer ' + token } : {};
+}
+
+function _scanListRole() {
+    try {
+        const token = sessionStorage.getItem('msa_customer_token') || '';
+        if (!token) return 'admin';
+        const p = JSON.parse(atob(token.split('.')[0].replace(/-/g,'+').replace(/_/g,'/')));
+        return p.r || 'user';
+    } catch { return 'user'; }
+}
+
+async function scanListLoad(page = 1) {
+    if (_slState.loading) return;
+    _slState.loading = true;
+    _slState.page    = page;
+
+    const body   = document.getElementById('scanListBody');
+    const info   = document.getElementById('scanListInfo');
+    const pager  = document.getElementById('scanListPager');
+    if (body) body.innerHTML = `<tr><td colspan="8" style="padding:28px;text-align:center;color:var(--text-secondary)">⏳ Yükleniyor…</td></tr>`;
+    if (info)  info.textContent  = '';
+    if (pager) pager.innerHTML   = '';
+
+    const params = new URLSearchParams({
+        from_email: (document.getElementById('slFromEmail')?.value  || '').trim(),
+        subject:    (document.getElementById('slSubject')?.value     || '').trim(),
+        start:      document.getElementById('slDateStart')?.value    || '',
+        end:        document.getElementById('slDateEnd')?.value      || '',
+        level:      document.getElementById('slLevel')?.value        || '',
+        page:       String(page),
+        limit:      '50'
+    });
+
+    try {
+        const res = await fetch('/api/scan-history/search?' + params.toString(), {
+            headers: _scanListHeaders()
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            if (body) body.innerHTML = `<tr><td colspan="8" style="padding:24px;text-align:center;color:#f87171">Hata: ${_escHtml(err.error || res.statusText)}</td></tr>`;
+            return;
+        }
+        const data = await res.json();
+        _slState.total      = data.total || 0;
+        _slState.totalPages = data.totalPages || 1;
+        _scanListRender(data);
+    } catch (e) {
+        if (body) body.innerHTML = `<tr><td colspan="8" style="padding:24px;text-align:center;color:#f87171">Bağlantı hatası: ${_escHtml(e.message)}</td></tr>`;
+    } finally {
+        _slState.loading = false;
+    }
+}
+
+function _scanListRender(data) {
+    const rows  = data.rows || [];
+    const body  = document.getElementById('scanListBody');
+    const info  = document.getElementById('scanListInfo');
+    const pager = document.getElementById('scanListPager');
+    const isAdmin = (_scanListRole() === 'admin');
+
+    // Bilgi satırı
+    if (info) {
+        const start = ((_slState.page - 1) * 50) + 1;
+        const end   = Math.min(_slState.page * 50, _slState.total);
+        info.textContent = _slState.total > 0
+            ? `${_slState.total.toLocaleString('tr-TR')} kayıt bulundu — ${start}–${end} gösteriliyor`
+            : 'Sonuç bulunamadı.';
+    }
+
+    // Tablo satırları
+    if (!rows.length) {
+        if (body) body.innerHTML = `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--text-secondary)">Eşleşen tarama kaydı bulunamadı.</td></tr>`;
+        return;
+    }
+
+    const levelMeta = {
+        high:   { label:'Yüksek', color:'#ef4444', bg:'rgba(239,68,68,0.12)'   },
+        medium: { label:'Orta',   color:'#f97316', bg:'rgba(249,115,22,0.12)'  },
+        low:    { label:'Düşük',  color:'#eab308', bg:'rgba(234,179,8,0.12)'   },
+        safe:   { label:'Güvenli',color:'#22c55e', bg:'rgba(34,197,94,0.12)'   },
+    };
+
+    const sourceLabel = s => {
+        const map = { 'scan-mailbox':'📬 Otomatik', 'imap-manual':'📡 IMAP', 'upload':'📁 Dosya', 'paste':'📋 Yapıştır' };
+        return map[s] || (s || '—');
+    };
+
+    body.innerHTML = rows.map((r, i) => {
+        const lm    = levelMeta[r.level] || { label: r.level || '?', color:'#94a3b8', bg:'transparent' };
+        const date  = r.timestamp ? new Date(r.timestamp).toLocaleString('tr-TR', { dateStyle:'short', timeStyle:'short' }) : '—';
+        const score = r.score != null ? `<span style="color:${lm.color};font-weight:600">${r.score}</span>` : '—';
+        const from  = _escHtml((r.from_email || '—').slice(0, 45));
+        const subj  = _escHtml((r.subject   || '(Konu yok)').slice(0, 60));
+        const acct  = _escHtml((r.imap_email || r.user_key || '—').slice(0, 40));
+        const src   = _escHtml(sourceLabel(r.scan_source));
+        const even  = i % 2 === 0 ? '' : 'background:rgba(255,255,255,0.02)';
+        const acctCell = isAdmin
+            ? `<td style="padding:9px 12px;color:var(--text-secondary);font-size:12px;${even}">${acct}</td>`
+            : `<td style="display:none"></td>`;
+
+        return `<tr style="${even}cursor:pointer" onclick="scanListOpenDetail('${_escHtml(r.scan_id || '')}')" title="Detayı görüntüle">
+            <td style="padding:9px 12px;white-space:nowrap;color:var(--text-secondary);font-size:12px">${date}</td>
+            <td style="padding:9px 12px;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${from}">${from}</td>
+            <td style="padding:9px 12px;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${subj}">${subj}</td>
+            <td style="padding:9px 12px;text-align:center">
+                <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:${lm.color};background:${lm.bg}">${lm.label}</span>
+            </td>
+            <td style="padding:9px 12px;text-align:center;font-size:13px">${score}</td>
+            ${acctCell}
+            <td style="padding:9px 12px;font-size:12px;color:var(--text-secondary)">${src}</td>
+            <td style="padding:9px 4px;text-align:center">
+                <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();scanListOpenDetail('${_escHtml(r.scan_id || '')}')">Detay</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    // Sayfalama
+    _scanListRenderPager(data.page, data.totalPages);
+}
+
+function _scanListRenderPager(page, totalPages) {
+    const pager = document.getElementById('scanListPager');
+    if (!pager || totalPages <= 1) return;
+
+    const btnStyle = (active) =>
+        `style="min-width:32px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:${active ? 'var(--accent)' : 'var(--surface2)'};color:${active ? '#fff' : 'var(--text-primary)'};cursor:${active ? 'default' : 'pointer'};font-size:13px"`;
+
+    let html = '';
+
+    // Önceki
+    html += `<button ${btnStyle(false)} ${page <= 1 ? 'disabled style="opacity:.4;cursor:default"' : `onclick="scanListLoad(${page-1})"`}>‹</button>`;
+
+    // Sayfa numaraları (max 7 göster)
+    const pages = [];
+    if (totalPages <= 7) {
+        for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+        pages.push(1);
+        if (page > 3) pages.push('…');
+        for (let i = Math.max(2, page-1); i <= Math.min(totalPages-1, page+1); i++) pages.push(i);
+        if (page < totalPages - 2) pages.push('…');
+        pages.push(totalPages);
+    }
+
+    pages.forEach(p => {
+        if (p === '…') {
+            html += `<span style="padding:5px 4px;color:var(--text-secondary)">…</span>`;
+        } else {
+            const isActive = p === page;
+            html += `<button ${btnStyle(isActive)} ${isActive ? 'disabled' : `onclick="scanListLoad(${p})"`}>${p}</button>`;
+        }
+    });
+
+    // Sonraki
+    html += `<button ${btnStyle(false)} ${page >= totalPages ? 'disabled style="opacity:.4;cursor:default"' : `onclick="scanListLoad(${page+1})"`}>›</button>`;
+
+    // Toplam bilgisi
+    html += `<span style="font-size:12px;color:var(--text-secondary);margin-left:6px">Sayfa ${page} / ${totalPages}</span>`;
+
+    pager.innerHTML = html;
+}
+
+async function scanListOpenDetail(scanId) {
+    if (!scanId) return;
+    const headers = _scanListHeaders();
+    try {
+        const res = await fetch(`/api/scan/${encodeURIComponent(scanId)}`, { headers });
+        if (!res.ok) {
+            // scan_id ile bulunamazsa history'den bul
+            showToast('Detay yüklenemedi.', 'warning');
+            return;
+        }
+        const result = await res.json();
+        if (result && result.level) {
+            // Mevcut rapor görüntüleme sistemini kullan
+            displayResults(result);
+            showPage('scan');
+        } else {
+            showToast('Tarama detayı bulunamadı.', 'warning');
+        }
+    } catch (e) {
+        showToast('Detay yüklenirken hata: ' + e.message, 'error');
+    }
+}
+
+function scanListReset() {
+    const ids = ['slFromEmail','slSubject','slDateStart','slDateEnd'];
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const lv = document.getElementById('slLevel'); if (lv) lv.value = '';
+    scanListLoad(1);
+}
+
+async function scanListExportCsv() {
+    const params = new URLSearchParams({
+        from_email: (document.getElementById('slFromEmail')?.value  || '').trim(),
+        subject:    (document.getElementById('slSubject')?.value     || '').trim(),
+        start:      document.getElementById('slDateStart')?.value    || '',
+        end:        document.getElementById('slDateEnd')?.value      || '',
+        level:      document.getElementById('slLevel')?.value        || '',
+        page:       '1',
+        limit:      '1000'
+    });
+
+    try {
+        const headers = _scanListHeaders();
+        const res = await fetch('/api/scan-history/search?' + params.toString(), { headers });
+        if (!res.ok) { showToast('Veri alınamadı.', 'error'); return; }
+        const data = await res.json();
+        const rows = data.rows || [];
+        if (!rows.length) { showToast('Dışa aktarılacak kayıt yok.', 'warning'); return; }
+
+        const csvLines = ['﻿Tarih,Gönderen,Konu,Risk,Skor,Kaynak,Hesap'];
+        rows.forEach(r => {
+            const date  = r.timestamp ? new Date(r.timestamp).toLocaleString('tr-TR') : '';
+            const from  = (r.from_email || '').replace(/,/g,';');
+            const subj  = (r.subject   || '').replace(/,/g,';').replace(/"/g,"'");
+            const level = r.level || '';
+            const score = r.score != null ? r.score : '';
+            const src   = r.scan_source || '';
+            const acct  = (r.imap_email || r.user_key || '').replace(/,/g,';');
+            csvLines.push([date, from, `"${subj}"`, level, score, src, acct].join(','));
+        });
+
+        const blob = new Blob([csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `tarama-gecmisi-${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+        showToast(`${rows.length} kayıt CSV olarak indirildi.`, 'success');
+    } catch (e) {
+        showToast('CSV oluşturma hatası: ' + e.message, 'error');
+    }
+}
+
 async function exportExecutivePDF() {
     if (!window.jspdf) return alert('PDF kutuphanesi yuklenemedi.');
     if (!currentExecutiveDashboard) await loadExecutiveDashboard();
@@ -5524,24 +5792,27 @@ async function updateScanMailboxReportMode(imapEmail, reportMode) {
 // ANA SAYFA (HOME PAGE)
 // ============================================================
 function showPage(page) {
-    const homePanel  = document.getElementById('homePanel');
-    const statsPanel = document.getElementById('statsPanel');
-    const otxPanel   = document.getElementById('otxApprovalPanel');
-    const mainPanels = ['connectionBar','scanModes','panelUpload','panelPaste',
-                        'panelImap','panelScanMailbox','scanProgress','resultsPanel',
-                        'historyPanel','listsPanel'];
+    const homePanel     = document.getElementById('homePanel');
+    const statsPanel    = document.getElementById('statsPanel');
+    const otxPanel      = document.getElementById('otxApprovalPanel');
+    const scanListPanel = document.getElementById('scanListPanel');
+    const mainPanels    = ['connectionBar','scanModes','panelUpload','panelPaste',
+                           'panelImap','panelScanMailbox','scanProgress','resultsPanel',
+                           'historyPanel','listsPanel'];
 
-    const tabHome  = document.getElementById('navTabHome');
-    const tabScan  = document.getElementById('navTabScan');
-    const tabStats = document.getElementById('navTabStats');
-    const tabOtx   = document.getElementById('navTabOtxApproval');
+    const tabHome     = document.getElementById('navTabHome');
+    const tabScan     = document.getElementById('navTabScan');
+    const tabStats    = document.getElementById('navTabStats');
+    const tabOtx      = document.getElementById('navTabOtxApproval');
+    const tabScanList = document.getElementById('navTabScanList');
 
     // Önce her şeyi gizle
-    if (homePanel)  homePanel.style.display  = 'none';
-    if (statsPanel) statsPanel.style.display = 'none';
-    if (otxPanel)   otxPanel.style.display   = 'none';
-    [tabHome, tabScan, tabStats, tabOtx].forEach(t => t && t.classList.remove('active'));
-    ['mNavTabHome','mNavTabScan','mNavTabStats','mNavTabOtx'].forEach(id => {
+    if (homePanel)     homePanel.style.display     = 'none';
+    if (statsPanel)    statsPanel.style.display    = 'none';
+    if (otxPanel)      otxPanel.style.display      = 'none';
+    if (scanListPanel) scanListPanel.style.display = 'none';
+    [tabHome, tabScan, tabStats, tabOtx, tabScanList].forEach(t => t && t.classList.remove('active'));
+    ['mNavTabHome','mNavTabScan','mNavTabStats','mNavTabOtx','mNavTabScanList'].forEach(id => {
         const el = document.getElementById(id); if (el) el.classList.remove('active');
     });
 
@@ -5557,6 +5828,12 @@ function showPage(page) {
         if (tabStats) tabStats.classList.add('active');
         const ms = document.getElementById('mNavTabStats'); if (ms) ms.classList.add('active');
         loadStatsPage();
+    } else if (page === 'scan-list') {
+        if (scanListPanel) scanListPanel.style.display = '';
+        mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+        if (tabScanList) tabScanList.classList.add('active');
+        const msl = document.getElementById('mNavTabScanList'); if (msl) msl.classList.add('active');
+        scanListInit();
     } else if (page === 'otx-approval') {
         if (otxPanel) otxPanel.style.display = '';
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
