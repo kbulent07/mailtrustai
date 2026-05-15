@@ -359,6 +359,9 @@ router.post('/generate', requireDealerAuth, (req, res) => {
     if (!plan || !tier || !duration) {
         return res.status(400).json({ error: 'plan, tier ve duration zorunludur' });
     }
+    if (duration !== 'T' && !fingerprint) {
+        return res.status(400).json({ error: 'Parmak izi (fingerprint) zorunludur. Trial lisanslar hariç tüm lisanslar için gereklidir.' });
+    }
 
     const dealer = findDealer(req.dealerCode);
     if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
@@ -371,7 +374,7 @@ router.post('/generate', requireDealerAuth, (req, res) => {
     const creditCost = isFree ? 0 : Math.ceil(basePrice * (1 - (dealer.discountPct || 0) / 100));
     const licenseKey = generateLicenseKey(plan, tier, duration, req.dealerCode);
 
-    // Fingerprint: trial (T) için zorunlu değil, diğer planlar için isteğe bağlı
+    // Fingerprint: trial (T) hariç zorunlu (yukarıda kontrol edildi)
     const fingerprintStr = (duration !== 'T' && fingerprint)
         ? (typeof fingerprint === 'string' ? fingerprint : JSON.stringify(fingerprint))
         : null;

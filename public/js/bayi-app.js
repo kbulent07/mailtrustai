@@ -561,14 +561,18 @@ async function generateLicense() {
     const note = document.getElementById('genNote').value.trim();
     const customerId = document.getElementById('genCustomerId')?.value || null;
 
-    // Fingerprint (trial değilse)
+    // Fingerprint (trial değilse zorunlu)
     let fingerprint = null;
     if (duration !== 'T') {
         const fpRaw = document.getElementById('genFingerprint')?.value.trim();
-        if (fpRaw) {
-            try { fingerprint = JSON.parse(fpRaw); }
-            catch { alert('Parmak izi JSON formatı geçersiz. Lütfen kontrol edin.'); return; }
+        if (!fpRaw) {
+            alert('⚠️ Parmak izi zorunludur.\n\nMüşterinin uygulamasındaki Ana Sayfa → Cihaz Parmak İzi kartından JSON\'ı kopyalayıp yapıştırın.\n\nTrialda parmak izi gerekmez.');
+            document.getElementById('genFingerprint')?.closest('[id$="Wrap"]')?.querySelector('.fp-toggle')?.click();
+            document.getElementById('genFingerprint')?.focus();
+            return;
         }
+        try { fingerprint = JSON.parse(fpRaw); }
+        catch { alert('Parmak izi JSON formatı geçersiz. Lütfen kontrol edin.'); return; }
     }
 
     try {

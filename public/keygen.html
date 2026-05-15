@@ -1131,11 +1131,22 @@
 
         async function generateKeys() {
             const count = parseInt(document.getElementById('count').value) || 1;
+            const duration = document.getElementById('duration').value;
             const fpRaw = (document.getElementById('kgFingerprint')?.value || '').trim();
             let fingerprint = null;
-            if (fpRaw && count === 1) {
-                try { fingerprint = JSON.parse(fpRaw); }
-                catch { alert('Parmak izi geçerli JSON değil.'); return; }
+            if (duration !== 'T') {
+                if (count === 1) {
+                    if (!fpRaw) {
+                        alert('⚠️ Parmak izi zorunludur.\n\nMüşterinin Ana Sayfa → Cihaz Parmak İzi kartından JSON\'ı kopyalayıp yapıştırın.\n\nToplu üretimde parmak izi uygulanmaz.');
+                        document.getElementById('kgFpBody').style.display = 'block';
+                        document.getElementById('kgFpArrow').style.transform = 'rotate(180deg)';
+                        document.getElementById('kgFingerprint')?.focus();
+                        return;
+                    }
+                    try { fingerprint = JSON.parse(fpRaw); }
+                    catch { alert('Parmak izi geçerli JSON değil.'); return; }
+                }
+                // count > 1: toplu üretimde fingerprint uygulanamaz, geçilir
             }
             const data = {
                 plan:     document.getElementById('plan').value,
