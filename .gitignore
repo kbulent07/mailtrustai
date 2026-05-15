@@ -21,6 +21,13 @@ data/msa.db
 data/msa.db-shm
 data/msa.db-wal
 
+# Fingerprint + lisans dosyası (runtime / host'a özel)
+data/.install-id
+data/host_machine_id
+data/host_system_uuid
+data/license.lic
+data/license-public.pem
+
 # LLM kullanım sayacı (runtime)
 data/llm-usage.json
 
