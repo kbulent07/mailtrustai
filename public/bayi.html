@@ -6,23 +6,73 @@
     <title>MailTrustAI Bayi Portalı</title>
     <link rel="stylesheet" href="/css/style.css">
     <style>
-        .bayi-nav { display:flex; align-items:center; gap:20px; padding:14px 24px; border-bottom:1px solid var(--border); background:var(--surface); }
-        .bayi-nav .brand { font-weight:700; font-size:16px; }
-        .bayi-nav a { color:var(--text-secondary); text-decoration:none; font-size:14px; cursor:pointer; padding:6px 12px; border-radius:6px; }
-        .bayi-nav a.active, .bayi-nav a:hover { color:var(--text-primary); background:var(--surface2); }
-        .bayi-nav .spacer { flex:1; }
-        .bayi-nav .dealer-info { font-size:13px; color:var(--text-secondary); }
-        #loginWrap { display:flex; justify-content:center; align-items:center; min-height:80vh; }
+        /* ── Nav ─────────────────────────────────────────────── */
+        .bayi-nav {
+            display:flex; align-items:center; gap:16px; padding:12px 24px;
+            border-bottom:1px solid var(--border); background:var(--surface);
+            flex-wrap:wrap; position:relative;
+        }
+        .bayi-nav .brand { font-weight:700; font-size:16px; white-space:nowrap; }
+        .bayi-nav-links { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+        .bayi-nav-links a { color:var(--text-secondary); text-decoration:none; font-size:13px; cursor:pointer; padding:5px 10px; border-radius:6px; white-space:nowrap; }
+        .bayi-nav-links a.active, .bayi-nav-links a:hover { color:var(--text-primary); background:var(--surface2); }
+        .bayi-nav .spacer { flex:1; min-width:8px; }
+        .bayi-nav .nav-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .bayi-nav .dealer-info { font-size:12px; color:var(--text-secondary); }
+        .bayi-hamburger { display:none; background:none; border:1px solid var(--border); border-radius:6px; padding:6px 10px; color:var(--text-primary); cursor:pointer; font-size:16px; }
+        @media (max-width: 860px) {
+            .bayi-hamburger { display:block; }
+            .bayi-nav-links { display:none; width:100%; order:3; }
+            .bayi-nav-links.open { display:flex; flex-direction:column; align-items:flex-start; padding:4px 0 8px; }
+            .bayi-nav-links.open a { width:100%; padding:8px 12px; }
+            .bayi-nav .spacer { display:none; }
+            .bayi-nav .nav-right { order:2; }
+            #creditDisplay { font-size:12px; padding:3px 8px; }
+        }
+        @media (max-width: 480px) {
+            .bayi-nav { padding:10px 16px; }
+            .bayi-nav .brand { font-size:14px; }
+            .bayi-nav .dealer-info { display:none; }
+            .main-content { padding: 16px !important; }
+        }
+
+        /* ── Genel ────────────────────────────────────────────── */
+        #loginWrap { display:flex; justify-content:center; align-items:center; min-height:80vh; padding:16px; }
         .login-card { width:100%; max-width:380px; }
         .tab-content { display:none; }
         .tab-content.active { display:block; }
         .key-box { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:16px; font-family:monospace; font-size:13px; word-break:break-all; }
         .copy-btn { cursor:pointer; }
-        .plan-radio { display:flex; gap:12px; }
-        .plan-radio label { flex:1; border:2px solid var(--border); border-radius:8px; padding:12px; cursor:pointer; text-align:center; }
+        .plan-radio { display:flex; gap:12px; flex-wrap:wrap; }
+        .plan-radio label { flex:1; min-width:120px; border:2px solid var(--border); border-radius:8px; padding:12px; cursor:pointer; text-align:center; }
         .plan-radio input[type=radio]:checked + span { color:var(--accent); }
         .plan-radio label:has(input:checked) { border-color:var(--accent); background:rgba(99,102,241,0.08); }
         .price-preview { font-size:22px; font-weight:bold; color:var(--accent); }
+
+        /* ── Parmak izi alanı ─────────────────────────────────── */
+        .fingerprint-section { border:1px dashed var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
+        .fingerprint-toggle { font-size:12px; color:var(--text-secondary); cursor:pointer; user-select:none; display:flex; align-items:center; gap:6px; }
+        .fingerprint-toggle:hover { color:var(--text-primary); }
+        .fingerprint-body { display:none; margin-top:10px; }
+        .fingerprint-body.open { display:block; }
+
+        /* ── Müşteri kartları ─────────────────────────────────── */
+        .cust-card { border:1px solid var(--border); border-radius:8px; padding:14px 16px; margin-bottom:12px; background:var(--surface2); }
+        .cust-card-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+        .cust-card-title { font-weight:700; font-size:14px; }
+        .cust-card-meta { font-size:12px; color:var(--text-secondary); }
+        .cust-licenses { margin-top:8px; padding-top:8px; border-top:1px solid var(--border); }
+        .cust-license-row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:4px 0; font-size:12px; }
+
+        /* ── Tablolar responsive ──────────────────────────────── */
+        .tbl-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+        @media (max-width: 640px) {
+            .grid-2 { grid-template-columns: 1fr !important; }
+            .stat-grid { grid-template-columns: repeat(2,1fr) !important; }
+        }
+        @media (max-width: 400px) {
+            .stat-grid { grid-template-columns: 1fr !important; }
+        }
     </style>
 </head>
 <body>
@@ -57,17 +107,22 @@
     </div>
     <div class="bayi-nav">
         <span class="brand">🛡️ Bayi Portalı</span>
-        <a class="active" onclick="showSection('dashboard')">📊 Dashboard</a>
-        <a onclick="showSection('generate')">🔑 Yeni Lisans</a>
-        <a onclick="showSection('sales')">📋 Satışlarım</a>
-        <a onclick="showSection('customers')">🏢 Müşterilerim</a>
-        <a onclick="showSection('prices')">💰 Fiyatlar</a>
-        <a onclick="showSection('branding')">White-label</a>
-        <a onclick="showSection('trusted')">🛡️ Güvenilir Domainler</a>
+        <button class="bayi-hamburger" onclick="toggleBayiNav()" aria-label="Menü">☰</button>
+        <div class="bayi-nav-links" id="bayiNavLinks">
+            <a class="active" onclick="showSection('dashboard')">📊 Dashboard</a>
+            <a onclick="showSection('generate')">🔑 Yeni Lisans</a>
+            <a onclick="showSection('sales')">📋 Satışlarım</a>
+            <a onclick="showSection('customers')">🏢 Müşterilerim</a>
+            <a onclick="showSection('prices')">💰 Fiyatlar</a>
+            <a onclick="showSection('branding')">White-label</a>
+            <a onclick="showSection('trusted')">🛡️ Güvenilir Domainler</a>
+        </div>
         <span class="spacer"></span>
-        <span class="dealer-info" id="dealerNameDisplay"></span>
-        <span id="creditDisplay" style="display:none;font-size:13px;font-weight:700;padding:4px 12px;background:rgba(99,102,241,0.12);border-radius:6px">💳 <span id="creditBalance">0</span> kredi</span>
-        <a onclick="doLogout()" style="color:var(--text-secondary)">Çıkış</a>
+        <div class="nav-right">
+            <span class="dealer-info" id="dealerNameDisplay"></span>
+            <span id="creditDisplay" style="display:none;font-size:13px;font-weight:700;padding:4px 12px;background:rgba(99,102,241,0.12);border-radius:6px">💳 <span id="creditBalance">0</span> kredi</span>
+            <a onclick="doLogout()" style="color:var(--text-secondary);font-size:13px;cursor:pointer;padding:5px 10px;border-radius:6px">Çıkış</a>
+        </div>
     </div>
 
     <div class="main-content">
@@ -111,13 +166,31 @@
                     <div class="form-group">
                         <label class="form-label">Süre</label>
                         <div class="plan-radio">
-                            <label><input type="radio" name="genDuration" value="M" checked onchange="updatePricePreview()"> <span>Aylık</span></label>
-                            <label><input type="radio" name="genDuration" value="Y" onchange="updatePricePreview()"> <span>Yıllık</span></label>
+                            <label><input type="radio" name="genDuration" value="M" checked onchange="onDurationChange()"> <span>Aylık</span></label>
+                            <label><input type="radio" name="genDuration" value="Y" onchange="onDurationChange()"> <span>Yıllık</span></label>
                         </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Müşteri Seç (opsiyonel)</label>
+                        <select class="form-input" id="genCustomerId" onchange="onGenCustomerChange()">
+                            <option value="">— Müşteri seçin veya notu elle yazın —</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Müşteri Notu (opsiyonel)</label>
                         <input class="form-input" id="genNote" placeholder="Müşteri adı / proje...">
+                    </div>
+                    <div class="fingerprint-section" id="genFingerprintWrap">
+                        <div class="fingerprint-toggle" onclick="toggleFingerprint()">
+                            <span id="fpToggleIcon">▶</span>
+                            <span>🔒 Parmak İzi (Fingerprint) — opsiyonel</span>
+                        </div>
+                        <div class="fingerprint-body" id="fpBody">
+                            <p style="font-size:12px;color:var(--text-secondary);margin:0 0 8px">Müşteri sunucusundan alınan fingerprint JSON'unu buraya yapıştırın. Trial lisanslarda gerekli değildir.</p>
+                            <textarea class="form-input" id="genFingerprint" rows="4"
+                                placeholder='{"fingerprint_version":1,"signals":{...}}'
+                                style="font-family:monospace;font-size:11px;resize:vertical"></textarea>
+                        </div>
                     </div>
                     <div class="form-group" id="pricePreviewWrap">
                         <div class="text-muted" style="font-size:12px;margin-bottom:4px">Tahmini Fiyat (size özel)</div>
@@ -148,30 +221,56 @@
         <!-- MÜŞTERİLERİM -->
         <div id="sectionCustomers" class="tab-content">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-                <h2>🏢 Müşteri Envanteri</h2>
-                <button class="btn btn-ghost btn-sm" onclick="loadCustomers()">🔄 Yenile</button>
+                <h2>🏢 Müşterilerim</h2>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn btn-primary btn-sm" onclick="showCustForm()">➕ Müşteri Ekle</button>
+                    <button class="btn btn-ghost btn-sm" onclick="loadCustomers()">🔄 Yenile</button>
+                </div>
             </div>
 
-            <!-- Filtre + durum özeti -->
+            <!-- Müşteri ekleme/düzenleme formu -->
+            <div id="custFormWrap" class="card mb-16" style="display:none">
+                <div class="card-header">
+                    <span class="card-title" id="custFormTitle">➕ Yeni Müşteri</span>
+                    <button class="btn btn-ghost btn-sm" onclick="hideCustForm()" style="margin-left:auto">✕ Kapat</button>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Ad Soyad / Firma Temsilcisi *</label>
+                        <input class="form-input" id="cfName" placeholder="Ali Yılmaz">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Firma Adı</label>
+                        <input class="form-input" id="cfCompany" placeholder="Örnek Teknoloji A.Ş.">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">E-posta</label>
+                        <input class="form-input" id="cfEmail" type="email" placeholder="ali@ornek.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Telefon</label>
+                        <input class="form-input" id="cfPhone" placeholder="+90 5xx xxx xx xx">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notlar</label>
+                    <textarea class="form-input" id="cfNotes" rows="2" placeholder="Proje, sözleşme, özel bilgiler…"></textarea>
+                </div>
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="saveCust()">💾 Kaydet</button>
+                    <button class="btn btn-ghost" onclick="hideCustForm()">İptal</button>
+                    <span id="custFormStatus" style="font-size:13px"></span>
+                </div>
+                <input type="hidden" id="cfEditId">
+            </div>
+
+            <!-- Filtre -->
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
                 <input class="form-input" id="custFilter" type="search"
-                    placeholder="🔍 Müşteri adı veya lisans ara…"
+                    placeholder="🔍 Müşteri adı, firma veya e-posta ara…"
                     style="flex:1;min-width:200px;margin:0"
                     oninput="custRender()">
-                <select class="form-input" id="custStatusFilter" onchange="custRender()"
-                    style="margin:0;width:auto">
-                    <option value="">Tüm durumlar</option>
-                    <option value="active">✅ Aktif</option>
-                    <option value="expiring">⚠️ Yakında bitiyor (≤30 gün)</option>
-                    <option value="expired">❌ Süresi dolmuş</option>
-                </select>
-                <span id="custSummary" style="font-size:12px;color:var(--text-secondary)"></span>
-            </div>
-
-            <div class="card mb-16">
-                <div style="font-size:13px;line-height:1.6;opacity:0.88">
-                    Bu ekranda ürettiğiniz lisansların hangi müşteriye verildiğini, lisans durumunu ve bitiş tarihini birlikte görebilirsiniz.
-                </div>
+                <span id="custSummary" style="font-size:12px;color:var(--text-secondary);white-space:nowrap"></span>
             </div>
 
             <div id="custTable"></div>

@@ -89,7 +89,8 @@ function updateDealerPasswordHash(code, pinHash) {
 // satış sayacı) tek bir SQLite transaction içinde çalışır.
 // Herhangi bir adım başarısız olursa tümü geri alınır.
 const _generateTx = db.transaction((params) => {
-    const { dealerCode, plan, tier, duration, licenseKey, customerNote, creditCost, isFree } = params;
+    const { dealerCode, plan, tier, duration, licenseKey, customerNote, creditCost, isFree,
+            customerId = null, fingerprint = null } = params;
 
     const row = db.prepare('SELECT credits FROM dealers WHERE code=?').get(dealerCode);
     if (!row) throw Object.assign(new Error('Bayi bulunamadı'), { status: 404 });
@@ -116,9 +117,11 @@ const _generateTx = db.transaction((params) => {
 
     const saleId = uuidv4();
     db.prepare(`INSERT INTO dealer_sales
-        (id, dealer_code, plan, tier, duration, license_key, customer_note, credit_cost, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?)`)
-        .run(saleId, dealerCode, plan, tier, duration, licenseKey, customerNote||'', creditCost, now);
+        (id, dealer_code, plan, tier, duration, license_key, customer_note, credit_cost, created_at, customer_id, fingerprint)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(saleId, dealerCode, plan, tier, duration, licenseKey, customerNote||'', creditCost, now,
+             customerId || null,
+             fingerprint ? (typeof fingerprint === 'string' ? fingerprint : JSON.stringify(fingerprint)) : null);
 
     db.prepare('UPDATE dealers SET sales_count=sales_count+1, last_sale_at=? WHERE code=?')
         .run(now, dealerCode);

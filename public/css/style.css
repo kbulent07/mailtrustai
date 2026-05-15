@@ -23,6 +23,7 @@
     --orange-bg: rgba(255, 145, 0, 0.1);
     --red: #ff1744;
     --red-bg: rgba(255, 23, 68, 0.1);
+    --surface2: rgba(255,255,255,0.04);
     --radius: 12px;
     --radius-sm: 8px;
     --radius-lg: 16px;
@@ -1092,6 +1093,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .justify-between { justify-content: space-between; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.tbl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .report-toggle {
     display: flex;
     align-items: center;
@@ -1357,6 +1359,12 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 /* ============================================================
    MOBİL RESPONSIVE — Telefon + Tablet
    ============================================================ */
+@media (max-width: 900px) {
+    .grid-2 { grid-template-columns: 1fr; }
+    .grid-3 { grid-template-columns: 1fr 1fr; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
 @media (max-width: 768px) {
     .header { padding: 10px 14px; }
     .nav { gap: 6px; flex-wrap: wrap; }
@@ -1368,6 +1376,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     .mode-card { padding: 14px; }
 
     .stat-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid-3 { grid-template-columns: 1fr; }
     .stat-value { font-size: 22px; }
     .stat-label { font-size: 11px; }
 
@@ -1441,6 +1450,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 @media (max-width: 460px) {
     .scan-modes { grid-template-columns: 1fr; }
     .stat-grid { grid-template-columns: 1fr; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
     .mode-card { padding: 12px; }
     h1, .header-title { font-size: 18px; }
     .home-stat-grid { grid-template-columns: 1fr 1fr !important; }

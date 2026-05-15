@@ -112,6 +112,33 @@ db.exec(`
     }
 })();
 
+// ─── BAYİ MÜŞTERİLERİ ────────────────────────────────────
+db.exec(`
+    CREATE TABLE IF NOT EXISTS dealer_customers (
+        id          TEXT PRIMARY KEY,
+        dealer_code TEXT NOT NULL REFERENCES dealers(code),
+        name        TEXT NOT NULL,
+        email       TEXT NOT NULL DEFAULT '',
+        phone       TEXT NOT NULL DEFAULT '',
+        company     TEXT NOT NULL DEFAULT '',
+        notes       TEXT NOT NULL DEFAULT '',
+        created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_dcust_dealer  ON dealer_customers(dealer_code);
+    CREATE INDEX IF NOT EXISTS idx_dcust_created ON dealer_customers(created_at DESC);
+`);
+
+// dealer_sales: fingerprint + customer_id kolonları (migration)
+(function ensureDealerSalesMigrations() {
+    const cols = db.prepare(`PRAGMA table_info(dealer_sales)`).all();
+    const names = new Set(cols.map(c => c.name));
+    if (!names.has('fingerprint'))  db.exec(`ALTER TABLE dealer_sales ADD COLUMN fingerprint TEXT`);
+    if (!names.has('customer_id'))  db.exec(`ALTER TABLE dealer_sales ADD COLUMN customer_id TEXT REFERENCES dealer_customers(id)`);
+    if (names.has('fingerprint') || !names.has('customer_id')) {
+        // sadece yeni eklendiyse log bas
+    }
+})();
+
 
 // ─── MÜŞTERİ KULLANICILARI (admin + user rolleri) ────────
 db.exec(`

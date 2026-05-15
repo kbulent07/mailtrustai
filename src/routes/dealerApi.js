@@ -13,8 +13,9 @@ const {
     listTrustedDomains, addTrustedDomain, addTrustedDomainsBulk,
     importTrustedDomains, removeTrustedDomain, setEnabled
 } = require('../storage/trustedDomainStore');
-const { getSalesByDealer, getAllSales, getSalesStats } = require('../storage/dealerSales');
-const { recordTransaction, getTransactionsByDealer } = require('../storage/creditTransactionStore');
+const { getSalesByDealer, getAllSales, getSalesStats, getDealerDetailedStats } = require('../storage/dealerSales');
+const { addCustomer, updateCustomer, deleteCustomer, getCustomersByDealer, getAllCustomers } = require('../storage/dealerCustomerStore');
+const { recordTransaction, getTransactionsByDealer, getAllTransactions } = require('../storage/creditTransactionStore');
 const { generateLicenseKey, validateLicenseKey, getPriceTable, TIERS } = require('../license/license');
 const { requireAdminAuth } = require('../middleware/adminAuth');
 const { loadSettings } = require('../storage/settingsStore');
@@ -246,6 +247,38 @@ router.get('/stats', requireDealerAuth, (req, res) => {
     res.json(getSalesStats(req.dealerCode));
 });
 
+router.get('/stats/detailed', requireDealerAuth, (req, res) => {
+    res.json(getDealerDetailedStats(req.dealerCode));
+});
+
+router.get('/activity', requireDealerAuth, (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+    const sales = getSalesByDealer(req.dealerCode, limit).map(s => ({
+        id:        s.id,
+        kind:      'sale',
+        date:      s.createdAt,
+        plan:      s.plan,
+        tier:      s.tier,
+        duration:  s.duration,
+        creditCost: s.creditCost,
+        licenseKey: s.licenseKey,
+        note:      s.customerNote || ''
+    }));
+    const txs = getTransactionsByDealer(req.dealerCode, limit).map(t => ({
+        id:           t.id,
+        kind:         'credit',
+        date:         t.createdAt,
+        type:         t.type,
+        amount:       t.amount,
+        note:         t.note || '',
+        balanceAfter: t.balanceAfter
+    }));
+    const combined = [...sales, ...txs]
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, limit);
+    res.json(combined);
+});
+
 router.get('/prices', requireDealerAuth, (req, res) => {
     const dealer = findDealer(req.dealerCode);
     if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
@@ -322,7 +355,7 @@ router.post('/white-label', requireDealerAuth, (req, res) => {
 });
 
 router.post('/generate', requireDealerAuth, (req, res) => {
-    const { plan, tier, duration, customerNote } = req.body;
+    const { plan, tier, duration, customerNote, customerId, fingerprint } = req.body;
     if (!plan || !tier || !duration) {
         return res.status(400).json({ error: 'plan, tier ve duration zorunludur' });
     }
@@ -338,13 +371,18 @@ router.post('/generate', requireDealerAuth, (req, res) => {
     const creditCost = isFree ? 0 : Math.ceil(basePrice * (1 - (dealer.discountPct || 0) / 100));
     const licenseKey = generateLicenseKey(plan, tier, duration, req.dealerCode);
 
+    // Fingerprint: trial (T) için zorunlu değil, diğer planlar için isteğe bağlı
+    const fingerprintStr = (duration !== 'T' && fingerprint)
+        ? (typeof fingerprint === 'string' ? fingerprint : JSON.stringify(fingerprint))
+        : null;
+
     try {
-        // generateLicenseTx: bakiye kontrolü + kredi kesintisi + satış kaydı + işlem logu
-        // hepsi tek SQLite transaction içinde — atomik, rollback destekli
         const { saleId, newBalance } = generateLicenseTx({
             dealerCode: req.dealerCode, plan, tier, duration,
             licenseKey, customerNote: customerNote || '',
-            creditCost, isFree
+            creditCost, isFree,
+            customerId: customerId || null,
+            fingerprint: fingerprintStr
         });
         recordAudit({
             req,
@@ -352,7 +390,7 @@ router.post('/generate', requireDealerAuth, (req, res) => {
             actorId: req.dealerCode,
             action: 'license.generate',
             target: licenseKey,
-            details: { plan, tier, duration, creditCost, saleId }
+            details: { plan, tier, duration, creditCost, saleId, hasFingerprint: !!fingerprintStr }
         });
 
         res.json({ success: true, licenseKey, saleId, plan, tier, duration, creditCost, creditsRemaining: newBalance });
@@ -367,6 +405,48 @@ router.post('/generate', requireDealerAuth, (req, res) => {
         if (e.status) return res.status(e.status).json({ error: e.message });
         res.status(500).json({ error: e.message });
     }
+});
+
+// ─── BAYİ MÜŞTERİ YÖNETİMİ ─────────────────────────────
+router.get('/customers', requireDealerAuth, (req, res) => {
+    res.json(getCustomersByDealer(req.dealerCode));
+});
+
+router.post('/customers', requireDealerAuth, (req, res) => {
+    const { name, email, phone, company, notes } = req.body || {};
+    if (!name?.trim()) return res.status(400).json({ error: 'Müşteri adı zorunludur' });
+    const customer = addCustomer({
+        dealerCode: req.dealerCode,
+        name: name.trim(), email: email?.trim() || '',
+        phone: phone?.trim() || '', company: company?.trim() || '',
+        notes: notes?.trim() || ''
+    });
+    recordAudit({ req, actorType: 'dealer', actorId: req.dealerCode, action: 'customer.add', target: customer.id, details: { name: customer.name } });
+    res.json({ success: true, customer });
+});
+
+router.put('/customers/:id', requireDealerAuth, (req, res) => {
+    const { name, email, phone, company, notes } = req.body || {};
+    if (!name?.trim()) return res.status(400).json({ error: 'Müşteri adı zorunludur' });
+    const updated = updateCustomer(req.params.id, req.dealerCode, {
+        name: name.trim(), email: email?.trim() || '',
+        phone: phone?.trim() || '', company: company?.trim() || '',
+        notes: notes?.trim() || ''
+    });
+    if (!updated) return res.status(404).json({ error: 'Müşteri bulunamadı' });
+    res.json({ success: true, customer: updated });
+});
+
+router.delete('/customers/:id', requireDealerAuth, (req, res) => {
+    const ok = deleteCustomer(req.params.id, req.dealerCode);
+    if (!ok) return res.status(404).json({ error: 'Müşteri bulunamadı' });
+    recordAudit({ req, actorType: 'dealer', actorId: req.dealerCode, action: 'customer.delete', target: req.params.id });
+    res.json({ success: true });
+});
+
+router.get('/admin/customers', requireAdminAuth, (req, res) => {
+    const dealerCode = req.query.dealer || null;
+    res.json(dealerCode ? getCustomersByDealer(dealerCode) : getAllCustomers());
 });
 
 // ─── ADMIN ENDPOINTLER ───────────────────────────────────
@@ -435,6 +515,31 @@ router.get('/admin/sales', requireAdminAuth, (req, res) => {
 
 router.get('/admin/stats', requireAdminAuth, (req, res) => {
     res.json(getSalesStats());
+});
+
+router.get('/admin/stats/detailed', requireAdminAuth, (req, res) => {
+    const dealerCode = req.query.dealer || null;
+    res.json(getDealerDetailedStats(dealerCode));
+});
+
+router.get('/admin/activity', requireAdminAuth, (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit) || 200, 2000);
+    const dealerCode = req.query.dealer || null;
+    const sales = (dealerCode ? getSalesByDealer(dealerCode, limit) : getAllSales(limit)).map(s => ({
+        id: s.id, kind: 'sale', date: s.createdAt,
+        dealerCode: s.dealerCode, plan: s.plan, tier: s.tier,
+        duration: s.duration, creditCost: s.creditCost,
+        licenseKey: s.licenseKey, note: s.customerNote || ''
+    }));
+    const txs = (dealerCode ? getTransactionsByDealer(dealerCode, limit) : getAllTransactions(limit)).map(t => ({
+        id: t.id, kind: 'credit', date: t.createdAt,
+        dealerCode: t.dealerCode, type: t.type,
+        amount: t.amount, note: t.note || '', balanceAfter: t.balanceAfter
+    }));
+    const combined = [...sales, ...txs]
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, limit);
+    res.json(combined);
 });
 
 router.get('/admin/renewals', requireAdminAuth, (req, res) => {

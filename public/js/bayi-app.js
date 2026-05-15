@@ -127,17 +127,25 @@ function showPortal() {
     loadPrices();
 }
 
+function toggleBayiNav() {
+    document.getElementById('bayiNavLinks').classList.toggle('open');
+}
+
 function showSection(name) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     document.getElementById(`section${name.charAt(0).toUpperCase() + name.slice(1)}`).classList.add('active');
-    document.querySelectorAll('.bayi-nav a').forEach(a => a.classList.remove('active'));
-    event.target.classList.add('active');
+    document.querySelectorAll('.bayi-nav-links a').forEach(a => a.classList.remove('active'));
+    if (event && event.target) event.target.classList.add('active');
+    // Mobilde menüyü kapat
+    document.getElementById('bayiNavLinks')?.classList.remove('open');
 
     if (name === 'sales')     loadSales();
     if (name === 'customers') loadCustomers();
     if (name === 'prices')    renderPrices();
     if (name === 'branding')  loadWhiteLabel();
     if (name === 'trusted')   tdLoad();
+    if (name === 'stats')     loadStats();
+    if (name === 'activity')  loadActivity();
 }
 
 // ─── KREDİ GÖSTERİMİ ─────────────────────────────────────
@@ -378,94 +386,171 @@ async function loadSales() {
     }
 }
 
-// ─── MÜŞTERİ ENVANTERİ ───────────────────────────────────
-let _custData = [];   // tüm inventory, filtre için bellekte tutar
+// ─── MÜŞTERİ YÖNETİMİ ────────────────────────────────────
+let _custData = [];
 
 async function loadCustomers() {
     const el = document.getElementById('custTable');
     if (el) el.innerHTML = '<p class="text-muted" style="padding:12px">Yükleniyor…</p>';
     try {
-        const res = await apiFetch('/api/dealer/inventory', { headers: authHeaders() });
+        const res = await apiFetch('/api/dealer/customers', { headers: authHeaders() });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         _custData = await res.json();
         custRender();
+        _populateCustomerDropdown();
     } catch (e) {
         if (e.isSessionExpired) return;
         if (el) el.innerHTML = `<p class="text-red">${escHtml(e.message)}</p>`;
     }
 }
 
+function _populateCustomerDropdown() {
+    const sel = document.getElementById('genCustomerId');
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— Müşteri seçin veya notu elle yazın —</option>' +
+        _custData.map(c => `<option value="${escHtml(c.id)}" data-name="${escHtml(c.name)}"${c.id===cur?' selected':''}>${escHtml(c.name)}${c.company ? ' – '+escHtml(c.company) : ''}</option>`).join('');
+}
+
 function custRender() {
-    const el     = document.getElementById('custTable');
+    const el = document.getElementById('custTable');
     const summary = document.getElementById('custSummary');
     if (!el) return;
-
-    const q      = (document.getElementById('custFilter')?.value || '').toLowerCase().trim();
-    const status = document.getElementById('custStatusFilter')?.value || '';
-
+    const q = (document.getElementById('custFilter')?.value || '').toLowerCase().trim();
     const rows = _custData.filter(c => {
-        // Metin filtresi
-        if (q) {
-            const hay = `${c.customerNote} ${c.licenseKey}`.toLowerCase();
-            if (!hay.includes(q)) return false;
-        }
-        // Durum filtresi
-        if (status === 'expired')  return c.expired;
-        if (status === 'expiring') return !c.expired && c.daysLeft <= 30;
-        if (status === 'active')   return !c.expired && c.daysLeft > 30;
-        return true;
+        if (!q) return true;
+        return `${c.name} ${c.company} ${c.email}`.toLowerCase().includes(q);
     });
-
-    const total   = _custData.length;
-    const active  = _custData.filter(c => !c.expired && c.daysLeft > 30).length;
-    const expiring = _custData.filter(c => !c.expired && c.daysLeft <= 30).length;
-    const expired  = _custData.filter(c => c.expired).length;
-    if (summary) summary.textContent =
-        `${total} müşteri · ${active} aktif · ${expiring} yakında bitiyor · ${expired} süresi dolmuş`;
-
+    if (summary) summary.textContent = `${rows.length} / ${_custData.length} müşteri`;
     if (!rows.length) {
-        el.innerHTML = '<p class="text-muted" style="padding:12px">Kayıt bulunamadı.</p>';
+        el.innerHTML = _custData.length
+            ? '<p class="text-muted" style="padding:12px">Arama sonucu bulunamadı.</p>'
+            : '<p class="text-muted" style="padding:12px">Henüz müşteri eklenmemiş. Yukarıdaki "Müşteri Ekle" butonuyla başlayın.</p>';
         return;
     }
-
-    const badgeHtml = (c) => {
-        if (c.expired)           return `<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(239,68,68,0.15);color:#f87171">❌ Sona Erdi</span>`;
-        if (c.daysLeft <= 7)     return `<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(239,68,68,0.12);color:#f87171">⚠️ ${c.daysLeft} gün</span>`;
-        if (c.daysLeft <= 30)    return `<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);color:#fbbf24">⚠️ ${c.daysLeft} gün</span>`;
-        return `<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(16,185,129,0.12);color:#10b981">✅ ${c.daysLeft} gün</span>`;
-    };
-
-    const maskKey = (k) => k ? k.slice(0, 8) + '…' + k.slice(-6) : '—';
-
-    el.innerHTML = `
-        <div class="card">
-            <table style="width:100%;border-collapse:collapse;font-size:13px">
-                <thead><tr style="color:var(--text-secondary);border-bottom:1px solid var(--border)">
-                    <th style="text-align:left;padding:8px 6px">Müşteri</th>
-                    <th style="padding:6px;text-align:center">Plan</th>
-                    <th style="padding:6px;text-align:center">Tier</th>
-                    <th style="padding:6px;text-align:center">Süre</th>
-                    <th style="padding:6px;text-align:center">Bitiş</th>
-                    <th style="padding:6px;text-align:center">Durum</th>
-                    <th style="text-align:left;padding:6px">Lisans (kısmi)</th>
-                </tr></thead>
-                <tbody>
-                    ${rows.map(c => `<tr style="border-top:1px solid var(--border)">
-                        <td style="padding:8px 6px;font-weight:600">${escHtml(c.customerNote || '—')}</td>
-                        <td style="text-align:center;padding:6px">${escHtml(c.plan || '—')}</td>
-                        <td style="text-align:center;padding:6px">${escHtml(c.tier || '—')}</td>
-                        <td style="text-align:center;padding:6px">${c.duration === 'Y' ? 'Yıllık' : 'Aylık'}</td>
-                        <td style="text-align:center;padding:6px;color:var(--text-secondary);font-size:12px">
-                            ${c.expiryDate ? new Date(c.expiryDate).toLocaleDateString('tr') : '—'}
-                        </td>
-                        <td style="text-align:center;padding:6px">${badgeHtml(c)}</td>
-                        <td style="padding:6px;font-family:monospace;font-size:11px;color:var(--text-secondary)">
-                            ${escHtml(maskKey(c.licenseKey))}
-                        </td>
-                    </tr>`).join('')}
-                </tbody>
-            </table>
+    el.innerHTML = rows.map(c => {
+        const licCount = c.sales?.length || 0;
+        const licBadge = licCount > 0
+            ? `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.15);color:#818cf8">🔑 ${licCount} lisans</span>`
+            : `<span style="font-size:11px;opacity:.5">Lisans yok</span>`;
+        const licRows = (c.sales || []).map(s => {
+            const durLabel = s.duration === 'Y' ? 'Yıllık' : s.duration === 'T' ? 'Trial' : 'Aylık';
+            const fp = s.hasFingerprint ? ' 🔒' : '';
+            return `<div class="cust-license-row">
+                <span style="font-weight:600">${escHtml(s.plan)} ${escHtml(s.tier)}</span>
+                <span style="opacity:.6">${durLabel}${fp}</span>
+                <span style="font-family:monospace;font-size:10px;color:var(--text-secondary)">${escHtml((s.licenseKey||'').slice(0,14)+'…')}</span>
+                <span style="opacity:.5;font-size:11px">${new Date(s.createdAt).toLocaleDateString('tr')}</span>
+            </div>`;
+        }).join('');
+        return `<div class="cust-card">
+            <div class="cust-card-header">
+                <div>
+                    <div class="cust-card-title">${escHtml(c.name)}${c.company ? ` <span style="font-weight:400;opacity:.7">· ${escHtml(c.company)}</span>` : ''}</div>
+                    <div class="cust-card-meta">${c.email ? `✉️ ${escHtml(c.email)}` : ''}${c.email && c.phone ? ' &nbsp;·&nbsp; ' : ''}${c.phone ? `📞 ${escHtml(c.phone)}` : ''}</div>
+                    ${c.notes ? `<div class="cust-card-meta" style="margin-top:3px">📝 ${escHtml(c.notes)}</div>` : ''}
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    ${licBadge}
+                    <button class="btn btn-ghost btn-sm" onclick="editCust('${escHtml(c.id)}')">✏️ Düzenle</button>
+                    <button class="btn btn-ghost btn-sm" onclick="deleteCust('${escHtml(c.id)}','${escHtml(c.name)}')" style="color:#f87171;border-color:rgba(248,113,113,.3)">🗑</button>
+                </div>
+            </div>
+            ${licRows ? `<div class="cust-licenses">${licRows}</div>` : ''}
         </div>`;
+    }).join('');
+}
+
+function showCustForm(id) {
+    document.getElementById('custFormWrap').style.display = '';
+    document.getElementById('cfEditId').value = id || '';
+    document.getElementById('custFormTitle').textContent = id ? '✏️ Müşteri Düzenle' : '➕ Yeni Müşteri';
+    document.getElementById('custFormStatus').textContent = '';
+    if (!id) {
+        ['cfName','cfCompany','cfEmail','cfPhone','cfNotes'].forEach(f => {
+            const el = document.getElementById(f); if (el) el.value = '';
+        });
+    }
+    document.getElementById('cfName')?.focus();
+}
+
+function hideCustForm() {
+    document.getElementById('custFormWrap').style.display = 'none';
+    document.getElementById('cfEditId').value = '';
+}
+
+function editCust(id) {
+    const c = _custData.find(x => x.id === id);
+    if (!c) return;
+    showCustForm(id);
+    document.getElementById('cfName').value    = c.name    || '';
+    document.getElementById('cfCompany').value = c.company || '';
+    document.getElementById('cfEmail').value   = c.email   || '';
+    document.getElementById('cfPhone').value   = c.phone   || '';
+    document.getElementById('cfNotes').value   = c.notes   || '';
+}
+
+async function saveCust() {
+    const id      = document.getElementById('cfEditId').value;
+    const name    = document.getElementById('cfName').value.trim();
+    const company = document.getElementById('cfCompany').value.trim();
+    const email   = document.getElementById('cfEmail').value.trim();
+    const phone   = document.getElementById('cfPhone').value.trim();
+    const notes   = document.getElementById('cfNotes').value.trim();
+    const status  = document.getElementById('custFormStatus');
+    if (!name) { status.innerHTML = '<span class="text-red">Ad alanı zorunludur.</span>'; return; }
+    status.textContent = '⏳ Kaydediliyor…';
+    try {
+        const res = await apiFetch(id ? `/api/dealer/customers/${id}` : '/api/dealer/customers', {
+            method: id ? 'PUT' : 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({ name, company, email, phone, notes })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Hata');
+        status.innerHTML = '<span class="text-green">✅ Kaydedildi.</span>';
+        setTimeout(hideCustForm, 800);
+        loadCustomers();
+    } catch (e) {
+        if (e.isSessionExpired) return;
+        status.innerHTML = `<span class="text-red">❌ ${escHtml(e.message)}</span>`;
+    }
+}
+
+async function deleteCust(id, name) {
+    if (!confirm(`"${name}" silinsin mi?`)) return;
+    try {
+        const res = await apiFetch(`/api/dealer/customers/${id}`, { method: 'DELETE', headers: authHeaders() });
+        if (!res.ok) { const d = await res.json(); alert(d.error || 'Silinemedi'); return; }
+        loadCustomers();
+    } catch (e) { if (!e.isSessionExpired) alert(e.message); }
+}
+
+// ─── FİNGERPRİNT TOGGLE ───────────────────────────────────
+function toggleFingerprint() {
+    const body = document.getElementById('fpBody');
+    const icon = document.getElementById('fpToggleIcon');
+    if (!body) return;
+    const open = body.classList.toggle('open');
+    if (icon) icon.textContent = open ? '▼' : '▶';
+}
+
+// Trial seçilince fingerprint alanını gizle
+function onDurationChange() {
+    updatePricePreview();
+    const dur = document.querySelector('input[name="genDuration"]:checked')?.value;
+    const wrap = document.getElementById('genFingerprintWrap');
+    if (wrap) wrap.style.display = dur === 'T' ? 'none' : '';
+}
+
+// Müşteri seçilince Not alanına isim yaz
+function onGenCustomerChange() {
+    const sel = document.getElementById('genCustomerId');
+    const noteEl = document.getElementById('genNote');
+    if (!sel || !noteEl) return;
+    const opt = sel.options[sel.selectedIndex];
+    if (opt && opt.value) noteEl.value = opt.dataset.name || opt.text;
+    else if (!noteEl.value) noteEl.value = '';
 }
 
 // ─── LİSANS ÜRETİMİ ──────────────────────────────────────
@@ -474,12 +559,23 @@ async function generateLicense() {
     const tier = document.getElementById('genTier').value;
     const duration = document.querySelector('input[name="genDuration"]:checked')?.value || 'M';
     const note = document.getElementById('genNote').value.trim();
+    const customerId = document.getElementById('genCustomerId')?.value || null;
+
+    // Fingerprint (trial değilse)
+    let fingerprint = null;
+    if (duration !== 'T') {
+        const fpRaw = document.getElementById('genFingerprint')?.value.trim();
+        if (fpRaw) {
+            try { fingerprint = JSON.parse(fpRaw); }
+            catch { alert('Parmak izi JSON formatı geçersiz. Lütfen kontrol edin.'); return; }
+        }
+    }
 
     try {
         const res = await apiFetch('/api/dealer/generate', {
             method: 'POST',
             headers: authHeaders(),
-            body: JSON.stringify({ plan, tier, duration, customerNote: note })
+            body: JSON.stringify({ plan, tier, duration, customerNote: note, customerId: customerId || null, fingerprint })
         });
         const data = await res.json();
 
@@ -492,7 +588,6 @@ async function generateLicense() {
             return;
         }
 
-        // Kredi bakiyesini anında güncelle
         if (dealerData && data.creditsRemaining != null) {
             dealerData.credits = data.creditsRemaining;
             updateCreditDisplay();
@@ -508,8 +603,13 @@ async function generateLicense() {
                 ? `✅ Lisans Üretildi — ${data.creditCost} kredi düşüldü, kalan: ${data.creditsRemaining}`
                 : '✅ Lisans Üretildi';
         }
+        // Fingerprint alanını temizle
+        const fpEl = document.getElementById('genFingerprint');
+        if (fpEl) fpEl.value = '';
 
         loadDashboard();
+        // Müşteri listesini güncelle (yeni lisans eklenmiş olabilir)
+        if (customerId) loadCustomers();
     } catch (e) {
         if (e.isSessionExpired) return;
         alert(e.message);
@@ -551,6 +651,226 @@ function escHtml(v) {
         _clearSession();
     }
 })();
+
+// ══════════════════════════════════════════════════════════
+// BAYİ İSTATİSTİKLERİ
+// ══════════════════════════════════════════════════════════
+let _statsData = null;
+
+async function loadStats() {
+    document.getElementById('statsCards').innerHTML =
+        '<div class="stat-card"><div class="stat-value" style="opacity:.4">—</div><div class="stat-label">Yükleniyor…</div></div>';
+    try {
+        const res = await apiFetch('/api/dealer/stats/detailed', { headers: authHeaders() });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        _statsData = await res.json();
+        renderStats(_statsData);
+    } catch (e) {
+        if (e.isSessionExpired) return;
+        document.getElementById('statsCards').innerHTML = `<p class="text-red">${escHtml(e.message)}</p>`;
+    }
+}
+
+function renderStats(d) {
+    // ── Özet kartlar ─────────────────────────────────────
+    const creditColor = (d.totalCreditCost || 0) > 0 ? 'var(--accent)' : 'var(--text-secondary)';
+    document.getElementById('statsCards').innerHTML = `
+        <div class="stat-card"><div class="stat-value">${d.total}</div><div class="stat-label">Toplam Satış</div></div>
+        <div class="stat-card"><div class="stat-value">${d.thisMonth}</div><div class="stat-label">Bu Ay</div></div>
+        <div class="stat-card"><div class="stat-value">${d.byPlan?.PRO || 0}</div><div class="stat-label">Pro Lisans</div></div>
+        <div class="stat-card"><div class="stat-value">${d.byPlan?.ENT || 0}</div><div class="stat-label">Enterprise</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:${creditColor}">${d.totalCreditCost || 0}</div><div class="stat-label">Toplam Kredi Harcaması</div></div>
+        <div class="stat-card"><div class="stat-value">${d.avgCreditCost || 0}</div><div class="stat-label">Ortalama Kredi/Satış</div></div>
+    `;
+
+    // ── Aylık trend bar chart ──────────────────────────────
+    const trend = d.monthlyTrend || [];
+    const maxCount = Math.max(...trend.map(t => t.count), 1);
+    const monthNames = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+    document.getElementById('statsMonthChart').innerHTML = `
+        <div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 8px">
+            ${trend.map(t => {
+                const pct = Math.round((t.count / maxCount) * 100);
+                const mon = t.month ? monthNames[parseInt(t.month.split('-')[1]) - 1] : '';
+                const yr  = t.month ? t.month.split('-')[0].slice(2) : '';
+                return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:600">${t.count > 0 ? t.count : ''}</div>
+                    <div style="width:100%;background:var(--surface2);border-radius:4px 4px 0 0;transition:height .3s"
+                         title="${t.month}: ${t.count} satış">
+                        <div style="width:100%;height:${Math.max(pct, t.count > 0 ? 8 : 2)}px;
+                                    background:${t.count > 0 ? 'var(--accent)' : 'var(--border)'};
+                                    border-radius:4px 4px 0 0;opacity:${t.count > 0 ? 1 : 0.3}"></div>
+                    </div>
+                    <div style="font-size:10px;color:var(--text-secondary);text-align:center;line-height:1.2">${mon}<br>'${yr}</div>
+                </div>`;
+            }).join('')}
+        </div>
+    `;
+
+    // ── Plan & Süre dağılımı ───────────────────────────────
+    const pro  = d.byPlan?.PRO  || 0;
+    const ent  = d.byPlan?.ENT  || 0;
+    const aylik = d.byDuration?.M || 0;
+    const yillik = d.byDuration?.Y || 0;
+    const total = d.total || 1;
+
+    function pctBar(val, tot, color, label) {
+        const pct = tot > 0 ? Math.round((val / tot) * 100) : 0;
+        return `<div style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                <span style="color:var(--text-secondary)">${label}</span>
+                <span style="font-weight:600">${val} <span style="opacity:.5;font-weight:400">(${pct}%)</span></span>
+            </div>
+            <div style="background:var(--surface2);border-radius:4px;height:8px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width .4s"></div>
+            </div>
+        </div>`;
+    }
+
+    document.getElementById('statsPlanDur').innerHTML = `
+        <div style="padding:0 8px">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.5;margin-bottom:8px">Plan</div>
+            ${pctBar(pro,  total, '#6366f1', 'Pro')}
+            ${pctBar(ent,  total, '#10b981', 'Enterprise')}
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.5;margin:12px 0 8px">Süre</div>
+            ${pctBar(aylik,  total, '#f59e0b', 'Aylık')}
+            ${pctBar(yillik, total, '#60a5fa', 'Yıllık')}
+        </div>
+    `;
+
+    // ── Tier tablosu ───────────────────────────────────────
+    const tiers = ['T1','T2','T3','T4','T5','T6','T7','T8','T9'];
+    const tierLabels = { T1:'50/ay', T2:'100/ay', T3:'250/ay', T4:'500/ay', T5:'1.000/ay',
+                         T6:'2.000/ay', T7:'5.000/ay', T8:'10.000/ay', T9:'Sınırsız' };
+    const maxTier = Math.max(...tiers.map(t => d.byTier?.[t] || 0), 1);
+    const rows = tiers.map(t => {
+        const cnt = d.byTier?.[t] || 0;
+        const pct = Math.round((cnt / maxTier) * 100);
+        return `<tr style="border-top:1px solid var(--border)${cnt === 0 ? ';opacity:0.4' : ''}">
+            <td style="padding:8px 12px;font-weight:700">${t}</td>
+            <td style="padding:8px;color:var(--text-secondary);font-size:12px">${tierLabels[t]}</td>
+            <td style="padding:8px 12px;font-weight:600;text-align:right">${cnt}</td>
+            <td style="padding:8px 16px;min-width:160px">
+                <div style="background:var(--surface2);border-radius:4px;height:8px">
+                    <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:4px"></div>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+
+    document.getElementById('statsTierTable').innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:.04em">
+                <th style="text-align:left;padding:8px 12px">Tier</th>
+                <th style="text-align:left;padding:8px">Limit</th>
+                <th style="text-align:right;padding:8px 12px">Satış</th>
+                <th style="padding:8px 16px">Dağılım</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
+// ══════════════════════════════════════════════════════════
+// BAYİ HAREKETLERİ (Satış + Kredi İşlem Feed)
+// ══════════════════════════════════════════════════════════
+let _activityData = [];
+
+async function loadActivity() {
+    const el = document.getElementById('activityFeed');
+    if (el) el.innerHTML = '<p class="text-muted" style="padding:12px">Yükleniyor…</p>';
+    try {
+        const res = await apiFetch('/api/dealer/activity?limit=200', { headers: authHeaders() });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        _activityData = await res.json();
+        renderActivity();
+    } catch (e) {
+        if (e.isSessionExpired) return;
+        if (el) el.innerHTML = `<p class="text-red">${escHtml(e.message)}</p>`;
+    }
+}
+
+function renderActivity() {
+    const el = document.getElementById('activityFeed');
+    if (!el) return;
+    const filter = document.getElementById('activityFilter')?.value || '';
+    const rows = _activityData.filter(r => !filter || r.kind === filter);
+
+    if (!rows.length) {
+        el.innerHTML = '<p class="text-muted" style="padding:12px">Hareket bulunamadı.</p>';
+        return;
+    }
+
+    const kindIcon = { sale: '🔑', credit: '💳' };
+    const typeLabel = {
+        load:   { label: 'Kredi Yükleme',   color: '#10b981' },
+        deduct: { label: 'Kredi Kesintisi',  color: '#f87171' },
+        adjust: { label: 'Kredi Düzeltme',   color: '#f59e0b' }
+    };
+
+    const tableRows = rows.map(r => {
+        const date = new Date(r.date).toLocaleString('tr', { dateStyle: 'short', timeStyle: 'short' });
+
+        if (r.kind === 'sale') {
+            const durLabel = r.duration === 'Y' ? 'Yıllık' : 'Aylık';
+            return `<tr style="border-top:1px solid var(--border)">
+                <td style="padding:8px 12px;white-space:nowrap;color:var(--text-secondary);font-size:12px">${date}</td>
+                <td style="padding:8px;text-align:center">
+                    <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.15);color:#818cf8">🔑 Satış</span>
+                </td>
+                <td style="padding:8px 12px">
+                    <span style="font-weight:600">${escHtml(r.plan)} ${escHtml(r.tier)}</span>
+                    <span style="font-size:11px;color:var(--text-secondary);margin-left:6px">${durLabel}</span>
+                    ${r.note ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${escHtml(r.note)}</div>` : ''}
+                </td>
+                <td style="padding:8px;text-align:right;font-weight:600;color:#f87171;white-space:nowrap">
+                    ${r.creditCost > 0 ? `−${r.creditCost} kredi` : '<span style="opacity:.5">—</span>'}
+                </td>
+                <td style="padding:8px 12px;font-family:monospace;font-size:10px;color:var(--text-secondary);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                    ${r.licenseKey ? escHtml(r.licenseKey.slice(0,16) + '…') : ''}
+                </td>
+            </tr>`;
+        }
+
+        // credit
+        const tl = typeLabel[r.type] || { label: r.type, color: '#94a3b8' };
+        const sign = r.amount > 0 ? '+' : '';
+        const amtColor = r.amount > 0 ? '#10b981' : '#f87171';
+        return `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:8px 12px;white-space:nowrap;color:var(--text-secondary);font-size:12px">${date}</td>
+            <td style="padding:8px;text-align:center">
+                <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${tl.color}22;color:${tl.color}">💳 ${tl.label}</span>
+            </td>
+            <td style="padding:8px 12px;color:var(--text-secondary);font-size:13px">${escHtml(r.note)}</td>
+            <td style="padding:8px;text-align:right;font-weight:700;color:${amtColor};white-space:nowrap">
+                ${sign}${r.amount} kredi
+            </td>
+            <td style="padding:8px 12px;font-size:12px;color:var(--text-secondary);white-space:nowrap">
+                Bakiye: ${r.balanceAfter}
+            </td>
+        </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+        <div class="card">
+            <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead><tr style="color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">
+                        <th style="text-align:left;padding:8px 12px">Tarih</th>
+                        <th style="padding:8px;text-align:center">Tür</th>
+                        <th style="text-align:left;padding:8px 12px">Detay</th>
+                        <th style="text-align:right;padding:8px">Tutar</th>
+                        <th style="text-align:left;padding:8px 12px">Ek Bilgi</th>
+                    </tr></thead>
+                    <tbody>${tableRows}</tbody>
+                </table>
+            </div>
+            <div style="padding:10px 12px;font-size:12px;color:var(--text-secondary);border-top:1px solid var(--border)">
+                ${rows.length} hareket gösteriliyor
+            </div>
+        </div>
+    `;
+}
 
 // ══════════════════════════════════════════════════════════
 // GÜVENİLİR DOMAIN (OTX WHITELIST) YÖNETİMİ — Bayi Portal
