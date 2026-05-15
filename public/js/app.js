@@ -4462,9 +4462,8 @@ async function scanListOpenDetail(scanId) {
         }
         const result = await res.json();
         if (result && result.level) {
-            // Mevcut rapor görüntüleme sistemini kullan
-            displayResults(result);
             showPage('scan');
+            showResults(result);
         } else {
             showToast('Tarama detayı bulunamadı.', 'warning');
         }
