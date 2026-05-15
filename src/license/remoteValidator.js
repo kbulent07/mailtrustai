@@ -16,7 +16,22 @@ const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
 
-const REMOTE_URL = process.env.MSA_LICENSE_REMOTE_URL || '';
+// Kullanici sadece host yazarsa otomatik /api/license/check ekle.
+// Tam URL yazmis ise (path iceriyorsa) oldugu gibi birak.
+function _normalizeRemoteUrl(raw) {
+    const v = String(raw || '').trim().replace(/\/+$/, '');
+    if (!v) return '';
+    try {
+        const u = new URL(v);
+        if (u.pathname === '/' || u.pathname === '') {
+            return u.origin + '/api/license/check';
+        }
+        return v;
+    } catch {
+        return v;
+    }
+}
+const REMOTE_URL = _normalizeRemoteUrl(process.env.MSA_LICENSE_REMOTE_URL);
 const SHARED_SECRET = process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#';
 const CACHE_FILE = path.join(__dirname, '..', '..', 'data', 'license-remote-cache.json');
 const GRACE_PERIOD_MS = parseInt(process.env.MSA_LICENSE_GRACE_MS) || 72 * 60 * 60 * 1000;

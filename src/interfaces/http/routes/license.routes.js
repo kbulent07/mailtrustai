@@ -7,7 +7,7 @@ const express = require('express');
 const {
     validateLicenseKey, generateLicenseKey, generateBatchKeys,
     getPriceTable, PLANS, TIERS, DURATIONS,
-    revokeKey, unRevokeKey, loadRevocationList
+    revokeKey, unRevokeKey, loadRevocationList, isRevoked
 } = require('../../../license/license');
 const { checkRemoteLicense, getCachedStatus } = require('../../../license/remoteValidator');
 const { buildFingerprintJson } = require('../../../license/fingerprint');
@@ -27,6 +27,47 @@ function _maskKey(k) {
     if (s.length <= 12) return s;
     return s.slice(0, 8) + '…' + s.slice(-4);
 }
+
+// ─── MERKEZİ LİSANS SUNUCUSU ENDPOINT'İ (müşteri sunucularından çağrılır) ───
+// Müşteri sunucusunun src/license/remoteValidator.js modülü bu endpoint'i
+// MSA_LICENSE_REMOTE_URL'e POST atarak periodic olarak sorgular.
+//
+// İstek :  { key: "MSA-..." }
+// Cevap :  { valid: bool, revokedAt: ISO | null, reason?: 'invalid'|'revoked'|'expired'|'ok' }
+//
+// Public (auth-free) — yalnız genel HTTPS + IP allowlist (varsa nginx katmanında).
+// Anahtarın HMAC imzası burada doğrulanır → geçersiz anahtarlar 'valid:false' döner.
+// Revoke kontrolü: data/revoked-licenses.json
+router.post('/license/check', (req, res) => {
+    const key = String(req.body?.key || '').trim();
+    if (!key) {
+        return res.status(400).json({ valid: false, error: 'key required' });
+    }
+
+    // 1) Anahtarın format + imza + süre kontrolü
+    const v = validateLicenseKey(key);
+
+    if (!v.valid) {
+        if (v.error === 'License revoked') {
+            // revoked-licenses.json string[] tutuyor — revokedAt yok, null donulur
+            return res.json({ valid: false, revokedAt: null, reason: 'revoked' });
+        }
+        const reason = /expired/i.test(v.error || '') ? 'expired' : 'invalid';
+        return res.json({ valid: false, revokedAt: null, reason, error: v.error });
+    }
+
+    // 2) Geçerli anahtar — meta bilgi opsiyonel olarak geri dönelim
+    res.json({
+        valid: true,
+        revokedAt: null,
+        reason: 'ok',
+        plan: v.plan,
+        tier: v.tier,
+        duration: v.duration,
+        expiryDate: v.expiryDate,
+        daysLeft: v.daysLeft
+    });
+});
 
 router.post('/license/validate', async (req, res) => {
     const key    = String(req.body.key || '');
