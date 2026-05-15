@@ -4263,52 +4263,430 @@ async function exportExecutivePDF() {
     if (!data) return alert('Executive rapor verisi alinamadi.');
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    const generated = data.generatedAt ? new Date(data.generatedAt).toLocaleString('tr-TR') : new Date().toLocaleString('tr-TR');
-    let y = 18;
-    const addLine = (text, size = 11, color = [30, 41, 59]) => {
-        doc.setFontSize(size);
-        doc.setTextColor(color[0], color[1], color[2]);
-        const lines = doc.splitTextToSize(String(text || ''), 180);
-        doc.text(lines, 14, y);
-        y += lines.length * (size * 0.38) + 4;
-        if (y > 270) { doc.addPage(); y = 18; }
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const W = 210, H = 297, M = 14, CW = 182;
+
+    const generated = data.generatedAt
+        ? new Date(data.generatedAt).toLocaleString('tr-TR')
+        : new Date().toLocaleString('tr-TR');
+    const stats  = data.stats || {};
+    const total  = Math.max(stats.total || 0, 1);
+    const score  = data.score ?? 0;
+    const grade  = data.grade || '-';
+    const alerts = Array.isArray(data.commercialAlerts) ? data.commercialAlerts : [];
+    const recs   = data.recommendations || [];
+
+    // ── colour palette ──────────────────────────────────────────────────────
+    const C = {
+        bg:      [11, 18, 32],   bgCard:  [22, 33, 55],   bgCard2: [17, 26, 44],
+        accent:  [99,102,241],   accent2: [129,140,248],
+        high:    [239, 68, 68],  medium:  [249,115, 22],
+        low:     [234,179,  8],  safe:    [ 34,197, 94],
+        textLt:  [241,245,249],  textMd:  [203,213,225],  textDim: [148,163,184],
+        border:  [ 51, 65, 85],  white:   [255,255,255],
+        indigo:  [ 67, 56,202],
     };
 
-    doc.setFillColor(15, 23, 42);
-    doc.rect(0, 0, 210, 34, 'F');
-    doc.setTextColor(248, 250, 252);
-    doc.setFontSize(18);
-    doc.text('MailTrustAI Executive Risk Report', 14, 20);
-    doc.setFontSize(9);
-    doc.text(`Olusturma: ${generated} | Periyot: Son ${data.periodDays || 30} gun`, 14, 28);
-    y = 46;
+    // ── primitives ──────────────────────────────────────────────────────────
+    const fillR  = (x,y,w,h,c)  => { doc.setFillColor(c[0],c[1],c[2]); doc.rect(x,y,w,h,'F'); };
+    const textC  = (c)           => doc.setTextColor(c[0],c[1],c[2]);
+    const font   = (s,sz)        => { doc.setFont('helvetica',s); doc.setFontSize(sz); };
+    const txt    = (s,x,y,o)    => doc.text(String(s||''),x,y,o||{});
+    const wrapTxt = (s,x,y,maxW,c,style,sz,leading=5) => {
+        font(style||'normal', sz||8); textC(c);
+        const lines = doc.splitTextToSize(String(s||''), maxW);
+        lines.forEach((l,i) => txt(l, x, y + i * leading));
+        return y + lines.length * leading;
+    };
+    const scoreColor = score >= 75 ? C.safe : score >= 50 ? C.low : score >= 30 ? C.medium : C.high;
+    const trendColor = (data.trend??0) > 3 ? C.safe : (data.trend??0) < -3 ? C.high : C.low;
+    const trendIcon  = (data.trend??0) > 3 ? '+' : (data.trend??0) < -3 ? '-' : '=';
 
-    doc.setTextColor(15, 23, 42);
-    doc.setFontSize(30);
-    doc.text(`${data.score ?? '--'}/100`, 14, y);
-    doc.setFontSize(12);
-    doc.text(`Risk notu: ${data.grade || '-'} | Trend: ${data.trendLabel || 'stabil'}`, 72, y - 3);
-    doc.text(`Toplam: ${data.stats?.total || 0} | Riskli: ${data.stats?.risky || 0} | Yuksek: ${data.stats?.high || 0}`, 72, y + 5);
-    y += 18;
+    // ── page footer helper ──────────────────────────────────────────────────
+    const pageFooter = (num, total3) => {
+        fillR(0, H-10, W, 10, C.bgCard);
+        fillR(0, H-10, W, 0.5, C.border);
+        font('normal',5.5); textC(C.textDim);
+        txt('MailTrustAI | Gizli — Yalnizca yetkili kisi ve kurumlarla paylasilabilir.', M, H-4.5);
+        txt(`Sayfa ${num} / ${total3}`, W-M, H-4.5, {align:'right'});
+    };
 
-    addLine('Yonetici ozeti', 14, [15, 23, 42]);
-    addLine(`Guvenlik skoru ${data.score ?? '--'} ve risk orani %${data.stats?.riskRate || 0}. Bu rapor karar vericiler icin lisans, operasyon ve risk aksiyonlarini tek sayfada ozetler.`);
+    // ── section heading helper ──────────────────────────────────────────────
+    const sectionHead = (label, y) => {
+        fillR(M, y, CW, 7, C.bgCard);
+        fillR(M, y, 2.5, 7, C.accent);
+        font('bold',7.5); textC(C.accent2);
+        txt(label, M+5, y+5);
+        return y+10;
+    };
 
-    addLine('Ticari / operasyonel uyarilar', 14, [15, 23, 42]);
-    const alerts = Array.isArray(data.commercialAlerts) ? data.commercialAlerts : [];
-    if (alerts.length) {
-        alerts.slice(0, 5).forEach((alert) => addLine(`- ${alert.title}: ${alert.message}`));
-    } else {
-        addLine('- Kritik ticari uyari yok. Duzenli executive rapor paylasimi surdurulebilir.');
+    // =========================================================================
+    // PAGE 1  –  Cover · Score · KPIs · Distribution bar
+    // =========================================================================
+    fillR(0,0,W,H, C.bg);
+
+    // header band
+    fillR(0,0,W,44, C.bgCard);
+    fillR(0,0,W,2,  C.accent);
+
+    // brand
+    font('bold',22); textC(C.textLt); txt('MailTrustAI', M, 17);
+    font('normal',8); textC(C.accent2); txt('EMAIL SECURITY PLATFORM', M, 23.5);
+
+    // report title block (right-aligned)
+    font('bold',14); textC(C.textLt); txt('EXECUTIVE SECURITY REPORT', M, 34);
+    font('normal',7); textC(C.textDim);
+    txt(`Olusturulma: ${generated}  |  Periyot: Son ${data.periodDays||30} gun`, M, 40);
+
+    // confidential badge
+    fillR(W-42,7,30,10,[79,70,229]);
+    font('bold',6.5); textC(C.white); txt('KONFIDANSIYEL', W-41, 13.5);
+
+    // ── SECURITY SCORE circle ──────────────────────────────────────────────
+    const scX = M+26, scY = 74, scR = 23;
+    doc.setFillColor(C.bgCard[0],C.bgCard[1],C.bgCard[2]);
+    doc.setDrawColor(C.border[0],C.border[1],C.border[2]);
+    doc.setLineWidth(0.4);
+    doc.circle(scX, scY, scR+3, 'FD');
+    doc.setDrawColor(scoreColor[0],scoreColor[1],scoreColor[2]);
+    doc.setLineWidth(4);
+    doc.circle(scX, scY, scR, 'S');
+    font('bold',22); textC(scoreColor); txt(String(score), scX, scY+2, {align:'center'});
+    font('bold',7);  textC(C.textDim); txt('/100', scX, scY+8.5, {align:'center'});
+    font('bold',9);  textC(C.textLt);  txt(`NOT: ${grade}`, scX, scY+16, {align:'center'});
+    font('normal',6.5); textC(C.textDim); txt('GUVENLIK SKORU', scX, scY+23, {align:'center'});
+
+    // ── trend + license side panel ──────────────────────────────────────────
+    const panX = M+60, panY = 52;
+    fillR(panX, panY, 80, 14, C.bgCard);
+    fillR(panX, panY, 80, 2, trendColor);
+    font('bold',11); textC(trendColor);
+    const trendTxt = (data.trend??0)>3 ? 'IYILESME' : (data.trend??0)<-3 ? 'BOZULMA' : 'STABIL';
+    txt(`${trendIcon}  ${trendTxt}`, panX+4, panY+9.5);
+    font('normal',6.5); textC(C.textDim);
+    txt(`Onceki doneme gore: ${Math.abs(data.trend??0)} puan`, panX+4, panY+13.5);
+
+    if (data.license) {
+        fillR(panX, panY+16, 80, 20, C.bgCard);
+        fillR(panX, panY+16, 80, 1.5, C.indigo);
+        font('bold',6.5); textC(C.accent2); txt('LISANS BILGILERI', panX+4, panY+22);
+        font('normal',7.5); textC(C.textMd);
+        txt(`Plan: ${(data.license.plan||'free').toUpperCase()}`, panX+4, panY+29);
+        if (data.license.daysLeft!=null) {
+            const dc = data.license.daysLeft<=7?C.high:data.license.daysLeft<=30?C.medium:C.safe;
+            textC(dc); txt(`Kalan: ${data.license.daysLeft} gun`, panX+4, panY+35);
+        }
     }
 
-    addLine('En riskli kaynaklar', 14, [15, 23, 42]);
-    (data.topSenders || []).slice(0, 6).forEach((item) => addLine(`- ${item.email}: ${item.count} riskli mail`));
-    if (!(data.topSenders || []).length) addLine('- Riskli gonderici listesi bos.');
+    // ── 4 KPI boxes ────────────────────────────────────────────────────────
+    const kpiY = 104, kpiW = 44, kpiH = 26;
+    const kpis = [
+        { l:'TOPLAM TARAMA',  v: stats.total||0,                      c: C.accent  },
+        { l:'RISKLI MAIL',    v: stats.risky||0,                      c: C.medium  },
+        { l:'YUKSEK RISK',    v: stats.high||0,                       c: C.high    },
+        { l:'RISK ORANI',     v:`%${stats.riskRate||0}`,              c: (stats.riskRate||0)>30?C.high:(stats.riskRate||0)>10?C.medium:C.safe },
+    ];
+    kpis.forEach((k,i) => {
+        const kx = M + i*(kpiW+2);
+        fillR(kx, kpiY, kpiW, kpiH, C.bgCard);
+        fillR(kx, kpiY, kpiW, 2.5, k.c);
+        font('bold',18); textC(k.c); txt(String(k.v), kx+kpiW/2, kpiY+15, {align:'center'});
+        font('normal',5.5); textC(C.textDim); txt(k.l, kx+kpiW/2, kpiY+22, {align:'center'});
+    });
 
-    addLine('Onerilen aksiyonlar', 14, [15, 23, 42]);
-    (data.recommendations || []).slice(0, 5).forEach((item) => addLine(`- ${item}`));
+    // ── secondary KPI row ──────────────────────────────────────────────────
+    const kpi2Y = kpiY+kpiH+3, kpi2H = 20;
+    const kpi2 = [
+        { l:'GUVENLI',     v: stats.safe||0,          c: C.safe   },
+        { l:'ORTA RISK',   v: stats.medium||0,        c: C.medium },
+        { l:'VT ISARETLI', v: stats.vtHits||0,        c: stats.vtHits>0?C.high:C.safe },
+        { l:'DUSUK RISK',  v: stats.low||0,           c: C.low    },
+    ];
+    kpi2.forEach((k,i) => {
+        const kx = M + i*(kpiW+2);
+        fillR(kx, kpi2Y, kpiW, kpi2H, C.bgCard);
+        fillR(kx, kpi2Y, kpiW, 2, k.c);
+        font('bold',14); textC(k.c); txt(String(k.v), kx+kpiW/2, kpi2Y+11, {align:'center'});
+        font('normal',5.5); textC(C.textDim); txt(k.l, kx+kpiW/2, kpi2Y+17.5, {align:'center'});
+    });
+
+    // ── stacked risk distribution bar ─────────────────────────────────────
+    const distY = kpi2Y+kpi2H+6;
+    font('bold',7.5); textC(C.accent2); txt('RISK DAGILIMI', M, distY);
+    const barY2 = distY+4, barH2 = 10;
+    fillR(M, barY2, CW, barH2, C.bgCard);
+    const segs = [
+        {c:C.high,  n:stats.high||0},
+        {c:C.medium,n:stats.medium||0},
+        {c:C.low,   n:stats.low||0},
+        {c:C.safe,  n:stats.safe||0},
+    ];
+    let bx2 = M;
+    segs.forEach(s => {
+        const sw = (s.n/total)*CW;
+        if (sw>0.2) { fillR(bx2, barY2, sw, barH2, s.c); bx2+=sw; }
+    });
+    // bar labels
+    const barLabels = ['Yuksek','Orta','Dusuk','Guvenli'];
+    const barCounts  = [stats.high||0, stats.medium||0, stats.low||0, stats.safe||0];
+    const barColors  = [C.high, C.medium, C.low, C.safe];
+    let legX2 = M;
+    barLabels.forEach((l,i) => {
+        fillR(legX2, barY2+barH2+3, 5, 4, barColors[i]);
+        font('normal',6); textC(C.textDim);
+        txt(`${l}: ${barCounts[i]}`, legX2+7, barY2+barH2+6.5);
+        legX2 += 46;
+    });
+
+    // ── findings breakdown row ─────────────────────────────────────────────
+    const fbY2 = barY2+barH2+14;
+    font('bold',7.5); textC(C.accent2); txt('BULGU KATEGORILERI', M, fbY2);
+    const fbW = 44, fbH = 18;
+    const fbs = [
+        { l:'Ek Dosya Bulgulari',  v: stats.attachmentFindings||0, c: C.medium },
+        { l:'Link/URL Bulgulari',  v: stats.linkFindings||0,        c: C.high   },
+        { l:'AI Tespiti',          v: stats.aiFindings||0,          c: C.accent },
+        { l:'Ort. Tarama Skoru',   v:`${stats.averageScanScore||0}/100`, c: C.low },
+    ];
+    fbs.forEach((f,i) => {
+        const fx2 = M + i*(fbW+2);
+        fillR(fx2, fbY2+3, fbW, fbH, C.bgCard);
+        fillR(fx2, fbY2+3, fbW, 2, f.c);
+        font('bold',13); textC(f.c); txt(String(f.v), fx2+fbW/2, fbY2+12, {align:'center'});
+        font('normal',5.5); textC(C.textDim); txt(f.l, fx2+fbW/2, fbY2+19, {align:'center'});
+    });
+
+    // ── top senders table ─────────────────────────────────────────────────
+    const stY = fbY2+27;
+    const senders = (data.topSenders||[]).slice(0,5);
+    let curY = sectionHead('EN RISKLI GONDERENLER (TOP 5)', stY);
+    // table header
+    fillR(M, curY, CW, 7, C.indigo);
+    font('bold',6.5); textC(C.white);
+    txt('E-POSTA', M+2, curY+4.8);
+    txt('RISKLI', M+CW-30, curY+4.8);
+    txt('%', M+CW-8, curY+4.8);
+    curY += 7;
+    if (senders.length) {
+        senders.forEach((s,i) => {
+            fillR(M, curY, CW, 8, i%2===0?C.bgCard:C.bgCard2);
+            font('normal',6.5); textC(C.textMd);
+            txt(s.email.length>50?s.email.slice(0,47)+'...':s.email, M+2, curY+5.5);
+            const pct = Math.round((s.count/total)*100);
+            // mini bar
+            const mbW = Math.round((pct/100)*28);
+            fillR(M+CW-34, curY+2, mbW>0?mbW:1, 4, C.medium);
+            font('bold',6.5); textC(C.medium); txt(String(s.count), M+CW-4, curY+5.5, {align:'right'});
+            curY += 8;
+        });
+    } else {
+        font('normal',7); textC(C.textDim); txt('Riskli gonderici yok.', M+2, curY+5); curY+=10;
+    }
+
+    pageFooter(1,3);
+
+    // =========================================================================
+    // PAGE 2  –  Attack types · Risky mailboxes · Score breakdown
+    // =========================================================================
+    doc.addPage();
+    fillR(0,0,W,H, C.bg);
+    // page header
+    fillR(0,0,W,12, C.bgCard); fillR(0,0,W,1.5, C.accent);
+    font('bold',9); textC(C.textLt); txt('MailTrustAI — Risk Analizi', M, 8.5);
+    font('normal',6.5); textC(C.textDim); txt(generated, W-M, 8.5, {align:'right'});
+
+    let y2 = 20;
+
+    // ── horizontal bar chart: attack types ────────────────────────────────
+    y2 = sectionHead('SALDIRI / TEHDIT TIPLERI', y2);
+    const attacks = (data.attackTypes||[]).slice(0,8);
+    const maxAtk  = Math.max(...attacks.map(a=>a.count), 1);
+    const barMaxW = CW*0.55;
+    const atkColors = { link:'[239,68,68]', attachment:C.medium, ai:C.accent, header:C.low };
+    if (attacks.length) {
+        attacks.forEach((atk,i) => {
+            const rowY2 = y2 + i*11;
+            const bw2 = (atk.count/maxAtk)*barMaxW;
+            const aColor = atk.type==='link'?C.high:atk.type==='attachment'?C.medium:atk.type==='ai'?C.accent:C.low;
+            fillR(M+42, rowY2, barMaxW, 7, C.bgCard);
+            if (bw2>0) fillR(M+42, rowY2, bw2, 7, aColor);
+            font('normal',7); textC(C.textMd);
+            txt(String(atk.type||'genel').slice(0,16), M, rowY2+5.5);
+            font('bold',7); textC(C.textDim);
+            txt(String(atk.count), M+42+bw2+2, rowY2+5.5);
+        });
+        y2 += attacks.length*11 + 6;
+    } else {
+        font('normal',7.5); textC(C.textDim); txt('Veri yok.', M, y2+4); y2+=10;
+    }
+
+    // ── risky mailboxes ────────────────────────────────────────────────────
+    y2 = sectionHead('RISKLI POSTA KUTULARI', y2);
+    const mailboxes = (data.riskyMailboxes||[]).slice(0,6);
+    const maxMb = Math.max(...mailboxes.map(m=>m.count),1);
+    if (mailboxes.length) {
+        // table header
+        fillR(M, y2, CW, 7, C.indigo);
+        font('bold',6.5); textC(C.white);
+        txt('POSTA KUTUSU', M+2, y2+4.8); txt('RISKLI', M+CW-30, y2+4.8); txt('%', M+CW-8, y2+4.8);
+        y2 += 7;
+        mailboxes.forEach((mb,i) => {
+            fillR(M, y2, CW, 8, i%2===0?C.bgCard:C.bgCard2);
+            font('normal',6.5); textC(C.textMd);
+            txt(mb.email.length>50?mb.email.slice(0,47)+'...':mb.email, M+2, y2+5.5);
+            const mbPct = Math.round((mb.count/total)*100);
+            const mbBW = Math.round((mb.count/maxMb)*28);
+            fillR(M+CW-34, y2+2, mbBW>0?mbBW:1, 4, C.medium);
+            font('bold',6.5); textC(C.medium); txt(String(mb.count), M+CW-4, y2+5.5, {align:'right'});
+            y2 += 8;
+        });
+        y2 += 4;
+    } else {
+        font('normal',7); textC(C.textDim); txt('Riskli posta kutusu yok.', M+2, y2+5); y2+=12;
+    }
+
+    // ── donem karsilastirmasi ──────────────────────────────────────────────
+    y2 = sectionHead('DONEM KARSILASTIRMASI', y2);
+    fillR(M, y2, CW, 18, C.bgCard);
+    font('bold',16); textC(trendColor);
+    const trendLabel2 = (data.trend??0)>3?'▲ IYILESME':(data.trend??0)<-3?'▼ BOZULMA':'= STABIL';
+    txt(trendLabel2, M+CW/2, y2+10, {align:'center'});
+    font('normal',6.5); textC(C.textDim);
+    txt(`Guvenlik skoru onceki doneme gore ${Math.abs(data.trend??0)} puan ${(data.trend??0)>=0?'yukseldi':'dustu'}.`, M+CW/2, y2+16, {align:'center'});
+    y2 += 22;
+
+    // ── score distribution % boxes ─────────────────────────────────────────
+    y2 = sectionHead('TARAMA SKORU DAGILIMI (%)', y2);
+    const sdSegs = [
+        { l:`Yuksek (${stats.high||0})`,  p:Math.round(((stats.high||0)/total)*100),  c:C.high   },
+        { l:`Orta (${stats.medium||0})`,  p:Math.round(((stats.medium||0)/total)*100),c:C.medium },
+        { l:`Dusuk (${stats.low||0})`,    p:Math.round(((stats.low||0)/total)*100),   c:C.low    },
+        { l:`Guvenli (${stats.safe||0})`, p:Math.round(((stats.safe||0)/total)*100),  c:C.safe   },
+    ];
+    const sdW = CW/4-1.5;
+    sdSegs.forEach((s,i) => {
+        const sx2 = M + i*(sdW+2);
+        fillR(sx2, y2, sdW, 20, C.bgCard);
+        // fill bar from bottom based on percentage
+        const fillH = Math.round((s.p/100)*18);
+        if (fillH>0) fillR(sx2, y2+20-fillH, sdW, fillH, s.c.map(v=>Math.round(v*0.35)));
+        fillR(sx2, y2, sdW, 2, s.c);
+        font('bold',14); textC(s.c); txt(`%${s.p}`, sx2+sdW/2, y2+12, {align:'center'});
+        font('normal',5.5); textC(C.textDim); txt(s.l, sx2+sdW/2, y2+18, {align:'center'});
+    });
+    y2 += 24;
+
+    // ── weighted risk meter ────────────────────────────────────────────────
+    y2 = sectionHead('AGIRLIKLI RISK ENDEKSI', y2);
+    const wr = stats.weightedRisk||0;
+    const wrColor = wr>=50?C.high:wr>=25?C.medium:wr>=10?C.low:C.safe;
+    fillR(M, y2, CW, 12, C.bgCard);
+    const wrBarW = Math.round((wr/100)*CW);
+    if (wrBarW>0) fillR(M, y2, wrBarW, 12, wrColor.map(v=>Math.round(v*0.6)));
+    fillR(M, y2, wrBarW>0?wrBarW:1, 12, wrColor);
+    font('bold',9); textC(C.white); txt(`${wr} / 100`, M+4, y2+8);
+    font('normal',6.5); textC(C.textDim);
+    txt(`Agirlikli ortalama risk endeksi (yuksek=daha riskli)`, M+CW-2, y2+8, {align:'right'});
+    y2 += 16;
+
+    pageFooter(2,3);
+
+    // =========================================================================
+    // PAGE 3  –  Summary · Alerts · Recommendations · Stats table
+    // =========================================================================
+    doc.addPage();
+    fillR(0,0,W,H, C.bg);
+    fillR(0,0,W,12, C.bgCard); fillR(0,0,W,1.5, C.accent);
+    font('bold',9); textC(C.textLt); txt('MailTrustAI — Oneriler & Eylem Plani', M, 8.5);
+    font('normal',6.5); textC(C.textDim); txt(generated, W-M, 8.5, {align:'right'});
+
+    let y3 = 20;
+
+    // ── executive summary box ─────────────────────────────────────────────
+    y3 = sectionHead('YONETICI OZETI', y3);
+    const summaryTxt = `Bu donemde toplam ${stats.total||0} e-posta taranmistir. Risk orani %${stats.riskRate||0} olup guvenlik skoru ${score}/100 (${grade} notu) duzeyindedir. ${stats.high>0?`${stats.high} adet yuksek riskli e-posta tespit edilmistir.`:'Yuksek riskli e-posta tespit edilmemistir.'} ${stats.vtHits>0?`${stats.vtHits} ekte VirusTotal uyarisi alinmistir.`:''} Donem trendi: ${data.trendLabel||'stabil'}.`;
+    fillR(M, y3, CW, 26, C.bgCard);
+    fillR(M, y3, 3, 26, C.accent);
+    const sumLines = doc.splitTextToSize(summaryTxt, CW-8);
+    font('normal',7.5); textC(C.textMd);
+    sumLines.slice(0,4).forEach((l,i) => txt(l, M+5, y3+6+i*5.5));
+    y3 += 30;
+
+    // ── commercial alerts ─────────────────────────────────────────────────
+    y3 = sectionHead('TICARI / OPERASYONEL UYARILAR', y3);
+    if (alerts.length) {
+        alerts.slice(0,5).forEach((al) => {
+            const alC = al.type==='critical'?C.high:al.type==='warning'?C.medium:C.low;
+            fillR(M, y3, CW, 14, C.bgCard);
+            fillR(M, y3, 3, 14, alC);
+            font('bold',7); textC(alC); txt(String(al.title||'Uyari'), M+5, y3+5.5);
+            font('normal',6.5); textC(C.textMd);
+            const alLines = doc.splitTextToSize(String(al.message||''), CW-8);
+            alLines.slice(0,2).forEach((l,i) => txt(l, M+5, y3+10+i*4.5));
+            y3 += 16;
+        });
+    } else {
+        fillR(M, y3, CW, 10, C.bgCard);
+        fillR(M, y3, 3, 10, C.safe);
+        font('normal',7); textC(C.safe);
+        txt('Kritik ticari uyari yok. Mevcut kontroller etkin durumda.', M+5, y3+6.5);
+        y3 += 13;
+    }
+    y3 += 3;
+
+    // ── numbered recommendations ──────────────────────────────────────────
+    y3 = sectionHead('ONERILEN AKSIYONLAR', y3);
+    const numColors = [C.high, C.medium, C.low, C.safe, C.accent];
+    if (recs.length) {
+        recs.forEach((rec,i) => {
+            const rc = numColors[i%numColors.length];
+            fillR(M, y3, CW, 14, C.bgCard);
+            fillR(M, y3, 10, 14, rc);
+            font('bold',8); textC(C.white); txt(String(i+1), M+5, y3+9.5, {align:'center'});
+            font('normal',7); textC(C.textMd);
+            const rl = doc.splitTextToSize(rec, CW-15);
+            rl.slice(0,2).forEach((l,li) => txt(l, M+13, y3+5+li*5.5));
+            y3 += 16;
+        });
+    } else {
+        font('normal',7); textC(C.textDim); txt('Oneri listesi bos.', M+4, y3+5); y3+=10;
+    }
+    y3 += 4;
+
+    // ── summary stats 2-column table ──────────────────────────────────────
+    y3 = sectionHead('DETAYLI ISTATISTIK TABLOSU', y3);
+    const statRows = [
+        ['Toplam Tarama',        stats.total||0,                  C.textMd],
+        ['Guvenli Mail',         stats.safe||0,                   C.safe  ],
+        ['Dusuk Riskli',         stats.low||0,                    C.low   ],
+        ['Orta Riskli',          stats.medium||0,                 C.medium],
+        ['Yuksek Riskli',        stats.high||0,                   C.high  ],
+        ['Risk Orani',           `%${stats.riskRate||0}`,         (stats.riskRate||0)>30?C.high:(stats.riskRate||0)>10?C.medium:C.safe],
+        ['Ort. Tarama Skoru',    `${stats.averageScanScore||0}/100`, C.textMd],
+        ['Agirlikli Risk',       `${stats.weightedRisk||0}/100`,  C.textMd],
+        ['VirusTotal Uyarisi',   stats.vtHits||0,                 stats.vtHits>0?C.high:C.safe],
+        ['Ek Dosya Bulgusu',     stats.attachmentFindings||0,     stats.attachmentFindings>0?C.medium:C.textDim],
+        ['Link/URL Bulgusu',     stats.linkFindings||0,           stats.linkFindings>0?C.high:C.textDim],
+        ['AI Tespiti',           stats.aiFindings||0,             stats.aiFindings>0?C.accent:C.textDim],
+    ];
+    const colW3 = CW/2-1;
+    statRows.forEach((row,i) => {
+        const col = i%2, rowI = Math.floor(i/2);
+        const rx3 = M + col*(colW3+2);
+        const ry3 = y3 + rowI*9;
+        fillR(rx3, ry3, colW3, 8, col===0?C.bgCard:C.bgCard2);
+        font('normal',7); textC(C.textDim); txt(row[0], rx3+3, ry3+5.5);
+        font('bold',7); textC(row[2]); txt(String(row[1]), rx3+colW3-3, ry3+5.5, {align:'right'});
+    });
+    y3 += Math.ceil(statRows.length/2)*9 + 6;
+
+    // ── closing brand footer ──────────────────────────────────────────────
+    fillR(0, H-16, W, 16, C.bgCard);
+    fillR(0, H-16, W, 1, C.border);
+    font('bold',7.5); textC(C.accent2); txt('MailTrustAI Email Security Platform', M, H-9);
+    font('normal',6); textC(C.textDim);
+    txt('Bu rapor sirket gizlidir. Yetkisiz dagitim ve kopyalama yasaktir.', M, H-5);
+    txt(`Olusturulma: ${generated}  |  Sayfa 3 / 3`, W-M, H-5, {align:'right'});
 
     doc.save(`mailtrustai-executive-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
