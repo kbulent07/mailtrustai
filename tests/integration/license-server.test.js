@@ -105,3 +105,52 @@ test('heartbeat PII alani icerirse 422 doner', async () => {
         srv.close();
     }
 });
+
+test('customer-sync pull version kontrolu ve ack audit kaydi olusur', async () => {
+    await ready;
+    const { srv, port } = await startApp();
+    try {
+        const { keyHash } = generateLicenseKey({ customerId: 'cust3', dealerId: 'dlr3', plan: 'pro' });
+        db.prepare('INSERT OR IGNORE INTO dealers(id,name,email,created_at) VALUES(?,?,?,?)').run('dlr3', 'Dealer 3', 'd3@d', Date.now());
+        db.prepare('INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)').run('cust3', 'dlr3', 'Company 3', 'c3@x', Date.now());
+        db.prepare(`INSERT INTO licenses(id,customer_id,dealer_id,license_key_hash,license_key_masked,plan,tier,status,issued_at,expires_at,grace_days,features_json,limits_json)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+            .run('lic3', 'cust3', 'dlr3', keyHash, 'MASK3', 'pro', 'pro', 'active', Date.now(), Date.now() + 86400000 * 30, 3, '{}', '{}');
+        db.prepare(`INSERT INTO activations(id,license_id,instance_id,hostname_hash,app_version,build_version,node_version,environment,activated_at,last_heartbeat_at,last_payload_json)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+            .run('act3', 'lic3', 'inst3', null, '2.0.0', null, null, 'test', Date.now(), Date.now(), '{}');
+
+        db.prepare('INSERT OR REPLACE INTO policies(customer_id,version,body_json,updated_at) VALUES(?,?,?,?)')
+            .run('cust3', 2, JSON.stringify({ featureOverrides: { deepAi: false }, limits: { monthlyScanCount: 123 } }), Date.now());
+        db.prepare('INSERT OR REPLACE INTO lists(customer_id,kind,version,body_json,updated_at) VALUES(?,?,?,?,?)')
+            .run('cust3', 'whitelist', 4, JSON.stringify({ domains: ['trusted.example'] }), Date.now());
+        db.prepare('INSERT OR REPLACE INTO lists(customer_id,kind,version,body_json,updated_at) VALUES(?,?,?,?,?)')
+            .run('cust3', 'blacklist', 5, JSON.stringify({ domains: ['bad.example'] }), Date.now());
+        db.prepare('INSERT OR REPLACE INTO api_policies(customer_id,version,body_json,updated_at) VALUES(?,?,?,?)')
+            .run('cust3', 3, JSON.stringify({ allowedProviders: ['openai'], centralApiProxyEnabled: false }), Date.now());
+
+        const oldPull = await http_(port, 'GET', '/api/customer-sync/pull?customerId=cust3&policyV=0&whitelistV=0&blacklistV=0&apiPolicyV=0');
+        assert.strictEqual(oldPull.status, 200);
+        assert.ok(oldPull.body.policy);
+        assert.ok(oldPull.body.lists);
+        assert.ok(oldPull.body.apiPolicy);
+
+        const upToDatePull = await http_(port, 'GET', '/api/customer-sync/pull?customerId=cust3&policyV=2&whitelistV=4&blacklistV=5&apiPolicyV=3');
+        assert.strictEqual(upToDatePull.status, 200);
+        assert.deepStrictEqual(upToDatePull.body, {});
+
+        const ack = await http_(port, 'POST', '/api/customer-sync/ack', {
+            customerId: 'cust3',
+            instanceId: 'inst3',
+            applied: { policy: 2, whitelist: 4, blacklist: 5, apiPolicy: 3 }
+        });
+        assert.strictEqual(ack.status, 200);
+        assert.strictEqual(ack.body.ok, true);
+
+        const row = db.prepare("SELECT action FROM audit_log WHERE actor='cust3' ORDER BY id DESC LIMIT 1").get();
+        assert.ok(row);
+        assert.strictEqual(row.action, 'customer.ack');
+    } finally {
+        srv.close();
+    }
+});
