@@ -9,6 +9,10 @@
 
 Release almadan once asagidaki kontroller PASS olmali:
 
+Hizli calistirma (onerilen):
+
+- `npm.cmd run precheck:release`
+
 1. Testler
 - `node --test "tests/unit/*.test.js" "tests/integration/*.test.js" "tests/security/*.test.js"`
 
