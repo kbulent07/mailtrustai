@@ -12,6 +12,8 @@ Release almadan once asagidaki kontroller PASS olmali:
 Hizli calistirma (onerilen):
 
 - `npm.cmd run precheck:release`
+- `npm.cmd run precheck:quick` (hizli: image-gate ve smoke atlanir)
+- `npm.cmd run precheck:ci` (JSON output + only-tests)
 - `node scripts/release-precheck.js --only-tests` (sadece test)
 - `node scripts/release-precheck.js --skip-smoke` (smoke adimini atla)
 - `node scripts/release-precheck.js --skip-image-gate` (customer image gate adimini atla)

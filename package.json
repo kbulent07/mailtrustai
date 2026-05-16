@@ -21,7 +21,9 @@
     "check:customer-package": "node scripts/check-customer-package.js",
     "check:customer-package:image": "node scripts/check-customer-package.js --scope=image",
     "smoke:central-flow": "node scripts/smoke-central-flow.js",
-    "precheck:release": "node scripts/release-precheck.js"
+    "precheck:release": "node scripts/release-precheck.js",
+    "precheck:quick": "node scripts/release-precheck.js --skip-image-gate --skip-smoke",
+    "precheck:ci": "node scripts/release-precheck.js --only-tests --json"
   },
   "engines": {
     "node": ">=22"
