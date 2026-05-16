@@ -154,3 +154,25 @@ test('customer-sync pull version kontrolu ve ack audit kaydi olusur', async () =
         srv.close();
     }
 });
+
+test('heartbeat payload limiti asilinca 413 doner', async () => {
+    await ready;
+    const { srv, port } = await startApp();
+    try {
+        const { keyHash } = generateLicenseKey({ customerId: 'cust4', plan: 'pro' });
+        db.prepare('INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)').run('cust4', null, 'Y', 'y@y', Date.now());
+        db.prepare(`INSERT INTO licenses(id,customer_id,dealer_id,license_key_hash,license_key_masked,plan,tier,status,issued_at,expires_at,grace_days,features_json,limits_json)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+            .run('lic4', 'cust4', null, keyHash, 'MASK4', 'pro', 'pro', 'active', Date.now(), Date.now() + 86400000, 3, '{}', '{}');
+
+        const oversized = 'x'.repeat(17000);
+        const response = await http_(port, 'POST', '/api/customer-sync/heartbeat', {
+            licenseKeyHash: keyHash,
+            instanceId: 'inst-oversize',
+            errorSummary: oversized
+        });
+        assert.strictEqual(response.status, 413);
+    } finally {
+        srv.close();
+    }
+});

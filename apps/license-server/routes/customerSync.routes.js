@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const { asyncH, scrubPII } = require('@mailtrustai/shared');
+const { asyncH, scrubPII, envInt } = require('@mailtrustai/shared');
 const { audit, get, run } = require('../db');
 const { getList } = require('./lists.routes');
 const { getApiPolicy } = require('./apiPolicy.routes');
@@ -13,6 +13,7 @@ const FORBIDDEN_KEYS = [
     'rawHeaders', 'imapPassword', 'smtpPassword', 'apiKey', 'openaiApiKey', 'claudeApiKey',
     'anthropicApiKey', 'virustotalApiKey', 'credentials', 'aiPrompt', 'aiResponse'
 ];
+const MAX_PAYLOAD_BYTES = envInt('CUSTOMER_SYNC_MAX_PAYLOAD_BYTES', 16384);
 
 function ensureNoPII(body) {
     function walk(obj) {
@@ -33,8 +34,18 @@ function ensureNoPII(body) {
     }
 }
 
+function ensurePayloadSize(payload) {
+    const size = Buffer.byteLength(JSON.stringify(payload || {}), 'utf8');
+    if (size > MAX_PAYLOAD_BYTES) {
+        const error = new Error(`heartbeat payload cok buyuk: ${size} bytes (max ${MAX_PAYLOAD_BYTES})`);
+        error.status = 413;
+        throw error;
+    }
+}
+
 async function persistHeartbeat(payload) {
     ensureNoPII(payload);
+    ensurePayloadSize(payload);
     if (!payload.licenseKeyHash || !payload.instanceId) {
         const error = new Error('licenseKeyHash ve instanceId gerekli');
         error.status = 400;
