@@ -10,6 +10,7 @@ const root = process.cwd();
 const args = new Set(process.argv.slice(2));
 const skipSmoke = args.has('--skip-smoke');
 const onlyTests = args.has('--only-tests');
+const skipImageGate = args.has('--skip-image-gate');
 function runStep(name, command, args) {
     console.log(`\n[precheck] ${name} -> ${command} ${args.join(' ')}`);
     const res = spawnSync(command, args, {
@@ -89,6 +90,7 @@ function main() {
     console.log('[precheck] release precheck basladi');
     if (onlyTests) console.log('[precheck] mode: --only-tests');
     if (skipSmoke) console.log('[precheck] mode: --skip-smoke');
+    if (skipImageGate) console.log('[precheck] mode: --skip-image-gate');
 
     runStep(
         'integration+security tests',
@@ -102,7 +104,11 @@ function main() {
         return;
     }
 
-    runCustomerImageGate();
+    if (!skipImageGate) {
+        runCustomerImageGate();
+    } else {
+        console.log('\n[precheck] customer package image gate adimi atlandi (--skip-image-gate)');
+    }
 
     if (!skipSmoke) {
         runStep(
