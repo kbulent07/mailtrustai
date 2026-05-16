@@ -78,7 +78,7 @@ test('license activate -> validate -> heartbeat -> bootstrap -> pull akisi', asy
         assert.ok(bootstrap.body.lists);
         assert.ok(bootstrap.body.apiPolicy);
 
-        const pull = await http_(port, 'GET', '/api/customer-sync/pull?customerId=cust1&policyV=0&whitelistV=0&blacklistV=0&apiPolicyV=0');
+        const pull = await http_(port, 'GET', `/api/customer-sync/pull?customerId=cust1&licenseKeyHash=${encodeURIComponent(keyHash)}&instanceId=inst-test&policyV=0&whitelistV=0&blacklistV=0&apiPolicyV=0`);
         assert.strictEqual(pull.status, 200);
 
         const status = await http_(port, 'GET', '/api/central/customers/cust1/status');
@@ -129,13 +129,13 @@ test('customer-sync pull version kontrolu ve ack audit kaydi olusur', async () =
         db.prepare('INSERT OR REPLACE INTO api_policies(customer_id,version,body_json,updated_at) VALUES(?,?,?,?)')
             .run('cust3', 3, JSON.stringify({ allowedProviders: ['openai'], centralApiProxyEnabled: false }), Date.now());
 
-        const oldPull = await http_(port, 'GET', '/api/customer-sync/pull?customerId=cust3&policyV=0&whitelistV=0&blacklistV=0&apiPolicyV=0');
+        const oldPull = await http_(port, 'GET', `/api/customer-sync/pull?customerId=cust3&licenseKeyHash=${encodeURIComponent(keyHash)}&instanceId=inst3&policyV=0&whitelistV=0&blacklistV=0&apiPolicyV=0`);
         assert.strictEqual(oldPull.status, 200);
         assert.ok(oldPull.body.policy);
         assert.ok(oldPull.body.lists);
         assert.ok(oldPull.body.apiPolicy);
 
-        const upToDatePull = await http_(port, 'GET', '/api/customer-sync/pull?customerId=cust3&policyV=2&whitelistV=4&blacklistV=5&apiPolicyV=3');
+        const upToDatePull = await http_(port, 'GET', `/api/customer-sync/pull?customerId=cust3&licenseKeyHash=${encodeURIComponent(keyHash)}&instanceId=inst3&policyV=2&whitelistV=4&blacklistV=5&apiPolicyV=3`);
         assert.strictEqual(upToDatePull.status, 200);
         assert.deepStrictEqual(upToDatePull.body, {});
 
@@ -196,6 +196,17 @@ test('bootstrap payload limiti asilinca 413 doner', async () => {
             errorSummary: oversized
         });
         assert.strictEqual(response.status, 413);
+    } finally {
+        srv.close();
+    }
+});
+
+test('pull endpoint hash veya instance olmadan 400 doner', async () => {
+    await ready;
+    const { srv, port } = await startApp();
+    try {
+        const response = await http_(port, 'GET', '/api/customer-sync/pull?customerId=any');
+        assert.strictEqual(response.status, 400);
     } finally {
         srv.close();
     }

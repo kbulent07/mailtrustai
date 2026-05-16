@@ -84,6 +84,39 @@ async function bundleForCustomer(customerId) {
     };
 }
 
+async function authorizePullQuery(query) {
+    const { customerId, licenseKeyHash, instanceId } = query || {};
+    if (!customerId || !licenseKeyHash || !instanceId) {
+        const error = new Error('customerId, licenseKeyHash ve instanceId gerekli');
+        error.status = 400;
+        throw error;
+    }
+
+    const license = await get('SELECT id, customer_id FROM licenses WHERE license_key_hash = ?', [licenseKeyHash]);
+    if (!license) {
+        const error = new Error('lisans bulunamadi');
+        error.status = 404;
+        throw error;
+    }
+    if (license.customer_id !== customerId) {
+        const error = new Error('customerId ve lisans eslesmiyor');
+        error.status = 403;
+        throw error;
+    }
+
+    const activation = await get(
+        'SELECT id FROM activations WHERE license_id=? AND instance_id=?',
+        [license.id, instanceId]
+    );
+    if (!activation) {
+        const error = new Error('aktivasyon bulunamadi');
+        error.status = 403;
+        throw error;
+    }
+
+    return { customerId };
+}
+
 router.post('/customer-sync/bootstrap', asyncH(async (req, res) => {
     const license = await persistHeartbeat(req.body || {});
     await audit(license.customer_id, 'customer.bootstrap', license.id, { instanceId: req.body.instanceId });
@@ -96,10 +129,10 @@ router.post('/customer-sync/heartbeat', asyncH(async (req, res) => {
 }));
 
 router.get('/customer-sync/pull', asyncH(async (req, res) => {
-    const { customerId, policyV = '0', whitelistV = '0', blacklistV = '0', apiPolicyV = '0' } = req.query;
-    if (!customerId) return res.status(400).json({ error: 'customerId gerekli' });
+    const { policyV = '0', whitelistV = '0', blacklistV = '0', apiPolicyV = '0' } = req.query;
+    const auth = await authorizePullQuery(req.query || {});
 
-    const bundle = await bundleForCustomer(customerId);
+    const bundle = await bundleForCustomer(auth.customerId);
     const out = {};
     if (bundle.policy.version > Number(policyV)) out.policy = bundle.policy;
     if (bundle.lists.whitelist.version > Number(whitelistV) || bundle.lists.blacklist.version > Number(blacklistV)) out.lists = bundle.lists;

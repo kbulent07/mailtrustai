@@ -131,7 +131,7 @@ async function run() {
 
     const pull = await api(
         'GET',
-        `/api/customer-sync/pull?customerId=${encodeURIComponent(activate.customerId)}&policyV=0&whitelistV=0&blacklistV=0&apiPolicyV=0`
+        `/api/customer-sync/pull?customerId=${encodeURIComponent(activate.customerId)}&licenseKeyHash=${encodeURIComponent(licenseKeyHash)}&instanceId=${encodeURIComponent(instanceId)}&policyV=0&whitelistV=0&blacklistV=0&apiPolicyV=0`
     );
     log('customer-sync.pull', 'ok', {
         hasPolicy: !!pull.policy,

@@ -148,9 +148,17 @@ async function pullCentralUpdates({ syncUrl }) {
     return _withRetry(async () => {
         const state = getState();
         const lic = licenseClient.getSnapshot() || {};
+        const envLicenseKey = env('MSA_LICENSE_KEY', '');
+        const licenseKeyHash = lic.licenseKeyHash || (envLicenseKey ? sha256(envLicenseKey) : null);
+        const customerId = lic.customerId || null;
+        const instanceId = lic.instanceId || licenseClient.instanceFingerprint();
+        if (!licenseKeyHash || !customerId || !instanceId) {
+            throw new Error('pull için customerId/licenseKeyHash/instanceId eksik');
+        }
         const q = new URLSearchParams({
-            customerId: String(lic.customerId || ''),
-            instanceId: String(lic.instanceId || licenseClient.instanceFingerprint()),
+            customerId: String(customerId),
+            licenseKeyHash: String(licenseKeyHash),
+            instanceId: String(instanceId),
             policyV: String(state.localPolicyVersion || 0),
             whitelistV: String(state.localWhitelistVersion || 0),
             blacklistV: String(state.localBlacklistVersion || 0),
