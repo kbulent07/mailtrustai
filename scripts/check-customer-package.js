@@ -29,8 +29,20 @@ const FORBIDDEN_PATHS_IMAGE = [
 ];
 
 const SCAN_DIRS = ['apps/customer', 'packages', 'src', 'public'];
+const FORBIDDEN_NAME_TOKENS = [
+    'keygen',
+    'reseller',
+    'license/generate',
+    'batch-license',
+    'trial-license',
+    'bayi.html',
+    'keygen.html',
+    'customer-list-admin',
+    'dealer-credit'
+];
 const FORBIDDEN_PATTERNS = [
     { rx: /generateLicenseKey\s*\(/, msg: 'license generate' },
+    { rx: /\/api\/license\/revoke\b/i, msg: 'revoke endpoint' },
     { rx: /signActivation\s*\(/, msg: 'license sign' },
     { rx: /batch.{0,12}license/i, msg: 'batch license' },
     { rx: /trial.{0,12}license/i, msg: 'trial license' },
@@ -52,7 +64,12 @@ const ALLOWLIST_FILES = new Set([
     'apps/customer/server.js',
     'src/storage/db.js',
     'src/license/license.js',
-    'src/interfaces/http/routes/license.routes.js'
+    'src/interfaces/http/routes/license.routes.js',
+    'apps/dealer/server.js',
+    'apps/dealer/routes/dealer.routes.js',
+    'apps/license-server/routes/license.routes.js',
+    'apps/license-server/routes/central.routes.js',
+    'apps/license-server/routes/customerSync.routes.js'
 ]);
 
 const errors = [];
@@ -83,6 +100,12 @@ for (const d of SCAN_DIRS) {
     for (const file of walk(path.join(ROOT, d))) {
         const rel = path.relative(ROOT, file).replace(/\\/g, '/');
         if (ALLOWLIST_FILES.has(rel)) continue;
+        const relLower = rel.toLowerCase();
+        for (const token of FORBIDDEN_NAME_TOKENS) {
+            if (relLower.includes(token)) {
+                errors.push(`[FORBIDDEN-NAME] ${rel}: ${token}`);
+            }
+        }
         const text = fs.readFileSync(file, 'utf8');
         for (const { rx, msg } of FORBIDDEN_PATTERNS) {
             if (rx.test(text)) errors.push(`[FORBIDDEN-PATTERN] ${rel}: ${msg}`);
