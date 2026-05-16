@@ -1,47 +1,177 @@
 'use strict';
+
 const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
-const { env, logger } = require('@mailtrustai/shared');
+const { env, envInt, logger } = require('@mailtrustai/shared');
 
+const DB_CLIENT = String(env('LICENSE_DB_CLIENT') || (env('MARIADB_HOST') ? 'mariadb' : 'sqlite')).toLowerCase();
 const DB_PATH = env('LICENSE_DB_PATH', path.join(env('DATA_DIR', './data'), 'license-server.sqlite'));
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 
-function _ensureDir() { try { fs.mkdirSync(path.dirname(DB_PATH), { recursive: true }); } catch (_) {} }
-_ensureDir();
+let db = null;
+let pool = null;
 
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+function _sqliteMigrationFiles() {
+    return fs.readdirSync(MIGRATIONS_DIR)
+        .filter((file) => /^\d{4}_.+\.sql$/.test(file) && !file.endsWith('.mariadb.sql'))
+        .sort();
+}
 
-// Migration runner — numbered SQL files (0001_*.sql, 0002_*.sql).
-db.exec(`CREATE TABLE IF NOT EXISTS _migrations (
-    id TEXT PRIMARY KEY,
-    applied_at INTEGER NOT NULL
-);`);
+function _mariaMigrationFiles() {
+    return fs.readdirSync(MIGRATIONS_DIR)
+        .filter((file) => /^\d{4}_.+\.mariadb\.sql$/.test(file))
+        .sort();
+}
 
-function _applyMigrations() {
-    if (!fs.existsSync(MIGRATIONS_DIR)) return;
-    const files = fs.readdirSync(MIGRATIONS_DIR).filter(f => /^\d{4}_.+\.sql$/.test(f)).sort();
-    const applied = new Set(db.prepare('SELECT id FROM _migrations').all().map(r => r.id));
-    for (const f of files) {
-        if (applied.has(f)) continue;
-        const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
-        const tx = db.transaction(() => {
-            db.exec(sql);
-            db.prepare('INSERT INTO _migrations(id, applied_at) VALUES(?,?)').run(f, Date.now());
-        });
-        tx();
-        logger.info(`[license-server] migration uygulandı: ${f}`);
+function _migrationId(file) {
+    return file.replace(/\.mariadb\.sql$/i, '.sql');
+}
+
+function _ensureSqliteDir() {
+    try {
+        fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+    } catch (_) {
+        // ignore
     }
 }
-_applyMigrations();
 
-function audit(actor, action, target, detail) {
-    db.prepare('INSERT INTO audit_log(ts,actor,action,target,detail_json) VALUES(?,?,?,?,?)')
-      .run(Date.now(), actor || null, action, target || null, detail ? JSON.stringify(detail) : null);
+function _initSqlite() {
+    _ensureSqliteDir();
+    db = new Database(DB_PATH);
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    db.exec(`CREATE TABLE IF NOT EXISTS _migrations (
+        id TEXT PRIMARY KEY,
+        applied_at INTEGER NOT NULL
+    );`);
+
+    if (!fs.existsSync(MIGRATIONS_DIR)) return;
+    const applied = new Set(db.prepare('SELECT id FROM _migrations').all().map((row) => row.id));
+    for (const file of _sqliteMigrationFiles()) {
+        if (applied.has(file)) continue;
+        const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+        const tx = db.transaction(() => {
+            db.exec(sql);
+            db.prepare('INSERT INTO _migrations(id, applied_at) VALUES(?,?)').run(file, Date.now());
+        });
+        tx();
+        logger.info(`[license-server] sqlite migration uygulandı: ${file}`);
+    }
+    logger.info(`[license-server] SQLite DB hazır: ${DB_PATH}`);
 }
 
-logger.info(`[license-server] DB hazır: ${DB_PATH}`);
+async function _waitMaria() {
+    const mysql = require('mysql2/promise');
+    const retries = envInt('MARIADB_CONNECT_RETRIES', 20);
+    const delayMs = envInt('MARIADB_CONNECT_DELAY_MS', 3000);
 
-module.exports = { db, audit, DB_PATH };
+    const config = {
+        host: env('MARIADB_HOST', 'mariadb'),
+        port: envInt('MARIADB_PORT', 3306),
+        user: env('MARIADB_USER', 'mailtrustai'),
+        password: env('MARIADB_PASSWORD', ''),
+        database: env('MARIADB_DATABASE', 'mailtrustai_license'),
+        waitForConnections: true,
+        connectionLimit: envInt('MARIADB_POOL_SIZE', 10),
+        queueLimit: 0,
+        multipleStatements: true
+    };
+
+    for (let attempt = 1; attempt <= retries; attempt += 1) {
+        try {
+            pool = mysql.createPool(config);
+            await pool.query('SELECT 1');
+            logger.info(`[license-server] MariaDB bağlantısı hazır: ${config.host}:${config.port}/${config.database}`);
+            return;
+        } catch (error) {
+            if (pool) {
+                try { await pool.end(); } catch (_) { /* ignore */ }
+            }
+            if (attempt === retries) throw error;
+            logger.warn(`[license-server] MariaDB bekleniyor (${attempt}/${retries}): ${error.message}`);
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+    }
+}
+
+async function _applyMariaMigrations() {
+    await pool.query(`CREATE TABLE IF NOT EXISTS _migrations (
+        id VARCHAR(255) PRIMARY KEY,
+        applied_at BIGINT NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`);
+
+    const [rows] = await pool.query('SELECT id FROM _migrations');
+    const applied = new Set(rows.map((row) => row.id));
+    for (const file of _mariaMigrationFiles()) {
+        const id = _migrationId(file);
+        if (applied.has(id)) continue;
+        const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+        const conn = await pool.getConnection();
+        try {
+            await conn.beginTransaction();
+            await conn.query(sql);
+            await conn.execute('INSERT INTO _migrations(id, applied_at) VALUES(?, ?)', [id, Date.now()]);
+            await conn.commit();
+            logger.info(`[license-server] mariadb migration uygulandı: ${file}`);
+        } catch (error) {
+            await conn.rollback();
+            throw error;
+        } finally {
+            conn.release();
+        }
+    }
+}
+
+const ready = (async () => {
+    if (DB_CLIENT === 'mariadb') {
+        await _waitMaria();
+        await _applyMariaMigrations();
+        db = pool;
+        return;
+    }
+
+    _initSqlite();
+})();
+
+async function all(sql, params = []) {
+    await ready;
+    if (DB_CLIENT === 'mariadb') {
+        const [rows] = await pool.execute(sql, params);
+        return rows;
+    }
+    return db.prepare(sql).all(...params);
+}
+
+async function get(sql, params = []) {
+    const rows = await all(sql, params);
+    return rows[0] || null;
+}
+
+async function run(sql, params = []) {
+    await ready;
+    if (DB_CLIENT === 'mariadb') {
+        const [result] = await pool.execute(sql, params);
+        return result;
+    }
+    return db.prepare(sql).run(...params);
+}
+
+async function audit(actor, action, target, detail) {
+    return run(
+        'INSERT INTO audit_log(ts,actor,action,target,detail_json) VALUES(?,?,?,?,?)',
+        [Date.now(), actor || null, action, target || null, detail ? JSON.stringify(detail) : null]
+    );
+}
+
+module.exports = {
+    db,
+    DB_CLIENT,
+    DB_PATH,
+    ready,
+    all,
+    get,
+    run,
+    audit,
+    isMaria: DB_CLIENT === 'mariadb'
+};

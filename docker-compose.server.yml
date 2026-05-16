@@ -8,6 +8,27 @@ networks:
     driver: bridge
 
 services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: mailtrustai-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: mailtrustai_license
+      MARIADB_USER: mailtrustai
+      MARIADB_PASSWORD: mailtrustai_change_me
+      MARIADB_ROOT_PASSWORD: root_change_me
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./data/mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "-uroot", "-proot_change_me"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [msa-internal]
+
   license-server:
     image: mailtrustai-license-server:latest
     build:
@@ -20,10 +41,16 @@ services:
     environment:
       NODE_ENV: production
       DATA_DIR: /app/data
+      LICENSE_DB_CLIENT: mariadb
+      MARIADB_HOST: mariadb
+      MARIADB_PORT: 3306
     ports:
       - "3200:3200"
     volumes:
       - ./data/license-server:/app/data
+    depends_on:
+      mariadb:
+        condition: service_healthy
     networks: [msa-internal]
 
   dealer:
