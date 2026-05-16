@@ -92,3 +92,59 @@ test('merge precedence: local whitelist > local blacklist > central blacklist > 
 
     centralSync.getLists = oldGetLists;
 });
+
+test('api policy yoksa provider izinli kabul edilir (backward compatible)', () => {
+    const oldGetApiPolicy = centralSync.getApiPolicy;
+    centralSync.getApiPolicy = () => null;
+
+    const result = policyClient.evaluateApiPolicy('openai');
+    assert.strictEqual(result.allowed, true);
+    assert.strictEqual(result.reason, 'no-policy');
+
+    centralSync.getApiPolicy = oldGetApiPolicy;
+});
+
+test('api policy allowedProviders disinda kalan provider engellenir', () => {
+    const oldGetApiPolicy = centralSync.getApiPolicy;
+    centralSync.getApiPolicy = () => ({
+        allowedProviders: ['openai', 'virustotal'],
+        rateLimit: 60,
+        dailyQuota: 1000,
+        monthlyQuota: 20000,
+        centralApiProxyEnabled: false
+    });
+
+    const denied = policyClient.evaluateApiPolicy('claude');
+    assert.strictEqual(denied.allowed, false);
+    assert.strictEqual(denied.reason, 'provider-not-allowed');
+
+    const allowed = policyClient.evaluateApiPolicy('OpenAI');
+    assert.strictEqual(allowed.allowed, true);
+    assert.strictEqual(allowed.rateLimit, 60);
+    assert.strictEqual(allowed.dailyQuota, 1000);
+    assert.strictEqual(allowed.monthlyQuota, 20000);
+
+    centralSync.getApiPolicy = oldGetApiPolicy;
+});
+
+test('api policy proxy ayarlari customer tarafina dogru yansir', () => {
+    const oldGetApiPolicy = centralSync.getApiPolicy;
+    centralSync.getApiPolicy = () => ({
+        allowedProviders: ['openai'],
+        centralApiProxyEnabled: true,
+        centralApiProxyEndpoint: 'https://central.example/proxy',
+        rateLimit: 20,
+        dailyQuota: 250,
+        monthlyQuota: 5000
+    });
+
+    const result = policyClient.evaluateApiPolicy('openai');
+    assert.strictEqual(result.allowed, true);
+    assert.strictEqual(result.centralApiProxyEnabled, true);
+    assert.strictEqual(result.centralApiProxyEndpoint, 'https://central.example/proxy');
+    assert.strictEqual(result.rateLimit, 20);
+    assert.strictEqual(result.dailyQuota, 250);
+    assert.strictEqual(result.monthlyQuota, 5000);
+
+    centralSync.getApiPolicy = oldGetApiPolicy;
+});
