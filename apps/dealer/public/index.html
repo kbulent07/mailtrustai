@@ -2,64 +2,102 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<title>MailTrustAI — Bayi Paneli</title>
+<title>MailTrustAI - Bayi Paneli</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body{font-family:system-ui,Segoe UI,Arial;margin:0;background:#0b1020;color:#e8eefc}
 header{padding:20px 24px;background:#121a36;border-bottom:1px solid #1f2a4d}
 h1{margin:0;font-size:18px}
-main{padding:24px;max-width:1100px;margin:0 auto}
+main{padding:24px;max-width:1300px;margin:0 auto}
 .card{background:#121a36;border:1px solid #1f2a4d;border-radius:10px;padding:18px;margin:14px 0}
 button{background:#2c6cf0;color:#fff;border:0;padding:8px 14px;border-radius:6px;cursor:pointer}
-input,select{padding:8px;border-radius:6px;border:1px solid #2a3766;background:#0e1530;color:#e8eefc;margin:4px 6px 4px 0}
+input{padding:8px;border-radius:6px;border:1px solid #2a3766;background:#0e1530;color:#e8eefc;margin:4px 6px 4px 0}
 table{width:100%;border-collapse:collapse;margin-top:10px}
-td,th{padding:8px;border-bottom:1px solid #1f2a4d;text-align:left;font-size:13px}
+td,th{padding:8px;border-bottom:1px solid #1f2a4d;text-align:left;font-size:13px;vertical-align:top}
 .tag{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
 .tag.online{background:#10381f;color:#5be584}
 .tag.stale{background:#3a2f10;color:#f5c067}
 .tag.offline{background:#3a1010;color:#f56b6b}
 .tag.never{background:#202840;color:#9aa6c7}
 .muted{color:#9aa6c7;font-size:12px}
+.feature-list{max-width:340px;white-space:normal;word-break:break-word}
 </style>
 </head>
 <body>
-<header><h1>🏪 MailTrustAI — Bayi Paneli</h1></header>
+<header><h1>MailTrustAI - Bayi Paneli</h1></header>
 <main>
   <div class="card" id="login">
-    <h3>Giriş</h3>
-    <input id="u" placeholder="kullanıcı adı"><input id="p" type="password" placeholder="şifre">
-    <button onclick="login()">Giriş</button>
+    <h3>Giris</h3>
+    <input id="u" placeholder="kullanici adi"><input id="p" type="password" placeholder="sifre">
+    <button onclick="login()">Giris</button>
     <div id="loginErr" style="color:#f56b6b"></div>
   </div>
   <div class="card" id="panel" style="display:none">
-    <h3>Müşterilerim</h3>
+    <h3>Musterilerim</h3>
     <button onclick="refresh()">Yenile</button>
-    <table id="t"><thead><tr>
-      <th>Şirket</th><th>Plan</th><th>Tier</th><th>Lisans</th><th>Bitiş</th>
-      <th>Sürüm</th><th>Son Heartbeat</th><th>Durum</th><th>Aylık Tarama</th>
-    </tr></thead><tbody></tbody></table>
-    <p class="muted">Bayi paneli müşterinin mail içeriği, scan detayı, credential veya attachment bilgisini GÖSTERMEZ — yalnızca aktif/pasif uygulama durumu ve özet sayaçlar.</p>
+    <table id="t">
+      <thead>
+        <tr>
+          <th>Sirket</th>
+          <th>Plan</th>
+          <th>Tier</th>
+          <th>Lisans</th>
+          <th>Bitis</th>
+          <th>Surum</th>
+          <th>Son Heartbeat</th>
+          <th>Durum</th>
+          <th>Saglik</th>
+          <th>Aylik Tarama</th>
+          <th>Aktif Ozellikler</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="muted">Bayi paneli musteri mail icerigi, scan detayi, credential veya attachment bilgisini gostermez. Sadece lisans ve operasyonel durum/ozet metrikleri gosterir.</p>
   </div>
 </main>
 <script>
 async function login(){
-  const r = await fetch('/api/dealer/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:u.value,password:p.value})});
-  if(!r.ok){loginErr.innerText='Giriş başarısız';return}
+  const r = await fetch('/api/dealer/login',{
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body:JSON.stringify({username:u.value,password:p.value})
+  });
+  if(!r.ok){loginErr.innerText='Giris basarisiz';return}
   document.getElementById('login').style.display='none';
   document.getElementById('panel').style.display='';
   refresh();
 }
+
+function renderFeatures(enabledFeatures){
+  const names = Object.entries(enabledFeatures || {})
+    .filter(([, enabled]) => !!enabled)
+    .map(([name]) => name);
+  return names.length ? names.join(', ') : '-';
+}
+
 async function refresh(){
-  const r = await fetch('/api/dealer/customers/status'); const j = await r.json();
-  const tb = document.querySelector('#t tbody'); tb.innerHTML='';
-  (j.customers||[]).forEach(c=>{
+  const r = await fetch('/api/dealer/customers/status');
+  const j = await r.json();
+  const tb = document.querySelector('#t tbody');
+  tb.innerHTML='';
+
+  (j.customers || []).forEach(c => {
     const tr = document.createElement('tr');
     const exp = c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('tr-TR') : '-';
     const hb  = c.lastHeartbeatAt ? new Date(c.lastHeartbeatAt).toLocaleString('tr-TR') : '-';
-    tr.innerHTML = `<td>${c.companyName||c.customerId}</td><td>${c.plan||'-'}</td><td>${c.tier||'-'}</td>
-      <td>${c.licenseStatus||'-'}</td><td>${exp}</td><td>${c.appVersion||'-'}</td>
-      <td>${hb}</td><td><span class="tag ${c.onlineStatus}">${c.onlineStatus}</span></td>
-      <td>${c.monthlyScanCount ?? '-'}</td>`;
+    const statusClass = c.onlineStatus || 'never';
+    tr.innerHTML = `<td>${c.companyName || c.customerId}</td>
+      <td>${c.plan || '-'}</td>
+      <td>${c.tier || '-'}</td>
+      <td>${c.licenseStatus || '-'}</td>
+      <td>${exp}</td>
+      <td>${c.appVersion || '-'}</td>
+      <td>${hb}</td>
+      <td><span class="tag ${statusClass}">${statusClass}</span></td>
+      <td>${c.healthStatus || '-'}</td>
+      <td>${c.monthlyScanCount ?? '-'}</td>
+      <td class="feature-list">${renderFeatures(c.enabledFeatures)}</td>`;
     tb.appendChild(tr);
   });
 }
