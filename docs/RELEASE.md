@@ -1,31 +1,55 @@
-# Sürüm yayınlama
+# Surum yayinlama
 
-## Sürüm numarası
-Tüm paketler `version: 2.0.0-mainpaketler.0` ile yayınlanır. Patch bump yapın (örn. `2.0.1`).
+## Versiyonlama
 
-## Build adımları
+- Monorepo versiyonu: `2.x.y-mainpaketler.z`
+- Release oncesi `package.json` ve gerekli app/package versiyonlari guncellenir.
 
-```bash
-# Müşteri (her release için sıfırdan)
-npm run check:customer-package   # önce kaynak kontrolü için bilgi (FAIL beklenir kök repoda)
-npm run build:customer           # Docker build içinde check otomatik çalışır
+## Go / No-Go checklist
 
-# Server tarafı
-npm run build:license
-npm run build:dealer
-```
+Release almadan once asagidaki kontroller PASS olmali:
 
-## Testler
+1. Testler
+- `node --test "tests/unit/*.test.js" "tests/integration/*.test.js" "tests/security/*.test.js"`
 
-```bash
-npm test    # unit + integration + security
-```
+2. Customer package guvenlik kontrolu
+- `node scripts/check-customer-package.js --scope=image` (image agacinda PASS olmali)
+- Customer Docker build adiminda da bu kontrol otomatik calisir.
 
-Tüm testler **PASS** olmalı.
-`tests/security/customer-image-no-keygen.test.js` özellikle önemli — bu fail olursa **release durur**.
+3. Merkezi akis smoke testi
+- `npm.cmd run smoke:central-flow`
+- Beklenen: `SUCCESS` logu
 
-## Manuel kontrol noktaları
-- License signing secret rotated?
-- Dealer bearer token rotated?
-- DB yedek alındı mı?
-- CHANGELOG güncel mi?
+4. Docker buildler
+- `docker build -f apps/customer/Dockerfile -t mailtrustai-customer:latest .`
+- `docker build -f apps/license-server/Dockerfile -t mailtrustai-license-server:latest .`
+- `docker build -f apps/dealer/Dockerfile -t mailtrustai-dealer:latest .`
+
+5. Runtime health kontrolu
+- Customer: `GET /api/health` -> `ok`
+- Dealer: `GET /api/health` -> `ok`
+- License-server: `GET /api/health` -> `ok`
+
+## Security kontrol noktasi
+
+- `LICENSE_SIGNING_SECRET`, `DEALER_API_SECRET`, `TOKEN_SECRET` production degerleri dogru mu
+- Customer image icinde dealer/license-core/keygen kodlari fiziksel olarak yok mu
+- `customer-sync` payload PII ve payload-size kurallari aktif mi (`422` / `413`)
+- `customer-sync/pull` auth contract aktif mi (`customerId + licenseKeyHash + instanceId`)
+
+## Git akis
+
+1. Degisiklikleri branch'e commit et
+2. `mainpackets` branch'ine push et
+3. Gerekliyse mirror push:
+- `git push origin mainpackets:mainpaketler`
+
+## Release notu
+
+Release notunda su basliklar mutlaka olmali:
+
+- Ozellikler
+- Guvenlik degisiklikleri
+- Migration/konfig degisiklikleri
+- Test ve smoke ozeti
+- Bilinen riskler / manuel takip maddeleri
