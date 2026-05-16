@@ -79,8 +79,9 @@ app.get('/api/dealer/customers/:id/status', requireDealer, asyncH(async (req, re
 }));
 
 // Lisans yenile / iptal — license-server'a delege; yine dealer ownership backend'de kontrol edilmelidir.
-app.post('/api/dealer/license/renew',  requireDealer, asyncH(async (req, res) => res.json(await ls.renewLicense(req.body || {}))));
-app.post('/api/dealer/license/revoke', requireDealer, asyncH(async (req, res) => res.json(await ls.revokeLicense(req.body || {}))));
+// Dealer renew/revoke — dealerId zorla kendi bayisi olarak set edilir (override edilemez).
+app.post('/api/dealer/license/renew',  requireDealer, asyncH(async (req, res) => res.json(await ls.renewLicense({ ...(req.body || {}), dealerId: req.dealer.dealerId }))));
+app.post('/api/dealer/license/revoke', requireDealer, asyncH(async (req, res) => res.json(await ls.revokeLicense({ ...(req.body || {}), dealerId: req.dealer.dealerId }))));
 
 // Statik bayi paneli
 app.use(express.static(path.join(__dirname, 'public')));

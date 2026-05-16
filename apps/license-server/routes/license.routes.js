@@ -89,25 +89,35 @@ router.post('/license/heartbeat', asyncH((req, res) => {
     res.json({ ok: true, serverTime: Date.now() });
 }));
 
+// Dealer ownership: dealerId verilirse lisansın o bayide olması zorunlu.
+// (Admin global revoke için dealerId'yi boş bırakır.)
+function _assertOwnership(lic, dealerId) {
+    if (dealerId && lic.dealer_id !== dealerId) {
+        const e = new Error('bu lisans bu bayiye ait değil'); e.status = 403; throw e;
+    }
+}
+
 // POST /api/license/revoke
 router.post('/license/revoke', asyncH((req, res) => {
-    const { id, licenseKeyHash, reason } = req.body || {};
+    const { id, licenseKeyHash, reason, dealerId } = req.body || {};
     const lic = id ? db.prepare('SELECT * FROM licenses WHERE id=?').get(id)
                    : db.prepare('SELECT * FROM licenses WHERE license_key_hash=?').get(licenseKeyHash);
     if (!lic) return res.status(404).json({ error: 'lisans bulunamadı' });
+    _assertOwnership(lic, dealerId);
     db.prepare('UPDATE licenses SET status=? WHERE id=?').run('revoked', lic.id);
-    audit('admin', 'license.revoke', lic.id, { reason });
+    audit(dealerId || 'admin', 'license.revoke', lic.id, { reason });
     res.json({ ok: true });
 }));
 
 // POST /api/license/renew
 router.post('/license/renew', asyncH((req, res) => {
-    const { id, addDays = 365 } = req.body || {};
+    const { id, addDays = 365, dealerId } = req.body || {};
     const lic = db.prepare('SELECT * FROM licenses WHERE id=?').get(id);
     if (!lic) return res.status(404).json({ error: 'lisans bulunamadı' });
+    _assertOwnership(lic, dealerId);
     const newExpiry = Math.max(lic.expires_at || Date.now(), Date.now()) + Number(addDays) * 86400 * 1000;
     db.prepare('UPDATE licenses SET expires_at=?, status=? WHERE id=?').run(newExpiry, 'active', lic.id);
-    audit('admin', 'license.renew', lic.id, { addDays, newExpiry });
+    audit(dealerId || 'admin', 'license.renew', lic.id, { addDays, newExpiry });
     res.json({ ok: true, expiresAt: newExpiry });
 }));
 

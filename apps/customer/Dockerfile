@@ -26,10 +26,13 @@ RUN rm -rf apps/dealer apps/license-server
 RUN rm -rf packages/license-core
 
 # 3) src/ içindeki müşteri-dışı dosyaları kaldır
+# NOT: src/interfaces/http/routes/license.routes.js customer panel için KALIR
+# (activate/validate/deactivate/usage/fingerprint). Admin-only path'ler
+# (generate/trial/revoke/unrevoke/revoked) HARD-GATE ile runtime'da 404 döner.
+# TODO v2.1: src/license/license.js → license-validate.js + license-generator.js böl.
 RUN rm -f \
         src/license/keygenTool.js \
         src/routes/dealerApi.js \
-        src/interfaces/http/routes/license.routes.js \
         src/interfaces/http/routes/resellers.routes.js \
         src/interfaces/http/routes/admin.routes.js \
         src/storage/dealerStore.js \

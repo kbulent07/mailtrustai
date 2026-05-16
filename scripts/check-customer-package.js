@@ -19,7 +19,6 @@ const FORBIDDEN_PATHS = [
     'packages/license-core',
     'src/license/keygenTool.js',
     'src/routes/dealerApi.js',
-    'src/interfaces/http/routes/license.routes.js',
     'src/interfaces/http/routes/resellers.routes.js',
     'src/interfaces/http/routes/admin.routes.js',
     'src/storage/dealerStore.js',
@@ -66,7 +65,11 @@ const ALLOWLIST_FILES = new Set([
     'docs/API-POLICY.md',
     'apps/customer/server.js',
     'src/storage/db.js',
-    'src/license/license.js'
+    'src/license/license.js',
+    // Customer panel için validate/activate/deactivate/usage/fingerprint
+    // route'ları gerekli. Admin-only route'lar (generate/trial/revoke vb.)
+    // runtime'da HARD-GATE ile 404 döner. TODO v2.1: dosyayı ikiye böl.
+    'src/interfaces/http/routes/license.routes.js'
 ]);
 
 const errors = [];

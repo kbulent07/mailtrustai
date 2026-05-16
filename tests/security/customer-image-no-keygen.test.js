@@ -45,7 +45,6 @@ test('temizlenmiş staging\'de check-customer-package PASS döner', () => {
     rm('packages/license-core');
     rm('src/license/keygenTool.js');
     rm('src/routes/dealerApi.js');
-    rm('src/interfaces/http/routes/license.routes.js');
     rm('src/interfaces/http/routes/resellers.routes.js');
     rm('src/interfaces/http/routes/admin.routes.js');
     rm('src/storage/dealerStore.js');
