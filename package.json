@@ -19,7 +19,8 @@
     "build:dealer": "docker build -f apps/dealer/Dockerfile -t mailtrustai-dealer:latest .",
     "build:license": "docker build -f apps/license-server/Dockerfile -t mailtrustai-license-server:latest .",
     "check:customer-package": "node scripts/check-customer-package.js",
-    "check:customer-package:image": "node scripts/check-customer-package.js --scope=image"
+    "check:customer-package:image": "node scripts/check-customer-package.js --scope=image",
+    "smoke:central-flow": "node scripts/smoke-central-flow.js"
   },
   "engines": {
     "node": ">=22"
