@@ -7,8 +7,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'msa-ls-'));
-process.env.LICENSE_DB_CLIENT = 'sqlite';
-process.env.LICENSE_DB_PATH = path.join(process.env.DATA_DIR, 'test.sqlite');
+if (!process.env.LICENSE_DB_CLIENT) {
+    process.env.LICENSE_DB_CLIENT = 'sqlite';
+}
+if (String(process.env.LICENSE_DB_CLIENT).toLowerCase() === 'sqlite' && !process.env.LICENSE_DB_PATH) {
+    process.env.LICENSE_DB_PATH = path.join(process.env.DATA_DIR, 'test.sqlite');
+}
 process.env.LICENSE_SIGNING_SECRET = 'test-secret';
 process.env.DEALER_API_SECRET = 'test-admin';
 
