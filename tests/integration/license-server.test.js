@@ -176,3 +176,27 @@ test('heartbeat payload limiti asilinca 413 doner', async () => {
         srv.close();
     }
 });
+
+test('bootstrap payload limiti asilinca 413 doner', async () => {
+    await ready;
+    const { srv, port } = await startApp();
+    try {
+        const { key, keyHash } = generateLicenseKey({ customerId: 'cust5', plan: 'pro' });
+        db.prepare('INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)').run('cust5', null, 'Z', 'z@z', Date.now());
+        db.prepare(`INSERT INTO licenses(id,customer_id,dealer_id,license_key_hash,license_key_masked,plan,tier,status,issued_at,expires_at,grace_days,features_json,limits_json)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+            .run('lic5', 'cust5', null, keyHash, 'MASK5', 'pro', 'pro', 'active', Date.now(), Date.now() + 86400000, 3, '{}', '{}');
+        const activate = await http_(port, 'POST', '/api/license/activate', { licenseKey: key, instanceId: 'inst-boot', appVersion: '2.0.0' });
+        assert.strictEqual(activate.status, 200);
+
+        const oversized = 'y'.repeat(17000);
+        const response = await http_(port, 'POST', '/api/customer-sync/bootstrap', {
+            licenseKeyHash: keyHash,
+            instanceId: 'inst-boot',
+            errorSummary: oversized
+        });
+        assert.strictEqual(response.status, 413);
+    } finally {
+        srv.close();
+    }
+});
