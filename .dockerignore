@@ -1,31 +1,17 @@
-# ============================================================
-# .dockerignore — Docker imajına dahil edilmeyecek dosyalar
-# ============================================================
-
-# Bağımlılıklar (imaj içinde yeniden yüklenecek)
-node_modules/
-
-# Hassas ortam dosyaları
+# Sensitive env files
 .env
 .env.local
 .env.*.local
 
-# Veri dizini (volume olarak bağlanacak)
+# Runtime data/log volumes
 data/
-
-# Log dosyaları
 logs/
 *.log
 npm-debug.log*
 
-# Git
+# Git / IDE
 .git/
 .gitignore
-
-# Claude AI geliştirme ortamı
-.claude/
-
-# IDE ve OS dosyaları
 .vscode/
 .idea/
 *.swp
@@ -34,28 +20,26 @@ npm-debug.log*
 Thumbs.db
 desktop.ini
 
-# Geçici dosyalar
+# Temporary files
 tmp/
 temp/
 *.tmp
 
-# Derleme çıktıları
+# Build artifacts
 dist/
 build/
 
-# Test ve geliştirme dosyaları
+# Tests and local dev-only files
 *.test.js
 *.spec.js
+.claude/
 
-# PM2 ekosistem dosyaları (Docker'da kullanılmaz)
+# PM2 (not used in Docker)
 ecosystem.config.js
 .pm2/
 
-# Docker dosyalarının kendisi (gereksiz katman)
-Dockerfile*
-docker-compose*.yml
-nginx/
-
-# Dokümantasyon (imajda gerek yok)
+# Keep docs and compose out of image context
 docs/
 *.md
+docker-compose*.yml
+nginx/
