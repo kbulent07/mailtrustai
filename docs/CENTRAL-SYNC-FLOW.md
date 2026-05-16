@@ -1,52 +1,50 @@
-# Merkezi sync akışı
+# Merkezi sync akisi
 
-## Endpoint'ler (license-server'da)
+## Endpoint listesi
 
-| Endpoint | Yön |
-|----------|-----|
-| `POST /api/customer-sync/bootstrap` | customer → server (ilk açılış) |
-| `POST /api/customer-sync/heartbeat` | customer → server (periyodik) |
-| `GET  /api/customer-sync/pull`      | customer → server (policy/list/api-policy güncelleme) |
-| `POST /api/customer-sync/ack`       | customer → server (uygulananları onay) |
+- `POST /api/customer-sync/bootstrap` (customer -> server, ilk acilis)
+- `POST /api/customer-sync/heartbeat` (customer -> server, periyodik)
+- `GET /api/customer-sync/pull` (customer -> server, policy/list/api-policy guncelleme cekme)
+- `POST /api/customer-sync/ack` (customer -> server, uygulanan guncellemeyi onay)
 
-## Heartbeat payload (customer → server)
+## Heartbeat payload prensibi
 
-```json
-{
-  "licenseKeyHash": "...", "customerId": "...", "dealerId": "...",
-  "activationId": "...", "instanceId": "inst_xxx",
-  "appVersion": "2.0.0", "buildVersion": "dev", "nodeVersion": "22.x",
-  "environment": "production", "hostnameHash": "sha256(host)",
-  "healthStatus": "ok",
-  "enabledFeatures": { "imapMonitor": true, "deepAi": false },
-  "plan": "pro", "tier": "pro", "licenseStatus": "active",
-  "monthlyScanCount": 1234, "dailyScanCount": 45,
-  "mailboxCount": 2, "userCount": 3,
-  "localPolicyVersion": 7, "localWhitelistVersion": 12,
-  "localBlacklistVersion": 15, "localApiConfigVersion": 4,
-  "services": {
-    "imapMonitor": "running", "smtpReporter": "configured",
-    "quarantine": "enabled", "aiProvider": "configured"
-  },
-  "errorSummary": null,
-  "lastHeartbeatAt": "2026-05-16T12:00:00.000Z"
-}
-```
+Customer tarafindan sadece operasyonel ve lisans odakli minimum veri gonderilir:
 
-Bu payload `packages/shared.scrubPII` ile yasak alan filtresinden geçer.
-Server tarafında `apps/license-server/routes/customerSync.routes.js#ensureNoPII`
-yasak alan görürse **422** döner.
+- license/customer/dealer/instance kimlikleri
+- surum, plan, tier, status
+- aggregate sayaclar (monthly/daily scan, mailbox, user)
+- local version alanlari
+- servis durumu ozeti
+- kisa error summary
 
-## Pull cevabı
+Mail body/subject, sender/recipient, attachment icerigi, credentials ve API key degerleri gonderilmez.
 
-Versiyon farkı varsa hangi alan değiştiyse o döner:
+## Pull yetkilendirme kurali
 
-```json
-{ "policy": { "version": 8, ... }, "lists": { "version": 13, "whitelist": {...}, "blacklist": {...} } }
-```
+`GET /api/customer-sync/pull` istegi su query alanlarini zorunlu ister:
 
-Customer her başarılı pull'dan sonra `/api/customer-sync/ack` çağırır.
+- `customerId`
+- `licenseKeyHash`
+- `instanceId`
 
-## Retry/Backoff
+Server tarafi kontrol sirasi:
 
-`packages/central-sync/index.js` exponential backoff (1s → 30s, max 3 retry varsayılan). Tamamı başarısız olsa bile customer çalışmaya devam eder; mevcut local cache (encrypted) ile analiz sürer.
+1. `licenseKeyHash` lisans tablosunda var mi
+2. Bu lisansin `customerId` degeri query ile eslesiyor mu
+3. Bu lisans + `instanceId` icin aktivasyon kaydi var mi
+
+Hata kodlari:
+
+- `400`: gerekli query alanlari eksik
+- `403`: customer/lisans eslesmiyor veya aktivasyon yok
+- `404`: `licenseKeyHash` bulunamadi
+
+## Pull/ack davranisi
+
+- Pull cevabi sadece versiyon farki olan bolumleri dondurur (`policy`, `lists`, `apiPolicy`).
+- Customer guncellemeyi uyguladiktan sonra `POST /api/customer-sync/ack` ile onay gonderir.
+
+## Retry ve dayaniklilik
+
+`packages/central-sync` retry/backoff uygular. Merkez gecici ulasilamaz olsa bile customer uygulamasi local encrypted cache ile calismaya devam eder.
