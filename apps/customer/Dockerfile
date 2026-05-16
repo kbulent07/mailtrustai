@@ -48,8 +48,9 @@ RUN rm -f \
 # 4) public/ içinden bayi ve keygen sayfalarını + bayi-app.js'i sil
 RUN rm -f public/bayi.html public/keygen.html public/js/bayi-app.js
 
-# 5) Bağımlılıklar
-RUN npm install --omit=dev --no-audit --no-fund
+# 5) Native bağımlılıkları Linux için yeniden derle
+# (npm install bug workaround: sadece gerekli native modül rebuild edilir)
+RUN npm_config_nodedir=/usr/local npm rebuild better-sqlite3 --build-from-source --no-audit --no-fund
 
 # 6) Yasak içerik kontrolü — image'a girmeden önce taranır.
 RUN node scripts/check-customer-package.js
@@ -61,6 +62,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
 # Sadece temizlenmiş ağacı kopyala
 COPY --from=builder /build /app
+RUN mkdir -p /app/node_modules/@mailtrustai \
+  && for p in analyzer central-sync customer dealer license-client mail policy-client security shared storage; do ln -sfn "/app/packages/$p" "/app/node_modules/@mailtrustai/$p"; done
 
 ENV NODE_ENV=production
 ENV MSA_CUSTOMER_ONLY=true

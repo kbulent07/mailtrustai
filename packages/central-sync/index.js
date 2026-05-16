@@ -55,9 +55,10 @@ async function _withRetry(fn, label) {
 
 function _baseTelemetry({ counters = {}, services = {} } = {}) {
     const lic = licenseClient.getSnapshot() || {};
+    const envLicenseKey = env('MSA_LICENSE_KEY', '');
     const state = getState();
     return {
-        licenseKeyHash: lic.licenseKeyHash || null,
+        licenseKeyHash: lic.licenseKeyHash || (envLicenseKey ? sha256(envLicenseKey) : null),
         customerId: lic.customerId || null,
         dealerId: lic.dealerId || null,
         activationId: lic.activationId || null,

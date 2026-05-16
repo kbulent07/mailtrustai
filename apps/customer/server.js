@@ -28,11 +28,19 @@ const policyClient  = require('@mailtrustai/policy-client');
 // içindeki license/dealer/admin/resellers route'ları aşağıda BLACKLIST ile
 // fiziksel olarak DEVRE DIŞI bırakılır.
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const apiRoutes = require(path.join(REPO_ROOT, 'src/routes/api'));
+const customerApi = express.Router();
 const { setupWebSocket } = require(path.join(REPO_ROOT, 'src/routes/websocket'));
 const { loadSettings } = require(path.join(REPO_ROOT, 'src/storage/settingsStore'));
 const { checkAndSeedInitialPasswords } = require(path.join(REPO_ROOT, 'src/services/initialSetupService'));
 const customerUserStore = require(path.join(REPO_ROOT, 'src/storage/customerUserStore'));
+const metaRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/meta.routes'));
+const analyzeRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/analyze.routes'));
+const imapRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/imap.routes'));
+const monitorRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/monitor.routes'));
+const reportsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/reports.routes'));
+const listsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/lists.routes'));
+const statsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/stats.routes'));
+const customerUsersRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/customerUsers.routes'));
 
 const app = express();
 const server = http.createServer(app);
@@ -142,7 +150,15 @@ app.get('/api/customer/feature/:name', (req, res) => {
 });
 
 // Mevcut API yüzeyi (legacy routes/api.js); BLOCKED listede olan path'ler yukarıda 404'lenir.
-app.use('/api', apiRoutes);
+customerApi.use(metaRoutes);
+customerApi.use(analyzeRoutes);
+customerApi.use(imapRoutes);
+customerApi.use(monitorRoutes);
+customerApi.use(reportsRoutes);
+customerApi.use(listsRoutes);
+customerApi.use(statsRoutes);
+customerApi.use(customerUsersRoutes);
+app.use('/api', customerApi);
 
 setupWebSocket(wss);
 
@@ -186,15 +202,33 @@ function startListening() {
 
         const syncEnabled = envBool('MSA_CENTRAL_SYNC_ENABLED', true);
         const syncUrl     = env('MSA_CENTRAL_SYNC_URL') || env('MSA_LICENSE_REMOTE_URL');
+        const remoteUrl   = env('MSA_LICENSE_REMOTE_URL');
+        const presetKey   = env('MSA_LICENSE_KEY');
         const hbSec       = envInt('MSA_HEARTBEAT_INTERVAL_SECONDS', 300);
         const plSec       = envInt('MSA_POLICY_SYNC_INTERVAL_SECONDS', 900);
-        centralSync.startPeriodicSync({
+        const startSync = () => centralSync.startPeriodicSync({
             syncUrl, enabled: syncEnabled, heartbeatSeconds: hbSec, pullSeconds: plSec,
             gather: async () => _gatherTelemetry()
         });
 
+        // İlk açılışta lisans key env'den geldiyse activate/validate dene.
+        // Başarısız olsa bile customer çalışmaya devam eder (grace/offline mode).
+        (async () => {
+            try {
+                if (presetKey && remoteUrl) {
+                    await licenseClient.activate({ remoteUrl, licenseKey: presetKey });
+                    await licenseClient.validate({ remoteUrl, licenseKey: presetKey });
+                    logger.info('[license] startup activate/validate başarılı.');
+                }
+            } catch (e) {
+                logger.warn('[license] startup activate/validate başarısız:', e.message);
+            } finally {
+                startSync();
+            }
+        })();
+
         // Eski uzak doğrulayıcı kalıyor — geriye dönük uyumluluk
-        if (env('MSA_LICENSE_REMOTE_URL')) {
+        if (remoteUrl) {
             try {
                 const { startBackgroundRefresh } = require(path.join(REPO_ROOT, 'src/license/remoteValidator'));
                 startBackgroundRefresh(() => {

@@ -3,8 +3,13 @@
 // ============================================================
 const { loadSettings } = require('../storage/settingsStore');
 const { validateLicenseKey } = require('../license/license');
-const { getDealerWhiteLabel } = require('../storage/dealerStore');
 const { levelEscalationReason } = require('../analysis/scorer');
+let getDealerWhiteLabel = () => null;
+try {
+    ({ getDealerWhiteLabel } = require('../storage/dealerStore'));
+} catch (_) {
+    // Customer image dealerStore içermeyebilir; fallback null profile.
+}
 
 function buildReportHtml(result, lang = 'tr') {
     const companyProfile = resolveReportProfile(result);
