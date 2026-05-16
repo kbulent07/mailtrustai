@@ -63,19 +63,19 @@ else
     echo -e "\n${C}[4] (Atlandi — container'da script yok, once build yapin)${N}"
 fi
 
-# ─── 5) Son tarama kayitlari (sqlite uzerinden) ─────────────────────────
-echo -e "\n${C}[5] Son taramalarin yasi${N}"
+# ─── 5) Son tarama ozeti (API-first) ─────────────────────────────────────
+echo -e "\n${C}[5] Son tarama ozeti (API-first)${N}"
 docker compose -f "$COMPOSE_FILE" exec -T "$SERVICE" sh -c '
+    echo "  /api/health:"
+    wget -qO- http://127.0.0.1:3000/api/health 2>/dev/null || echo "  health endpoint erisilemiyor"
+    echo ""
+    echo "  /api/stats:"
+    wget -qO- http://127.0.0.1:3000/api/stats 2>/dev/null || echo "  stats endpoint erisilemiyor"
+    echo ""
     if [ -f /app/data/msa.db ]; then
-        sqlite3 /app/data/msa.db "SELECT
-            COALESCE(imap_email, user_key) AS k,
-            datetime(MAX(timestamp)) AS son,
-            COUNT(*) AS n
-            FROM scan_history
-            WHERE timestamp >= datetime(\"now\",\"-7 days\")
-            GROUP BY k ORDER BY son DESC LIMIT 15;" 2>/dev/null || echo "  sqlite3 yok / DB yok"
+        echo "  not: /app/data/msa.db bulundu (legacy/local cache)."
     else
-        echo "  /app/data/msa.db bulunamadi"
+        echo "  not: /app/data/msa.db bulunamadi (normal olabilir)."
     fi
 ' 2>/dev/null || echo "  exec hata"
 
