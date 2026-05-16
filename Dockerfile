@@ -1,13 +1,13 @@
 # ============================================================
 # MailTrustAI — Dockerfile
 # Node.js 22 LTS Alpine tabanlı (--use-system-ca için 22+ gerekli).
-# better-sqlite3 native derleme destekli, non-root kullanıcı.
+# native module derleme destekli, non-root kullanici.
 # ============================================================
 
 # ── Aşama 1: Bağımlılık derleyici ──────────────────────────
 FROM node:22-alpine AS builder
 
-# better-sqlite3 ve diğer native modüller için derleme araçları
+# Native moduller icin derleme araclari
 RUN apk add --no-cache python3 make g++ sqlite-dev
 
 WORKDIR /build

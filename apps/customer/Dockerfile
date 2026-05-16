@@ -11,7 +11,7 @@ FROM node:22-bookworm-slim AS builder
 
 WORKDIR /build
 
-# Build deps (better-sqlite3 native)
+# Build deps (native npm modulleri)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 make g++ ca-certificates \
     && rm -rf /var/lib/apt/lists/*
