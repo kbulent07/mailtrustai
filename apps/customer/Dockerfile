@@ -32,6 +32,7 @@ RUN rm -rf packages/license-core
 # TODO v2.1: src/license/license.js → license-validate.js + license-generator.js böl.
 RUN rm -f \
         src/license/keygenTool.js \
+        src/license/license-generator.js \
         src/routes/dealerApi.js \
         src/interfaces/http/routes/resellers.routes.js \
         src/interfaces/http/routes/admin.routes.js \

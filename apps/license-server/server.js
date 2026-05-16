@@ -13,6 +13,7 @@ const policyRoutes   = require('./routes/policy.routes');
 const listsRoutes    = require('./routes/lists.routes');
 const apiPolicyRoutes= require('./routes/apiPolicy.routes');
 const customerSync   = require('./routes/customerSync.routes');
+const dealerAuth     = require('./routes/dealerAuth.routes');
 
 const app = express();
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -23,7 +24,7 @@ app.get('/healthz', (req, res) => res.json({ ok: true, service: 'license-server'
 
 // Auth: customer-erişimli yollar bearer GEREKTİRMEZ; gerisi admin/dealer bearer ile.
 const ADMIN_SECRET = env('DEALER_API_SECRET') || env('TOKEN_SECRET') || 'CHANGE_ME';
-const PUBLIC_PREFIXES = ['/api/customer-sync/', '/api/license/activate', '/api/license/validate', '/api/license/heartbeat', '/healthz'];
+const PUBLIC_PREFIXES = ['/api/customer-sync/', '/api/license/activate', '/api/license/validate', '/api/license/heartbeat', '/api/dealer/auth/', '/healthz'];
 
 app.use((req, res, next) => {
     const p = req.path || '';
@@ -41,6 +42,7 @@ app.use((req, res, next) => {
 });
 
 app.use('/api', customerSync);
+app.use('/api', dealerAuth);
 app.use('/api', licenseRoutes);
 app.use('/api', centralRoutes);
 app.use('/api', policyRoutes);

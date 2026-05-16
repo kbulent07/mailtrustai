@@ -15,6 +15,7 @@
 const { db } = require('../db');
 const { generateLicenseKey, getPlan } = require('@mailtrustai/license-core');
 const { v4: uuid } = require('uuid');
+const bcrypt = require('bcrypt');
 
 function arg(name, def) {
     const i = process.argv.indexOf(`--${name}`);
@@ -50,6 +51,15 @@ switch (cmd) {
         console.log(`  expiresAt:  ${new Date(expiresAt).toISOString()}`);
         console.log(`  customerId: ${customerId}`);
         if (dealerId) console.log(`  dealerId:   ${dealerId}`);
+        break;
+    }
+    case 'set-dealer-password': {
+        const id = arg('id'), password = arg('password');
+        if (!id || !password) { console.error('--id ve --password gerekli'); process.exit(1); }
+        const hash = bcrypt.hashSync(password, 10);
+        const r = db.prepare('UPDATE dealers SET api_token_hash=? WHERE id=?').run(hash, id);
+        if (r.changes === 0) { console.error(`dealer bulunamadı: ${id}`); process.exit(1); }
+        console.log(`✓ ${id} için şifre güncellendi`);
         break;
     }
     case 'list-dealers': {

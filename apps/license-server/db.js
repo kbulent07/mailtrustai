@@ -5,6 +5,7 @@ const Database = require('better-sqlite3');
 const { env, logger } = require('@mailtrustai/shared');
 
 const DB_PATH = env('LICENSE_DB_PATH', path.join(env('DATA_DIR', './data'), 'license-server.sqlite'));
+const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 
 function _ensureDir() { try { fs.mkdirSync(path.dirname(DB_PATH), { recursive: true }); } catch (_) {} }
 _ensureDir();
@@ -13,91 +14,28 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-// ---- migrations ----
-db.exec(`
-CREATE TABLE IF NOT EXISTS dealers (
+// Migration runner — numbered SQL files (0001_*.sql, 0002_*.sql).
+db.exec(`CREATE TABLE IF NOT EXISTS _migrations (
     id TEXT PRIMARY KEY,
-    name TEXT,
-    email TEXT,
-    api_token_hash TEXT,
-    credits INTEGER DEFAULT 0,
-    created_at INTEGER
-);
+    applied_at INTEGER NOT NULL
+);`);
 
-CREATE TABLE IF NOT EXISTS customers (
-    id TEXT PRIMARY KEY,
-    dealer_id TEXT,
-    company_name TEXT,
-    email TEXT,
-    created_at INTEGER,
-    FOREIGN KEY (dealer_id) REFERENCES dealers(id)
-);
-
-CREATE TABLE IF NOT EXISTS licenses (
-    id TEXT PRIMARY KEY,
-    customer_id TEXT NOT NULL,
-    dealer_id TEXT,
-    license_key_hash TEXT NOT NULL UNIQUE,
-    license_key_masked TEXT,
-    plan TEXT NOT NULL,
-    tier TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active',  -- active | revoked | expired
-    issued_at INTEGER NOT NULL,
-    expires_at INTEGER,
-    grace_days INTEGER DEFAULT 1,
-    features_json TEXT,
-    limits_json TEXT,
-    FOREIGN KEY (customer_id) REFERENCES customers(id)
-);
-
-CREATE TABLE IF NOT EXISTS activations (
-    id TEXT PRIMARY KEY,
-    license_id TEXT NOT NULL,
-    instance_id TEXT NOT NULL,
-    hostname_hash TEXT,
-    app_version TEXT,
-    build_version TEXT,
-    node_version TEXT,
-    environment TEXT,
-    activated_at INTEGER NOT NULL,
-    last_heartbeat_at INTEGER,
-    last_payload_json TEXT,
-    UNIQUE (license_id, instance_id),
-    FOREIGN KEY (license_id) REFERENCES licenses(id)
-);
-
-CREATE TABLE IF NOT EXISTS audit_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts INTEGER NOT NULL,
-    actor TEXT,
-    action TEXT,
-    target TEXT,
-    detail_json TEXT
-);
-
-CREATE TABLE IF NOT EXISTS policies (
-    customer_id TEXT PRIMARY KEY,
-    version INTEGER NOT NULL DEFAULT 1,
-    body_json TEXT NOT NULL,
-    updated_at INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS lists (
-    customer_id TEXT NOT NULL,
-    kind TEXT NOT NULL,        -- 'whitelist' | 'blacklist'
-    version INTEGER NOT NULL DEFAULT 1,
-    body_json TEXT NOT NULL,
-    updated_at INTEGER NOT NULL,
-    PRIMARY KEY (customer_id, kind)
-);
-
-CREATE TABLE IF NOT EXISTS api_policies (
-    customer_id TEXT PRIMARY KEY,
-    version INTEGER NOT NULL DEFAULT 1,
-    body_json TEXT NOT NULL,
-    updated_at INTEGER NOT NULL
-);
-`);
+function _applyMigrations() {
+    if (!fs.existsSync(MIGRATIONS_DIR)) return;
+    const files = fs.readdirSync(MIGRATIONS_DIR).filter(f => /^\d{4}_.+\.sql$/.test(f)).sort();
+    const applied = new Set(db.prepare('SELECT id FROM _migrations').all().map(r => r.id));
+    for (const f of files) {
+        if (applied.has(f)) continue;
+        const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
+        const tx = db.transaction(() => {
+            db.exec(sql);
+            db.prepare('INSERT INTO _migrations(id, applied_at) VALUES(?,?)').run(f, Date.now());
+        });
+        tx();
+        logger.info(`[license-server] migration uygulandı: ${f}`);
+    }
+}
+_applyMigrations();
 
 function audit(actor, action, target, detail) {
     db.prepare('INSERT INTO audit_log(ts,actor,action,target,detail_json) VALUES(?,?,?,?,?)')

@@ -44,6 +44,7 @@ test('temizlenmiş staging\'de check-customer-package PASS döner', () => {
     const rm = (p) => { try { fs.rmSync(path.join(stage, p), { recursive: true, force: true }); } catch (_) {} };
     rm('packages/license-core');
     rm('src/license/keygenTool.js');
+    rm('src/license/license-generator.js');
     rm('src/routes/dealerApi.js');
     rm('src/interfaces/http/routes/resellers.routes.js');
     rm('src/interfaces/http/routes/admin.routes.js');

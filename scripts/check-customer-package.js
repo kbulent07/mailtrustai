@@ -18,6 +18,7 @@ const FORBIDDEN_PATHS = [
     'apps/license-server',
     'packages/license-core',
     'src/license/keygenTool.js',
+    'src/license/license-generator.js',
     'src/routes/dealerApi.js',
     'src/interfaces/http/routes/resellers.routes.js',
     'src/interfaces/http/routes/admin.routes.js',

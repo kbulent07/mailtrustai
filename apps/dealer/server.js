@@ -41,20 +41,31 @@ function requireDealer(req, res, next) {
 // Health
 app.get('/healthz', (req, res) => res.json({ ok: true, service: 'dealer' }));
 
-// Login — MVP: env'de DEALER_DEMO_USER / DEALER_DEMO_PASS varsa kabul eder.
-// Production'da: license-server'daki dealers tablosuna karşı bcrypt doğrulama.
-app.post('/api/dealer/login', (req, res) => {
+// Login — license-server'daki dealers tablosuna karşı bcrypt doğrulama.
+// MSA_DEALER_AUTH_MODE=demo + DEALER_DEMO_USER/PASS env'leri ile demo modu açılabilir.
+app.post('/api/dealer/login', asyncH(async (req, res) => {
     const { username, password } = req.body || {};
     if (!username || !password) return res.status(400).json({ error: 'username ve password gerekli' });
-    const u = env('DEALER_DEMO_USER');
-    const p = env('DEALER_DEMO_PASS');
-    if (u && p && username === u && password === p) {
-        const token = signSession(username);
-        res.setHeader('Set-Cookie', `dealer_session=${token}; HttpOnly; SameSite=Strict; Path=/`);
-        return res.json({ ok: true, dealerId: username, token });
+
+    if (env('MSA_DEALER_AUTH_MODE') === 'demo') {
+        const u = env('DEALER_DEMO_USER'), p = env('DEALER_DEMO_PASS');
+        if (u && p && username === u && password === p) {
+            const token = signSession(username);
+            res.setHeader('Set-Cookie', `dealer_session=${token}; HttpOnly; SameSite=Strict; Path=/`);
+            return res.json({ ok: true, dealerId: username, token, mode: 'demo' });
+        }
+        return res.status(401).json({ error: 'geçersiz kimlik (demo)' });
     }
-    res.status(401).json({ error: 'geçersiz kimlik' });
-});
+
+    try {
+        const r = await ls.verifyDealer(username, password);
+        const token = signSession(r.dealerId);
+        res.setHeader('Set-Cookie', `dealer_session=${token}; HttpOnly; SameSite=Strict; Path=/`);
+        res.json({ ok: true, dealerId: r.dealerId, name: r.name, token });
+    } catch (e) {
+        res.status(e.status || 401).json({ error: e.message || 'geçersiz kimlik' });
+    }
+}));
 
 // Müşteri oluştur + lisans iste (license-server'a delege).
 // Bu uygulama lisansı kendi üretmez.

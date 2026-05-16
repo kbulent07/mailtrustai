@@ -186,18 +186,19 @@ function generateChecksum(data) {
         .update(data).digest('hex').substring(0, 8).toUpperCase();
 }
 
-function generateLicenseKey(plan, tier, duration, resellerCode = 'DIRECT', startDate = null) {
-    if (!['PRO', 'ENT'].includes(plan)) plan = 'PRO';
-    if (!TIERS[tier]) tier = 'T1';
-    if (!['M', 'Y', 'T'].includes(duration)) duration = 'M';
-
-    const start = startDate || new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    // 6-char hex nonce — aynı gün üretilen toplu anahtarların çakışmasını önler
-    const nonce = crypto.randomBytes(3).toString('hex').toUpperCase();
-    const payload = `MSA-${plan}-${tier}-${duration}-${resellerCode}-${start}-${nonce}`;
-    const checksum = generateChecksum(payload);
-    return `${payload}-${checksum}`;
+// ============================================================
+// Generator fonksiyonları lazy-require shim'dir. Gerçek implementasyon
+// src/license/license-generator.js'tedir. Customer Docker image'inde
+// license-generator.js dosyası BULUNMAZ → çağrılırsa MODULE_NOT_FOUND
+// (HARD-GATE admin path'leri zaten 404'ler, bu satıra erişilmemelidir).
+// ============================================================
+let _gen = null;
+function _generator() {
+    if (!_gen) _gen = require('./license-generator');
+    return _gen;
 }
+
+function generateLicenseKey(...args) { return _generator().generateLicenseKey(...args); }
 
 function validateLicenseKey(key) {
     try {
@@ -282,13 +283,7 @@ function validateLicenseKey(key) {
     }
 }
 
-function generateBatchKeys(plan, tier, duration, count, resellerCode = 'DIRECT') {
-    const keys = [];
-    for (let i = 0; i < count; i++) {
-        keys.push(generateLicenseKey(plan, tier, duration, resellerCode));
-    }
-    return keys;
-}
+function generateBatchKeys(...args) { return _generator().generateBatchKeys(...args); }
 
 function getPriceTable(customPrices = null) {
     return customPrices || DEFAULT_PRICES;

@@ -24,7 +24,12 @@ versiyonlar, sayaçlar, servis durumu boolean'ları, error summary (200 karakter
 
 - **Local cache** (lisans, central policy, lists, api-policy): AES-256-GCM (`packages/security.encryptJSON`).
 - **Anahtar**: `MSA_LOCAL_ENCRYPTION_KEY` env'inden; yoksa `data/.local-enc.key` (0o600).
-- **Lisans imzalama**: HMAC-SHA256 (`LICENSE_SIGNING_SECRET`), `packages/license-core`.
+- **Lisans imzalama**: HMAC-SHA256 (`LICENSE_SIGNING_SECRET`), `packages/license-core` + `src/license/license-generator.js`.
+- **Dealer şifreleri**: bcrypt (cost 10), `dealers.api_token_hash`. Plain-text saklanmaz.
+
+## License generator izolasyonu
+
+`generateLicenseKey` ve `generateBatchKeys`'in **gerçek implementasyonu** `src/license/license-generator.js` ve `packages/license-core` içindedir. Customer Dockerfile build adımında bu iki dosya da silinir. `src/license/license.js` shim'i lazy-require kullanır — fonksiyon **çağrılırsa** `MODULE_NOT_FOUND` atar. Çağrı yolları zaten HARD-GATE ile 404 döner (`/api/license/{generate,trial}` admin-only), bu yüzden runtime'da çağrı oluşmaz.
 
 ## Auth
 

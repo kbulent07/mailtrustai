@@ -16,7 +16,23 @@ async function _req(method, p, body) {
     return j || {};
 }
 
+// Auth çağrısı dealer'ın kendi password'unu license-server'a yollar; bearer GEREKMEZ.
+async function verifyDealer(dealerId, password) {
+    const fetch = require('node-fetch');
+    const url = `${_base()}/api/dealer/auth/verify`;
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dealerId, password }),
+        timeout: 10000
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { const e = new Error(j.error || 'auth failed'); e.status = res.status; throw e; }
+    return j;
+}
+
 module.exports = {
+    verifyDealer,
     createLicense:  (body) => _req('POST', '/api/license/create', body),
     revokeLicense:  (body) => _req('POST', '/api/license/revoke', body),
     renewLicense:   (body) => _req('POST', '/api/license/renew', body),
