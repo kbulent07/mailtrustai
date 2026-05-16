@@ -1,0 +1,15 @@
+{
+  "name": "@mailtrustai/dealer",
+  "version": "2.0.0",
+  "private": true,
+  "main": "server.js",
+  "description": "MailTrustAI Dealer portal — bayi paneli; lisansı kendi üretmez, license-server API'sine delege eder.",
+  "scripts": {
+    "start": "node --use-system-ca server.js",
+    "dev": "node --use-system-ca server.js"
+  },
+  "dependencies": {
+    "@mailtrustai/security": "*",
+    "@mailtrustai/shared": "*"
+  }
+}

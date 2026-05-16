@@ -1,0 +1,25 @@
+version: "3.9"
+
+# Müşteri tarafı (self-hosted) — sadece customer uygulaması.
+# Bayi/license-server bu host'a kurulmaz.
+
+services:
+  customer:
+    image: mailtrustai-customer:latest
+    build:
+      context: ../..
+      dockerfile: apps/customer/Dockerfile
+    container_name: mailtrustai-customer
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      MSA_CUSTOMER_ONLY: "true"
+      DATA_DIR: /app/data
+      LOG_DIR: /app/logs
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs

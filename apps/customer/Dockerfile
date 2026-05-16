@@ -1,0 +1,69 @@
+# =========================================================
+# MailTrustAI Customer image — self-hosted müşteri tarafı.
+# BU IMAGE'DA BULUNMAYACAK: keygen, bayi paneli, lisans üretici,
+# revoke/renew, reseller/dealer kredi, license-core paketi,
+# apps/dealer ve apps/license-server klasörleri.
+# Bunlar build sırasında fiziksel olarak silinir; ardından
+# scripts/check-customer-package.js script'i imaj içeriğini
+# tarayıp yasak desenleri bulursa build BAŞARISIZ olur.
+# =========================================================
+FROM node:22-bookworm-slim AS builder
+
+WORKDIR /build
+
+# Build deps (better-sqlite3 native)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 make g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Bütün repoyu kopyala — ardından SADECE müşteriye ait olmayan kısımları sil.
+COPY . .
+
+# 1) Dealer ve license-server app klasörlerini tamamen kaldır
+RUN rm -rf apps/dealer apps/license-server
+
+# 2) license-core (key generator/imzalama) paketini tamamen kaldır
+RUN rm -rf packages/license-core
+
+# 3) src/ içindeki müşteri-dışı dosyaları kaldır
+RUN rm -f \
+        src/license/keygenTool.js \
+        src/routes/dealerApi.js \
+        src/interfaces/http/routes/license.routes.js \
+        src/interfaces/http/routes/resellers.routes.js \
+        src/interfaces/http/routes/admin.routes.js \
+        src/storage/dealerStore.js \
+        src/storage/dealerCustomerStore.js \
+        src/storage/dealerSales.js \
+        src/storage/resellerStore.js \
+        src/storage/issuedLicenseStore.js \
+        src/storage/creditTransactionStore.js \
+        src/middleware/adminAuth.js \
+        src/utils/dealerLock.js
+
+# 4) public/ içinden bayi ve keygen sayfalarını sil
+RUN rm -f public/bayi.html public/keygen.html
+
+# 5) Bağımlılıklar
+RUN npm install --omit=dev --no-audit --no-fund
+
+# 6) Yasak içerik kontrolü — image'a girmeden önce taranır.
+RUN node scripts/check-customer-package.js
+
+# ---------- Runtime image ----------
+FROM node:22-bookworm-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# Sadece temizlenmiş ağacı kopyala
+COPY --from=builder /build /app
+
+ENV NODE_ENV=production
+ENV MSA_CUSTOMER_ONLY=true
+ENV DATA_DIR=/app/data
+ENV LOG_DIR=/app/logs
+
+EXPOSE 3000
+VOLUME ["/app/data", "/app/logs"]
+
+CMD ["node", "--use-system-ca", "apps/customer/server.js"]

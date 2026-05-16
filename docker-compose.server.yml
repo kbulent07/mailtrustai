@@ -1,0 +1,44 @@
+version: "3.9"
+
+# Kurucu/satıcı tarafı — license-server + dealer aynı host'ta, ortak network.
+# Müşteri host'una asla deploy edilmez.
+
+networks:
+  msa-internal:
+    driver: bridge
+
+services:
+  license-server:
+    image: mailtrustai-license-server:latest
+    build:
+      context: .
+      dockerfile: apps/license-server/Dockerfile
+    container_name: mailtrustai-license-server
+    restart: unless-stopped
+    env_file:
+      - apps/license-server/.env
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /app/data
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./data/license-server:/app/data
+    networks: [msa-internal]
+
+  dealer:
+    image: mailtrustai-dealer:latest
+    build:
+      context: .
+      dockerfile: apps/dealer/Dockerfile
+    container_name: mailtrustai-dealer
+    restart: unless-stopped
+    depends_on: [license-server]
+    env_file:
+      - apps/dealer/.env
+    environment:
+      NODE_ENV: production
+      LICENSE_SERVER_URL: http://license-server:3200
+    ports:
+      - "3100:3100"
+    networks: [msa-internal]

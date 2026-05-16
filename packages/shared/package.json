@@ -1,0 +1,7 @@
+{
+  "name": "@mailtrustai/shared",
+  "version": "2.0.0",
+  "private": true,
+  "main": "index.js",
+  "description": "Ortak yardımcılar: logger, config loader, constants, error helper"
+}

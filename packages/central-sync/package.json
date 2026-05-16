@@ -1,0 +1,7 @@
+{
+  "name": "@mailtrustai/central-sync",
+  "version": "2.0.0",
+  "private": true,
+  "main": "index.js",
+  "description": "Customer-side merkezi haberleşme istemcisi: bootstrap, heartbeat, pull, ack, policy/list/api-policy sync — retry/backoff, PII-free"
+}

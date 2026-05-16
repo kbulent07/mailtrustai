@@ -1,0 +1,7 @@
+{
+  "name": "@mailtrustai/license-core",
+  "version": "2.0.0",
+  "private": true,
+  "main": "index.js",
+  "description": "Lisans üretme/imzalama/revoke/renew/plan-tier hesabı — SADECE license-server ve dealer tarafında. CUSTOMER IMAGE İÇİNE GİRMEMELİDİR."
+}

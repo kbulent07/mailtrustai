@@ -1,0 +1,7 @@
+{
+  "name": "@mailtrustai/storage",
+  "version": "2.0.0",
+  "private": true,
+  "main": "index.js",
+  "description": "Customer-side persistent storage (better-sqlite3 + JSON) wrapper'ları"
+}

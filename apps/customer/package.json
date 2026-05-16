@@ -1,0 +1,21 @@
+{
+  "name": "@mailtrustai/customer",
+  "version": "2.0.0",
+  "private": true,
+  "main": "server.js",
+  "description": "MailTrustAI Customer (self-hosted) — mail analiz, IMAP monitor, SMTP rapor, quarantine, scan history; merkezi sync istemcisi içerir.",
+  "scripts": {
+    "start": "node --use-system-ca server.js",
+    "dev": "node --use-system-ca server.js"
+  },
+  "dependencies": {
+    "@mailtrustai/analyzer": "*",
+    "@mailtrustai/mail": "*",
+    "@mailtrustai/license-client": "*",
+    "@mailtrustai/central-sync": "*",
+    "@mailtrustai/policy-client": "*",
+    "@mailtrustai/storage": "*",
+    "@mailtrustai/security": "*",
+    "@mailtrustai/shared": "*"
+  }
+}

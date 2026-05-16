@@ -1,0 +1,7 @@
+{
+  "name": "@mailtrustai/mail",
+  "version": "2.0.0",
+  "private": true,
+  "main": "index.js",
+  "description": "IMAP monitor, SMTP reporter, quarantine, mailbox scanner"
+}

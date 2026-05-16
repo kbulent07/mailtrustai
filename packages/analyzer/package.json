@@ -1,0 +1,7 @@
+{
+  "name": "@mailtrustai/analyzer",
+  "version": "2.0.0",
+  "private": true,
+  "main": "index.js",
+  "description": "Mail analiz motoru: parser, link/attachment/header/content analyzer, scorer, threat-intel wrapper'ları"
+}

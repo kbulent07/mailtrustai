@@ -1,24 +1,29 @@
 {
-  "name": "mailtrustai",
-  "version": "1.0.0",
-  "description": "MailTrustAI — AI-Powered Email Security Analysis: IMAP monitoring, phishing detection, attachment scanning, VirusTotal integration",
-  "main": "server.js",
-  "scripts": {
-    "start": "node --use-system-ca server.js",
-    "dev": "node --use-system-ca server.js",
-    "test": "node --test \"tests/unit/*.test.js\""
-  },
-  "keywords": [
-    "email",
-    "security",
-    "phishing",
-    "imap",
-    "scanner"
+  "name": "mailtrustai-monorepo",
+  "version": "2.0.0-mainpaketler.0",
+  "private": true,
+  "description": "MailTrustAI — 3 paketli ticari self-hosted mimari (customer / dealer / license-server)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
   ],
-  "license": "UNLICENSED",
+  "scripts": {
+    "start": "node --use-system-ca apps/customer/server.js",
+    "dev": "node --use-system-ca apps/customer/server.js",
+    "dev:customer": "node --use-system-ca apps/customer/server.js",
+    "dev:dealer": "node --use-system-ca apps/dealer/server.js",
+    "dev:license": "node --use-system-ca apps/license-server/server.js",
+    "test": "node --test \"tests/unit/*.test.js\" \"tests/integration/*.test.js\" \"tests/security/*.test.js\"",
+    "test:legacy": "node --test \"tests/unit/*.test.js\"",
+    "build:customer": "docker build -f apps/customer/Dockerfile -t mailtrustai-customer:latest .",
+    "build:dealer": "docker build -f apps/dealer/Dockerfile -t mailtrustai-dealer:latest .",
+    "build:license": "docker build -f apps/license-server/Dockerfile -t mailtrustai-license-server:latest .",
+    "check:customer-package": "node scripts/check-customer-package.js"
+  },
   "engines": {
     "node": ">=22"
   },
+  "license": "UNLICENSED",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
     "bcrypt": "^6.0.0",
