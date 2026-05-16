@@ -1,48 +1,71 @@
-# Mimari — `mainpaketler` (v2)
+# Mimari - mainpaketler (v2)
 
-MailTrustAI ticari ürün mimarisi 3 ayrı pakete bölünmüştür:
+MailTrustAI ticari urun mimarisi 3 ayri uygulamaya ayrilmistir:
 
-```
-mailtrustai/
-├── apps/
-│   ├── customer/          # @mailtrustai/customer       — self-hosted müşteri
-│   ├── dealer/            # @mailtrustai/dealer         — bayi portalı
-│   └── license-server/    # @mailtrustai/license-server — merkezi sunucu
-└── packages/
-    ├── analyzer/          # mail/link/attachment analiz motoru
-    ├── mail/              # IMAP, SMTP, quarantine
-    ├── license-client/    # customer-side lisans istemcisi (encrypted local cache + grace)
-    ├── license-core/      # !!! customer image'a girmez — key gen/imza/plan
-    ├── central-sync/      # customer ↔ merkezi sync (bootstrap, heartbeat, pull, ack)
-    ├── policy-client/     # feature gate, list/api-policy merge
-    ├── storage/           # better-sqlite3 + JSON store wrapper'ları
-    ├── security/          # AES-256-GCM, sha256/hmac, bearer auth
-    └── shared/            # logger, env, constants, PII scrubber
-```
+- `apps/customer` (`@mailtrustai/customer`) - self-hosted musteri uygulamasi
+- `apps/dealer` (`@mailtrustai/dealer`) - bayi portali
+- `apps/license-server` (`@mailtrustai/license-server`) - merkezi lisans ve policy sunucusu
 
-## Veri akışı
+Monorepo paylasilan paketleri:
 
-```
-[Customer self-hosted]
-   │  POST /api/license/activate   (ilk)
-   │  POST /api/license/validate   (periyodik)
-   │  POST /api/customer-sync/heartbeat
-   │  GET  /api/customer-sync/pull
-   │  POST /api/customer-sync/ack
-   ▼
-[License Server — merkez]   ←──[Dealer Portal]── POST /api/license/create
-                                                  GET  /api/central/dealers/:id/customers/status
-```
+- `packages/analyzer`
+- `packages/mail`
+- `packages/license-client`
+- `packages/license-core` (customer image icine girmez)
+- `packages/central-sync`
+- `packages/policy-client`
+- `packages/storage`
+- `packages/security`
+- `packages/shared`
 
-Mail içeriği, attachment, credential ve kişisel veri **müşteriden çıkmaz**.
-Merkeze yalnızca operasyonel/lisans/policy telemetri gider — bkz. [SECURITY-MODEL.md](SECURITY-MODEL.md).
+## Veri akisi
 
-## Paket bağımlılık grafikleri
+Customer -> License Server:
 
-| App              | Bağımlı paketler |
-|------------------|------------------|
-| customer         | analyzer, mail, license-client, central-sync, policy-client, storage, security, shared |
-| dealer           | security, shared (ek: HTTP üzerinden license-server) |
-| license-server   | license-core, security, shared |
+- `POST /api/license/activate`
+- `POST /api/license/validate`
+- `POST /api/customer-sync/bootstrap`
+- `POST /api/customer-sync/heartbeat`
+- `GET /api/customer-sync/pull`
+- `POST /api/customer-sync/ack`
 
-`license-core` **asla** customer'a girmez — Dockerfile build adımında silinir, `scripts/check-customer-package.js` doğrular.
+Dealer -> License Server:
+
+- `POST /api/license/create`
+- `POST /api/license/renew`
+- `POST /api/license/revoke`
+- `GET /api/central/dealers/:dealerId/customers/status`
+
+Musteri mail icerigi, attachment icerigi, credentials ve API key degerleri merkeze gonderilmez.
+
+## Paket bagimlilik prensibi
+
+- Customer app: `analyzer`, `mail`, `license-client`, `central-sync`, `policy-client`, `storage`, `security`, `shared`
+- Dealer app: `shared`, `security` (+ license-server HTTP API)
+- License-server app: `license-core`, `shared`, `security`, `storage`
+
+`license-core` customer image icine fiziksel olarak alinmaz. Dockerfile seviyesinde silinir ve
+`scripts/check-customer-package.js --scope=image` ile build asamasinda denetlenir.
+
+## Central Sync Auth Contract
+
+`GET /api/customer-sync/pull` cagrisi su query alanlarini zorunlu ister:
+
+- `customerId`
+- `licenseKeyHash`
+- `instanceId`
+
+License-server dogrulama adimlari:
+
+1. `licenseKeyHash` mevcut bir lisansa ait mi
+2. Lisansin `customer_id` degeri query'deki `customerId` ile eslesiyor mu
+3. Bu lisans + `instanceId` icin aktivasyon kaydi var mi
+
+Hata kodlari:
+
+- `400`: query alanlari eksik
+- `403`: customer-lisans uyumsuz veya aktivasyon yok
+- `404`: `licenseKeyHash` bulunamadi
+
+Bu contract, baska bir customer kimligiyle merkezi policy/list cekimini engeller ve
+yalnizca aktif instance baglaminda pull islemi yapilmasini zorunlu kilar.
