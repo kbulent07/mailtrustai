@@ -17,6 +17,17 @@ const POLICY_CACHE = path.join(DATA_DIR, 'central-policy.enc');
 const LISTS_CACHE  = path.join(DATA_DIR, 'central-lists.enc');
 const APICFG_CACHE = path.join(DATA_DIR, 'central-api-policy.enc');
 
+const HEARTBEAT_KEYS = [
+    'licenseKeyHash', 'customerId', 'dealerId', 'activationId', 'instanceId',
+    'appVersion', 'buildVersion', 'nodeVersion', 'environment', 'hostnameHash',
+    'lastHeartbeatAt', 'healthStatus', 'enabledFeatures', 'monthlyScanCount',
+    'dailyScanCount', 'mailboxCount', 'userCount', 'licenseStatus', 'plan', 'tier',
+    'localPolicyVersion', 'localWhitelistVersion', 'localBlacklistVersion',
+    'localApiConfigVersion', 'errorSummary', 'services'
+];
+
+const SERVICE_KEYS = ['imapMonitor', 'smtpReporter', 'quarantine', 'aiProvider'];
+
 function _ensureDir() { try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (_) {} }
 function _readEnc(p, def = null) { try { return fs.existsSync(p) ? decryptJSON(fs.readFileSync(p, 'utf8')) : def; } catch (_) { return def; } }
 function _writeEnc(p, obj) { _ensureDir(); fs.writeFileSync(p, encryptJSON(obj), { mode: 0o600 }); }
@@ -95,10 +106,25 @@ function _baseTelemetry({ counters = {}, services = {} } = {}) {
     };
 }
 
+function sanitizeHeartbeatPayload(raw) {
+    const cleaned = scrubPII(raw || {});
+    const out = {};
+    for (const key of HEARTBEAT_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(cleaned, key)) out[key] = cleaned[key];
+    }
+    const svc = {};
+    for (const key of SERVICE_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(out.services || {}, key)) svc[key] = out.services[key];
+    }
+    out.services = svc;
+    if (!out.enabledFeatures || typeof out.enabledFeatures !== 'object') out.enabledFeatures = {};
+    return out;
+}
+
 async function bootstrapCustomer({ syncUrl, gather }) {
     return _withRetry(async () => {
-        const payload = _baseTelemetry(gather ? await gather() : {});
-        const res = await _fetch('POST', syncUrl, '/api/customer-sync/bootstrap', scrubPII(payload));
+        const payload = sanitizeHeartbeatPayload(_baseTelemetry(gather ? await gather() : {}));
+        const res = await _fetch('POST', syncUrl, '/api/customer-sync/bootstrap', payload);
         if (res.policy)    { _writeEnc(POLICY_CACHE,  res.policy);    }
         if (res.lists)     { _writeEnc(LISTS_CACHE,   res.lists);     }
         if (res.apiPolicy) { _writeEnc(APICFG_CACHE,  res.apiPolicy); }
@@ -113,8 +139,8 @@ async function bootstrapCustomer({ syncUrl, gather }) {
 
 async function sendHeartbeat({ syncUrl, gather }) {
     return _withRetry(async () => {
-        const payload = _baseTelemetry(gather ? await gather() : {});
-        return await _fetch('POST', syncUrl, '/api/customer-sync/heartbeat', scrubPII(payload));
+        const payload = sanitizeHeartbeatPayload(_baseTelemetry(gather ? await gather() : {}));
+        return await _fetch('POST', syncUrl, '/api/customer-sync/heartbeat', payload);
     }, 'heartbeat');
 }
 
@@ -186,6 +212,7 @@ function startPeriodicSync({ syncUrl, gather, heartbeatSeconds = 300, pullSecond
 module.exports = {
     bootstrapCustomer, sendHeartbeat, pullCentralUpdates, ackCentralUpdate,
     syncPolicy, syncLists, syncApiPolicy,
+    sanitizeHeartbeatPayload, HEARTBEAT_KEYS,
     getState, getPolicy, getLists, getApiPolicy,
     startPeriodicSync
 };
