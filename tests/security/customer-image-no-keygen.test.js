@@ -1,9 +1,8 @@
 'use strict';
-// Kaynak repo (mainpaketler branch'i) içinde DEĞİL, ama customer Dockerfile
-// build adımının yasak dosyaları sildiğini doğrularız: scripts/check-customer-package.js
-// çıktısının repo kökünde (silinmemiş) BAŞARISIZ döndüğünü, ardından
-// gerekli dosyaları geçici bir staging'e taşıyıp tekrar çalıştırdığımızda
-// BAŞARILI döndüğünü test ederiz.
+// Customer image gate testi:
+// - Geçici staged tree PRUNE edilmeden check FAIL olmalı.
+// - Aynı staged tree customer-image temizliği uygulandıktan sonra check PASS olmalı.
+// Böylece repo kökünde legacy dosyalar kalsa da kalmasa da test deterministik kalır.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -16,12 +15,7 @@ function runCheck(cwd) {
     return spawnSync(process.execPath, [path.resolve(__dirname, '..', '..', 'scripts', 'check-customer-package.js')], { cwd, encoding: 'utf8' });
 }
 
-test('repo kökünde check-customer-package FAIL döner (yasak dosyalar mevcut)', () => {
-    const r = runCheck(path.resolve(__dirname, '..', '..'));
-    assert.notStrictEqual(r.status, 0, 'kök repoda yasak dosyalar olduğundan exit 0 OLMAMALI');
-});
-
-test('temizlenmiş staging\'de check-customer-package PASS döner', () => {
+test('staging prune oncesi FAIL, prune sonrasi PASS', () => {
     const root = path.resolve(__dirname, '..', '..');
     const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'msa-customer-stage-'));
     // Sadece customer'a gerekli alt ağacı kopyala
@@ -39,6 +33,9 @@ test('temizlenmiş staging\'de check-customer-package PASS döner', () => {
     copy(path.join(root, 'public'),           path.join(stage, 'public'));
     copy(path.join(root, 'scripts'),          path.join(stage, 'scripts'));
     copy(path.join(root, 'docs'),             path.join(stage, 'docs'));
+
+    const before = runCheck(stage);
+    assert.notStrictEqual(before.status, 0, 'prune oncesi staged tree FAIL olmali');
 
     // Customer-only image gibi temizle (Dockerfile ile aynı)
     const rm = (p) => { try { fs.rmSync(path.join(stage, p), { recursive: true, force: true }); } catch (_) {} };
