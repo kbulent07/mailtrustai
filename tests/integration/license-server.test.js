@@ -211,3 +211,41 @@ test('pull endpoint hash veya instance olmadan 400 doner', async () => {
         srv.close();
     }
 });
+
+test('pull endpoint customerId-lisans eslesmezse 403 doner', async () => {
+    await ready;
+    const { srv, port } = await startApp();
+    try {
+        const { keyHash } = generateLicenseKey({ customerId: 'cust6', plan: 'pro' });
+        db.prepare('INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)').run('cust6', null, 'C6', 'c6@x', Date.now());
+        db.prepare('INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)').run('cust6-other', null, 'C6O', 'c6o@x', Date.now());
+        db.prepare(`INSERT INTO licenses(id,customer_id,dealer_id,license_key_hash,license_key_masked,plan,tier,status,issued_at,expires_at,grace_days,features_json,limits_json)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+            .run('lic6', 'cust6', null, keyHash, 'MASK6', 'pro', 'pro', 'active', Date.now(), Date.now() + 86400000, 3, '{}', '{}');
+        db.prepare(`INSERT INTO activations(id,license_id,instance_id,hostname_hash,app_version,build_version,node_version,environment,activated_at,last_heartbeat_at,last_payload_json)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+            .run('act6', 'lic6', 'inst6', null, '2.0.0', null, null, 'test', Date.now(), Date.now(), '{}');
+
+        const response = await http_(port, 'GET', `/api/customer-sync/pull?customerId=cust6-other&licenseKeyHash=${encodeURIComponent(keyHash)}&instanceId=inst6`);
+        assert.strictEqual(response.status, 403);
+    } finally {
+        srv.close();
+    }
+});
+
+test('pull endpoint activation yoksa 403 doner', async () => {
+    await ready;
+    const { srv, port } = await startApp();
+    try {
+        const { keyHash } = generateLicenseKey({ customerId: 'cust7', plan: 'pro' });
+        db.prepare('INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)').run('cust7', null, 'C7', 'c7@x', Date.now());
+        db.prepare(`INSERT INTO licenses(id,customer_id,dealer_id,license_key_hash,license_key_masked,plan,tier,status,issued_at,expires_at,grace_days,features_json,limits_json)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+            .run('lic7', 'cust7', null, keyHash, 'MASK7', 'pro', 'pro', 'active', Date.now(), Date.now() + 86400000, 3, '{}', '{}');
+
+        const response = await http_(port, 'GET', `/api/customer-sync/pull?customerId=cust7&licenseKeyHash=${encodeURIComponent(keyHash)}&instanceId=inst-missing`);
+        assert.strictEqual(response.status, 403);
+    } finally {
+        srv.close();
+    }
+});
