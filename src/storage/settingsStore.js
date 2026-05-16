@@ -147,6 +147,7 @@ function defaultSettings() {
         webhookUrl:      '',
         webhookMinLevel: 'low',
         customPrices:    null,
+        creditRate:      10,
         systemSmtp: {
             host:     '',
             port:     587,

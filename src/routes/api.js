@@ -98,6 +98,7 @@ function _isUserAllowedPath(path) {
 
 router.use(async (req, res, next) => {
     if (PUBLIC_PATHS.has(req.path)) return next();
+    if (req.path === '/pricing') return next();   // public fiyat tablosu
     if (req.path.startsWith('/dealer/') || req.path === '/dealer') return next();
 
     // Bearer token: admin token (keygen) veya müşteri token (admin/user role)

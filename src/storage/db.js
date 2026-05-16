@@ -134,9 +134,6 @@ db.exec(`
     const names = new Set(cols.map(c => c.name));
     if (!names.has('fingerprint'))  db.exec(`ALTER TABLE dealer_sales ADD COLUMN fingerprint TEXT`);
     if (!names.has('customer_id'))  db.exec(`ALTER TABLE dealer_sales ADD COLUMN customer_id TEXT REFERENCES dealer_customers(id)`);
-    if (names.has('fingerprint') || !names.has('customer_id')) {
-        // sadece yeni eklendiyse log bas
-    }
 })();
 
 

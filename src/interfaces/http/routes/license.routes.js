@@ -21,6 +21,31 @@ const { recordAudit } = require('../../../storage/auditLog');
 
 const router = express.Router();
 
+// /license/check endpoint'i için IP başına rate limiting (brute-force koruması)
+const _checkRateMap = new Map();
+setInterval(() => {
+    const cutoff = Date.now() - 60 * 1000;
+    for (const [ip, rec] of _checkRateMap) {
+        if (rec.resetAt < cutoff) _checkRateMap.delete(ip);
+    }
+}, 5 * 60 * 1000);
+
+function _checkRateLimit(req, res) {
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    const now = Date.now();
+    let rec = _checkRateMap.get(ip);
+    if (!rec || now > rec.resetAt) {
+        rec = { count: 0, resetAt: now + 60 * 1000 };
+        _checkRateMap.set(ip, rec);
+    }
+    rec.count++;
+    if (rec.count > 20) {
+        res.status(429).json({ valid: false, error: 'Too many requests' });
+        return false;
+    }
+    return true;
+}
+
 function _maskKey(k) {
     if (!k) return '';
     const s = String(k);
@@ -39,6 +64,7 @@ function _maskKey(k) {
 // Anahtarın HMAC imzası burada doğrulanır → geçersiz anahtarlar 'valid:false' döner.
 // Revoke kontrolü: data/revoked-licenses.json
 router.post('/license/check', (req, res) => {
+    if (!_checkRateLimit(req, res)) return;
     const key = String(req.body?.key || '').trim();
     if (!key) {
         return res.status(400).json({ valid: false, error: 'key required' });
@@ -329,6 +355,61 @@ router.get('/license/lic-status', (req, res) => {
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+// ─── FİYATLANDIRMA (PUBLIC) ───────────────────────────────
+// 1 kredi = creditRate TL üzerinden tüm lisansların TL fiyatını döner
+router.get('/pricing', (req, res) => {
+    const settings = loadSettings();
+    const creditRate = Number(settings.creditRate) || 10;
+    const credits = getPriceTable(settings.customPrices);
+    const result = {};
+    for (const [plan, tiers] of Object.entries(credits)) {
+        result[plan] = {};
+        for (const [tier, prices] of Object.entries(tiers)) {
+            result[plan][tier] = {
+                M: { credits: prices.M, tl: prices.M * creditRate },
+                Y: { credits: prices.Y, tl: prices.Y * creditRate }
+            };
+        }
+    }
+    const tierInfo = {};
+    for (const [k, v] of Object.entries(TIERS)) {
+        tierInfo[k] = { label: v.label, monthlyLimit: v.monthlyLimit === Infinity ? null : v.monthlyLimit };
+    }
+    res.json({ creditRate, prices: result, tierInfo });
+});
+
+// ─── LİSANS KREDİ MALİYETİ GÜNCELLE (ADMIN) ─────────────
+// Body: { plan: "PRO"|"ENT", tier: "T1"..."T9", M: number, Y: number }
+router.post('/admin/credit-prices', requireAdminAuth, (req, res) => {
+    const { plan, tier, M, Y } = req.body || {};
+    const validPlans = ['PRO', 'ENT'];
+    const validTiers = ['T1','T2','T3','T4','T5','T6','T7','T8','T9'];
+    if (!validPlans.includes(plan)) return res.status(400).json({ error: 'Geçersiz plan' });
+    if (!validTiers.includes(tier)) return res.status(400).json({ error: 'Geçersiz tier' });
+    if ((M != null && (isNaN(M) || M < 0)) || (Y != null && (isNaN(Y) || Y < 0))) {
+        return res.status(400).json({ error: 'Kredi değerleri 0 veya pozitif olmalı' });
+    }
+    const settings = loadSettings();
+    const custom = settings.customPrices ? JSON.parse(JSON.stringify(settings.customPrices)) : {};
+    if (!custom[plan]) custom[plan] = {};
+    if (!custom[plan][tier]) custom[plan][tier] = {};
+    if (M != null) custom[plan][tier].M = Number(M);
+    if (Y != null) custom[plan][tier].Y = Number(Y);
+    saveSettings({ ...settings, customPrices: custom });
+    recordAudit({ req, actorType: 'admin', actorId: 'admin', action: 'settings.credit_prices.update', target: `${plan}_${tier}`, details: { M, Y } });
+    res.json({ success: true, plan, tier, M: custom[plan][tier].M, Y: custom[plan][tier].Y });
+});
+
+// ─── KREDİ BİRİM FİYATI GÜNCELLE (ADMIN) ────────────────
+router.post('/admin/credit-rate', requireAdminAuth, (req, res) => {
+    const rate = Number(req.body?.creditRate);
+    if (!rate || rate <= 0) return res.status(400).json({ error: 'Geçerli bir creditRate giriniz (pozitif sayı)' });
+    const settings = loadSettings();
+    saveSettings({ ...settings, creditRate: rate });
+    recordAudit({ req, actorType: 'admin', actorId: 'admin', action: 'settings.credit_rate.update', target: 'creditRate', details: { creditRate: rate } });
+    res.json({ success: true, creditRate: rate });
 });
 
 module.exports = router;

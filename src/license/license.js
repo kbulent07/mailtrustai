@@ -92,29 +92,30 @@ const TIERS = {
 const DURATIONS = { M: 'monthly', Y: 'yearly', T: 'trial-7day' };
 const TRIAL_DAYS = 7;
 
-// Default price table (configurable via /api/prices)
+// Sabit kredi maliyeti tablosu — bu değerler hiç değişmez.
+// Fiyat ayarlaması "1 kredi = X TL" oranı üzerinden yapılır (creditRate ayarı).
 const DEFAULT_PRICES = {
     PRO: {
-        T1: { M: 9,   Y: 90   },
-        T2: { M: 14,  Y: 140  },
-        T3: { M: 24,  Y: 240  },
-        T4: { M: 39,  Y: 390  },
-        T5: { M: 59,  Y: 590  },
-        T6: { M: 89,  Y: 890  },
-        T7: { M: 149, Y: 1490 },
-        T8: { M: 249, Y: 2490 },
-        T9: { M: 0,   Y: 0    }
+        T1: { M: 10,  Y: 100  },
+        T2: { M: 15,  Y: 150  },
+        T3: { M: 25,  Y: 250  },
+        T4: { M: 40,  Y: 400  },
+        T5: { M: 60,  Y: 600  },
+        T6: { M: 90,  Y: 900  },
+        T7: { M: 150, Y: 1500 },
+        T8: { M: 250, Y: 2500 },
+        T9: { M: 400, Y: 4000 }
     },
     ENT: {
-        T1: { M: 29,  Y: 290  },
-        T2: { M: 39,  Y: 390  },
-        T3: { M: 59,  Y: 590  },
-        T4: { M: 89,  Y: 890  },
-        T5: { M: 129, Y: 1290 },
-        T6: { M: 199, Y: 1990 },
-        T7: { M: 349, Y: 3490 },
-        T8: { M: 599, Y: 5990 },
-        T9: { M: 0,   Y: 0    }
+        T1: { M: 30,  Y: 300  },
+        T2: { M: 40,  Y: 400  },
+        T3: { M: 60,  Y: 600  },
+        T4: { M: 90,  Y: 900  },
+        T5: { M: 130, Y: 1300 },
+        T6: { M: 200, Y: 2000 },
+        T7: { M: 350, Y: 3500 },
+        T8: { M: 600, Y: 6000 },
+        T9: { M: 500, Y: 5000 }
     }
 };
 
@@ -291,7 +292,20 @@ function generateBatchKeys(plan, tier, duration, count, resellerCode = 'DIRECT')
 }
 
 function getPriceTable(customPrices = null) {
-    return customPrices || DEFAULT_PRICES;
+    if (!customPrices) return DEFAULT_PRICES;
+    // Deep merge: sadece tanımlı olan değerleri override et
+    const result = {};
+    for (const [plan, tiers] of Object.entries(DEFAULT_PRICES)) {
+        result[plan] = {};
+        for (const [tier, prices] of Object.entries(tiers)) {
+            const custom = customPrices?.[plan]?.[tier];
+            result[plan][tier] = {
+                M: (custom?.M != null && custom.M >= 0) ? custom.M : prices.M,
+                Y: (custom?.Y != null && custom.Y >= 0) ? custom.Y : prices.Y
+            };
+        }
+    }
+    return result;
 }
 
 module.exports = {

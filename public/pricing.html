@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fiyatlandırma — MailTrustAI</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+body { background:#0f1117; color:#e0e0e0; font-family:'Segoe UI',sans-serif; margin:0; padding:0; }
+.hdr { text-align:center; padding:40px 24px 20px; }
+.hdr h1 { font-size:1.8rem; color:#fff; margin-bottom:6px; }
+.hdr p  { color:#888; font-size:.95rem; }
+
+.rate-card { display:inline-flex; align-items:center; gap:16px; background:#1a1f2e;
+  border:1px solid #2a3a5c; border-radius:10px; padding:14px 28px; margin:8px auto 36px;
+  flex-wrap:wrap; justify-content:center; }
+.rate-val  { font-size:1.3rem; font-weight:700; color:#7eb8f7; }
+.center    { text-align:center; }
+
+.tabs { display:flex; justify-content:center; gap:10px; margin-bottom:20px; }
+.tab-btn { background:#1a1f2e; border:1px solid #2a3a5c; color:#aaa; padding:9px 30px;
+  border-radius:8px; cursor:pointer; font-size:.9rem; transition:all .2s; }
+.tab-btn.active { background:#1e3a6e; border-color:#3b7ddd; color:#fff; }
+
+.dur-toggle { display:flex; justify-content:center; gap:8px; margin-bottom:22px; }
+.dur-btn { background:#1a1f2e; border:1px solid #2a3a5c; color:#aaa; padding:6px 22px;
+  border-radius:6px; cursor:pointer; font-size:.88rem; transition:all .2s; }
+.dur-btn.active { background:#1e3a6e; border-color:#3b7ddd; color:#fff; }
+
+.tbl-wrap { max-width:860px; margin:0 auto 60px; padding:0 16px; }
+table { width:100%; border-collapse:collapse; }
+th { background:#1a1f2e; color:#7eb8f7; padding:11px 14px; text-align:left;
+  border-bottom:1px solid #2a3a5c; font-size:.82rem; text-transform:uppercase; letter-spacing:.05em; }
+td { padding:10px 14px; border-bottom:1px solid #1e2535; font-size:.88rem; vertical-align:middle; }
+tr:hover td { background:#131929; }
+
+.tier-chip { font-size:.75rem; font-weight:700; padding:2px 9px; border-radius:11px; margin-right:4px; }
+.pro-chip  { background:#1c3a5c; color:#7eb8f7; }
+.ent-chip  { background:#3a1c5c; color:#c07ef7; }
+
+/* Düzenlenebilir hücre */
+.edit-cell { display:flex; align-items:center; gap:8px; }
+.edit-cell input { background:#111827; border:1px solid #2a3a5c; color:#f0c040;
+  padding:5px 10px; border-radius:5px; width:80px; font-size:.9rem; text-align:center; }
+.edit-cell input:focus { outline:none; border-color:#3b7ddd; }
+.save-btn { background:#1e3a6e; border:1px solid #3b7ddd; color:#fff; padding:5px 12px;
+  border-radius:5px; cursor:pointer; font-size:.8rem; white-space:nowrap; }
+.save-btn:hover { background:#2a4d9e; }
+.saved-dot { color:#60d394; font-size:1rem; display:none; }
+
+.tl-val { color:#60d394; font-size:.85rem; }
+
+input[type=number] { -moz-appearance:textfield; }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; }
+
+/* Oran düzenleme */
+.rate-input  { background:#111827; border:1px solid #2a3a5c; color:#fff; padding:6px 12px;
+  border-radius:6px; width:90px; font-size:1rem; text-align:center; }
+.rate-input:focus { outline:none; border-color:#3b7ddd; }
+.rate-save { background:#1e3a6e; border:1px solid #3b7ddd; color:#fff; padding:6px 16px;
+  border-radius:6px; cursor:pointer; font-size:.88rem; }
+.rate-save:hover { background:#2a4d9e; }
+.rate-msg { color:#60d394; font-size:.85rem; display:none; }
+
+#loading { text-align:center; padding:60px; color:#888; }
+#errmsg  { text-align:center; padding:60px; color:#f77; }
+#adminBadge { background:#1a3a1a; border:1px solid #3d7a3d; color:#60d394;
+  font-size:.78rem; padding:2px 10px; border-radius:10px; display:none; }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>Lisans Fiyatlandırma</h1>
+  <p>Tüm plan ve tier kombinasyonları için kredi maliyetleri</p>
+  <div style="margin-top:6px"><span id="adminBadge">● Düzenleme modu aktif</span></div>
+</div>
+
+<div class="center">
+  <div class="rate-card">
+    <span>1 Kredi =</span>
+    <span class="rate-val" id="rateDisp">...</span>
+    <span>₺</span>
+    <div id="rateEdit" style="display:none;align-items:center;gap:8px;display:none">
+      <input type="number" class="rate-input" id="rateInput" min="0.01" step="0.01">
+      <button class="rate-save" onclick="saveRate()">Güncelle</button>
+      <span class="rate-msg" id="rateMsg">Kaydedildi ✓</span>
+    </div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchPlan('PRO',this)">PRO</button>
+  <button class="tab-btn" onclick="switchPlan('ENT',this)">ENTERPRISE</button>
+</div>
+
+<div class="dur-toggle">
+  <button class="dur-btn active" onclick="switchDur('M',this)">Aylık</button>
+  <button class="dur-btn" onclick="switchDur('Y',this)">Yıllık</button>
+</div>
+
+<div id="loading">Yükleniyor...</div>
+<div id="errmsg" style="display:none"></div>
+
+<div class="tbl-wrap" id="tblWrap" style="display:none">
+  <table>
+    <thead>
+      <tr>
+        <th>Tier</th>
+        <th>Limit</th>
+        <th>Kredi Maliyeti</th>
+        <th>TL Karşılığı</th>
+      </tr>
+    </thead>
+    <tbody id="tblBody"></tbody>
+  </table>
+</div>
+
+<script>
+const _token   = new URLSearchParams(location.search).get('token') || '';
+const _isAdmin = !!_token;
+let _data = null, _plan = 'PRO', _dur = 'M';
+
+async function loadPricing() {
+  try {
+    const r = await fetch('/api/pricing');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _data = await r.json();
+    document.getElementById('rateDisp').textContent = fmtNum(_data.creditRate);
+    document.getElementById('rateInput') && (document.getElementById('rateInput').value = _data.creditRate);
+    document.getElementById('loading').style.display = 'none';
+    if (_isAdmin) {
+      document.getElementById('adminBadge').style.display = 'inline';
+      document.getElementById('rateEdit').style.display = 'flex';
+    }
+    renderTable();
+  } catch(e) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('errmsg').style.display = '';
+    document.getElementById('errmsg').textContent = 'Yüklenemedi: ' + e.message;
+  }
+}
+
+function fmtNum(n) { return Number(n).toLocaleString('tr-TR', {minimumFractionDigits:0}); }
+
+function renderTable() {
+  if (!_data) return;
+  document.getElementById('tblWrap').style.display = '';
+  const body = document.getElementById('tblBody');
+  const planData = _data.prices[_plan] || {};
+  const chip = _plan === 'PRO'
+    ? `<span class="tier-chip pro-chip">PRO</span>`
+    : `<span class="tier-chip ent-chip">ENT</span>`;
+
+  body.innerHTML = Object.entries(planData).map(([tier, vals]) => {
+    const info  = _data.tierInfo[tier] || {};
+    const d     = vals[_dur];
+    const limit = info.monthlyLimit ? fmtNum(info.monthlyLimit) + '/ay' : 'Sınırsız';
+    const tlVal = d.credits * _data.creditRate;
+    const creditCell = _isAdmin
+      ? `<div class="edit-cell">
+           <input type="number" id="inp_${_plan}_${tier}_${_dur}" value="${d.credits}" min="0" step="1"
+                  onchange="markDirty('${_plan}','${tier}','${_dur}',this.value)">
+           <button class="save-btn" onclick="saveCredits('${_plan}','${tier}','${_dur}')">Kaydet</button>
+           <span class="saved-dot" id="dot_${_plan}_${tier}_${_dur}">✓</span>
+         </div>`
+      : `<strong style="color:#f0c040">${fmtNum(d.credits)}</strong> kredi`;
+
+    return `<tr>
+      <td>${chip} <strong>${tier}</strong></td>
+      <td style="color:#aaa;font-size:.83rem">${info.label || tier} — ${limit}</td>
+      <td>${creditCell}</td>
+      <td><span class="tl-val" id="tl_${_plan}_${tier}_${_dur}">${fmtNum(tlVal)} ₺</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// Geçici değer tutma (henüz kaydedilmedi)
+const _dirty = {};
+function markDirty(plan, tier, dur, val) {
+  if (!_dirty[plan]) _dirty[plan] = {};
+  if (!_dirty[plan][tier]) _dirty[plan][tier] = {};
+  _dirty[plan][tier][dur] = Number(val);
+  // TL karşılığını anlık güncelle
+  const tl = document.getElementById(`tl_${plan}_${tier}_${dur}`);
+  if (tl) tl.textContent = fmtNum(Number(val) * _data.creditRate) + ' ₺';
+}
+
+async function saveCredits(plan, tier, dur) {
+  const inp = document.getElementById(`inp_${plan}_${tier}_${dur}`);
+  const val = Number(inp.value);
+  if (isNaN(val) || val < 0) { alert('Geçersiz değer'); return; }
+  const body = { plan, tier };
+  body[dur] = val;
+  const r = await fetch('/api/admin/credit-prices', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _token },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) { alert('Kayıt başarısız'); return; }
+  // Lokal veriyi güncelle
+  _data.prices[plan][tier][dur].credits = val;
+  const dot = document.getElementById(`dot_${plan}_${tier}_${dur}`);
+  if (dot) { dot.style.display = 'inline'; setTimeout(() => dot.style.display='none', 2000); }
+}
+
+async function saveRate() {
+  const val = parseFloat(document.getElementById('rateInput').value);
+  if (!val || val <= 0) { alert('Geçerli bir oran giriniz'); return; }
+  const r = await fetch('/api/admin/credit-rate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _token },
+    body: JSON.stringify({ creditRate: val })
+  });
+  if (!r.ok) { alert('Güncelleme başarısız'); return; }
+  _data.creditRate = val;
+  document.getElementById('rateDisp').textContent = fmtNum(val);
+  const msg = document.getElementById('rateMsg');
+  msg.style.display = 'inline';
+  setTimeout(() => { msg.style.display = 'none'; renderTable(); }, 1800);
+}
+
+function switchPlan(p, btn) {
+  _plan = p;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTable();
+}
+
+function switchDur(d, btn) {
+  _dur = d;
+  document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTable();
+}
+
+loadPricing();
+</script>
+</body>
+</html>

@@ -84,6 +84,8 @@ function requireDealerAuth(req, res, next) {
         dealerSessions.delete(token);
         return res.status(401).json({ error: 'Session expired' });
     }
+    // Sliding window: aktif kullanımda oturumu uzat
+    session.expiresAt = Date.now() + 8 * 60 * 60 * 1000;
     req.dealerCode = session.code;
     next();
 }
@@ -487,7 +489,7 @@ router.post('/admin/dealers/:code/reset-password', requireAdminAuth, async (req,
     if (!password) return res.status(400).json({ error: 'password zorunludur' });
 
     const dealer = findDealer(code);
-    if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadÄ±' });
+    if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
 
     const pinHash = await bcrypt.hash(password, 10);
     const updated = updateDealerPasswordHash(code, pinHash);

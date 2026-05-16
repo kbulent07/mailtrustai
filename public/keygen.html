@@ -146,6 +146,7 @@
             <a href="#" onclick="showTab('trusted',event)">🛡️ Güvenilir Domainler</a>
             <a href="#" onclick="showTab('backup',event)">💾 Yedek</a>
             <a href="#" onclick="showTab('audit',event)">Audit Log</a>
+            <a href="#" onclick="openPricing(event)">💰 Fiyatlandırma</a>
             <a href="/">← Uygulamaya Dön</a>
         </div>
         <div id="sessionBadge">
@@ -706,6 +707,13 @@
             } finally {
                 btn.disabled = false; btn.textContent = '🔓 Giriş Yap';
             }
+        }
+
+        function openPricing(e) {
+            e.preventDefault();
+            const token = getToken();
+            if (!token) { alert('Önce giriş yapın.'); return; }
+            window.open('/pricing.html?token=' + encodeURIComponent(token), '_blank');
         }
 
         function doLogout() {

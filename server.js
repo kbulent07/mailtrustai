@@ -11,6 +11,8 @@ const { startBackgroundRefresh } = require('./src/license/remoteValidator');
 const { loadSettings } = require('./src/storage/settingsStore');
 const { checkAndSeedInitialPasswords } = require('./src/services/initialSetupService');
 const customerUserStore = require('./src/storage/customerUserStore');
+const { verifyAdminToken } = require('./src/middleware/adminAuth');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -51,6 +53,15 @@ if (CUSTOMER_ONLY) {
     });
     console.log('[Mode] CUSTOMER_ONLY aktif — keygen/bayi panelleri ve lisans-üretici API\'leri devre dışı.');
 }
+
+// pricing.html yalnızca geçerli admin token ile erişilebilir
+app.get('/pricing.html', (req, res) => {
+    const token = req.query.token || '';
+    if (!verifyAdminToken(token)) {
+        return res.redirect('/keygen.html');
+    }
+    res.sendFile(path.join(__dirname, 'public', 'pricing.html'));
+});
 
 // Security headers
 app.use(helmet({ contentSecurityPolicy: false }));
