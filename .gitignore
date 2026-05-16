@@ -90,3 +90,14 @@ data/*.bin
 
 # Bayi verileri (üretim verisi)
 data/dealers.json
+
+# v2 license-server ve customer encrypted cache (runtime)
+data/license-server.sqlite
+data/license-server.sqlite-shm
+data/license-server.sqlite-wal
+data/central-policy.enc
+data/central-lists.enc
+data/central-api-policy.enc
+data/central-sync-state.enc
+data/license-cache.enc
+data/.local-enc.key
