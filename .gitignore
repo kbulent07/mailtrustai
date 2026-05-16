@@ -101,3 +101,10 @@ data/central-api-policy.enc
 data/central-sync-state.enc
 data/license-cache.enc
 data/.local-enc.key
+
+# Docker temporary/local runtime artifacts
+.docker-config-temp/
+data/mariadb/
+data/license-server/
+apps/customer/data/
+apps/customer/logs/

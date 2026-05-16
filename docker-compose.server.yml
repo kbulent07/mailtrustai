@@ -1,4 +1,3 @@
-version: "3.9"
 
 # Kurucu/satıcı tarafı — license-server + dealer aynı host'ta, ortak network.
 # Müşteri host'una asla deploy edilmez.

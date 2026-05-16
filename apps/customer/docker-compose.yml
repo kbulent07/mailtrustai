@@ -1,4 +1,3 @@
-version: "3.9"
 
 # Müşteri tarafı (self-hosted) — sadece customer uygulaması.
 # Bayi/license-server bu host'a kurulmaz.
