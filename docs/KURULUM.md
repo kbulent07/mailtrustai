@@ -703,7 +703,7 @@ license.sirketiniz.com  ←──── Siz yönetirsiniz
 | Runtime | Node.js 20 LTS |
 | Web Sunucu | Nginx + SSL (Let's Encrypt) |
 | Domain | `license.sirketiniz.com` (veya subdomain) |
-| Veritabanı | JSON dosya (küçük ölçek) → SQLite (orta ölçek) → PostgreSQL (büyük ölçek) |
+| Veritabanı | MariaDB (onerilen) - license/dealer/central policy verileri |
 | Uptime | Kritik değil — 72 saatlik grace period sayesinde geçici kesintiler sorunsuz |
 
 ### 10.3 Lisans Sunucusu Kurulumu
@@ -833,13 +833,13 @@ curl https://license.sirketiniz.com/api/admin/revoked \
 
 ### 10.6 Lisans Sunucusu Geliştirme (İsteğe Bağlı)
 
-Müşteri sayısı arttıkça JSON dosya yerine SQLite kullanabilirsiniz:
+Merkezi lisans sunucusu için varsayilan ve onerilen veritabani MariaDB'dir:
 
 ```bash
-npm install better-sqlite3
+npm install mysql2
 ```
 
-`server.js`'deki `loadRevoked()`/`saveRevoked()` fonksiyonlarını SQLite'a taşıyın.
+Lisans ve central-sync endpoint'lerini `apps/license-server/db.js` uzerinden MariaDB'ye baglayin.
 Ayrıca şu özellikler eklenebilir:
 
 - **Aktivasyon sayısı sınırı** — bir lisans kaç cihazda kullanılabilir
@@ -931,7 +931,7 @@ data/
 ├── daily-scans.json         # Günlük tarama sayaçları
 ├── scan-mailbox-state.json  # Merkezi raporlama kutusu durumu
 ├── auto-monitor-state.json  # IMAP otomatik izleme durumu
-└── msa.db                   # SQLite veritabanı (bayi sistemi)
+└── msa.db                   # Customer local cache/storage (bayi/lisans merkezi DB degil)
 ```
 
 > ⚠️ **Yedekleme:** `data/` klasörünü düzenli olarak yedekleyin.

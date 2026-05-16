@@ -51,7 +51,7 @@ mailtrustai/
 ```
 ┌─────────────────────────────────────────────┐
 │  Aşama 1: builder (node:20-alpine)          │
-│  python3 + make + g++ → better-sqlite3      │
+│  python3 + make + g++ → native npm modülleri│
 │  npm ci --omit=dev                          │
 └──────────────────┬──────────────────────────┘
                    │ COPY node_modules
@@ -566,7 +566,7 @@ $cert = New-SelfSignedCertificate -DnsName "localhost" `
 data/
 ├── credentials.enc          # Şifreli IMAP hesapları
 ├── settings.json            # Tüm uygulama ayarları + API anahtarları
-├── msa.db                   # SQLite: bayi, lisans veritabanı
+├── msa.db                   # Customer local veri cache (merkezi lisans DB degil)
 ├── scan-history.json        # Tarama geçmişi
 └── domain-lists.json        # Güvenilir/engellenen listeler
 ```
@@ -723,7 +723,7 @@ Invoke-RestMethod http://localhost:3000/api/health | ConvertTo-Json
 
 ## 9. Sorun Giderme
 
-### `better-sqlite3` derleme hatası
+### Native module derleme hatasi
 
 **Hata:**
 ```
