@@ -153,7 +153,7 @@ if [[ "$MODE" == "ask" ]]; then
     echo ""
     echo -e "${YELLOW}Aşağıdaki kalıcı veriler silinsin mi? (GERİ ALINAMAZ)${NC}"
     echo "  - $APP_DIR  (uygulama dizini, .env, nginx config, SSL sertif.)"
-    echo "  - Docker volume: mailtrustai_data   (SQLite veritabanı)"
+    echo "  - Docker volume: mailtrustai_data   (customer local veri cache)"
     echo "  - Docker volume: mailtrustai_logs"
     echo "  - Docker imajı: mailtrustai-customer-mailtrustai"
     echo ""

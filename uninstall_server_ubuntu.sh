@@ -246,7 +246,7 @@ if [[ "$MODE" == "ask" ]]; then
     echo ""
     echo -e "${YELLOW}Aşağıdaki kalıcı veriler silinsin mi? (GERİ ALINAMAZ)${NC}"
     echo "  - $APP_DIR  (uygulama dizini, .env, nginx config)"
-    echo "  - Docker volume'lar: mailtrustai_data, mailtrustai_logs (SQLite DB + log)"
+    echo "  - Docker volume'lar: mailtrustai_data, mailtrustai_logs (uygulama verisi + log)"
     echo "  - Docker imajları (mailtrustai-* prefix'li)"
     echo ""
     read -rp "Silinsin mi? [e/H]: " purge_choice
@@ -332,6 +332,6 @@ echo -e "${BOLD}KORUNANLAR:${NC}"
 echo "  - SSH (22/tcp), 80/tcp, 443/tcp UFW kuralları"
 $REMOVE_DOCKER || echo "  - Docker Engine (--remove-docker ile silinebilir)"
 $REMOVE_CERTS  || echo "  - Let's Encrypt sertifikaları (--remove-certs ile silinebilir)"
-[[ "$MODE" == "purge" ]] || echo "  - Uygulama verileri ve SQLite DB ($APP_DIR)"
+[[ "$MODE" == "purge" ]] || echo "  - Uygulama verileri ($APP_DIR) ve merkezi MariaDB volume'u"
 
 echo ""

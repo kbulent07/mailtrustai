@@ -179,7 +179,7 @@ if [[ "$MODE" == "ask" ]]; then
     echo ""
     echo -e "${YELLOW}Aşağıdaki kalıcı veriler silinsin mi? (GERİ ALINAMAZ)${NC}"
     echo "  - $APP_DIR (uygulama dizini, .env, nginx config, SSL sertif.)"
-    echo "  - Docker volume: mailtrustai_data, mailtrustai_logs (SQLite DB)"
+    echo "  - Docker volume: mailtrustai_data, mailtrustai_logs (uygulama verisi + log)"
     echo "  - Docker imajları (mailtrustai-* prefix'li)"
     echo ""
     read -rp "Silinsin mi? [e/H]: " purge_choice

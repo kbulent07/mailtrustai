@@ -250,7 +250,7 @@ step_deploy_files() {
 # ── Adım 5: npm bağımlılıkları ────────────────────────────────────────────────
 step_install_deps() {
     log_step "npm Bağımlılıkları Yükleniyor"
-    log_info "better-sqlite3 native modülü derleniyor — bu birkaç dakika sürebilir..."
+    log_info "Native npm modulleri derleniyor — bu birkaç dakika sürebilir..."
 
     sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && npm install --production --silent"
 

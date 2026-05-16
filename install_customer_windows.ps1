@@ -268,7 +268,7 @@ foreach ($port in @($HttpPort, $HttpsPort)) {
 
 # ── Adim 7: Docker imajini derle ve baslat ─────────────────────────────────
 Write-Step "[7/8] Docker imaji derleniyor ve baslatiliyor"
-Write-Info "Ilk derleme birkac dakika surebilir (better-sqlite3 native build)..."
+Write-Info "Ilk derleme birkac dakika surebilir (native npm build)..."
 
 & docker compose -f $ComposeFile build --pull
 if ($LASTEXITCODE -ne 0) { Write-Err "docker compose build basarisiz."; exit 1 }

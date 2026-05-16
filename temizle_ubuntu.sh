@@ -6,7 +6,7 @@
 #  ╔══════════════════════════════════════════════════════════════════════════╗
 #  ║  DİKKAT: Bu script MailTrustAI'a ait TÜM verileri siler ve geri alınamaz.║
 #  ║  • Konteynerler, volume'lar, imajlar                                     ║
-#  ║  • /opt/mailtrustai dizini (kod, .env, SSL sertifikaları, SQLite DB)     ║
+#  ║  • /opt/mailtrustai dizini (kod, .env, SSL sertifikalari, uygulama verisi)║
 #  ║  • systemd servisleri (mailtrustai*.service)                             ║
 #  ║  • Host nginx site config'leri (mailtrustai*)                            ║
 #  ║  • Let's Encrypt sertifikaları + renewal hook'ları                       ║
@@ -116,9 +116,9 @@ echo -e "${NC}"
 # ── Tek seferlik onay ────────────────────────────────────────────────────────
 if ! $FORCE; then
     echo -e "${YELLOW}Aşağıdaki kalıcı verileri silmek üzeresiniz:${NC}"
-    echo "  • $APP_DIR (kod, .env, SQLite DB, SSL sertif.)"
+    echo "  • $APP_DIR (kod, .env, uygulama verisi, SSL sertif.)"
     echo "  • Docker konteynerleri: ${CONTAINER_NAMES[*]}"
-    echo "  • Docker volume'ları (SQLite veritabanı + loglar dahil)"
+    echo "  • Docker volume'lari (uygulama verisi + loglar dahil)"
     echo "  • Docker imajları (mailtrustai-* prefix'li)"
     echo "  • systemd servisleri (${SERVICE_NAMES[*]})"
     echo "  • Host nginx site config'leri (${NGINX_SITES[*]})"

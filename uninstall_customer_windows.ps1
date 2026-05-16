@@ -133,7 +133,7 @@ if (-not $doPurge -and -not $Keep.IsPresent) {
     Write-Host ""
     Write-Host "Asagidaki kalici veriler silinsin mi? (GERI ALINAMAZ)" -ForegroundColor Yellow
     Write-Host "  - $InstallDir  (.env, nginx config, SSL sertif.)"
-    Write-Host "  - Docker volume: mailtrustai_data, mailtrustai_logs  (SQLite DB)"
+    Write-Host "  - Docker volume: mailtrustai_data, mailtrustai_logs  (customer local veri + log)"
     Write-Host "  - Docker imajlari (mailtrustai-* prefix'li)"
     Write-Host ""
     $purgeChoice = Read-Host "Silinsin mi? [e/H]"

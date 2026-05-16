@@ -440,7 +440,7 @@ log_ok "systemd servisi etkin: ${SERVICE_NAME}.service"
 
 # ── 8) Docker imajı + servis başlatma ────────────────────────────────────────
 log_step "[8/9] Docker imajı derleniyor ve başlatılıyor"
-log_info "İlk derleme birkaç dakika sürebilir (better-sqlite3 native build)…"
+log_info "Ilk derleme birkac dakika surebilir (native npm build)…"
 docker compose -f "$COMPOSE_FILE" build --pull
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 log_ok "Servis çalışıyor."

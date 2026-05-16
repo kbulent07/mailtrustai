@@ -112,9 +112,9 @@ if (-not (Test-Admin)) {
 # ----- Tek seferlik onay -----
 if (-not $Force) {
     Write-Host "Asagidaki kalici verileri silmek uzeresiniz:" -ForegroundColor Yellow
-    Write-Host "  * $InstallDir (kod, .env, SQLite DB, SSL sertif.)"
+    Write-Host "  * $InstallDir (kod, .env, uygulama verisi, SSL sertif.)"
     Write-Host "  * Docker konteynerleri: $($ContainerNames -join ', ')"
-    Write-Host "  * Docker volume'lari (SQLite DB + loglar)"
+    Write-Host "  * Docker volume'lari (uygulama verisi + loglar)"
     Write-Host "  * Docker imajlari (mailtrustai-* prefix'li)"
     Write-Host "  * Windows Firewall kurallari ($($UfwPorts -join ', '))"
     Write-Host "  * Scheduled Tasks (varsa)"
