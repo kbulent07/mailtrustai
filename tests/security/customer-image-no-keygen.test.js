@@ -58,6 +58,7 @@ test('temizlenmiş staging\'de check-customer-package PASS döner', () => {
     rm('src/utils/dealerLock.js');
     rm('public/bayi.html');
     rm('public/keygen.html');
+    rm('public/js/bayi-app.js');
 
     const r = runCheck(stage);
     assert.strictEqual(r.status, 0, `temizlenmiş stage'de PASS olmalı; çıktı:\n${r.stdout}\n${r.stderr}`);

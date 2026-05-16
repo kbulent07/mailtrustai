@@ -41,8 +41,8 @@ RUN rm -f \
         src/middleware/adminAuth.js \
         src/utils/dealerLock.js
 
-# 4) public/ içinden bayi ve keygen sayfalarını sil
-RUN rm -f public/bayi.html public/keygen.html
+# 4) public/ içinden bayi ve keygen sayfalarını + bayi-app.js'i sil
+RUN rm -f public/bayi.html public/keygen.html public/js/bayi-app.js
 
 # 5) Bağımlılıklar
 RUN npm install --omit=dev --no-audit --no-fund

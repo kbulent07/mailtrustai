@@ -1,6 +1,8 @@
 'use strict';
-// Customer-side store'lar mevcut src/storage/ altında kalmaya devam eder.
-// Bu paket re-export sağlar; gelecekte taşıma için sabit bir API yüzeyi.
+// Customer-side store'lar mevcut src/storage/ altında durur.
+// Bu paket re-export sağlar; dealer-only store'lar (dealerStore, dealerCustomerStore,
+// dealerSales, resellerStore, issuedLicenseStore, creditTransactionStore)
+// customer Dockerfile tarafından SİLİNİR — bu yüzden burada import edilmez.
 const path = require('path');
 const SRC = path.resolve(__dirname, '..', '..', 'src', 'storage');
 
@@ -21,4 +23,7 @@ module.exports = {
     patternStore:      require(path.join(SRC, 'patternStore')),
     trustedDomainStore:require(path.join(SRC, 'trustedDomainStore')),
     vtCacheStore:      require(path.join(SRC, 'vtCacheStore'))
+    // dealer-only store'lar (Dockerfile siler):
+    //   dealerStore, dealerCustomerStore, dealerSales,
+    //   resellerStore, issuedLicenseStore, creditTransactionStore
 };

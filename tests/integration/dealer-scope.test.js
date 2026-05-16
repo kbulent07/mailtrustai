@@ -14,6 +14,8 @@ const express = require('express');
 const http = require('http');
 
 test("/api/central/dealers/:id/customers/status sadece o bayinin müşterilerini döner", async () => {
+    db.prepare('INSERT OR IGNORE INTO dealers(id,name,email,created_at) VALUES(?,?,?,?)').run('dlr-1','D1','d1@x',Date.now());
+    db.prepare('INSERT OR IGNORE INTO dealers(id,name,email,created_at) VALUES(?,?,?,?)').run('dlr-2','D2','d2@x',Date.now());
     db.prepare('INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)').run('cA','dlr-1','A','a@a',Date.now());
     db.prepare('INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)').run('cB','dlr-2','B','b@b',Date.now());
     const app = express();

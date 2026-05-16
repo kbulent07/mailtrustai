@@ -46,6 +46,7 @@ test('license activate → validate → heartbeat → bootstrap → pull akış�
     try {
         // create license (direkt DB)
         const { key, keyHash } = generateLicenseKey({ customerId: 'cust1', dealerId: 'dlr1', plan: 'pro' });
+        db.prepare('INSERT OR IGNORE INTO dealers(id,name,email,created_at) VALUES(?,?,?,?)').run('dlr1', 'Test Dealer', 'd@d', Date.now());
         db.prepare('INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)').run('cust1', 'dlr1', 'ACME', 'a@b', Date.now());
         db.prepare(`INSERT INTO licenses(id,customer_id,dealer_id,license_key_hash,license_key_masked,plan,tier,status,issued_at,expires_at,grace_days,features_json,limits_json)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)

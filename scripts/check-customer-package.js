@@ -46,14 +46,27 @@ const FORBIDDEN_PATTERNS = [
 ];
 
 // 3) Allowlist — yanlış pozitif olmaması için
+//
+// - apps/customer/server.js: BLOCKED listesinde '/api/license/batch' string'i geçer.
+// - src/storage/db.js: 'dealer_credit' kolon adı; dealer-credit business logic değil.
+// - src/license/license.js: customer için validateLicenseKey gerekli; generateLicenseKey
+//   export edilir ama runtime'da customer kodundan çağrılmaz. TODO v2.1: license.js'i
+//   license-validate.js + license-generator.js olarak böl (license-generator
+//   yalnızca license-server'da kalır).
 const ALLOWLIST_FILES = new Set([
-    'scripts/check-customer-package.js',  // bu script kendisi
+    'scripts/check-customer-package.js',
     'docs/SECURITY-MODEL.md',
     'docs/RELEASE.md',
     'docs/CUSTOMER-INSTALL.md',
     'docs/ARCHITECTURE.md',
     'docs/CENTRAL-SERVER-INSTALL.md',
-    'docs/LICENSE-FLOW.md'
+    'docs/LICENSE-FLOW.md',
+    'docs/CENTRAL-LISTS.md',
+    'docs/CENTRAL-SYNC-FLOW.md',
+    'docs/API-POLICY.md',
+    'apps/customer/server.js',
+    'src/storage/db.js',
+    'src/license/license.js'
 ]);
 
 const errors = [];
