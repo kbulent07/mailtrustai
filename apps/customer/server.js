@@ -74,6 +74,13 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+function healthPayload() {
+    return { ok: true, service: 'customer', time: Date.now(), version: APP.VERSION };
+}
+app.get('/healthz', (req, res) => res.json(healthPayload()));
+app.get('/health', (req, res) => res.json(healthPayload()));
+app.get('/api/health', (req, res) => res.json(healthPayload()));
+
 app.use((req, res, next) => {
     const url = req.path || req.url || '';
     const isStaticAsset = /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|map)$/i.test(url);

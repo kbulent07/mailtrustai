@@ -20,7 +20,12 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-app.get('/healthz', (req, res) => res.json({ ok: true, service: 'license-server', time: Date.now() }));
+function healthPayload() {
+    return { ok: true, service: 'license-server', time: Date.now() };
+}
+app.get('/healthz', (req, res) => res.json(healthPayload()));
+app.get('/health', (req, res) => res.json(healthPayload()));
+app.get('/api/health', (req, res) => res.json(healthPayload()));
 
 const adminSecret = env('DEALER_API_SECRET') || env('TOKEN_SECRET') || 'CHANGE_ME';
 const publicPrefixes = ['/api/customer-sync/', '/api/license/activate', '/api/license/validate', '/api/license/heartbeat', '/api/dealer/auth/', '/healthz'];

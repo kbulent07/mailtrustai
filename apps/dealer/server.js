@@ -39,7 +39,12 @@ function requireDealer(req, res, next) {
 }
 
 // Health
-app.get('/healthz', (req, res) => res.json({ ok: true, service: 'dealer' }));
+function healthPayload() {
+    return { ok: true, service: 'dealer', time: Date.now() };
+}
+app.get('/healthz', (req, res) => res.json(healthPayload()));
+app.get('/health', (req, res) => res.json(healthPayload()));
+app.get('/api/health', (req, res) => res.json(healthPayload()));
 
 // Login — license-server'daki dealers tablosuna karşı bcrypt doğrulama.
 // MSA_DEALER_AUTH_MODE=demo + DEALER_DEMO_USER/PASS env'leri ile demo modu açılabilir.
