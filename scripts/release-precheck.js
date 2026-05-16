@@ -11,14 +11,18 @@ const args = new Set(process.argv.slice(2));
 const skipSmoke = args.has('--skip-smoke');
 const onlyTests = args.has('--only-tests');
 const skipImageGate = args.has('--skip-image-gate');
+const jsonMode = args.has('--json');
+const result = { ok: false, steps: [], modes: { onlyTests, skipSmoke, skipImageGate } };
 function runStep(name, command, args) {
     console.log(`\n[precheck] ${name} -> ${command} ${args.join(' ')}`);
+    const startedAt = Date.now();
     const res = spawnSync(command, args, {
         cwd: root,
         stdio: 'inherit',
         shell: false,
         env: process.env
     });
+    result.steps.push({ name, command, args, status: res.status, signal: res.signal || null, durationMs: Date.now() - startedAt });
     if (res.error) {
         throw new Error(`${name} failed to start: ${res.error.message}`);
     }
@@ -75,11 +79,20 @@ function runCustomerImageGate() {
     for (const rel of prune) rmSafe(stage, rel);
 
     console.log(`\n[precheck] customer package image gate -> staged tree ${stage}`);
+    const startedAt = Date.now();
     const res = spawnSync('node', ['scripts/check-customer-package.js'], {
         cwd: stage,
         stdio: 'inherit',
         shell: false,
         env: process.env
+    });
+    result.steps.push({
+        name: 'customer package image gate',
+        command: 'node',
+        args: ['scripts/check-customer-package.js'],
+        status: res.status,
+        signal: res.signal || null,
+        durationMs: Date.now() - startedAt
     });
     rmSafe(stage, '.');
     if (res.status !== 0) throw new Error(`customer package image gate failed with exit code ${res.status}`);
@@ -101,6 +114,9 @@ function main() {
     if (onlyTests) {
         const sec = ((Date.now() - start) / 1000).toFixed(1);
         console.log(`\n[precheck] SUCCESS tests-only (${sec}s)`);
+        result.ok = true;
+        result.durationMs = Date.now() - start;
+        if (jsonMode) console.log(JSON.stringify(result));
         return;
     }
 
@@ -122,6 +138,16 @@ function main() {
 
     const sec = ((Date.now() - start) / 1000).toFixed(1);
     console.log(`\n[precheck] SUCCESS (${sec}s)`);
+    result.ok = true;
+    result.durationMs = Date.now() - start;
+    if (jsonMode) console.log(JSON.stringify(result));
 }
 
-main();
+try {
+    main();
+} catch (err) {
+    result.ok = false;
+    result.error = err.message;
+    if (jsonMode) console.log(JSON.stringify(result));
+    throw err;
+}
