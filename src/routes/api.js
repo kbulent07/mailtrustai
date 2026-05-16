@@ -51,7 +51,6 @@ const ADMIN_ONLY_PREFIXES = [
     '/admin/trusted-domains',
     '/admin/fp-suggestions',
     '/customer-users',
-    '/resellers',
     '/license/generate',
     '/license/batch',
     '/license/trial',
@@ -170,7 +169,6 @@ router.use(require('../interfaces/http/routes/lists.routes'));
 router.use(require('../interfaces/http/routes/threatIntel.routes'));
 router.use(require('../interfaces/http/routes/settings.routes'));
 router.use(require('../interfaces/http/routes/stats.routes'));
-router.use(require('../interfaces/http/routes/resellers.routes'));
 
 // ─── Başlangıç IIFE'leri ─────────────────────────────────
 (function initScanMailboxes() {
