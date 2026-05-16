@@ -7,6 +7,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 
 const root = process.cwd();
+const args = new Set(process.argv.slice(2));
+const skipSmoke = args.has('--skip-smoke');
+const onlyTests = args.has('--only-tests');
 function runStep(name, command, args) {
     console.log(`\n[precheck] ${name} -> ${command} ${args.join(' ')}`);
     const res = spawnSync(command, args, {
@@ -84,6 +87,8 @@ function runCustomerImageGate() {
 function main() {
     const start = Date.now();
     console.log('[precheck] release precheck basladi');
+    if (onlyTests) console.log('[precheck] mode: --only-tests');
+    if (skipSmoke) console.log('[precheck] mode: --skip-smoke');
 
     runStep(
         'integration+security tests',
@@ -91,13 +96,23 @@ function main() {
         ['--test', 'tests/unit/*.test.js', 'tests/integration/*.test.js', 'tests/security/*.test.js']
     );
 
+    if (onlyTests) {
+        const sec = ((Date.now() - start) / 1000).toFixed(1);
+        console.log(`\n[precheck] SUCCESS tests-only (${sec}s)`);
+        return;
+    }
+
     runCustomerImageGate();
 
-    runStep(
-        'central flow smoke',
-        'node',
-        ['scripts/smoke-central-flow.js']
-    );
+    if (!skipSmoke) {
+        runStep(
+            'central flow smoke',
+            'node',
+            ['scripts/smoke-central-flow.js']
+        );
+    } else {
+        console.log('\n[precheck] central flow smoke adimi atlandi (--skip-smoke)');
+    }
 
     const sec = ((Date.now() - start) / 1000).toFixed(1);
     console.log(`\n[precheck] SUCCESS (${sec}s)`);
