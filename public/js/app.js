@@ -3705,7 +3705,7 @@ async function loadDiskUsage() {
                     <div style="font-size:16px;font-weight:700;color:#cbd5e1">${esc(_fmtBytes(d.dataDir))}</div>
                 </div>
                 <div>
-                    <div style="font-size:11px;color:var(--text-secondary)">🗄️ SQLite DB</div>
+                    <div style="font-size:11px;color:var(--text-secondary)">🗄️ Local Data Store</div>
                     <div style="font-size:16px;font-weight:700;color:#cbd5e1">${esc(_fmtBytes(d.dbFile))}</div>
                 </div>
                 <div>
