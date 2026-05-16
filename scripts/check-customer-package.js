@@ -1,19 +1,13 @@
 #!/usr/bin/env node
 'use strict';
-/**
- * Customer paketinde olmaması gereken dosya ve kelimeleri tarar.
- * - Dockerfile build adımının sonunda çalıştırılır → build başarısız olur.
- * - npm run check:customer-package ile lokal repoda da çalıştırılabilir
- *   (lokal repoda yasak dosyalar VARDIR; --scope=image flag'i ile sadece
- *   image içeriğini taramaya zorlayın veya FORBIDDEN_PATHS'i ayarlayın).
- */
+
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = process.cwd();
+const SCOPE_IMAGE = process.argv.includes('--scope=image');
 
-// 1) Fiziksel olarak BULUNMAMASI gereken dosya ve klasörler
-const FORBIDDEN_PATHS = [
+const FORBIDDEN_PATHS_IMAGE = [
     'apps/dealer',
     'apps/license-server',
     'packages/license-core',
@@ -34,25 +28,16 @@ const FORBIDDEN_PATHS = [
     'public/bayi.html'
 ];
 
-// 2) İçerikte aranan yasak desenler (taranan dizinler)
 const SCAN_DIRS = ['apps/customer', 'packages', 'src', 'public'];
 const FORBIDDEN_PATTERNS = [
-    { rx: /generateLicenseKey\s*\(/, msg: 'license key generator çağrısı' },
-    { rx: /signActivation\s*\(/,     msg: 'lisans imzalama (license-core) çağrısı' },
-    { rx: /batch.{0,12}license/i,    msg: 'batch license' },
-    { rx: /trial.{0,12}license/i,    msg: 'trial license' },
-    { rx: /dealer.{0,8}credit/i,     msg: 'dealer credit' },
-    { rx: /customer\s*list\s*admin/i,msg: 'customer list admin' }
+    { rx: /generateLicenseKey\s*\(/, msg: 'license generate' },
+    { rx: /signActivation\s*\(/, msg: 'license sign' },
+    { rx: /batch.{0,12}license/i, msg: 'batch license' },
+    { rx: /trial.{0,12}license/i, msg: 'trial license' },
+    { rx: /dealer.{0,8}credit/i, msg: 'dealer credit' },
+    { rx: /customer\s*list\s*admin/i, msg: 'customer list admin' }
 ];
 
-// 3) Allowlist — yanlış pozitif olmaması için
-//
-// - apps/customer/server.js: BLOCKED listesinde '/api/license/batch' string'i geçer.
-// - src/storage/db.js: 'dealer_credit' kolon adı; dealer-credit business logic değil.
-// - src/license/license.js: customer için validateLicenseKey gerekli; generateLicenseKey
-//   export edilir ama runtime'da customer kodundan çağrılmaz. TODO v2.1: license.js'i
-//   license-validate.js + license-generator.js olarak böl (license-generator
-//   yalnızca license-server'da kalır).
 const ALLOWLIST_FILES = new Set([
     'scripts/check-customer-package.js',
     'docs/SECURITY-MODEL.md',
@@ -67,21 +52,19 @@ const ALLOWLIST_FILES = new Set([
     'apps/customer/server.js',
     'src/storage/db.js',
     'src/license/license.js',
-    // Customer panel için validate/activate/deactivate/usage/fingerprint
-    // route'ları gerekli. Admin-only route'lar (generate/trial/revoke vb.)
-    // runtime'da HARD-GATE ile 404 döner. TODO v2.1: dosyayı ikiye böl.
     'src/interfaces/http/routes/license.routes.js'
 ]);
 
 const errors = [];
 
-// Faz 1: yasak path'ler
-for (const p of FORBIDDEN_PATHS) {
-    const abs = path.join(ROOT, p);
-    if (fs.existsSync(abs)) errors.push(`[FORBIDDEN-PATH] ${p} customer image içinde olmamalı`);
+if (SCOPE_IMAGE) {
+    for (const rel of FORBIDDEN_PATHS_IMAGE) {
+        if (fs.existsSync(path.join(ROOT, rel))) {
+            errors.push(`[FORBIDDEN-PATH] ${rel} customer image icinde olmamali`);
+        }
+    }
 }
 
-// Faz 2: içerik tarama
 function walk(dir, out = []) {
     if (!fs.existsSync(dir)) return out;
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -108,9 +91,10 @@ for (const d of SCAN_DIRS) {
 }
 
 if (errors.length) {
-    console.error('\nCUSTOMER PACKAGE GÜVENLİK KONTROLÜ BAŞARISIZ:\n');
-    for (const e of errors) console.error('  ✗', e);
-    console.error(`\n${errors.length} ihlal bulundu. Build durdurulmalı.\n`);
+    console.error('\nCUSTOMER PACKAGE GUVENLIK KONTROLU BASARISIZ:\n');
+    for (const e of errors) console.error(`  - ${e}`);
+    console.error(`\n${errors.length} ihlal bulundu.\n`);
     process.exit(1);
 }
-console.log('✓ Customer package güvenlik kontrolü başarılı (yasak dosya/desen yok).');
+
+console.log(`OK: Customer package guvenlik kontrolu basarili (${SCOPE_IMAGE ? 'scope=image' : 'scope=repo'}).`);

@@ -53,7 +53,7 @@ RUN rm -f public/bayi.html public/keygen.html public/js/bayi-app.js
 RUN npm_config_nodedir=/usr/local npm rebuild better-sqlite3 --build-from-source --no-audit --no-fund
 
 # 6) Yasak içerik kontrolü — image'a girmeden önce taranır.
-RUN node scripts/check-customer-package.js
+RUN node scripts/check-customer-package.js --scope=image
 
 # ---------- Runtime image ----------
 FROM node:22-bookworm-slim
