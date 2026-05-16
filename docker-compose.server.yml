@@ -1,6 +1,5 @@
-
-# Kurucu/satıcı tarafı — license-server + dealer aynı host'ta, ortak network.
-# Müşteri host'una asla deploy edilmez.
+# Kurucu/satici tarafi - license-server + dealer ayni host'ta, ortak network.
+# Musteri host'una asla deploy edilmez.
 
 networks:
   msa-internal:
@@ -41,6 +40,7 @@ services:
       NODE_ENV: production
       DATA_DIR: /app/data
       LICENSE_DB_CLIENT: mariadb
+      LICENSE_DB_PATH: /app/data/license-server.sqlite
       MARIADB_HOST: mariadb
       MARIADB_PORT: 3306
     ports:
