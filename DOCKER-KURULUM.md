@@ -46,6 +46,7 @@ MailTrustAI 3 ayrı bileşene sahiptir ve **ÜRETİMDE iki farklı host'a kurulu
    - 2.2 [Secret Üretimi (.env.docker)](#22-secret-üretimi)
    - 2.3 [Stack'i Başlatma](#23-stacki-başlatma)
    - 2.4 [İlk Bayi Oluşturma](#24-i̇lk-bayi-oluşturma)
+   - 2.4a [Admin Paneli (Merkezi Yönetim)](#24a-admin-paneli-merkezi-yönetim)
    - 2.5 [TLS / Reverse Proxy](#25-tls--reverse-proxy)
 3. [Müşteri Kurulumu (Customer host)](#3-müşteri-kurulumu)
    - 3.1 [Lisans Anahtarı Edinme](#31-lisans-anahtarı-edinme)
@@ -114,10 +115,11 @@ cp .env.docker.example .env.docker
 
 # Secret değerlerini üret (Linux/macOS)
 echo "LICENSE_SIGNING_SECRET=$(openssl rand -hex 32)" >> .env.docker
-echo "DEALER_API_SECRET=$(openssl rand -hex 32)"     >> .env.docker
-echo "DEALER_SESSION_SECRET=$(openssl rand -hex 32)" >> .env.docker
-echo "MARIADB_PASSWORD=$(openssl rand -hex 24)"      >> .env.docker
-echo "MARIADB_ROOT_PASSWORD=$(openssl rand -hex 24)" >> .env.docker
+echo "DEALER_API_SECRET=$(openssl rand -hex 32)"      >> .env.docker
+echo "DEALER_SESSION_SECRET=$(openssl rand -hex 32)"  >> .env.docker
+echo "ADMIN_PANEL_TOKEN=$(openssl rand -hex 32)"      >> .env.docker
+echo "MARIADB_PASSWORD=$(openssl rand -hex 24)"       >> .env.docker
+echo "MARIADB_ROOT_PASSWORD=$(openssl rand -hex 24)"  >> .env.docker
 # Sonra .env.docker'ı düzenle, alternatif olarak sadece üretilenleri tutmak için
 # eski örnek satırları sil.
 ```
@@ -129,6 +131,7 @@ function rand32 { [Convert]::ToHexString([System.Security.Cryptography.RandomNum
 LICENSE_SIGNING_SECRET=$(rand32)
 DEALER_API_SECRET=$(rand32)
 DEALER_SESSION_SECRET=$(rand32)
+ADMIN_PANEL_TOKEN=$(rand32)
 MARIADB_PASSWORD=$(rand32)
 MARIADB_ROOT_PASSWORD=$(rand32)
 "@ | Out-File -Encoding utf8 .env.docker.secrets
@@ -136,6 +139,8 @@ MARIADB_ROOT_PASSWORD=$(rand32)
 ```
 
 > 🔒 **VAULT KURALI:** `LICENSE_SIGNING_SECRET` bir kez üretilir, **asla değiştirilmez** (mevcut lisansların imzaları bozulur). Bu değeri parola yöneticisinde / vault'ta saklayın.
+>
+> 🔒 **`ADMIN_PANEL_TOKEN`** — Merkezi yönetim paneline (`/admin`) giriş için kullanılan bearer token. Sadece size ait olmalı; bayilere verilmez. Üretimde **IP kısıtlaması** ile birlikte kullanın (bkz. §2.5).
 
 ### 2.3 Stack'i Başlatma
 
@@ -160,7 +165,7 @@ curl http://localhost:3100/healthz
 
 ### 2.4 İlk Bayi Oluşturma
 
-Bayi (kendi satış kanalınız) hesabı CLI ile oluşturulur:
+**İlk bayi** CLI ile oluşturulur (admin paneli henüz erişilebilir değilken):
 
 ```bash
 # Bayi kaydı oluştur (container içinde)
@@ -179,6 +184,30 @@ docker exec mailtrustai-license-server \
 ```
 
 Bayi panel'e giriş: `http://<sunucu>:3100` — kullanıcı `bayi-01`, parola yukarıdaki.
+
+**Sonraki bayiler** Admin Panelden de oluşturulabilir (bkz. §2.4a).
+
+### 2.4a Admin Paneli (Merkezi Yönetim)
+
+Admin paneli, license-server'ın `/admin` path'inde barındırılır:
+
+```
+http(s)://license.mailtrustai.com/admin
+```
+
+Giriş: `.env.docker`'da tanımladığınız `ADMIN_PANEL_TOKEN` değeri.
+
+Panel sekmeleri:
+
+| Sekme | İçerik |
+|-------|--------|
+| 📊 Özet | Toplam bayi, lisans, müşteri, aktif lisans sayıları |
+| 🏪 Bayiler | Bayi listesi, yeni bayi ekle, parola değiştir, sil |
+| 🔑 Lisans Üret | Seçili bayi için müşteri + lisans oluştur, key kopyala |
+| ⚙️ Yönet | Tüm lisanslar — filtrele, iptal et, yenile, etiketle, grace override |
+| 📜 Audit Log | Tüm sistem olayları (actor/action/target) |
+
+> ⚠️ **ÜRETİMDE:** Admin paneline mutlaka IP kısıtlaması uygulayın. Proxy konfigürasyonunuzda `allow <ofis/VPN IP>` satırını ekleyin (bkz. §2.5).
 
 ### 2.5 TLS / Reverse Proxy
 
@@ -203,6 +232,11 @@ sudo systemctl reload caddy
 
 Caddy otomatik Let's Encrypt sertifika alır, yeniler. Detay: `deploy/Caddyfile.example`.
 
+> 🔐 **Admin panel IP kısıtlaması (Caddyfile):** `Caddyfile.example` içindeki `@notTrusted` bloğuna ofis/VPN IP'nizi ekleyin:
+> ```
+> not remote_ip 127.0.0.1/8 ::1 203.0.113.10/32   # ← kendi IP'niz
+> ```
+
 #### Nginx (manuel SSL)
 
 ```bash
@@ -212,6 +246,16 @@ sudo ln -s /etc/nginx/sites-available/mailtrustai /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d license.mailtrustai.com -d bayi.mailtrustai.com
 ```
+
+> 🔐 **Admin panel IP kısıtlaması (nginx):** `nginx-server.conf.example` içindeki `/admin` location bloğuna ofis/VPN IP'nizi ekleyin:
+> ```nginx
+> location /admin {
+>     allow 203.0.113.10;   # ← kendi ofis/VPN IP'niz
+>     allow 127.0.0.1;
+>     deny  all;
+>     ...
+> }
+> ```
 
 #### Firewall (UFW)
 
@@ -233,9 +277,21 @@ sudo ufw enable
 
 Bayi paneline gir (sunucudaki `bayi.mailtrustai.com`), müşteri için lisans oluştur:
 
-1. **Yeni Müşteri** → `customerId`, `companyName`, `plan` (`demo` / `pro` / `enterprise`)
-2. Sistem `MTAI-PRO-XXXX-XXXX` formatında bir **license key** üretir
-3. Bu key müşteriye verilir (e-posta, parola yöneticisi, vs.)
+Bayi paneli 5 sekmeden oluşur:
+
+| Sekme | İşlev |
+|-------|-------|
+| 📊 Özet | Toplam / aktif / süresi dolmuş / online müşteri sayıları + son müşteriler |
+| 👤 Müşteriler | Müşteri listesi, durum filtresi, lisans uzat / iptal et |
+| 🔑 Lisans Üret | Yeni müşteri kaydı + lisans oluştur → key panoya kopyala |
+| ⚙️ Lisans Yönet | Tüm lisanslar — sorgula, uzat, iptal et |
+| 📜 Log | Son sistem olayları (bayi kapsamı) |
+
+**Lisans oluşturma adımları (Lisans Üret sekmesi):**
+
+1. `customerId` (benzersiz), `Şirket Adı`, `E-posta`, `Plan` (`demo` / `pro` / `enterprise`), `Geçerlilik (gün)` gir
+2. **Oluştur** → Sistem `MTAI-PRO-XXXX-XXXX` formatında bir **license key** üretir
+3. 📋 ile kopyala → müşteriye ilet (e-posta, parola yöneticisi, vs.)
 
 ### 3.2 Müşteri Stack'i
 
@@ -431,6 +487,10 @@ docker compose -f docker-compose.server.yml --env-file .env.docker down -v
 | dealer panel `gecersiz kimlik` | Yanlış parola | CLI ile yeni parola: `bootstrap.js set-dealer-password ...` |
 | Customer log'unda `central /api... 401` | `MSA_LICENSE_REMOTE_URL` yanlış | URL'i ve `MSA_LICENSE_KEY`'i kontrol et |
 | `bootstrap.js: dealer bulunamadı` | Dealer henüz oluşturulmamış | Önce `create-dealer` çalıştır |
+| Admin panel `401 Yetkisiz` | `ADMIN_PANEL_TOKEN` boş ya da hatalı | `.env.docker`'da `ADMIN_PANEL_TOKEN=` değeri doldu mu? Restart gerekir |
+| Admin panel `403 Erişim reddedildi` | IP kısıtlaması devreye girdi | Caddy/nginx proxy config'e ofis/VPN IP'nizi ekleyin (bkz. §2.5) |
+| Bayi paneli "Uzat/İptal" çalışmıyor | `licenseId` null dönüyor | Müşteri lisansı yok ya da `active` değil — Admin panelinden kontrol et |
+| Bayi Log sekmesi boş | `audit_log` tablosu henüz dolu değil | Herhangi bir işlem yapılınca dolmaya başlar (ilk girişten itibaren) |
 
 ### Tanı Komutları
 ```bash
@@ -566,6 +626,8 @@ npm run test:docker:rebuild  # --no-cache build + run
 
 ---
 
-> 💡 **Hızlı Başlangıç (Sunucu):** `cp .env.docker.example .env.docker` → secret'ları üret → `npm run up:server` → `bootstrap.js create-dealer` → bayi panele gir.
+> 💡 **Hızlı Başlangıç (Sunucu):** `cp .env.docker.example .env.docker` → 5 secret üret (LICENSE_SIGNING_SECRET, DEALER_API_SECRET, DEALER_SESSION_SECRET, **ADMIN_PANEL_TOKEN**, MARIADB_PASSWORD) → `npm run up:server` → `bootstrap.js create-dealer` → bayi panele gir (`http://<sunucu>:3100`).
+>
+> 💡 **Admin Paneli:** `http(s)://license.mailtrustai.com/admin` — `ADMIN_PANEL_TOKEN` ile giriş. Yeni bayi ekleme, lisans yönetimi, audit log.
 >
 > 💡 **Hızlı Başlangıç (Müşteri):** bayiden lisans key'i al → `cp .env.docker.example .env.docker` → `MSA_LICENSE_KEY` + `MSA_LICENSE_REMOTE_URL` doldur → `npm run up:customer`.
