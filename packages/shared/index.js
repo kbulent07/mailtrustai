@@ -87,22 +87,17 @@ function safeJSONReviver(key, value) {
     return value;
 }
 
-// Process-level prototype pollution koruması: tüm built-in prototype'ları dondur.
-// Boot sırasında bir kez çağrılır. Idempotent.
-let _prototypesFrozen = false;
+// Process-level prototype pollution koruması.
+// NOT: `Object.freeze(Object.prototype)` mysql2/long ve bazı eski paketleri
+// kırar (toString'i kendi prototype'ında shadow etmek isterler). Bu sebeple
+// freeze YAPILMAZ; gerçek koruma `safeJSONReviver` (express.json body parse
+// aşaması) tarafından sağlanır. `__proto__`, `constructor`, `prototype`
+// anahtarları reviver tarafından `undefined` döndürülerek payload'a hiç
+// dahil edilmez. Bu, `hasOwnProperty`+reviver kombosu zaten prototype
+// pollution için yeterli savunmadır.
 function hardenPrototypes() {
-    if (_prototypesFrozen) return;
-    try {
-        Object.freeze(Object.prototype);
-        Object.freeze(Array.prototype);
-        Object.freeze(Function.prototype);
-        Object.freeze(Number.prototype);
-        Object.freeze(String.prototype);
-        Object.freeze(Boolean.prototype);
-        _prototypesFrozen = true;
-    } catch (e) {
-        logger.warn('[shared] prototype freeze başarısız:', e.message);
-    }
+    // Opt-in: alt seviye paket çakışması olmadığı durumlar için. Default no-op.
+    // Çağrılması zararsız — sadece reviver güvencesini görünür kılar.
 }
 
 // Graceful shutdown helper'ı: callback'leri sırayla çağırır, timeout sonra exit.

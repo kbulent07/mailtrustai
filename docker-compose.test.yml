@@ -1,0 +1,43 @@
+# ============================================================
+# MailTrustAI — TEST runner stack.
+# Tüm testleri Docker içinde çalıştırır. SQLite ile (hızlı, ephemeral).
+# MariaDB testi için ayrı bir override eklenebilir.
+#
+# Kullanım:
+#   docker compose -f docker-compose.test.yml build test
+#   docker compose -f docker-compose.test.yml run --rm test
+#   # Belirli bir dosya:
+#   docker compose -f docker-compose.test.yml run --rm test \
+#       node --test tests/security/hardening.test.js
+# ============================================================
+
+name: mailtrustai-test
+
+services:
+  test:
+    image: mailtrustai-test:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: mailtrustai-test
+    # Test container'i sirf test koşumu için açilir, bittikten sonra exit.
+    # --rm bayrağı CLI tarafında verilir.
+    init: true
+    environment:
+      NODE_ENV: development
+      LICENSE_DB_CLIENT: sqlite
+      LICENSE_SIGNING_SECRET: test-secret
+      DEALER_API_SECRET: test-admin
+      DEALER_SESSION_SECRET: test-session
+      MSA_LOCAL_ENCRYPTION_KEY: test-encryption-key-32bytes-min!
+      # data-dir test her dosya bazinda kendi tmp'sini açar.
+      DATA_DIR: /tmp/msa-test-data
+    # Tüm tree zaten image içinde; volume mount yok ki "test her zaman image'la
+    # birebir aynı" olsun. Yerel değişiklikleri test etmek için image'ı yeniden
+    # build et (`npm run test:docker:build`).
+    tty: false
+    networks: [test-net]
+
+networks:
+  test-net:
+    driver: bridge

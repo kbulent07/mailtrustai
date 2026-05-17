@@ -1,11 +1,24 @@
+# =============================================================
+# Host'taki Windows-derlenmiş node_modules ve runtime data
+# container'a sızdırılmamalı (invalid ELF header sebebi).
+# =============================================================
+
+# Bağımlılıklar — container kendi yükler (Linux platformu için).
+node_modules/
+**/node_modules/
+
 # Sensitive env files
 .env
 .env.local
 .env.*.local
+.env.docker
+.env.docker.local
 
 # Runtime data/log volumes
 data/
 logs/
+**/data/
+**/logs/
 *.log
 npm-debug.log*
 
@@ -19,6 +32,7 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+.claude/
 
 # Temporary files
 tmp/
@@ -28,18 +42,19 @@ temp/
 # Build artifacts
 dist/
 build/
+coverage/
+.nyc_output/
 
-# Tests and local dev-only files
-*.test.js
-*.spec.js
-.claude/
-
-# PM2 (not used in Docker)
+# PM2 (Docker'da kullanılmaz)
 ecosystem.config.js
 .pm2/
 
-# Keep docs and compose out of image context
+# Compose ve diğer Dockerfile'lar image context'inden hariç
+# (sadece ilgili Dockerfile build sırasında kullanılır).
+docker-compose*.yml
+Dockerfile.test
+
+# Docs (image'a ihtiyaç yok)
 docs/
 *.md
-docker-compose*.yml
-nginx/
+nginx/certs/

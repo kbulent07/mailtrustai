@@ -1,0 +1,49 @@
+# =========================================================
+# MailTrustAI — Test Runner image.
+# CI ve "test in docker" için: tüm dev/test bağımlılıkları + node test runner.
+# Image bir kez build edilir, sonra `docker compose run --rm test` ile
+# anlık test koşumu yapılır.
+# =========================================================
+FROM node:22-bookworm-slim
+
+WORKDIR /app
+
+# Native modüller (better-sqlite3, bcrypt) için build araçları
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 make g++ ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Önce sadece manifest'ler — Docker cache verimi
+COPY package.json package-lock.json* ./
+COPY apps/customer/package.json ./apps/customer/
+COPY apps/dealer/package.json ./apps/dealer/
+COPY apps/license-server/package.json ./apps/license-server/
+COPY packages ./packages
+
+# Dev dahil tüm bağımlılıkları kur
+RUN npm install --no-audit --no-fund --ignore-scripts \
+    && npm_config_nodedir=/usr/local npm rebuild better-sqlite3 bcrypt --build-from-source --no-audit --no-fund || true
+
+# Kalan kaynak — testler + apps + scripts
+COPY . .
+
+# Workspace symlink'leri (Dockerfile.test kendi içinde build ediyor — apps customer/dealer/license-server
+# klasör adıdır, paket değil; sadece packages/* linklenir)
+RUN mkdir -p /app/node_modules/@mailtrustai \
+  && for p in analyzer central-sync license-client license-core mail policy-client security shared storage; do \
+        if [ -d "/app/packages/$p" ]; then \
+            ln -sfn "/app/packages/$p" "/app/node_modules/@mailtrustai/$p"; \
+        fi; \
+     done
+
+# Test env defaults — testler kendi tmp dizinlerini kullanır, ama LICENSE_SIGNING_SECRET
+# vs. bazı modüllerin require sırasında alması için ayarlanır.
+ENV NODE_ENV=development \
+    LICENSE_DB_CLIENT=sqlite \
+    LICENSE_SIGNING_SECRET=test-secret \
+    DEALER_API_SECRET=test-admin \
+    DEALER_SESSION_SECRET=test-session \
+    MSA_LOCAL_ENCRYPTION_KEY=test-encryption-key-32bytes-min!
+
+# Default komut: tüm test suite
+CMD ["npm", "test"]

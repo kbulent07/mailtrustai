@@ -1,46 +1,151 @@
 # ============================================================
-# MailTrustAI — Docker Compose (Geliştirme)
-# Kullanım: docker compose up --build
+# MailTrustAI — Geliştirme/Entegrasyon Master Compose
+#
+# Tek komutla TÜM 3-tier mimariyi (server + customer) ayağa kaldırır.
+# Bu dosya yerel geliştirme + dahili test için tasarlandı.
+#
+# Üretim için ayrı dosyalar:
+#   - docker-compose.server.yml   (kurucu/satıcı sunucusu)
+#   - docker-compose.customer.yml (müşteri host'u)
+#
+# Kullanım:
+#   cp .env.docker.example .env.docker
+#   # Tüm secret'ları üret (openssl rand -hex 32)
+#   docker compose --env-file .env.docker up -d --build
+#
+# Hızlı erişim:
+#   - License-server: http://localhost:3200/healthz
+#   - Dealer panel:   http://localhost:3100
+#   - Customer:       http://localhost:3000
 # ============================================================
 
+name: mailtrustai
+
+networks:
+  msa-internal:
+    driver: bridge
+
+volumes:
+  mariadb-data:
+  license-server-data:
+  customer-data:
+  customer-logs:
+
 services:
-  mailtrustai:
+  mariadb:
+    image: mariadb:11.4
+    container_name: mailtrustai-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-mailtrustai_license}
+      MARIADB_USER: ${MARIADB_USER:-mailtrustai}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?MARIADB_PASSWORD zorunlu (.env.docker)}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD zorunlu}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MARIADB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [msa-internal]
+
+  license-server:
+    image: mailtrustai-license-server:latest
     build:
       context: .
-      dockerfile: Dockerfile
-      target: runner
-    container_name: mailtrustai-dev
-    # Şifreleme anahtarı hostname'den türetildiği için sabit olmalı.
-    hostname: mailtrustai
+      dockerfile: apps/license-server/Dockerfile
+    container_name: mailtrustai-license-server
     restart: unless-stopped
-
-    # .env dosyasından ortam değişkenlerini yükle
-    env_file:
-      - .env
-
-    # Geliştirme ortamı ek değişkenleri
     environment:
-      - NODE_ENV=development
-
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3200
+      DATA_DIR: /app/data
+      LICENSE_DB_CLIENT: mariadb
+      MARIADB_HOST: mariadb
+      MARIADB_PORT: 3306
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-mailtrustai_license}
+      MARIADB_USER: ${MARIADB_USER:-mailtrustai}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?}
+      LICENSE_SIGNING_SECRET: ${LICENSE_SIGNING_SECRET:?LICENSE_SIGNING_SECRET zorunlu}
+      DEALER_API_SECRET: ${DEALER_API_SECRET:?DEALER_API_SECRET zorunlu}
+      TOKEN_SECRET: ${DEALER_API_SECRET}
+      DEFAULT_GRACE_DAYS: ${DEFAULT_GRACE_DAYS:-7}
     ports:
-      - "3000:3000"
-
+      - "${LICENSE_SERVER_PORT:-3200}:3200"
     volumes:
-      # Veri kalıcılığı — host dizinine bağla
-      - ./data:/app/data
-      - ./logs:/app/logs
-
+      - license-server-data:/app/data
+    depends_on:
+      mariadb:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3200/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    networks: [msa-internal]
+
+  dealer:
+    image: mailtrustai-dealer:latest
+    build:
+      context: .
+      dockerfile: apps/dealer/Dockerfile
+    container_name: mailtrustai-dealer
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3100
+      LICENSE_SERVER_URL: http://license-server:3200
+      DEALER_API_TOKEN: ${DEALER_API_SECRET:?}
+      DEALER_SESSION_SECRET: ${DEALER_SESSION_SECRET:?DEALER_SESSION_SECRET zorunlu}
+    ports:
+      - "${DEALER_PORT:-3100}:3100"
+    depends_on:
+      license-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3100/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
+    networks: [msa-internal]
+
+  customer:
+    image: mailtrustai-customer:latest
+    build:
+      context: .
+      dockerfile: apps/customer/Dockerfile
+    container_name: mailtrustai-customer
+    restart: unless-stopped
+    hostname: mailtrustai
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      MSA_CUSTOMER_ONLY: "true"
+      DATA_DIR: /app/data
+      LOG_DIR: /app/logs
+      # Geliştirme: customer license-server'a internal network üzerinden ulaşır.
+      MSA_LICENSE_REMOTE_URL: ${MSA_LICENSE_REMOTE_URL:-http://license-server:3200}
+      MSA_CENTRAL_SYNC_URL: ${MSA_CENTRAL_SYNC_URL:-http://license-server:3200}
+      MSA_LICENSE_KEY: ${MSA_LICENSE_KEY:-}
+      MSA_CENTRAL_SYNC_ENABLED: ${MSA_CENTRAL_SYNC_ENABLED:-true}
+      MSA_LOCAL_ENCRYPTION_KEY: ${MSA_LOCAL_ENCRYPTION_KEY:-dev-only-encryption-key-32bytes!}
+    ports:
+      - "${CUSTOMER_PORT:-3000}:3000"
+    volumes:
+      - customer-data:/app/data
+      - customer-logs:/app/logs
+    depends_on:
+      license-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
-      start_period: 30s
-      retries: 3
-
-    # Kaynak sınırları (geliştirme için gevşek)
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 128M
+      start_period: 45s
+      retries: 5
+    networks: [msa-internal]

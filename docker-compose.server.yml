@@ -1,9 +1,31 @@
-# Kurucu/satici tarafi - license-server + dealer ayni host'ta, ortak network.
-# Musteri host'una asla deploy edilmez.
+# ============================================================
+# MailTrustAI — KURUCU/SATICI SUNUCUSU (server side)
+#
+# Bu compose dosyası SADECE üretici/satıcının kendi sunucusunda çalışır.
+# Müşteri host'una asla deploy edilmez.
+#
+# Servisler:
+#   - mariadb         (port 3306, internal)
+#   - license-server  (port 3200, bayi/admin API)
+#   - dealer          (port 3100, bayi panel SPA)
+#
+# Kullanım:
+#   cp .env.docker.example .env.docker
+#   # .env.docker içindeki secret'ları üret (openssl rand -hex 32)
+#   docker compose --env-file .env.docker -f docker-compose.server.yml up -d --build
+#
+# Healthcheck'ler ile dealer license-server hazır olana kadar bekler.
+# ============================================================
+
+name: mailtrustai-server
 
 networks:
   msa-internal:
     driver: bridge
+
+volumes:
+  mariadb-data:
+  license-server-data:
 
 services:
   mariadb:
@@ -11,21 +33,29 @@ services:
     container_name: mailtrustai-mariadb
     restart: unless-stopped
     environment:
-      MARIADB_DATABASE: mailtrustai_license
-      MARIADB_USER: mailtrustai
-      MARIADB_PASSWORD: mailtrustai_change_me
-      MARIADB_ROOT_PASSWORD: root_change_me
-    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
-    ports:
-      - "3306:3306"
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-mailtrustai_license}
+      MARIADB_USER: ${MARIADB_USER:-mailtrustai}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?MARIADB_PASSWORD zorunlu (.env.docker)}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD zorunlu}
+    command:
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_unicode_ci"
+      - "--max-connections=200"
+    expose:
+      - "3306"
     volumes:
-      - ./data/mariadb:/var/lib/mysql
+      - mariadb-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "-uroot", "-proot_change_me"]
+      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MARIADB_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 30s
     networks: [msa-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
   license-server:
     image: mailtrustai-license-server:latest
@@ -34,23 +64,41 @@ services:
       dockerfile: apps/license-server/Dockerfile
     container_name: mailtrustai-license-server
     restart: unless-stopped
-    env_file:
-      - apps/license-server/.env
     environment:
       NODE_ENV: production
+      PORT: 3200
       DATA_DIR: /app/data
       LICENSE_DB_CLIENT: mariadb
-      LICENSE_DB_PATH: /app/data/license-server.sqlite
       MARIADB_HOST: mariadb
       MARIADB_PORT: 3306
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-mailtrustai_license}
+      MARIADB_USER: ${MARIADB_USER:-mailtrustai}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?}
+      LICENSE_SIGNING_SECRET: ${LICENSE_SIGNING_SECRET:?LICENSE_SIGNING_SECRET zorunlu}
+      DEALER_API_SECRET: ${DEALER_API_SECRET:?DEALER_API_SECRET zorunlu}
+      TOKEN_SECRET: ${DEALER_API_SECRET}
+      DEFAULT_GRACE_DAYS: ${DEFAULT_GRACE_DAYS:-7}
+      HEARTBEAT_ONLINE_THRESHOLD_SECONDS: ${HEARTBEAT_ONLINE_THRESHOLD_SECONDS:-300}
+      HEARTBEAT_STALE_THRESHOLD_SECONDS: ${HEARTBEAT_STALE_THRESHOLD_SECONDS:-1800}
+      CUSTOMER_SYNC_MAX_PAYLOAD_BYTES: ${CUSTOMER_SYNC_MAX_PAYLOAD_BYTES:-16384}
     ports:
-      - "3200:3200"
+      - "${LICENSE_SERVER_PORT:-3200}:3200"
     volumes:
-      - ./data/license-server:/app/data
+      - license-server-data:/app/data
     depends_on:
       mariadb:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3200/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
     networks: [msa-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   dealer:
     image: mailtrustai-dealer:latest
@@ -59,12 +107,26 @@ services:
       dockerfile: apps/dealer/Dockerfile
     container_name: mailtrustai-dealer
     restart: unless-stopped
-    depends_on: [license-server]
-    env_file:
-      - apps/dealer/.env
     environment:
       NODE_ENV: production
+      PORT: 3100
       LICENSE_SERVER_URL: http://license-server:3200
+      DEALER_API_TOKEN: ${DEALER_API_SECRET:?}
+      DEALER_SESSION_SECRET: ${DEALER_SESSION_SECRET:?DEALER_SESSION_SECRET zorunlu}
+      DEALER_SESSION_TTL_MINUTES: ${DEALER_SESSION_TTL_MINUTES:-480}
     ports:
-      - "3100:3100"
+      - "${DEALER_PORT:-3100}:3100"
+    depends_on:
+      license-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3100/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
     networks: [msa-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
