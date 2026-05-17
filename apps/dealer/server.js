@@ -167,6 +167,17 @@ app.get('/api/dealer/customers/:id/licenses', requireDealer, asyncH(async (req, 
     res.json(result);
 }));
 
+// Bayi audit log — sadece kendi olayları
+app.get('/api/dealer/audit', requireDealer, asyncH(async (req, res) => {
+    const result = await ls.auditForDealer(req.dealer.dealerId);
+    res.json(result);
+}));
+
+// Bayi bilgisi (oturum açıkken kim olduğunu döner)
+app.get('/api/dealer/me', requireDealer, (req, res) => {
+    res.json({ dealerId: req.dealer.dealerId });
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 

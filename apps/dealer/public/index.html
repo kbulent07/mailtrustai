@@ -1,106 +1,843 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="tr">
 <head>
-<meta charset="utf-8">
-<title>MailTrustAI - Bayi Paneli</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MailTrustAI — Bayi Paneli</title>
 <style>
-body{font-family:system-ui,Segoe UI,Arial;margin:0;background:#0b1020;color:#e8eefc}
-header{padding:20px 24px;background:#121a36;border-bottom:1px solid #1f2a4d}
-h1{margin:0;font-size:18px}
-main{padding:24px;max-width:1300px;margin:0 auto}
-.card{background:#121a36;border:1px solid #1f2a4d;border-radius:10px;padding:18px;margin:14px 0}
-button{background:#2c6cf0;color:#fff;border:0;padding:8px 14px;border-radius:6px;cursor:pointer}
-input{padding:8px;border-radius:6px;border:1px solid #2a3766;background:#0e1530;color:#e8eefc;margin:4px 6px 4px 0}
-table{width:100%;border-collapse:collapse;margin-top:10px}
-td,th{padding:8px;border-bottom:1px solid #1f2a4d;text-align:left;font-size:13px;vertical-align:top}
-.tag{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
-.tag.online{background:#10381f;color:#5be584}
-.tag.stale{background:#3a2f10;color:#f5c067}
-.tag.offline{background:#3a1010;color:#f56b6b}
-.tag.never{background:#202840;color:#9aa6c7}
-.muted{color:#9aa6c7;font-size:12px}
-.feature-list{max-width:340px;white-space:normal;word-break:break-word}
+/* ===== Reset + Tema ===== */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+body{background:#0b1020;color:#e6e9f0;
+  --bg:#0b1020;--surface:#141a2e;--surface-2:#1c2340;--border:#2a3354;
+  --text:#e6e9f0;--muted:#8b95b3;--primary:#6366f1;--primary-h:#4f46e5;
+  --ok:#10b981;--warn:#f59e0b;--err:#ef4444}
+.hidden{display:none!important}
+.muted{color:var(--muted);font-size:.88em}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;background:#0e1428;padding:1px 6px;border-radius:4px;font-size:.85em}
+h2{font-size:1.2em;margin-bottom:12px}
+h3{font-size:1.05em;margin-bottom:10px}
+
+/* ===== Login ===== */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+            padding:40px 32px;width:100%;max-width:400px;box-shadow:0 10px 50px rgba(0,0,0,.4)}
+.brand{text-align:center;margin-bottom:28px}
+.brand .logo{font-size:44px}
+.brand h1{font-size:20px;margin:8px 0 4px}
+.login-card form label{display:block;margin:14px 0 5px;font-size:.88em;color:var(--muted)}
+.login-card input{width:100%;padding:11px 13px;border:1px solid var(--border);
+                  background:var(--bg);color:var(--text);border-radius:7px;font-size:.97em}
+.login-card input:focus{outline:none;border-color:var(--primary)}
+.login-card button{width:100%;margin-top:15px;padding:11px;background:var(--primary);
+                   color:#fff;border:none;border-radius:7px;font-size:.97em;cursor:pointer}
+.login-card button:hover{background:var(--primary-h)}
+.error{color:var(--err);margin-top:8px;font-size:.88em;min-height:1.2em}
+
+/* ===== App Shell ===== */
+.app-shell{display:flex;flex-direction:column;min-height:100vh}
+.topbar{display:flex;justify-content:space-between;align-items:center;
+        padding:11px 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.topbar-left .brand-mini{font-size:1em}
+.topbar-right button{background:transparent;color:var(--text);border:1px solid var(--border);
+                     padding:5px 13px;margin-left:7px;border-radius:6px;cursor:pointer;font-size:.88em}
+.topbar-right button:hover{background:var(--surface-2)}
+#dealerBadge{font-size:.82em;color:var(--muted);margin-left:10px}
+
+.app-layout{display:flex;flex:1;min-height:0}
+
+/* ===== Sidebar ===== */
+.sidebar{width:210px;background:var(--surface);border-right:1px solid var(--border);
+         padding:14px 0;flex-shrink:0;overflow-y:auto}
+.nav-item{display:block;padding:11px 18px;color:var(--muted);text-decoration:none;
+          font-size:.92em;border-left:3px solid transparent;cursor:pointer;transition:all .15s}
+.nav-item:hover{background:var(--surface-2);color:var(--text)}
+.nav-item.active{color:var(--text);background:var(--surface-2);border-left-color:var(--primary);font-weight:500}
+.nav-item span{margin-left:4px}
+
+/* ===== Main / Tabs ===== */
+.main{flex:1;overflow-y:auto;padding:20px 24px;min-width:0}
+.tab-content{display:none}
+.tab-content.active{display:block;animation:fadeIn .15s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+/* ===== Stats ===== */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin-bottom:22px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:15px}
+.stat-label{font-size:.75em;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.stat-value{font-size:1.75em;font-weight:600;margin-top:5px}
+.stat-value.ok{color:var(--ok)}.stat-value.warn{color:var(--warn)}.stat-value.err{color:var(--err)}
+
+/* ===== Tablo ===== */
+.filters{display:flex;gap:9px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.filters input,.filters select{padding:7px 11px;background:var(--surface);color:var(--text);
+  border:1px solid var(--border);border-radius:6px;min-width:160px}
+.filters input{flex:1;min-width:200px}
+.filters button{padding:7px 15px;background:var(--primary);color:#fff;
+                border:none;border-radius:6px;cursor:pointer;font-size:.88em}
+.table-wrap{background:var(--surface);border:1px solid var(--border);
+            border-radius:9px;overflow:hidden;overflow-x:auto;margin-bottom:18px}
+table{width:100%;border-collapse:collapse;font-size:.89em}
+th{text-align:left;padding:11px;background:var(--surface-2);color:var(--muted);
+   border-bottom:1px solid var(--border);font-weight:500;font-size:.83em}
+td{padding:11px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr:hover{background:var(--surface-2)}
+.loading{text-align:center;color:var(--muted);padding:28px}
+
+/* ===== Tags ===== */
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.76em;
+     background:var(--surface-2);border:1px solid var(--border)}
+.tag-active{background:rgba(16,185,129,.18);color:var(--ok);border-color:var(--ok)}
+.tag-revoked{background:rgba(239,68,68,.18);color:var(--err);border-color:var(--err)}
+.tag-expired{background:rgba(245,158,11,.18);color:var(--warn);border-color:var(--warn)}
+.tag-online{background:rgba(16,185,129,.18);color:var(--ok);border-color:var(--ok)}
+.tag-stale{background:rgba(245,158,11,.18);color:var(--warn);border-color:var(--warn)}
+.tag-offline{background:rgba(239,68,68,.18);color:var(--err);border-color:var(--err)}
+.tag-never{background:var(--surface-2);color:var(--muted)}
+.label-tag{display:inline-block;background:rgba(99,102,241,.18);color:var(--primary);
+           border:1px solid var(--primary);padding:2px 7px;border-radius:4px;font-size:.8em}
+
+/* ===== Action butonları ===== */
+td .btn-group{display:flex;flex-wrap:wrap;gap:4px}
+td .action-btn{background:transparent;border:1px solid var(--border);color:var(--text);
+               padding:3px 9px;border-radius:5px;cursor:pointer;font-size:.8em;white-space:nowrap}
+td .action-btn:hover{background:var(--primary);border-color:var(--primary);color:#fff}
+td .action-btn.danger{border-color:var(--err);color:var(--err)}
+td .action-btn.danger:hover{background:var(--err);border-color:var(--err);color:#fff}
+td .action-btn.ok{border-color:var(--ok);color:var(--ok)}
+td .action-btn.ok:hover{background:var(--ok);color:#fff}
+
+/* ===== Form ===== */
+.form-card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:20px}
+.form-card label{display:block;margin-top:11px;margin-bottom:4px;font-size:.83em;color:var(--muted)}
+.form-card label:first-child{margin-top:0}
+.form-card input,.form-card select{width:100%;padding:9px 11px;background:var(--bg);color:var(--text);
+  border:1px solid var(--border);border-radius:6px;font-size:.93em}
+.form-card input:focus,.form-card select:focus{outline:none;border-color:var(--primary)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px}
+.form-grid .full{grid-column:1/-1}
+.form-card .primary{margin-top:15px;padding:10px 20px;background:var(--primary);
+                    color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.93em}
+.form-card .primary:hover{background:var(--primary-h)}
+.result{margin-top:11px;padding:9px 13px;border-radius:6px;background:var(--surface-2);font-size:.88em}
+.result.ok{background:rgba(16,185,129,.15);color:var(--ok);border:1px solid var(--ok)}
+.result.err{background:rgba(239,68,68,.15);color:var(--err);border:1px solid var(--err)}
+.result:empty{display:none}
+
+/* ===== Üretilen anahtar ===== */
+.generated-key{background:rgba(99,102,241,.1);border:1px solid var(--primary);
+               border-radius:9px;padding:18px;margin-top:15px}
+.generated-key h3{color:var(--primary)}
+.key-display{display:flex;gap:8px;align-items:center;margin:11px 0;
+             background:var(--bg);padding:11px 15px;border-radius:6px;border:1px solid var(--border)}
+.key-display code{flex:1;font-size:1.05em;padding:0;background:transparent;
+                  user-select:all;word-break:break-all}
+.key-display button{padding:7px 11px;background:var(--primary);color:#fff;
+                    border:none;border-radius:6px;cursor:pointer;font-size:.95em}
+.key-meta{font-size:.83em;color:var(--muted);margin-top:7px}
+.key-meta strong{color:var(--text)}
+
+/* ===== Modal ===== */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.65);
+       display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+.modal-card{background:var(--surface);border:1px solid var(--border);
+            border-radius:11px;padding:26px;max-width:460px;width:100%}
+.modal-card label{display:block;margin:14px 0 5px;font-size:.88em;color:var(--muted)}
+.modal-card input{width:100%;padding:9px 11px;background:var(--bg);color:var(--text);
+                  border:1px solid var(--border);border-radius:6px}
+.modal-btns{display:flex;gap:9px;margin-top:16px;justify-content:flex-end}
+.modal-btns button{padding:7px 17px;border-radius:6px;border:1px solid var(--border);
+                   background:var(--surface-2);color:var(--text);cursor:pointer}
+.modal-btns button.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.modal-btns button.primary:hover{background:var(--primary-h)}
+
+/* ===== Audit detail ===== */
+.audit-detail{font-family:ui-monospace,monospace;font-size:.8em;background:var(--bg);
+              padding:5px 9px;border-radius:4px;max-width:380px;word-break:break-all;white-space:pre-wrap}
+
+/* ===== Mobil ===== */
+@media(max-width:768px){
+  .sidebar{width:58px}
+  .nav-item span{display:none}
+  .nav-item{padding:13px 0;text-align:center}
+  .form-grid{grid-template-columns:1fr}
+  .filters input,.filters select{min-width:0;width:100%}
+  th,td{padding:7px;font-size:.8em}
+  .main{padding:14px}
+}
 </style>
 </head>
 <body>
-<header><h1>MailTrustAI - Bayi Paneli</h1></header>
-<main>
-  <div class="card" id="login">
-    <h3>Giris</h3>
-    <input id="u" placeholder="kullanici adi"><input id="p" type="password" placeholder="sifre">
-    <button onclick="login()">Giris</button>
-    <div id="loginErr" style="color:#f56b6b"></div>
+
+<!-- ===== LOGIN ===== -->
+<div id="loginScreen" class="login-wrap">
+  <div class="login-card">
+    <div class="brand">
+      <div class="logo">🤝</div>
+      <h1>MailTrustAI</h1>
+      <p class="muted">Bayi Paneli</p>
+    </div>
+    <form id="loginForm" autocomplete="off">
+      <label>Bayi ID</label>
+      <input type="text" id="inpUser" placeholder="bayi-id" required>
+      <label>Parola</label>
+      <input type="password" id="inpPass" placeholder="••••••••" required>
+      <button type="submit" id="loginBtn">🔓 Giriş Yap</button>
+      <div id="loginErr" class="error"></div>
+    </form>
   </div>
-  <div class="card" id="panel" style="display:none">
-    <h3>Musterilerim</h3>
-    <button onclick="refresh()">Yenile</button>
-    <table id="t">
-      <thead>
-        <tr>
-          <th>Sirket</th>
-          <th>Plan</th>
-          <th>Tier</th>
-          <th>Lisans</th>
-          <th>Bitis</th>
-          <th>Surum</th>
-          <th>Son Heartbeat</th>
-          <th>Durum</th>
-          <th>Saglik</th>
-          <th>Aylik Tarama</th>
-          <th>Aktif Ozellikler</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-    <p class="muted">Bayi paneli musteri mail icerigi, scan detayi, credential veya attachment bilgisini gostermez. Sadece lisans ve operasyonel durum/ozet metrikleri gosterir.</p>
+</div>
+
+<!-- ===== DASHBOARD ===== -->
+<div id="dashboard" class="hidden app-shell">
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="brand-mini">🤝 MailTrustAI · <strong>Bayi Paneli</strong></span>
+      <span id="dealerBadge"></span>
+    </div>
+    <div class="topbar-right">
+      <button id="refreshBtn" title="Yenile">↻ Yenile</button>
+      <button id="logoutBtn">Çıkış</button>
+    </div>
+  </header>
+
+  <div class="app-layout">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <a class="nav-item active" data-tab="overview">📊 <span>Özet</span></a>
+      <a class="nav-item" data-tab="customers">👤 <span>Müşteriler</span></a>
+      <a class="nav-item" data-tab="create">🔑 <span>Lisans Üret</span></a>
+      <a class="nav-item" data-tab="manage">⚙️ <span>Lisans Yönet</span></a>
+      <a class="nav-item" data-tab="log">📜 <span>Log</span></a>
+    </aside>
+
+    <main class="main">
+
+      <!-- ===== TAB: ÖZET ===== -->
+      <section class="tab-content active" data-tab="overview">
+        <section class="stats">
+          <div class="stat-card"><div class="stat-label">Müşteri</div><div id="stCustomers" class="stat-value">—</div></div>
+          <div class="stat-card"><div class="stat-label">Aktif Lisans</div><div id="stActive" class="stat-value ok">—</div></div>
+          <div class="stat-card"><div class="stat-label">Süresi Dolan</div><div id="stExpired" class="stat-value warn">—</div></div>
+          <div class="stat-card"><div class="stat-label">İptal</div><div id="stRevoked" class="stat-value err">—</div></div>
+          <div class="stat-card"><div class="stat-label">Online (5 dk)</div><div id="stOnline" class="stat-value ok">—</div></div>
+        </section>
+
+        <h2>📋 Son Müşteriler</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Şirket</th><th>Plan</th><th>Durum</th><th>Bitiş</th><th>Online</th><th>Son Bağlantı</th></tr></thead>
+            <tbody id="overviewBody"><tr><td colspan="6" class="loading">Yükleniyor...</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===== TAB: MÜŞTERİLER ===== -->
+      <section class="tab-content" data-tab="customers">
+        <div class="filters">
+          <input type="text" id="custQ" placeholder="🔍 Şirket adı, müşteri ID...">
+          <select id="custStatus">
+            <option value="">Durum: tümü</option>
+            <option value="active">active</option>
+            <option value="revoked">revoked</option>
+          </select>
+          <button onclick="loadCustomers()">↻ Yenile</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Şirket / ID</th><th>Plan</th><th>Tier</th><th>Lisans Durumu</th>
+              <th>Bitiş</th><th>Sürüm</th><th>Online</th><th>Son Bağlantı</th>
+              <th>Tarama</th><th>Aksiyonlar</th>
+            </tr></thead>
+            <tbody id="custBody"><tr><td colspan="10" class="loading">Yükleniyor...</td></tr></tbody>
+          </table>
+        </div>
+        <p class="muted" style="margin-top:8px">⚠️ Müşteri mail içerikleri, scan detayları veya credential bilgileri bu panelde gösterilmez. Yalnızca lisans ve operasyonel durum/metrik bilgileri görüntülenir.</p>
+      </section>
+
+      <!-- ===== TAB: LİSANS ÜRET ===== -->
+      <section class="tab-content" data-tab="create">
+        <h2>🔑 Yeni Müşteri & Lisans</h2>
+        <p class="muted" style="margin-bottom:16px">Müşteri daha önce kayıtlıysa bilgileri güncellenir; yeni bir lisans üretilir.</p>
+        <form id="createForm" class="form-card form-grid">
+          <div>
+            <label>Müşteri ID *</label>
+            <input type="text" id="newCustId" required maxlength="64" placeholder="acme-corp">
+          </div>
+          <div>
+            <label>Plan *</label>
+            <select id="newPlan" required>
+              <option value="demo">demo</option>
+              <option value="pro" selected>pro</option>
+              <option value="enterprise">enterprise</option>
+            </select>
+          </div>
+          <div>
+            <label>Şirket Adı</label>
+            <input type="text" id="newCompany" maxlength="128" placeholder="ACME Corp">
+          </div>
+          <div>
+            <label>E-posta</label>
+            <input type="email" id="newEmail" placeholder="it@acme.com">
+          </div>
+          <div class="full">
+            <label>Geçerlilik (gün) *</label>
+            <input type="number" id="newDays" min="1" max="36500" value="365" required>
+          </div>
+          <div class="full">
+            <button type="submit" class="primary">🔑 Lisans Üret</button>
+          </div>
+        </form>
+        <div id="createResult" class="result"></div>
+        <div id="generatedKeyBox" class="generated-key hidden">
+          <h3>✓ Lisans Anahtarı Üretildi</h3>
+          <p class="muted">Bu anahtarı müşteriye iletin. Pencereyi kapatınca tekrar görüntülenemez.</p>
+          <div class="key-display">
+            <code id="generatedKeyValue">—</code>
+            <button id="copyKeyBtn" title="Kopyala">📋</button>
+          </div>
+          <div class="key-meta" id="generatedKeyMeta"></div>
+        </div>
+      </section>
+
+      <!-- ===== TAB: LİSANS YÖNET ===== -->
+      <section class="tab-content" data-tab="manage">
+        <h2>⚙️ Lisans Yönetimi</h2>
+        <div class="filters">
+          <input type="text" id="manageQ" placeholder="🔍 Şirket / müşteri ID...">
+          <select id="manageStatus">
+            <option value="">Durum: tümü</option>
+            <option value="active">active</option>
+            <option value="revoked">revoked</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Şirket / ID</th><th>Plan</th><th>Durum</th><th>Bitiş</th><th>Aksiyonlar</th>
+            </tr></thead>
+            <tbody id="manageBody"><tr><td colspan="5" class="loading">Yükleniyor...</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===== TAB: LOG ===== -->
+      <section class="tab-content" data-tab="log">
+        <h2>📜 Aktivite Logu</h2>
+        <p class="muted" style="margin-bottom:14px">Bayinize ait son olaylar — lisans oluşturma, iptal, yenileme, müşteri bağlantıları.</p>
+        <div class="filters">
+          <button id="logRefreshBtn">↻ Yenile</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Tarih</th><th>Olay</th><th>Hedef</th><th>Detay</th></tr></thead>
+            <tbody id="logBody"><tr><td colspan="4" class="loading">Yükleniyor...</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
   </div>
-</main>
+</div>
+
+<!-- ===== MODAL: Lisans Uzat ===== -->
+<div id="renewModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>⏳ Lisans Süresi Uzat</h3>
+    <p class="muted">Müşteri: <strong id="renewCustName"></strong></p>
+    <label>Eklenecek gün</label>
+    <input type="number" id="renewDays" min="1" max="36500" value="365">
+    <div class="modal-btns">
+      <button id="renewCancel">İptal</button>
+      <button id="renewApply" class="primary">Uzat</button>
+    </div>
+    <div id="renewResult" class="result"></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Lisans İptal ===== -->
+<div id="revokeModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>🚫 Lisans İptal</h3>
+    <p class="muted">Müşteri: <strong id="revokeCustName"></strong></p>
+    <p class="muted" style="margin-top:6px">Bu işlem lisansı devre dışı bırakır. Onaylıyor musunuz?</p>
+    <div class="modal-btns">
+      <button id="revokeCancel">İptal</button>
+      <button id="revokeApply" class="primary" style="background:var(--err);border-color:var(--err)">İptal Et</button>
+    </div>
+    <div id="revokeResult" class="result"></div>
+  </div>
+</div>
+
 <script>
-async function login(){
-  const r = await fetch('/api/dealer/login',{
-    method:'POST',
-    headers:{'content-type':'application/json'},
-    body:JSON.stringify({username:u.value,password:p.value})
+'use strict';
+const SESSION_KEY = 'dealer-session-token';
+let customers = [];   // /api/dealer/customers/status → .customers[]
+let myDealerId = '';
+
+const $ = id => document.getElementById(id);
+
+// ================================================================
+// HTTP yardımcısı
+// ================================================================
+async function api(path, opts = {}) {
+  const token = sessionStorage.getItem(SESSION_KEY) || '';
+  const headers = Object.assign({ 'content-type': 'application/json' }, opts.headers || {});
+  if (token) headers['x-dealer-session'] = token;
+  const res = await fetch(path, {
+    method : opts.method || 'GET',
+    headers,
+    body   : opts.body != null ? JSON.stringify(opts.body) : undefined,
+    credentials: 'include'
   });
-  if(!r.ok){loginErr.innerText='Giris basarisiz';return}
-  document.getElementById('login').style.display='none';
-  document.getElementById('panel').style.display='';
-  refresh();
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch (_) {}
+  if (!res.ok) {
+    const err = new Error(json?.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return json || {};
 }
 
-function renderFeatures(enabledFeatures){
-  const names = Object.entries(enabledFeatures || {})
-    .filter(([, enabled]) => !!enabled)
-    .map(([name]) => name);
-  return names.length ? names.join(', ') : '-';
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtDate(ms) {
+  if (!ms) return '—';
+  return new Date(ms).toLocaleDateString('tr-TR');
+}
+function fmtDateTime(ms) {
+  if (!ms) return '—';
+  return new Date(ms).toLocaleString('tr-TR');
+}
+function timeAgo(ms) {
+  if (!ms) return '—';
+  const d = Date.now() - ms;
+  if (d < 60000)    return Math.floor(d/1000)     + ' sn önce';
+  if (d < 3600000)  return Math.floor(d/60000)   + ' dk önce';
+  if (d < 86400000) return Math.floor(d/3600000) + ' sa önce';
+  return Math.floor(d/86400000) + ' gün önce';
 }
 
-async function refresh(){
-  const r = await fetch('/api/dealer/customers/status');
-  const j = await r.json();
-  const tb = document.querySelector('#t tbody');
-  tb.innerHTML='';
+// ================================================================
+// LOGIN / LOGOUT
+// ================================================================
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('loginBtn');
+  $('loginErr').textContent = '';
+  btn.disabled = true; btn.textContent = '⏳ Giriş yapılıyor...';
+  try {
+    const r = await fetch('/api/dealer/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: $('inpUser').value.trim(), password: $('inpPass').value }),
+      credentials: 'include'
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Giriş başarısız');
+    if (j.token) sessionStorage.setItem(SESSION_KEY, j.token);
+    myDealerId = j.dealerId || $('inpUser').value.trim();
+    showDashboard();
+  } catch (err) {
+    $('loginErr').textContent = 'Hata: ' + err.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '🔓 Giriş Yap';
+  }
+});
 
-  (j.customers || []).forEach(c => {
-    const tr = document.createElement('tr');
-    const exp = c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('tr-TR') : '-';
-    const hb  = c.lastHeartbeatAt ? new Date(c.lastHeartbeatAt).toLocaleString('tr-TR') : '-';
-    const statusClass = c.onlineStatus || 'never';
-    tr.innerHTML = `<td>${c.companyName || c.customerId}</td>
-      <td>${c.plan || '-'}</td>
-      <td>${c.tier || '-'}</td>
-      <td>${c.licenseStatus || '-'}</td>
+$('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/dealer/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+  sessionStorage.removeItem(SESSION_KEY);
+  $('dashboard').classList.add('hidden');
+  $('loginScreen').classList.remove('hidden');
+  $('inpUser').value = ''; $('inpPass').value = '';
+});
+
+$('refreshBtn').addEventListener('click', () => loadAll());
+
+// ================================================================
+// DASHBOARD
+// ================================================================
+async function showDashboard() {
+  $('loginScreen').classList.add('hidden');
+  $('dashboard').classList.remove('hidden');
+  if (!myDealerId) {
+    try { const me = await api('/api/dealer/me'); myDealerId = me.dealerId || ''; } catch (_) {}
+  }
+  $('dealerBadge').textContent = myDealerId ? `(${myDealerId})` : '';
+  await loadAll();
+}
+
+async function loadAll() {
+  await loadCustomers();
+}
+
+// ================================================================
+// SEKMELİ NAVİGASYON
+// ================================================================
+function activateTab(name) {
+  document.querySelectorAll('.nav-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.tab === name));
+  document.querySelectorAll('.tab-content').forEach(el =>
+    el.classList.toggle('active', el.dataset.tab === name));
+  if (name === 'log') loadLog();
+  if (name === 'manage') renderManageTable();
+}
+document.querySelectorAll('.nav-item').forEach(el =>
+  el.addEventListener('click', () => activateTab(el.dataset.tab)));
+
+// ================================================================
+// MÜŞTERİLER YÜKLEMESİ
+// ================================================================
+async function loadCustomers() {
+  try {
+    const r = await api('/api/dealer/customers/status');
+    customers = r.customers || [];
+    renderOverview();
+    renderCustomersTable();
+    renderManageTable();
+  } catch (e) {
+    if (e.status === 401) { logout401(); return; }
+    const msg = `<tr><td colspan="10" class="loading" style="color:var(--err)">Hata: ${escapeHtml(e.message)}</td></tr>`;
+    $('custBody').innerHTML = msg;
+    $('overviewBody').innerHTML = `<tr><td colspan="6" class="loading" style="color:var(--err)">Hata: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function logout401() {
+  sessionStorage.removeItem(SESSION_KEY);
+  alert('Oturum süresi doldu. Yeniden giriş yapın.');
+  location.reload();
+}
+
+// ================================================================
+// ÖZET SEKMESİ
+// ================================================================
+function renderOverview() {
+  const now = Date.now();
+  let active = 0, expired = 0, revoked = 0, online = 0;
+  const onlineThr = 5 * 60 * 1000;
+  customers.forEach(c => {
+    if (c.licenseStatus === 'active') active++;
+    if (c.licenseStatus === 'revoked') revoked++;
+    if (c.expiresAt && c.expiresAt < now) expired++;
+    if (c.lastHeartbeatAt && now - c.lastHeartbeatAt < onlineThr) online++;
+  });
+  $('stCustomers').textContent = customers.length;
+  $('stActive').textContent    = active;
+  $('stExpired').textContent   = expired;
+  $('stRevoked').textContent   = revoked;
+  $('stOnline').textContent    = online;
+
+  const tbody = $('overviewBody');
+  if (!customers.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Henüz müşteri yok.</td></tr>';
+    return;
+  }
+  const top = customers.slice(0, 10);
+  tbody.innerHTML = top.map(c => {
+    const st  = c.onlineStatus || 'never';
+    const exp = fmtDate(c.expiresAt);
+    return `<tr>
+      <td><strong>${escapeHtml(c.companyName || c.customerId)}</strong><br>
+          <small class="muted">${escapeHtml(c.customerId)}</small></td>
+      <td>${escapeHtml(c.plan || '—')}</td>
+      <td><span class="tag tag-${c.licenseStatus || 'never'}">${c.licenseStatus || '—'}</span></td>
       <td>${exp}</td>
-      <td>${c.appVersion || '-'}</td>
-      <td>${hb}</td>
-      <td><span class="tag ${statusClass}">${statusClass}</span></td>
-      <td>${c.healthStatus || '-'}</td>
-      <td>${c.monthlyScanCount ?? '-'}</td>
-      <td class="feature-list">${renderFeatures(c.enabledFeatures)}</td>`;
-    tb.appendChild(tr);
+      <td><span class="tag tag-${st}">${st}</span></td>
+      <td><small class="muted">${timeAgo(c.lastHeartbeatAt)}</small></td>
+    </tr>`;
+  }).join('');
+}
+
+// ================================================================
+// MÜŞTERİLER SEKMESİ
+// ================================================================
+['custQ','custStatus'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('input', renderCustomersTable);
+  el.addEventListener('change', renderCustomersTable);
+});
+
+function renderCustomersTable() {
+  const q  = ($('custQ')?.value || '').trim().toLowerCase();
+  const fs = $('custStatus')?.value || '';
+  const now = Date.now();
+
+  const filtered = customers.filter(c => {
+    if (fs && c.licenseStatus !== fs) return false;
+    if (q) {
+      const hay = [c.customerId, c.companyName || '', c.email || ''].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const tbody = $('custBody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="loading">Kayıt bulunamadı.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(c => {
+    const st   = c.onlineStatus || 'never';
+    const exp  = fmtDate(c.expiresAt);
+    const dead = c.expiresAt && c.expiresAt < now;
+    const ls   = dead ? 'expired' : (c.licenseStatus || '—');
+    const da   = encodeURIComponent(c.companyName || c.customerId);
+    const dk   = encodeURIComponent(c.licenseKey  || c.customerId);
+
+    return `<tr>
+      <td><strong>${escapeHtml(c.companyName || c.customerId)}</strong><br>
+          <small class="muted">${escapeHtml(c.customerId)}</small></td>
+      <td>${escapeHtml(c.plan || '—')}</td>
+      <td>${escapeHtml(c.tier || '—')}</td>
+      <td><span class="tag tag-${ls}">${ls}</span></td>
+      <td>${exp}</td>
+      <td>${escapeHtml(c.appVersion || '—')}</td>
+      <td><span class="tag tag-${st}">${st}</span></td>
+      <td><small class="muted">${timeAgo(c.lastHeartbeatAt)}</small></td>
+      <td>${c.monthlyScanCount ?? '—'}</td>
+      <td class="btn-group">
+        <button class="action-btn" data-action="renew" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-key="${dk}">⏳ Uzat</button>
+        ${ls !== 'revoked'
+          ? `<button class="action-btn danger" data-action="revoke" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-key="${dk}">🚫 İptal</button>`
+          : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  bindTableActions(tbody);
+}
+
+// ================================================================
+// LİSANS YÖNET SEKMESİ
+// ================================================================
+['manageQ','manageStatus'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('input', renderManageTable);
+  el.addEventListener('change', renderManageTable);
+});
+
+function renderManageTable() {
+  const q  = ($('manageQ')?.value || '').trim().toLowerCase();
+  const fs = $('manageStatus')?.value || '';
+  const now = Date.now();
+
+  const filtered = customers.filter(c => {
+    if (fs && c.licenseStatus !== fs) return false;
+    if (q) {
+      const hay = [c.customerId, c.companyName || ''].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const tbody = $('manageBody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="loading">Kayıt bulunamadı.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(c => {
+    const dead = c.expiresAt && c.expiresAt < now;
+    const ls   = dead ? 'expired' : (c.licenseStatus || '—');
+    const da   = encodeURIComponent(c.companyName || c.customerId);
+    const dk   = encodeURIComponent(c.licenseKey  || c.customerId);
+    return `<tr>
+      <td><strong>${escapeHtml(c.companyName || c.customerId)}</strong><br>
+          <small class="muted">${escapeHtml(c.customerId)}</small></td>
+      <td>${escapeHtml(c.plan || '—')}</td>
+      <td><span class="tag tag-${ls}">${ls}</span></td>
+      <td>${fmtDate(c.expiresAt)}</td>
+      <td class="btn-group">
+        <button class="action-btn" data-action="renew" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-key="${dk}">⏳ Uzat</button>
+        ${ls !== 'revoked'
+          ? `<button class="action-btn danger" data-action="revoke" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-key="${dk}">🚫 İptal</button>`
+          : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  bindTableActions(tbody);
+}
+
+function bindTableActions(tbody) {
+  tbody.querySelectorAll('button.action-btn').forEach(btn => {
+    const a    = btn.dataset.action;
+    const id   = btn.dataset.id;
+    const name = decodeURIComponent(btn.dataset.name || '');
+    const key  = decodeURIComponent(btn.dataset.key  || '');
+    if (a === 'renew')  btn.addEventListener('click', () => openRenewModal(id, name, key));
+    if (a === 'revoke') btn.addEventListener('click', () => openRevokeModal(id, name, key));
   });
 }
+
+// ================================================================
+// LİSANS ÜRET SEKMESİ
+// ================================================================
+$('createForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const resEl = $('createResult');
+  const boxEl = $('generatedKeyBox');
+  resEl.textContent = ''; resEl.className = 'result';
+  boxEl.classList.add('hidden');
+
+  const body = {
+    customerId : $('newCustId').value.trim(),
+    companyName: $('newCompany').value.trim() || undefined,
+    email      : $('newEmail').value.trim()   || undefined,
+    plan       : $('newPlan').value,
+    validDays  : Number($('newDays').value)
+  };
+  if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
+  if (!body.validDays || body.validDays < 1) { resEl.textContent = 'Geçerli bir gün sayısı girin.'; resEl.className = 'result err'; return; }
+
+  try {
+    const r = await api('/api/dealer/customers', { method: 'POST', body });
+    resEl.textContent = '✓ Lisans üretildi!'; resEl.className = 'result ok';
+
+    // Anahtar kutusu
+    const key = r.licenseKey || r.key || r.license?.licenseKey || '—';
+    $('generatedKeyValue').textContent = key;
+    $('generatedKeyMeta').innerHTML =
+      `<span>Müşteri: <code>${escapeHtml(body.customerId)}</code></span> &nbsp;|&nbsp; ` +
+      `<span>Plan: <strong>${escapeHtml(body.plan)}</strong></span> &nbsp;|&nbsp; ` +
+      `<span>Bitiş: <strong>${fmtDate(r.expiresAt || r.license?.expiresAt)}</strong></span>`;
+    boxEl.classList.remove('hidden');
+
+    $('createForm').reset(); $('newPlan').value = 'pro'; $('newDays').value = '365';
+    await loadCustomers();
+  } catch (err) {
+    resEl.textContent = 'Hata: ' + err.message; resEl.className = 'result err';
+  }
+});
+
+$('copyKeyBtn').addEventListener('click', async () => {
+  const key = $('generatedKeyValue').textContent;
+  if (!key || key === '—') return;
+  try {
+    await navigator.clipboard.writeText(key);
+    $('copyKeyBtn').textContent = '✓';
+    setTimeout(() => ($('copyKeyBtn').textContent = '📋'), 1500);
+  } catch (_) { prompt('Kopyalamak için Ctrl+C:', key); }
+});
+
+// ================================================================
+// MODAL: Uzat
+// ================================================================
+let renewTarget = null;
+
+function openRenewModal(custId, name, licKey) {
+  renewTarget = { custId, licKey };
+  $('renewCustName').textContent = name;
+  $('renewDays').value = '365';
+  $('renewResult').textContent = ''; $('renewResult').className = 'result';
+  $('renewModal').classList.remove('hidden');
+  setTimeout(() => $('renewDays').focus(), 50);
+}
+$('renewCancel').addEventListener('click', () => $('renewModal').classList.add('hidden'));
+$('renewModal').addEventListener('click', e => { if (e.target === $('renewModal')) $('renewModal').classList.add('hidden'); });
+
+$('renewApply').addEventListener('click', async () => {
+  const addDays = Number($('renewDays').value);
+  if (!addDays || addDays < 1) {
+    $('renewResult').textContent = 'En az 1 gün girin.'; $('renewResult').className = 'result err'; return;
+  }
+  try {
+    await api('/api/dealer/license/renew', {
+      method: 'POST',
+      body  : { licenseKey: renewTarget.licKey, customerId: renewTarget.custId, addDays }
+    });
+    $('renewResult').textContent = '✓ Lisans uzatıldı.'; $('renewResult').className = 'result ok';
+    await loadCustomers();
+    setTimeout(() => $('renewModal').classList.add('hidden'), 900);
+  } catch (err) {
+    $('renewResult').textContent = 'Hata: ' + err.message; $('renewResult').className = 'result err';
+  }
+});
+
+// ================================================================
+// MODAL: İptal
+// ================================================================
+let revokeTarget = null;
+
+function openRevokeModal(custId, name, licKey) {
+  revokeTarget = { custId, licKey };
+  $('revokeCustName').textContent = name;
+  $('revokeResult').textContent = ''; $('revokeResult').className = 'result';
+  $('revokeModal').classList.remove('hidden');
+}
+$('revokeCancel').addEventListener('click', () => $('revokeModal').classList.add('hidden'));
+$('revokeModal').addEventListener('click', e => { if (e.target === $('revokeModal')) $('revokeModal').classList.add('hidden'); });
+
+$('revokeApply').addEventListener('click', async () => {
+  try {
+    await api('/api/dealer/license/revoke', {
+      method: 'POST',
+      body  : { licenseKey: revokeTarget.licKey, customerId: revokeTarget.custId }
+    });
+    $('revokeResult').textContent = '✓ Lisans iptal edildi.'; $('revokeResult').className = 'result ok';
+    await loadCustomers();
+    setTimeout(() => $('revokeModal').classList.add('hidden'), 900);
+  } catch (err) {
+    $('revokeResult').textContent = 'Hata: ' + err.message; $('revokeResult').className = 'result err';
+  }
+});
+
+// ================================================================
+// LOG SEKMESİ
+// ================================================================
+$('logRefreshBtn').addEventListener('click', loadLog);
+
+async function loadLog() {
+  const tbody = $('logBody');
+  tbody.innerHTML = '<tr><td colspan="4" class="loading">Yükleniyor...</td></tr>';
+  try {
+    const r    = await api('/api/dealer/audit');
+    const rows = r.entries || r.rows || [];
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="loading">Henüz log kaydı yok.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(row => {
+      let detailHtml = '';
+      const raw = row.detail_json || row.detail;
+      if (raw) {
+        try {
+          const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          detailHtml = `<pre class="audit-detail">${escapeHtml(JSON.stringify(obj, null, 2))}</pre>`;
+        } catch (_) {
+          detailHtml = `<span class="muted">${escapeHtml(String(raw))}</span>`;
+        }
+      }
+      return `<tr>
+        <td><small>${fmtDateTime(row.ts || row.createdAt)}</small></td>
+        <td><code>${escapeHtml(row.action || '—')}</code></td>
+        <td><code>${escapeHtml(row.target || '—')}</code></td>
+        <td>${detailHtml || '<span class="muted">—</span>'}</td>
+      </tr>`;
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="4" class="loading" style="color:var(--err)">Hata: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+// ================================================================
+// BOOT: Cookie / sessionStorage'dan oturumu kontrol et
+// ================================================================
+(async function boot() {
+  try {
+    const me = await api('/api/dealer/me');
+    myDealerId = me.dealerId || '';
+    showDashboard();
+  } catch (_) {
+    // login gerekli
+  }
+})();
 </script>
 </body>
 </html>
