@@ -16,19 +16,35 @@
 #   sudo ufw deny 3100,3200/tcp   # localhost-only — Caddy proxylesin
 # =============================================================
 
-# License-server: müşterilerin lisans/heartbeat/policy çağrıları
+# License-server:
+#   - Müşteri/bayi API'si  → /api/*
+#   - Merkezi yönetim SPA  → /admin/* (yalnız sizin IP'niz erişebilir)
+#   - Sağlık kontrolü      → /healthz
 license.mailtrustai.com {
     encode gzip
+
     reverse_proxy localhost:3200 {
         header_up X-Real-IP {remote_host}
         health_uri /healthz
         health_interval 30s
         health_timeout 5s
     }
-    # /api dışı path'ler için 404 (license-server SPA değil, salt API)
-    @notApi not path /api/* /healthz /health
-    respond @notApi 404
-    # Genel rate-limit (caddy plugin yoksa skip): cidr-bazli mate-mate
+
+    # /admin/* sadece güvenilir IP'lerden (kendi ofis/VPN IP'nizi girin)
+    # Birden fazla IP için: remote_ip 1.2.3.4/32 5.6.7.8/32
+    @adminPath path /admin /admin/*
+    @notTrusted {
+        path /admin /admin/*
+        not remote_ip 127.0.0.1/8 ::1
+        # İstediğiniz IP bloğunu aşağıya ekleyin, örnek:
+        # not remote_ip 192.0.2.10/32
+    }
+    respond @notTrusted "Erişim reddedildi" 403
+
+    # /api, /admin, /healthz dışı tüm path'ler → 404
+    @notAllowed not path /api/* /admin /admin/* /healthz /health
+    respond @notAllowed 404
+
     log {
         output file /var/log/caddy/license-access.log
         format json
@@ -36,6 +52,7 @@ license.mailtrustai.com {
 }
 
 # Dealer panel: bayi kullanıcılarının yönetim arayüzü
+# Opsiyonel: belirli IP bloklarına kısıtlayın
 bayi.mailtrustai.com {
     encode gzip
     reverse_proxy localhost:3100 {
@@ -47,11 +64,11 @@ bayi.mailtrustai.com {
         format json
     }
     # Bayi paneli için ek IP allowlist (opsiyonel — kendi IP'nizi ekleyin)
-    # @blocked not remote_ip 192.0.2.1/32 198.51.100.0/24
+    # @blocked not remote_ip 192.0.2.0/24
     # respond @blocked 403
 }
 
-# Default: sunucu kök domain (mailtrustai.com) için landing veya 404
+# Default: sunucu kök domain için basit landing
 mailtrustai.com, www.mailtrustai.com {
     respond "MailTrustAI" 200
 }
