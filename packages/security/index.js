@@ -40,11 +40,18 @@ function hmac(secret, payload) {
 }
 
 // Bearer token auth — dealer ↔ license-server arası ve customer ↔ license-server arası.
+// timingSafeEqual farklı uzunlukta throw eder; uzunluk eşitliği önce kontrol edilir.
 function bearerAuth(expectedSecret) {
+    const expected = expectedSecret ? Buffer.from(expectedSecret) : null;
     return (req, res, next) => {
         const h = req.headers['authorization'] || '';
         const m = /^Bearer\s+(.+)$/i.exec(h);
-        if (!m || !expectedSecret || !crypto.timingSafeEqual(Buffer.from(m[1]), Buffer.from(expectedSecret))) {
+        if (!m || !expected) return res.status(401).json({ error: 'unauthorized' });
+        const got = Buffer.from(m[1]);
+        if (got.length !== expected.length) return res.status(401).json({ error: 'unauthorized' });
+        try {
+            if (!crypto.timingSafeEqual(got, expected)) return res.status(401).json({ error: 'unauthorized' });
+        } catch (_) {
             return res.status(401).json({ error: 'unauthorized' });
         }
         next();
