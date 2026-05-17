@@ -165,7 +165,6 @@ async function audit(actor, action, target, detail) {
 }
 
 module.exports = {
-    db,
     DB_CLIENT,
     DB_PATH,
     ready,
@@ -175,3 +174,9 @@ module.exports = {
     audit,
     isMaria: DB_CLIENT === 'mariadb'
 };
+
+// `db`/`pool` IIFE içinde set edildiği için sync export değeri null kalır.
+// Getter ile her erişimde güncel referansı döndürüyoruz.
+Object.defineProperty(module.exports, 'db',   { enumerable: true, get: () => db });
+Object.defineProperty(module.exports, 'pool', { enumerable: true, get: () => pool });
+

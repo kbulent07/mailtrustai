@@ -18,7 +18,9 @@ const WebSocket = require('ws');
 const path = require('path');
 
 // Workspace paketleri
-const { logger, env, envBool, envInt, APP, asyncH } = require('@mailtrustai/shared');
+const { logger, env, envBool, envInt, APP, asyncH, safeJSONReviver, hardenPrototypes, installShutdownHandlers } = require('@mailtrustai/shared');
+
+hardenPrototypes();
 const licenseClient = require('@mailtrustai/license-client');
 const centralSync   = require('@mailtrustai/central-sync');
 const policyClient  = require('@mailtrustai/policy-client');
@@ -53,11 +55,14 @@ app.set('trust proxy', 'loopback, linklocal, uniquelocal');
 // ayrıca ilgili dosyaları fiziksel olarak imaj dışı bırakır.
 // =====================================================================
 const BLOCKED = [
-    '/keygen.html', '/bayi.html',
+    '/keygen.html', '/bayi.html', '/reseller.html',
     '/api/dealer',
     '/api/license/generate', '/api/license/batch', '/api/license/trial',
     '/api/license/revoke', '/api/license/unrevoke', '/api/license/revoked',
     '/api/license/audit',
+    '/api/license/customer',  // Başka müşterilerin lisans bilgisi sızmasın
+    '/api/license/renew',
+    '/api/license/create',
     '/api/resellers',
     '/api/audit-log',
     '/api/admin',
@@ -79,8 +84,8 @@ app.use((req, res, next) => {
 logger.info('[customer] HARD-GATE aktif: keygen/bayi/license-generator/dealer/admin endpoint\'leri 404.');
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: envInt('CUSTOMER_JSON_LIMIT_MB', 50) * 1024 * 1024, reviver: safeJSONReviver }));
+app.use(express.urlencoded({ extended: true, limit: envInt('CUSTOMER_URLENC_LIMIT_MB', 50) * 1024 * 1024 }));
 
 function healthPayload() {
     return { ok: true, service: 'customer', time: Date.now(), version: APP.VERSION };
@@ -196,6 +201,21 @@ function _gatherTelemetry() {
     } catch (e) { return { counters: {}, services: { healthStatus: 'degraded', errorSummary: e.message } }; }
 }
 
+// Graceful shutdown — sync interval'leri + HTTP server'ı kapat.
+let _syncRunner = null;
+installShutdownHandlers([
+    () => new Promise((resolve) => {
+        try { _syncRunner && _syncRunner.stop(); } catch (_) {}
+        try {
+            server.close(() => { logger.info('[customer] HTTP server kapandı'); resolve(); });
+            setTimeout(() => { try { server.closeAllConnections?.(); } catch (_) {} resolve(); }, 8000).unref();
+        } catch (_) { resolve(); }
+    })
+]);
+
+process.on('unhandledRejection', (reason) => logger.error('[customer] unhandledRejection', reason));
+process.on('uncaughtException', (err) => { logger.error('[customer] uncaughtException', err); process.exit(1); });
+
 function startListening() {
     server.listen(PORT, () => {
         logger.info(`🛡️  MailTrustAI Customer @ http://localhost:${PORT} (v${APP.VERSION})`);
@@ -206,10 +226,12 @@ function startListening() {
         const presetKey   = env('MSA_LICENSE_KEY');
         const hbSec       = envInt('MSA_HEARTBEAT_INTERVAL_SECONDS', 300);
         const plSec       = envInt('MSA_POLICY_SYNC_INTERVAL_SECONDS', 900);
-        const startSync = () => centralSync.startPeriodicSync({
-            syncUrl, enabled: syncEnabled, heartbeatSeconds: hbSec, pullSeconds: plSec,
-            gather: async () => _gatherTelemetry()
-        });
+        const startSync = () => {
+            _syncRunner = centralSync.startPeriodicSync({
+                syncUrl, enabled: syncEnabled, heartbeatSeconds: hbSec, pullSeconds: plSec,
+                gather: async () => _gatherTelemetry()
+            });
+        };
 
         // İlk açılışta lisans key env'den geldiyse activate/validate dene.
         // Başarısız olsa bile customer çalışmaya devam eder (grace/offline mode).

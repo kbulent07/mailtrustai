@@ -1,34 +1,36 @@
 'use strict';
-const fetch = require('node-fetch');
-const { env } = require('@mailtrustai/shared');
+const { env, envInt, fetchJSON, assertSafeUrl, logger } = require('@mailtrustai/shared');
 
-function _base() { return (env('LICENSE_SERVER_URL') || '').replace(/\/+$/, ''); }
-function _headers() { return { 'content-type': 'application/json', 'authorization': `Bearer ${env('DEALER_API_TOKEN') || ''}` }; }
+function _base() {
+    const url = (env('LICENSE_SERVER_URL') || '').replace(/\/+$/, '');
+    if (!url) {
+        const e = new Error('LICENSE_SERVER_URL tanımlı değil'); e.status = 503; throw e;
+    }
+    try { assertSafeUrl(url); } catch (e) {
+        logger.error('[dealer] LICENSE_SERVER_URL geçersiz:', e.message);
+        const err = new Error('LICENSE_SERVER_URL geçersiz'); err.status = 500; throw err;
+    }
+    return url;
+}
+function _token() { return env('DEALER_API_TOKEN') || ''; }
+function _timeout() { return envInt('LICENSE_SERVER_TIMEOUT_MS', 15000); }
 
 async function _req(method, p, body) {
-    const url = `${_base()}${p}`;
-    const opts = { method, headers: _headers(), timeout: 15000 };
-    if (body !== undefined) opts.body = JSON.stringify(body);
-    const res = await fetch(url, opts);
-    const text = await res.text();
-    let j = null; try { j = JSON.parse(text); } catch (_) {}
-    if (!res.ok) { const e = new Error(`license-server ${p} ${res.status}: ${text.slice(0, 200)}`); e.status = res.status; throw e; }
-    return j || {};
+    return fetchJSON(`${_base()}${p}`, {
+        method,
+        body,
+        headers: { authorization: `Bearer ${_token()}` },
+        timeoutMs: _timeout()
+    });
 }
 
 // Auth çağrısı dealer'ın kendi password'unu license-server'a yollar; bearer GEREKMEZ.
 async function verifyDealer(dealerId, password) {
-    const fetch = require('node-fetch');
-    const url = `${_base()}/api/dealer/auth/verify`;
-    const res = await fetch(url, {
+    return fetchJSON(`${_base()}/api/dealer/auth/verify`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ dealerId, password }),
-        timeout: 10000
+        body: { dealerId, password },
+        timeoutMs: Math.min(_timeout(), 10000)
     });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) { const e = new Error(j.error || 'auth failed'); e.status = res.status; throw e; }
-    return j;
 }
 
 module.exports = {
@@ -36,8 +38,10 @@ module.exports = {
     createLicense:  (body) => _req('POST', '/api/license/create', body),
     revokeLicense:  (body) => _req('POST', '/api/license/revoke', body),
     renewLicense:   (body) => _req('POST', '/api/license/renew', body),
-    listCustomerLicenses: (id) => _req('GET',  `/api/license/customer/${encodeURIComponent(id)}`),
+    listCustomerLicenses: (id, dealerId) => _req('GET',
+        `/api/license/customer/${encodeURIComponent(id)}?dealerId=${encodeURIComponent(dealerId || '')}`),
     dealerCustomersStatus: (dealerId) => _req('GET', `/api/central/dealers/${encodeURIComponent(dealerId)}/customers/status`),
     customerStatus:        (id) => _req('GET', `/api/central/customers/${encodeURIComponent(id)}/status`),
+    auditForDealer:        (dealerId) => _req('GET', `/api/license/audit?dealerId=${encodeURIComponent(dealerId)}`),
     audit:                 () => _req('GET', '/api/license/audit')
 };

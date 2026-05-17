@@ -5,8 +5,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const fetch = require('node-fetch');
-const { logger, env, envInt, APP, scrubPII } = require('@mailtrustai/shared');
+const { logger, env, envInt, APP, scrubPII, fetchJSON } = require('@mailtrustai/shared');
 const { encryptJSON, decryptJSON, sha256 } = require('@mailtrustai/security');
 
 const DATA_DIR = env('DATA_DIR', path.join(process.cwd(), 'data'));
@@ -39,20 +38,11 @@ function instanceFingerprint() {
 
 async function _post(remoteUrl, pathPart, body) {
     const url = `${remoteUrl.replace(/\/+$/, '')}${pathPart}`;
-    const res = await fetch(url, {
+    return fetchJSON(url, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-        timeout: 15000
+        body,
+        timeoutMs: envInt('MSA_LICENSE_REMOTE_TIMEOUT_MS', 15000)
     });
-    const text = await res.text();
-    let json = null; try { json = JSON.parse(text); } catch (_) {}
-    if (!res.ok) {
-        const err = new Error(`license-server ${pathPart} ${res.status}: ${text.slice(0, 200)}`);
-        err.status = res.status;
-        throw err;
-    }
-    return json || {};
 }
 
 async function activate({ remoteUrl, licenseKey }) {

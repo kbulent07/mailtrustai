@@ -63,7 +63,7 @@ test('license activate -> validate -> heartbeat -> bootstrap -> pull akisi', asy
         assert.strictEqual(activate.body.customerId, 'cust1');
         assert.strictEqual(activate.body.plan, 'pro');
 
-        const validate = await http_(port, 'POST', '/api/license/validate', { licenseKeyHash: keyHash });
+        const validate = await http_(port, 'POST', '/api/license/validate', { licenseKeyHash: keyHash, instanceId: 'inst-test' });
         assert.strictEqual(validate.status, 200);
         assert.strictEqual(validate.body.licenseStatus, 'active');
 
@@ -146,7 +146,13 @@ test('customer-sync pull version kontrolu ve ack audit kaydi olusur', async () =
         const ack = await http_(port, 'POST', '/api/customer-sync/ack', {
             customerId: 'cust3',
             instanceId: 'inst3',
-            applied: { policy: 2, whitelist: 4, blacklist: 5, apiPolicy: 3 }
+            licenseKeyHash: keyHash,
+            applied: [
+                { kind: 'policy',    version: 2 },
+                { kind: 'whitelist', version: 4 },
+                { kind: 'blacklist', version: 5 },
+                { kind: 'apiPolicy', version: 3 }
+            ]
         });
         assert.strictEqual(ack.status, 200);
         assert.strictEqual(ack.body.ok, true);

@@ -5,7 +5,16 @@
 const crypto = require('crypto');
 const { sha256 } = require('@mailtrustai/security');
 
-const SECRET = () => process.env.LICENSE_SIGNING_SECRET || 'CHANGE_ME_DEV_ONLY';
+function SECRET() {
+    const s = process.env.LICENSE_SIGNING_SECRET;
+    if (!s || s === 'CHANGE_ME_DEV_ONLY' || s === 'CHANGE_ME') {
+        if (String(process.env.NODE_ENV || '').toLowerCase() === 'production') {
+            throw new Error('LICENSE_SIGNING_SECRET production\'da zorunludur (license-core).');
+        }
+        return 'CHANGE_ME_DEV_ONLY';
+    }
+    return s;
+}
 
 // Plan/tier feature/limit tablosu — merkezi license-server tek doğruluk kaynağı.
 const PLAN_MATRIX = {

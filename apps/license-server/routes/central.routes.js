@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const { asyncH, envInt } = require('@mailtrustai/shared');
+const { asyncH, envInt, safeJSON } = require('@mailtrustai/shared');
 const { all } = require('../db');
 
 const router = express.Router();
@@ -23,9 +23,7 @@ function statusOf(lastHeartbeatAt) {
 }
 
 function customerRowToStatus(row) {
-    const payload = (() => {
-        try { return JSON.parse(row.last_payload_json || '{}'); } catch (_) { return {}; }
-    })();
+    const payload = safeJSON(row.last_payload_json, {});
 
     return {
         customerId: row.customer_id,
@@ -69,13 +67,25 @@ router.get('/central/customers/:customerId/status', asyncH(async (req, res) => {
 }));
 
 router.get('/central/customers/:customerId/instances', asyncH(async (req, res) => {
-    const rows = await all(
-        `SELECT a.* FROM activations a
-         JOIN licenses l ON l.id = a.license_id
-         WHERE l.customer_id = ?`,
-        [req.params.customerId]
-    );
-    res.json({ customerId: req.params.customerId, instances: rows });
+    // Dealer scope: optional query param. Bayi sadece kendi müşterilerini görebilir.
+    const dealerId = req.query.dealerId;
+    const rows = dealerId
+        ? await all(
+            `SELECT a.* FROM activations a
+             JOIN licenses l ON l.id = a.license_id
+             JOIN customers c ON c.id = l.customer_id
+             WHERE l.customer_id = ? AND c.dealer_id = ?`,
+            [req.params.customerId, dealerId]
+        )
+        : await all(
+            `SELECT a.id, a.license_id, a.instance_id, a.app_version, a.build_version,
+                    a.node_version, a.environment, a.activated_at, a.last_heartbeat_at
+             FROM activations a
+             JOIN licenses l ON l.id = a.license_id
+             WHERE l.customer_id = ?`,
+            [req.params.customerId]
+        );
+    res.json({ customerId: req.params.customerId, dealerId: dealerId || null, instances: rows });
 }));
 
 router.get('/central/dealers/:dealerId/customers/status', asyncH(async (req, res) => {

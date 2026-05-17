@@ -63,7 +63,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 # Sadece temizlenmiş ağacı kopyala
 COPY --from=builder /build /app
 RUN mkdir -p /app/node_modules/@mailtrustai \
-  && for p in analyzer central-sync customer dealer license-client mail policy-client security shared storage; do ln -sfn "/app/packages/$p" "/app/node_modules/@mailtrustai/$p"; done
+  && for p in analyzer central-sync license-client mail policy-client security shared storage; do \
+        if [ -d "/app/packages/$p" ]; then \
+            ln -sfn "/app/packages/$p" "/app/node_modules/@mailtrustai/$p"; \
+        fi; \
+     done
 
 ENV NODE_ENV=production
 ENV MSA_CUSTOMER_ONLY=true

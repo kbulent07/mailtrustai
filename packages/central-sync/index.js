@@ -6,8 +6,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const fetch = require('node-fetch');
-const { logger, env, envInt, envBool, APP, scrubPII } = require('@mailtrustai/shared');
+const { logger, env, envInt, envBool, APP, scrubPII, fetchJSON } = require('@mailtrustai/shared');
 const { sha256, encryptJSON, decryptJSON } = require('@mailtrustai/security');
 const licenseClient = require('@mailtrustai/license-client');
 
@@ -40,15 +39,11 @@ function getApiPolicy() { return _readEnc(APICFG_CACHE, null); }
 
 async function _fetch(method, syncUrl, p, body) {
     const url = `${syncUrl.replace(/\/+$/, '')}${p}`;
-    const opts = { method, headers: { 'content-type': 'application/json' }, timeout: 15000 };
-    if (body !== undefined) opts.body = JSON.stringify(body);
-    const res = await fetch(url, opts);
-    const text = await res.text();
-    if (!res.ok) {
-        const e = new Error(`central ${p} ${res.status}: ${text.slice(0, 200)}`);
-        e.status = res.status; throw e;
-    }
-    try { return JSON.parse(text); } catch (_) { return {}; }
+    return fetchJSON(url, {
+        method,
+        body,
+        timeoutMs: envInt('MSA_CENTRAL_SYNC_TIMEOUT_MS', 15000)
+    });
 }
 async function _withRetry(fn, label) {
     const max = envInt('MSA_CENTRAL_SYNC_RETRIES', 3);
@@ -121,7 +116,20 @@ function sanitizeHeartbeatPayload(raw) {
     return out;
 }
 
+function _hasLicenseIdentity() {
+    const lic = licenseClient.getSnapshot() || {};
+    const envLicenseKey = env('MSA_LICENSE_KEY', '');
+    const licenseKeyHash = lic.licenseKeyHash || (envLicenseKey ? sha256(envLicenseKey) : null);
+    const customerId = lic.customerId || null;
+    const instanceId = lic.instanceId || licenseClient.instanceFingerprint();
+    return !!(licenseKeyHash && customerId && instanceId);
+}
+
 async function bootstrapCustomer({ syncUrl, gather }) {
+    if (!_hasLicenseIdentity()) {
+        logger.info('[central-sync] lisans kimliği yok, bootstrap atlandı (önce activate gerekli).');
+        return { ok: false, skipped: 'no-license' };
+    }
     return _withRetry(async () => {
         const payload = sanitizeHeartbeatPayload(_baseTelemetry(gather ? await gather() : {}));
         const res = await _fetch('POST', syncUrl, '/api/customer-sync/bootstrap', payload);
@@ -138,6 +146,10 @@ async function bootstrapCustomer({ syncUrl, gather }) {
 }
 
 async function sendHeartbeat({ syncUrl, gather }) {
+    if (!_hasLicenseIdentity()) {
+        logger.debug && logger.debug('[central-sync] lisans yok, heartbeat atlandı.');
+        return { ok: false, skipped: 'no-license' };
+    }
     return _withRetry(async () => {
         const payload = sanitizeHeartbeatPayload(_baseTelemetry(gather ? await gather() : {}));
         return await _fetch('POST', syncUrl, '/api/customer-sync/heartbeat', payload);
@@ -168,13 +180,15 @@ async function pullCentralUpdates({ syncUrl }) {
         const acks = [];
         if (res.policy)    { _writeEnc(POLICY_CACHE,  res.policy);    state.localPolicyVersion    = res.policy.version;    acks.push({ kind: 'policy',    version: res.policy.version }); }
         if (res.lists) {
+            // Sunucu authoritative — gönderilen listeyi olduğu gibi yaz (merge yok).
+            // Eski cur değerleri yalnızca eksik alanlar için kullanılır.
             const cur = getLists();
-            const merged = {
-                whitelist: { ...cur.whitelist, ...(res.lists.whitelist || {}) },
-                blacklist: { ...cur.blacklist, ...(res.lists.blacklist || {}) },
+            const next = {
+                whitelist: res.lists.whitelist || cur.whitelist,
+                blacklist: res.lists.blacklist || cur.blacklist,
                 version: res.lists.version
             };
-            _writeEnc(LISTS_CACHE, merged);
+            _writeEnc(LISTS_CACHE, next);
             if (res.lists.whitelist?.version) { state.localWhitelistVersion = res.lists.whitelist.version; acks.push({ kind: 'whitelist', version: res.lists.whitelist.version }); }
             if (res.lists.blacklist?.version) { state.localBlacklistVersion = res.lists.blacklist.version; acks.push({ kind: 'blacklist', version: res.lists.blacklist.version }); }
         }
@@ -202,19 +216,54 @@ const syncLists     = pullCentralUpdates;
 const syncApiPolicy = pullCentralUpdates;
 
 // Periyodik runner — customer server.js bunu boot'ta başlatır.
+// setInterval yerine recursive setTimeout: önceki çağrı bitmeden yenisi
+// başlamaz (overlap yok). .unref() ile test/shutdown'da event loop bloklanmaz.
 function startPeriodicSync({ syncUrl, gather, heartbeatSeconds = 300, pullSeconds = 900, enabled = true }) {
     if (!enabled) { logger.info('[central-sync] devre dışı (MSA_CENTRAL_SYNC_ENABLED=false)'); return { stop() {} }; }
     if (!syncUrl) { logger.warn('[central-sync] MSA_CENTRAL_SYNC_URL boş, sync atlandı'); return { stop() {} }; }
+
     let stopped = false;
-    const hb = setInterval(() => { if (!stopped) sendHeartbeat({ syncUrl, gather }).catch(e => logger.warn('hb:', e.message)); }, heartbeatSeconds * 1000);
-    const pl = setInterval(async () => {
+    let hbTimer = null;
+    let plTimer = null;
+
+    async function tickHb() {
         if (stopped) return;
-        try { const r = await pullCentralUpdates({ syncUrl }); if (r.applied.length) await ackCentralUpdate({ syncUrl, applied: r.applied }); }
-        catch (e) { logger.warn('pull/ack:', e.message); }
-    }, pullSeconds * 1000);
-    // İlk açılış: hemen bir bootstrap dene
-    bootstrapCustomer({ syncUrl, gather }).catch(e => logger.warn('bootstrap (deferred-fallback):', e.message));
-    return { stop() { stopped = true; clearInterval(hb); clearInterval(pl); } };
+        try { await sendHeartbeat({ syncUrl, gather }); }
+        catch (e) { logger.warn('hb:', e.message); }
+        if (!stopped) {
+            hbTimer = setTimeout(tickHb, heartbeatSeconds * 1000);
+            hbTimer.unref && hbTimer.unref();
+        }
+    }
+    async function tickPull() {
+        if (stopped) return;
+        try {
+            const r = await pullCentralUpdates({ syncUrl });
+            if (r && r.applied && r.applied.length) await ackCentralUpdate({ syncUrl, applied: r.applied });
+        } catch (e) { logger.warn('pull/ack:', e.message); }
+        if (!stopped) {
+            plTimer = setTimeout(tickPull, pullSeconds * 1000);
+            plTimer.unref && plTimer.unref();
+        }
+    }
+
+    // İlk açılış: bootstrap → ilk heartbeat/pull tick'leri.
+    bootstrapCustomer({ syncUrl, gather })
+        .catch((e) => logger.warn('bootstrap (deferred-fallback):', e.message))
+        .finally(() => {
+            hbTimer = setTimeout(tickHb, heartbeatSeconds * 1000);
+            plTimer = setTimeout(tickPull, pullSeconds * 1000);
+            hbTimer.unref && hbTimer.unref();
+            plTimer.unref && plTimer.unref();
+        });
+
+    return {
+        stop() {
+            stopped = true;
+            if (hbTimer) clearTimeout(hbTimer);
+            if (plTimer) clearTimeout(plTimer);
+        }
+    };
 }
 
 module.exports = {
