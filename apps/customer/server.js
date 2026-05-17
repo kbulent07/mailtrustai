@@ -42,6 +42,7 @@ const monitorRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/m
 const reportsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/reports.routes'));
 const listsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/lists.routes'));
 const statsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/stats.routes'));
+const customerAuthRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/customer.routes'));
 const customerUsersRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/customerUsers.routes'));
 
 const app = express();
@@ -162,6 +163,7 @@ customerApi.use(monitorRoutes);
 customerApi.use(reportsRoutes);
 customerApi.use(listsRoutes);
 customerApi.use(statsRoutes);
+customerApi.use(customerAuthRoutes);
 customerApi.use(customerUsersRoutes);
 app.use('/api', customerApi);
 

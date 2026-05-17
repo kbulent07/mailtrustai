@@ -51,7 +51,8 @@ test('staging prune oncesi FAIL, prune sonrasi PASS', () => {
     rm('src/storage/resellerStore.js');
     rm('src/storage/issuedLicenseStore.js');
     rm('src/storage/creditTransactionStore.js');
-    rm('src/middleware/adminAuth.js');
+    // src/middleware/adminAuth.js KORUNUR (customer.routes.js bagimliligi —
+    // /customer/reset endpoint'i); HARD-GATE /api/admin path'lerini zaten 404'ler.
     rm('src/utils/dealerLock.js');
     rm('public/bayi.html');
     rm('public/keygen.html');

@@ -41,6 +41,9 @@ services:
       MSA_ENC_SALT: ${MSA_ENC_SALT:?MSA_ENC_SALT zorunlu}
       # Legacy license HMAC (src/license/license.js fallback)
       MSA_LICENSE_SECRET: ${MSA_LICENSE_SECRET:?MSA_LICENSE_SECRET zorunlu}
+      # Ilk admin kullanici kurulumu — browser'dan ?setup_token=... ile.
+      # Container disindan setup yapilirken zorunlu (localhost'tan istisna).
+      MSA_SETUP_TOKEN: ${MSA_SETUP_TOKEN:-}
     ports:
       - "${CUSTOMER_PORT:-3000}:3000"
     volumes:

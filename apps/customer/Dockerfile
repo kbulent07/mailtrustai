@@ -42,8 +42,9 @@ RUN rm -f \
         src/storage/resellerStore.js \
         src/storage/issuedLicenseStore.js \
         src/storage/creditTransactionStore.js \
-        src/middleware/adminAuth.js \
         src/utils/dealerLock.js
+# NOT: src/middleware/adminAuth.js KORUNUR — customer.routes.js /customer/reset
+# rotasi icin gerekli. HARD-GATE /api/admin path'lerini zaten 404'ler.
 
 # 4) public/ içinden bayi ve keygen sayfalarını + bayi-app.js'i sil
 RUN rm -f public/bayi.html public/keygen.html public/js/bayi-app.js

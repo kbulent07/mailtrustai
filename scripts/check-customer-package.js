@@ -22,7 +22,8 @@ const FORBIDDEN_PATHS_IMAGE = [
     'src/storage/resellerStore.js',
     'src/storage/issuedLicenseStore.js',
     'src/storage/creditTransactionStore.js',
-    'src/middleware/adminAuth.js',
+    // 'src/middleware/adminAuth.js', // customer.routes.js bagimlilik — image'da kalir;
+    //                                   HARD-GATE /api/admin endpoint'lerini zaten 404'ler.
     'src/utils/dealerLock.js',
     'public/keygen.html',
     'public/bayi.html'

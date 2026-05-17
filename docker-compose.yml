@@ -152,6 +152,7 @@ services:
       MSA_ENC_PASSWORD: ${MSA_ENC_PASSWORD:-dev-only-imap-enc-password-32bytes-x}
       MSA_ENC_SALT: ${MSA_ENC_SALT:-dev-only-imap-enc-salt-32bytes-yyyy}
       MSA_LICENSE_SECRET: ${MSA_LICENSE_SECRET:-dev-only-legacy-license-secret-32b}
+      MSA_SETUP_TOKEN: ${MSA_SETUP_TOKEN:-dev-setup-token-2026}
     ports:
       - "${CUSTOMER_PORT:-3000}:3000"
     volumes:
