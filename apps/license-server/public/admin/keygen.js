@@ -3,7 +3,9 @@
 // Geliştirici (admin) için, ADMIN_PANEL_TOKEN ile giriş yapılır.
 
 const TOKEN_KEY = 'msa-admin-token';
-let allItems = [];      // /api/admin/customers'tan dönen liste (filtreleme için)
+let allItems = [];        // /api/admin/customers (flat)
+let groupedItems = [];    // /api/admin/customers-grouped
+let viewMode = 'flat';    // 'flat' | 'grouped'
 
 const $ = (id) => document.getElementById(id);
 
@@ -75,15 +77,17 @@ async function showDashboard() {
 
 async function loadAll() {
     try {
-        const [stats, dealersResp, customersResp] = await Promise.all([
+        const [stats, dealersResp, customersResp, groupedResp] = await Promise.all([
             api('/api/admin/stats'),
             api('/api/admin/dealers'),
-            api('/api/admin/customers')
+            api('/api/admin/customers'),
+            api('/api/admin/customers-grouped')
         ]);
         renderStats(stats);
         renderDealerOptions(dealersResp.dealers || []);
         allItems = customersResp.items || [];
-        renderTable();
+        groupedItems = groupedResp.items || [];
+        renderActiveView();
     } catch (e) {
         if (e.status === 401) {
             sessionStorage.removeItem(TOKEN_KEY);
@@ -117,8 +121,26 @@ function renderDealerOptions(dealers) {
     }
 }
 
-// ============== Tablo + filtreleme ==============
-function renderTable() {
+// ============== View toggle ==============
+$('viewFlatBtn').addEventListener('click', () => setView('flat'));
+$('viewGroupedBtn').addEventListener('click', () => setView('grouped'));
+
+function setView(mode) {
+    viewMode = mode;
+    $('viewFlatBtn').classList.toggle('active', mode === 'flat');
+    $('viewGroupedBtn').classList.toggle('active', mode === 'grouped');
+    $('flatView').classList.toggle('hidden', mode !== 'flat');
+    $('groupedView').classList.toggle('hidden', mode !== 'grouped');
+    renderActiveView();
+}
+
+function renderActiveView() {
+    if (viewMode === 'flat') renderFlatTable();
+    else renderGroupedTable();
+}
+
+// ============== Düz tablo (flat) ==============
+function renderFlatTable() {
     const q = $('filterQ').value.trim().toLowerCase();
     const fDealer = $('filterDealer').value;
     const fPlan   = $('filterPlan').value;
@@ -130,7 +152,8 @@ function renderTable() {
         if (fStatus && item.license?.status !== fStatus) return false;
         if (q) {
             const hay = [item.customerId, item.companyName || '', item.email || '',
-                         item.dealerId || '', item.dealerName || ''].join(' ').toLowerCase();
+                         item.dealerId || '', item.dealerName || '',
+                         item.license?.label || ''].join(' ').toLowerCase();
             if (!hay.includes(q)) return false;
         }
         return true;
@@ -138,7 +161,7 @@ function renderTable() {
 
     const tbody = $('customersBody');
     if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Kayıt bulunamadı.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">Kayıt bulunamadı.</td></tr>';
         return;
     }
 
@@ -156,28 +179,146 @@ function renderTable() {
         const overridePill = (lic && lic.offlineGraceOverride != null)
             ? `<span class="override-pill">${lic.offlineGraceOverride} gün</span>`
             : `<span class="muted">— (plan: ${lic?.graceDays ?? '—'} gün)</span>`;
+        const labelTag = lic?.label
+            ? `<span class="label-tag">${escapeHtml(lic.label)}</span>`
+            : '<span class="label-tag empty">—</span>';
 
         const dealerLabel = it.dealerName ? `${escapeHtml(it.dealerName)}<br><small class="muted">${escapeHtml(it.dealerId)}</small>` : (it.dealerId || '<span class="muted">—</span>');
-        const customerLabel = `<strong>${escapeHtml(it.companyName || it.customerId)}</strong><br><small class="muted">${escapeHtml(it.customerId)}</small>${it.email ? `<br><small class="muted">${escapeHtml(it.email)}</small>` : ''}`;
+        const countBadge = it.licenseCount > 1
+            ? `<span class="license-count-badge" title="Bu müşterinin toplam lisans sayısı">${it.licenseCount} lisans</span>`
+            : '';
+        const customerLabel = `<strong>${escapeHtml(it.companyName || it.customerId)}</strong> ${countBadge}<br><small class="muted">${escapeHtml(it.customerId)}</small>${it.email ? `<br><small class="muted">${escapeHtml(it.email)}</small>` : ''}`;
 
         return `<tr>
             <td>${customerLabel}</td>
             <td>${dealerLabel}</td>
             <td><code>${lic?.keyMasked || '—'}</code></td>
+            <td>${labelTag}</td>
             <td>${lic?.plan || '—'} / ${lic?.tier || '—'}</td>
             <td>${statusTag}</td>
             <td>${expires}</td>
             <td>${onlineTag}${latest?.lastHeartbeatAt ? `<br><small class="muted">${timeAgo(latest.lastHeartbeatAt)}</small>` : ''}</td>
             <td>${overridePill}</td>
-            <td>${lic ? `<button class="action-btn" data-license="${lic.id}" data-name="${escapeHtml(it.companyName || it.customerId)}" data-mask="${escapeHtml(lic.keyMasked || '')}">İzin Ver</button>` : ''}</td>
+            <td>
+                ${lic ? `
+                    <button class="action-btn" data-license="${lic.id}" data-name="${escapeHtml(it.companyName || it.customerId)}" data-mask="${escapeHtml(lic.keyMasked || '')}" data-action="grace">İzin Ver</button>
+                    <button class="action-btn" data-license="${lic.id}" data-name="${escapeHtml(it.companyName || it.customerId)}" data-mask="${escapeHtml(lic.keyMasked || '')}" data-current="${escapeHtml(lic.label || '')}" data-action="label">Etiket</button>
+                ` : ''}
+            </td>
         </tr>`;
     }).join('');
 
-    // Modal aç
+    bindRowActions(tbody);
+}
+
+// ============== Müşteri-bazlı gruplu tablo ==============
+function renderGroupedTable() {
+    const q = $('filterQ').value.trim().toLowerCase();
+    const fDealer = $('filterDealer').value;
+    const fPlan = $('filterPlan').value;
+    const fStatus = $('filterStatus').value;
+
+    const filtered = groupedItems.filter(c => {
+        if (fDealer && c.dealerId !== fDealer) return false;
+        // Müşterinin EN AZ BİR lisansı plan/status'a uymalı (gruplu için)
+        if (fPlan && !c.licenses.some(l => l.plan === fPlan)) return false;
+        if (fStatus && !c.licenses.some(l => l.status === fStatus)) return false;
+        if (q) {
+            const hay = [c.customerId, c.companyName || '', c.email || '',
+                         c.dealerId || '', c.dealerName || '',
+                         ...c.licenses.map(l => l.label || '')].join(' ').toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    });
+
+    const tbody = $('groupedBody');
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">Kayıt bulunamadı.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(c => {
+        const dealerLabel = c.dealerName ? `${escapeHtml(c.dealerName)}<br><small class="muted">${escapeHtml(c.dealerId)}</small>` : (c.dealerId || '<span class="muted">—</span>');
+        const countCls = c.licenseCount > 1 ? '' : 'warn';
+        const subRows = c.licenses.map(l => {
+            const expires = l.expiresAt ? new Date(l.expiresAt).toLocaleDateString('tr-TR') : '—';
+            const expired = l.expiresAt && l.expiresAt < Date.now();
+            const statusTag = `<span class="tag tag-${expired ? 'expired' : l.status}">${expired ? 'expired' : l.status}</span>`;
+            const labelTag = l.label
+                ? `<span class="label-tag">${escapeHtml(l.label)}</span>`
+                : '<span class="label-tag empty">—</span>';
+            const overridePill = l.offlineGraceOverride != null
+                ? `<span class="override-pill">${l.offlineGraceOverride} gün</span>`
+                : `<span class="muted">${l.graceDays} gün (plan)</span>`;
+            const onlineRow = l.activations.find(a => a.lastHeartbeatAt) || null;
+            return `<tr>
+                <td><code>${l.keyMasked}</code></td>
+                <td>${labelTag}</td>
+                <td>${l.plan} / ${l.tier}</td>
+                <td>${statusTag}</td>
+                <td>${expires}</td>
+                <td>${overridePill}</td>
+                <td>${l.activations.length} aktivasyon${onlineRow ? `<br><small class="muted">${timeAgo(onlineRow.lastHeartbeatAt)}</small>` : ''}</td>
+                <td>
+                    <button class="action-btn" data-license="${l.id}" data-name="${escapeHtml(c.companyName || c.customerId)}" data-mask="${escapeHtml(l.keyMasked || '')}" data-action="grace">İzin</button>
+                    <button class="action-btn" data-license="${l.id}" data-name="${escapeHtml(c.companyName || c.customerId)}" data-mask="${escapeHtml(l.keyMasked || '')}" data-current="${escapeHtml(l.label || '')}" data-action="label">Etiket</button>
+                </td>
+            </tr>`;
+        }).join('');
+
+        return `
+            <tr class="group-row" data-customer="${escapeHtml(c.customerId)}">
+                <td><span class="expander">▶</span></td>
+                <td><strong>${escapeHtml(c.companyName || c.customerId)}</strong><br><small class="muted">${escapeHtml(c.customerId)}</small>${c.email ? `<br><small class="muted">${escapeHtml(c.email)}</small>` : ''}</td>
+                <td>${dealerLabel}</td>
+                <td><span class="license-count-badge ${countCls}">${c.licenseCount} lisans</span></td>
+                <td><span class="tag tag-active">${c.activeCount} aktif</span></td>
+                <td></td>
+            </tr>
+            <tr class="sub-licenses hidden" data-for="${escapeHtml(c.customerId)}">
+                <td colspan="6">
+                    <table class="inner-table">
+                        <thead><tr>
+                            <th>Anahtar</th><th>Etiket</th><th>Plan</th><th>Durum</th>
+                            <th>Bitiş</th><th>Offline İzin</th><th>Aktivasyon</th><th>Aksiyon</th>
+                        </tr></thead>
+                        <tbody>${subRows}</tbody>
+                    </table>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    // Genişletme tıklaması
+    tbody.querySelectorAll('.group-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') return;  // Aksiyon butonları
+            const id = row.dataset.customer;
+            row.classList.toggle('open');
+            const sub = tbody.querySelector(`tr.sub-licenses[data-for="${CSS.escape(id)}"]`);
+            if (sub) sub.classList.toggle('hidden');
+        });
+    });
+
+    bindRowActions(tbody);
+}
+
+// Ortak: row aksiyonları (grace + label modal aç)
+function bindRowActions(tbody) {
     tbody.querySelectorAll('button.action-btn').forEach(btn => {
-        btn.addEventListener('click', () => openGraceModal(
-            btn.dataset.license, btn.dataset.name, btn.dataset.mask
-        ));
+        const a = btn.dataset.action;
+        if (a === 'grace') {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openGraceModal(btn.dataset.license, btn.dataset.name, btn.dataset.mask);
+            });
+        } else if (a === 'label') {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openLabelModal(btn.dataset.license, btn.dataset.name, btn.dataset.mask, btn.dataset.current);
+            });
+        }
     });
 }
 
@@ -195,8 +336,8 @@ function timeAgo(ms) {
 }
 
 ['filterQ', 'filterDealer', 'filterPlan', 'filterStatus'].forEach(id => {
-    $(id).addEventListener('input', renderTable);
-    $(id).addEventListener('change', renderTable);
+    $(id).addEventListener('input', renderActiveView);
+    $(id).addEventListener('change', renderActiveView);
 });
 
 // ============== Bulk offline grace ==============
@@ -279,6 +420,39 @@ $('graceModalApply').addEventListener('click', async () => {
 // Modal dışına tıklama
 $('graceModal').addEventListener('click', (e) => {
     if (e.target === $('graceModal')) $('graceModal').classList.add('hidden');
+});
+
+// ============== Lisans etiket modal ==============
+let currentLabelLicenseId = null;
+function openLabelModal(licenseId, customerName, mask, current) {
+    currentLabelLicenseId = licenseId;
+    $('labelModalCustomer').textContent = customerName;
+    $('labelModalLicense').textContent = mask || licenseId;
+    $('labelModalValue').value = current || '';
+    $('labelModalResult').textContent = '';
+    $('labelModalResult').className = 'result';
+    $('labelModal').classList.remove('hidden');
+    setTimeout(() => $('labelModalValue').focus(), 50);
+}
+$('labelModalCancel').addEventListener('click', () => $('labelModal').classList.add('hidden'));
+$('labelModalApply').addEventListener('click', async () => {
+    const raw = $('labelModalValue').value.trim();
+    const label = raw === '' ? null : raw.slice(0, 128);
+    try {
+        await api(`/api/admin/licenses/${encodeURIComponent(currentLabelLicenseId)}/label`, {
+            method: 'POST', body: { label }
+        });
+        $('labelModalResult').textContent = '✓ Kaydedildi.';
+        $('labelModalResult').className = 'result ok';
+        await loadAll();
+        setTimeout(() => $('labelModal').classList.add('hidden'), 600);
+    } catch (e) {
+        $('labelModalResult').textContent = 'Hata: ' + e.message;
+        $('labelModalResult').className = 'result err';
+    }
+});
+$('labelModal').addEventListener('click', (e) => {
+    if (e.target === $('labelModal')) $('labelModal').classList.add('hidden');
 });
 
 // ============== Boot: token varsa direkt dashboard ==============

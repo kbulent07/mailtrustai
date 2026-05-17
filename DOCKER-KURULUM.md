@@ -451,6 +451,56 @@ docker exec mailtrustai-customer wget -qO- "$MSA_LICENSE_REMOTE_URL/healthz"
 
 ---
 
+## Çoklu Lisans (Bir Müşteri = N Lisans)
+
+Bir müşteri (firma) birden fazla lisans satın alabilir:
+- "Üretim" + "Test/Yedek" lisansları (high availability)
+- Farklı şubeler / departmanlar
+- Plan upgrade için geçici dual-license
+
+### Sunucu Tarafı (Otomatik Destekler)
+
+| Yer | Davranış |
+|-----|----------|
+| DB | `licenses.customer_id` UNIQUE değil — N kayıt mümkün |
+| `POST /api/license/create` | Her çağrı yeni lisans (kontrol yok) — yan yana yaşar |
+| Admin panel (`/admin`) | Hem **düz** (her lisans satır) hem **gruplu** (müşteri başına) görünüm |
+| Lisans etiketi | `licenses.label` (örn: "Üretim", "Şube-Ankara") — admin panelden set |
+| Offline grace | Her lisans için ayrı override (admin panelinden tek tek veya bulk) |
+
+### Müşteri Tarafı: Çoklu Lisans Nasıl Çalışır
+
+Bir müşteri **host'unda** customer container'ı tek `MSA_LICENSE_KEY` ile çalışır. Çoklu lisans için 3 senaryo:
+
+**1. Tek host, N container (çoğu durum):**
+```bash
+# Lisans A (üretim) — port 3000
+docker compose --env-file .env.docker.a -f docker-compose.customer.yml \
+    -p mailtrustai-prod up -d
+
+# Lisans B (test) — port 3001
+docker compose --env-file .env.docker.b -f docker-compose.customer.yml \
+    -p mailtrustai-test up -d
+```
+Her `.env.docker.X` farklı `MSA_LICENSE_KEY`, farklı `CUSTOMER_PORT`, farklı `MSA_INSTANCE_ID`. Compose project name `-p` ile ayrıştırılır.
+
+**2. N farklı host:** Her host kendi `MSA_LICENSE_KEY`'i ile bağımsız çalışır — en temiz model.
+
+**3. Tek container, lisans değişimi:** `.env.docker`'da `MSA_LICENSE_KEY`'i değiştir + `docker compose up -d --force-recreate`. Eski lisansın activation kaydı kalır (audit log'ta), yeni key aktivasyon olur.
+
+### Lisans Etiketleme (Admin Panelden)
+
+```
+1. /admin → giriş
+2. "Müşteri grup" toggle (sağ üstteki)
+3. Şirket satırı → ▶ tıkla → lisans listesi açılır
+4. Her lisans satırında "Etiket" butonu → "Üretim" / "Test" / "Şube-..." gir
+```
+
+Etiket aramada filtrelenir, raporlamada görünür.
+
+---
+
 ## Mimari Notları
 
 ### Müşteri Host'unda NE BULUNUR / NE BULUNMAZ

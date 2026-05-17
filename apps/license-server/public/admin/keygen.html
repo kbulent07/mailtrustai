@@ -92,7 +92,7 @@
 
     <!-- Filtreler -->
     <section class="filters">
-        <input type="text" id="filterQ" placeholder="🔍 Müşteri adı, ID veya e-posta...">
+        <input type="text" id="filterQ" placeholder="🔍 Müşteri adı, ID, e-posta veya lisans etiketi...">
         <select id="filterDealer"><option value="">Bayi: tümü</option></select>
         <select id="filterPlan">
             <option value="">Plan: tümü</option>
@@ -105,16 +105,21 @@
             <option value="active">active</option>
             <option value="revoked">revoked</option>
         </select>
+        <div class="view-toggle">
+            <button id="viewFlatBtn" class="active" title="Her lisans bir satır">📋 Düz</button>
+            <button id="viewGroupedBtn" title="Müşteri başına grupla (çoklu lisans için)">📁 Müşteri grup</button>
+        </div>
     </section>
 
-    <!-- Müşteri/Lisans Tablosu -->
-    <section class="table-wrap">
+    <!-- Müşteri/Lisans Tablosu (DÜZ) -->
+    <section class="table-wrap" id="flatView">
         <table id="customersTable">
             <thead>
                 <tr>
                     <th>Müşteri</th>
                     <th>Bayi</th>
                     <th>Lisans</th>
+                    <th>Etiket</th>
                     <th>Plan / Tier</th>
                     <th>Durum</th>
                     <th>Bitiş</th>
@@ -124,10 +129,45 @@
                 </tr>
             </thead>
             <tbody id="customersBody">
-                <tr><td colspan="9" class="loading">Yükleniyor...</td></tr>
+                <tr><td colspan="10" class="loading">Yükleniyor...</td></tr>
             </tbody>
         </table>
     </section>
+
+    <!-- Müşteri Bazlı GRUPLU view -->
+    <section class="table-wrap hidden" id="groupedView">
+        <table id="groupedTable">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Müşteri</th>
+                    <th>Bayi</th>
+                    <th>Lisans Sayısı</th>
+                    <th>Aktif</th>
+                    <th>Aksiyon</th>
+                </tr>
+            </thead>
+            <tbody id="groupedBody">
+                <tr><td colspan="6" class="loading">Yükleniyor...</td></tr>
+            </tbody>
+        </table>
+    </section>
+</div>
+
+<!-- ============== LISANS ETİKET MODAL ============== -->
+<div id="labelModal" class="modal hidden">
+    <div class="modal-card">
+        <h3>Lisans Etiketi</h3>
+        <p class="muted">Müşteri: <strong id="labelModalCustomer"></strong></p>
+        <p class="muted">Lisans: <code id="labelModalLicense"></code></p>
+        <label>Etiket (örn: "Üretim", "Test", "Şube-İstanbul") — <em>boş = etiketi sil</em></label>
+        <input type="text" id="labelModalValue" maxlength="128" placeholder="örn: Üretim">
+        <div class="modal-btns">
+            <button id="labelModalCancel">İptal</button>
+            <button id="labelModalApply" class="primary">Kaydet</button>
+        </div>
+        <div id="labelModalResult" class="result"></div>
+    </div>
 </div>
 
 <!-- ============== TEK LİSANS — OFFLINE GRACE MODAL ============== -->

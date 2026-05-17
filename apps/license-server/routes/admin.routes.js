@@ -62,6 +62,8 @@ router.post('/admin/login', asyncH(async (req, res) => {
 
 // ============================================================
 // GET /api/admin/customers — TÜM müşteriler + lisansları + son aktivasyonları
+//   Bir müşterinin BIRDEN FAZLA lisansı olabilir — her lisans için ayrı row.
+//   licenseCount alanı, aynı müşterinin toplam lisans sayısını gösterir.
 // ============================================================
 router.get('/admin/customers', adminAuth, asyncH(async (req, res) => {
     const { dealerId, plan, status, q } = req.query;
@@ -72,8 +74,8 @@ router.get('/admin/customers', adminAuth, asyncH(async (req, res) => {
     if (plan)     { where.push('l.plan = ?');      params.push(plan); }
     if (status)   { where.push('l.status = ?');    params.push(status); }
     if (q)        {
-        where.push('(c.company_name LIKE ? OR c.email LIKE ? OR c.id LIKE ?)');
-        params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+        where.push('(c.company_name LIKE ? OR c.email LIKE ? OR c.id LIKE ? OR l.label LIKE ?)');
+        params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
     }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
@@ -91,6 +93,7 @@ router.get('/admin/customers', adminAuth, asyncH(async (req, res) => {
             l.tier         AS tier,
             l.status       AS license_status,
             l.license_key_masked AS license_key_masked,
+            l.label        AS license_label,
             l.issued_at    AS issued_at,
             l.expires_at   AS expires_at,
             l.grace_days   AS grace_days,
@@ -102,6 +105,12 @@ router.get('/admin/customers', adminAuth, asyncH(async (req, res) => {
         ORDER BY c.created_at DESC, l.issued_at DESC
     `;
     const rows = await all(sql, params);
+
+    // licenseCount: aynı customer'a kaç lisans (filtreden bağımsız, toplam)
+    const countRows = await all(
+        'SELECT customer_id, COUNT(*) AS c FROM licenses GROUP BY customer_id'
+    );
+    const countByCustomer = new Map(countRows.map(r => [r.customer_id, r.c]));
 
     // Her lisans için son aktivasyon (en güncel heartbeat)
     const items = [];
@@ -138,12 +147,14 @@ router.get('/admin/customers', adminAuth, asyncH(async (req, res) => {
             dealerId: r.dealer_id,
             dealerName: r.dealer_name,
             customerCreatedAt: r.customer_created_at,
+            licenseCount: countByCustomer.get(r.customer_id) || 0,
             license: r.license_id ? {
                 id: r.license_id,
                 plan: r.plan,
                 tier: r.tier,
                 status: r.license_status,
                 keyMasked: r.license_key_masked,
+                label: r.license_label,
                 issuedAt: r.issued_at,
                 expiresAt: r.expires_at,
                 graceDays: r.grace_days,
@@ -163,6 +174,101 @@ router.get('/admin/customers', adminAuth, asyncH(async (req, res) => {
     }
 
     res.json({ count: items.length, items });
+}));
+
+// ============================================================
+// GET /api/admin/customers-grouped — Müşteri başına 1 row, lisanslar array
+//   Bir müşterinin N lisansı varsa hepsi licenses[] içinde döner.
+// ============================================================
+router.get('/admin/customers-grouped', adminAuth, asyncH(async (req, res) => {
+    const { dealerId, q } = req.query;
+    let where = [];
+    let params = [];
+    if (dealerId) { where.push('c.dealer_id = ?'); params.push(dealerId); }
+    if (q)        {
+        where.push('(c.company_name LIKE ? OR c.email LIKE ? OR c.id LIKE ?)');
+        params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+    const customers = await all(`
+        SELECT c.id AS customer_id, c.company_name, c.dealer_id, c.email, c.created_at,
+               d.name AS dealer_name
+        FROM customers c
+        LEFT JOIN dealers d ON d.id = c.dealer_id
+        ${whereSql}
+        ORDER BY c.created_at DESC
+    `, params);
+
+    const out = [];
+    for (const c of customers) {
+        const licenses = await all(`
+            SELECT id, plan, tier, status, license_key_masked, label,
+                   issued_at, expires_at, grace_days, offline_grace_days_override
+            FROM licenses
+            WHERE customer_id = ?
+            ORDER BY issued_at DESC
+        `, [c.customer_id]);
+
+        const activations = await all(`
+            SELECT a.license_id, a.instance_id, a.app_version, a.last_heartbeat_at
+            FROM activations a
+            JOIN licenses l ON l.id = a.license_id
+            WHERE l.customer_id = ?
+        `, [c.customer_id]);
+
+        out.push({
+            customerId: c.customer_id,
+            companyName: c.company_name,
+            email: c.email,
+            dealerId: c.dealer_id,
+            dealerName: c.dealer_name,
+            customerCreatedAt: c.created_at,
+            licenseCount: licenses.length,
+            activeCount: licenses.filter(l => l.status === 'active').length,
+            licenses: licenses.map(l => ({
+                id: l.id,
+                plan: l.plan,
+                tier: l.tier,
+                status: l.status,
+                keyMasked: l.license_key_masked,
+                label: l.label,
+                issuedAt: l.issued_at,
+                expiresAt: l.expires_at,
+                graceDays: l.grace_days,
+                offlineGraceOverride: l.offline_grace_days_override,
+                activations: activations.filter(a => a.license_id === l.id).map(a => ({
+                    instanceId: a.instance_id,
+                    appVersion: a.app_version,
+                    lastHeartbeatAt: a.last_heartbeat_at
+                }))
+            }))
+        });
+    }
+
+    res.json({ count: out.length, items: out });
+}));
+
+// ============================================================
+// POST /api/admin/licenses/:id/label — lisansa etiket ata
+// body: { label: string | null }   max 128 karakter
+// ============================================================
+router.post('/admin/licenses/:id/label', adminAuth, asyncH(async (req, res) => {
+    const { label } = req.body || {};
+    const licenseId = req.params.id;
+
+    let v = null;
+    if (label !== null && label !== undefined && String(label).trim() !== '') {
+        v = String(label).trim().slice(0, 128);
+    }
+
+    const license = await get('SELECT id FROM licenses WHERE id = ?', [licenseId]);
+    if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
+
+    await run('UPDATE licenses SET label = ? WHERE id = ?', [v, licenseId]);
+    await audit('admin', 'license.label.set', licenseId, { label: v });
+
+    res.json({ ok: true, licenseId, label: v });
 }));
 
 // ============================================================

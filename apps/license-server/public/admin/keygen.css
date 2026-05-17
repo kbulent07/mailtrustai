@@ -95,6 +95,40 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; background: #0e142
 }
 .filters input { flex: 1; min-width: 220px; }
 
+.view-toggle { display: flex; gap: 4px; }
+.view-toggle button {
+    padding: 8px 14px; background: var(--surface); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+    font-size: 0.9em;
+}
+.view-toggle button.active { background: var(--primary); color: white; border-color: var(--primary); }
+.view-toggle button:hover:not(.active) { background: var(--surface-2); color: var(--text); }
+
+/* Grupted view */
+.group-row { background: var(--surface-2); cursor: pointer; }
+.group-row:hover { background: #232c4e; }
+.group-row .expander { color: var(--muted); font-size: 0.9em; width: 24px; }
+.group-row.open .expander { transform: rotate(90deg); display: inline-block; transition: transform 0.15s; }
+.license-count-badge {
+    display: inline-block; background: var(--primary); color: white;
+    padding: 2px 10px; border-radius: 999px; font-size: 0.85em; font-weight: 600;
+}
+.license-count-badge.warn { background: var(--warn); }
+.sub-licenses { background: var(--bg); }
+.sub-licenses td { padding: 0; border-bottom: 1px solid var(--border); }
+.sub-licenses .inner-table { width: 100%; border-collapse: collapse; }
+.sub-licenses .inner-table th { background: transparent; padding: 8px 12px;
+                                 font-size: 0.8em; color: var(--muted); }
+.sub-licenses .inner-table td { padding: 8px 12px; border-bottom: none; }
+.sub-licenses .inner-table tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
+
+.label-tag {
+    display: inline-block; background: rgba(99,102,241,0.18);
+    color: var(--primary); border: 1px solid var(--primary);
+    padding: 2px 8px; border-radius: 4px; font-size: 0.82em;
+}
+.label-tag.empty { background: transparent; color: var(--muted); border-color: var(--border); }
+
 .table-wrap { margin: 0 24px 40px; background: var(--surface); border: 1px solid var(--border);
               border-radius: 10px; overflow: hidden; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 0.92em; }

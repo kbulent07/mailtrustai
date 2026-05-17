@@ -25,7 +25,7 @@ function assertHash(res, h, field = 'licenseKeyHash') {
 const DEFAULT_MAX_ACTIVATIONS = 10;
 
 router.post('/license/create', asyncH(async (req, res) => {
-    const { customerId, dealerId, plan = 'pro', companyName, email } = req.body || {};
+    const { customerId, dealerId, plan = 'pro', companyName, email, label } = req.body || {};
     const validDays = Number(req.body?.validDays ?? 365);
     if (!customerId) return badRequest(res, 'customerId gerekli');
     if (!Number.isFinite(validDays) || validDays <= 0 || validDays > 36500) {
@@ -34,6 +34,8 @@ router.post('/license/create', asyncH(async (req, res) => {
     if (!PLAN_MATRIX[plan]) {
         return badRequest(res, `plan geçersiz: ${plan}. Geçerli: ${Object.keys(PLAN_MATRIX).join(', ')}`);
     }
+    // Label opsiyonel — boş string null'a dönüşür.
+    const licenseLabel = (typeof label === 'string' && label.trim()) ? label.trim().slice(0, 128) : null;
 
     // UPSERT: dealer transferi/şirket adı güncellemesi mümkün.
     const upsertSql = isMaria
@@ -56,13 +58,13 @@ router.post('/license/create', asyncH(async (req, res) => {
     const expiresAt = issuedAt + validDays * 86400 * 1000;
 
     await run(
-        `INSERT INTO licenses(id,customer_id,dealer_id,license_key_hash,license_key_masked,plan,tier,status,issued_at,expires_at,grace_days,features_json,limits_json)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, customerId, dealerId || null, keyHash, `${key.slice(0, 8)}…${key.slice(-4)}`, plan, planDef.tier, 'active', issuedAt, expiresAt, planDef.graceDays, JSON.stringify(planDef.features), JSON.stringify(planDef.limits)]
+        `INSERT INTO licenses(id,customer_id,dealer_id,license_key_hash,license_key_masked,plan,tier,status,issued_at,expires_at,grace_days,features_json,limits_json,label)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, customerId, dealerId || null, keyHash, `${key.slice(0, 8)}…${key.slice(-4)}`, plan, planDef.tier, 'active', issuedAt, expiresAt, planDef.graceDays, JSON.stringify(planDef.features), JSON.stringify(planDef.limits), licenseLabel]
     );
 
-    await audit(dealerId || 'admin', 'license.create', id, { customerId, plan });
-    res.json({ ok: true, id, licenseKey: key, plan, tier: planDef.tier, expiresAt, features: planDef.features, limits: planDef.limits });
+    await audit(dealerId || 'admin', 'license.create', id, { customerId, plan, label: licenseLabel });
+    res.json({ ok: true, id, licenseKey: key, plan, tier: planDef.tier, expiresAt, label: licenseLabel, features: planDef.features, limits: planDef.limits });
 }));
 
 router.post('/license/activate', asyncH(async (req, res) => {
