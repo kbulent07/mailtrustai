@@ -73,8 +73,11 @@ const BLOCKED = [
     '/api/lists',
     '/api/config'
 ];
+// /api/admin/restart ve /api/admin/stop → HARD-GATE'den muaf (customer admin yönetimi)
+const BLOCKED_EXEMPT = new Set(['/api/admin/restart', '/api/admin/stop']);
 app.use((req, res, next) => {
     const p = (req.path || '').toLowerCase();
+    if (BLOCKED_EXEMPT.has(p)) return next();
     for (const b of BLOCKED) {
         if (p === b || p.startsWith(b + '/')) {
             return res.status(404).json({ error: 'Bu uç nokta müşteri kurulumunda devre dışı.' });
@@ -153,6 +156,29 @@ app.get('/api/customer/policy/snapshot', (req, res) => {
 
 app.get('/api/customer/feature/:name', (req, res) => {
     res.json({ feature: req.params.name, enabled: policyClient.isFeatureEnabled(req.params.name) });
+});
+
+// ============================================================
+// /api/admin/restart — Docker restart-policy üzerinden servisi yeniden başlatır.
+// Yalnızca müşteri admin kullanıcıları çağırabilir.
+// ============================================================
+const { requireAdminAuth: _requireAdminAuth } = require(path.join(REPO_ROOT, 'src/middleware/adminAuth'));
+
+app.post('/api/admin/restart', _requireAdminAuth, (req, res) => {
+    res.json({ ok: true, message: 'Servis yeniden başlatılıyor...' });
+    // Yanıt gönderdikten 800ms sonra çık — Docker restart policy devralır.
+    setTimeout(() => {
+        logger.info('[customer] Admin isteği ile yeniden başlatılıyor.');
+        process.exit(0);
+    }, 800);
+});
+
+app.post('/api/admin/stop', _requireAdminAuth, (req, res) => {
+    res.json({ ok: true, message: 'Servis durduruluyor...' });
+    setTimeout(() => {
+        logger.info('[customer] Admin isteği ile durduruluyor.');
+        process.exit(0);
+    }, 800);
 });
 
 // Mevcut API yüzeyi (legacy routes/api.js); BLOCKED listede olan path'ler yukarıda 404'lenir.
