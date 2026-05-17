@@ -155,6 +155,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
 LICENSE_SIGNING_SECRET=$(rand32)
 DEALER_API_SECRET=$(rand32)
 DEALER_SESSION_SECRET=$(rand32)
+ADMIN_PANEL_TOKEN=$(rand32)
 
 # === MariaDB ===
 MARIADB_DATABASE=mailtrustai_license
@@ -278,9 +279,15 @@ echo ""
 echo "Bayi paneli kullanıcı: ${FIRST_DEALER_ID:-<bootstrap.js ile oluştur>}"
 echo ""
 echo "ÜRETİM DOMAIN AYARI (mailtrustai.com):"
-echo "  - https://license.mailtrustai.com  → license-server (3200)"
-echo "  - https://bayi.mailtrustai.com     → dealer panel  (3100)"
+echo "  - https://license.mailtrustai.com        → license-server (3200)"
+echo "  - https://license.mailtrustai.com/admin  → MERKEZİ YÖNETİM PANELİ"
+echo "  - https://bayi.mailtrustai.com           → dealer panel  (3100)"
 echo "  Reverse proxy örneği: $APP_DIR/deploy/Caddyfile.example"
+echo ""
+echo "MERKEZİ YÖNETİM PANELİ (sadece SİZ):"
+echo "  URL  : https://license.mailtrustai.com/admin (veya http://<host>:3200/admin)"
+echo "  Token: $APP_DIR/$ENV_FILE içindeki ADMIN_PANEL_TOKEN değeri"
+echo "  cat $APP_DIR/$ENV_FILE | grep ADMIN_PANEL_TOKEN"
 echo ""
 echo "Sunucu URL (müşteriye verilecek): https://license.mailtrustai.com"
 echo ""

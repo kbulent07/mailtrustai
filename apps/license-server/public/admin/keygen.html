@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>MailTrustAI — Merkezi Yönetim</title>
+    <link rel="stylesheet" href="/admin/keygen.css">
+</head>
+<body class="dark">
+
+<!-- ============== LOGIN ============== -->
+<div id="loginScreen" class="login-wrap">
+    <div class="login-card">
+        <div class="brand">
+            <div class="logo">🛡️</div>
+            <h1>MailTrustAI</h1>
+            <p class="muted">Merkezi Yönetim Paneli</p>
+        </div>
+        <form id="loginForm" autocomplete="off">
+            <label>Admin Token</label>
+            <input type="password" id="adminToken" placeholder="ADMIN_PANEL_TOKEN" required>
+            <button type="submit" id="loginBtn">🔓 Giriş Yap</button>
+            <div id="loginError" class="error"></div>
+            <p class="hint">Token <code>license-server/.env.docker</code> içindeki <code>ADMIN_PANEL_TOKEN</code> değeridir.</p>
+        </form>
+    </div>
+</div>
+
+<!-- ============== DASHBOARD ============== -->
+<div id="dashboard" class="hidden">
+    <header class="topbar">
+        <div class="topbar-left">
+            <span class="brand-mini">🛡️ MailTrustAI · <strong>Yönetim</strong></span>
+        </div>
+        <div class="topbar-right">
+            <button id="refreshBtn" title="Yenile">↻</button>
+            <button id="logoutBtn">Çıkış</button>
+        </div>
+    </header>
+
+    <!-- Stats kartları -->
+    <section class="stats">
+        <div class="stat-card"><div class="stat-label">Toplam Müşteri</div><div id="statCustomers" class="stat-value">—</div></div>
+        <div class="stat-card"><div class="stat-label">Aktif Lisans</div><div id="statActive" class="stat-value ok">—</div></div>
+        <div class="stat-card"><div class="stat-label">Süresi Dolan</div><div id="statExpired" class="stat-value warn">—</div></div>
+        <div class="stat-card"><div class="stat-label">İptal Edilen</div><div id="statRevoked" class="stat-value err">—</div></div>
+        <div class="stat-card"><div class="stat-label">Bayi</div><div id="statDealers" class="stat-value">—</div></div>
+        <div class="stat-card"><div class="stat-label">Online (5 dk)</div><div id="statOnline" class="stat-value ok">—</div></div>
+    </section>
+
+    <!-- Toplu offline grace aksiyonu -->
+    <section class="bulk-panel">
+        <h2>⚡ Toplu Offline Çalışma İzni</h2>
+        <p class="muted">
+            Müşteri customer container'ları merkezi sunucuyla haberleşemese bile
+            <strong>X gün</strong> boyunca çalışmaya devam edebilir. Bu süre dolduğunda
+            uygulama lisans kontrolü başarısız sayar (grace_expired).
+        </p>
+        <div class="bulk-form">
+            <div class="field">
+                <label>Bayi (opsiyonel)</label>
+                <select id="bulkDealer"><option value="">— Tümü —</option></select>
+            </div>
+            <div class="field">
+                <label>Plan (opsiyonel)</label>
+                <select id="bulkPlan">
+                    <option value="">— Tümü —</option>
+                    <option value="demo">demo</option>
+                    <option value="pro">pro</option>
+                    <option value="enterprise">enterprise</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>Durum</label>
+                <select id="bulkStatus">
+                    <option value="active">aktif</option>
+                    <option value="">tümü</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>Offline süre (gün)</label>
+                <input type="number" id="bulkDays" min="0" max="36500" placeholder="örn: 30">
+            </div>
+            <div class="field btns">
+                <button id="bulkApplyBtn" class="primary">Uygula</button>
+                <button id="bulkClearBtn" class="warn-btn" title="Override'ları sıfırla (plan default'a dön)">Sıfırla</button>
+            </div>
+        </div>
+        <div id="bulkResult" class="result"></div>
+    </section>
+
+    <!-- Filtreler -->
+    <section class="filters">
+        <input type="text" id="filterQ" placeholder="🔍 Müşteri adı, ID veya e-posta...">
+        <select id="filterDealer"><option value="">Bayi: tümü</option></select>
+        <select id="filterPlan">
+            <option value="">Plan: tümü</option>
+            <option value="demo">demo</option>
+            <option value="pro">pro</option>
+            <option value="enterprise">enterprise</option>
+        </select>
+        <select id="filterStatus">
+            <option value="">Durum: tümü</option>
+            <option value="active">active</option>
+            <option value="revoked">revoked</option>
+        </select>
+    </section>
+
+    <!-- Müşteri/Lisans Tablosu -->
+    <section class="table-wrap">
+        <table id="customersTable">
+            <thead>
+                <tr>
+                    <th>Müşteri</th>
+                    <th>Bayi</th>
+                    <th>Lisans</th>
+                    <th>Plan / Tier</th>
+                    <th>Durum</th>
+                    <th>Bitiş</th>
+                    <th>Online</th>
+                    <th>Offline İzin</th>
+                    <th>Aksiyon</th>
+                </tr>
+            </thead>
+            <tbody id="customersBody">
+                <tr><td colspan="9" class="loading">Yükleniyor...</td></tr>
+            </tbody>
+        </table>
+    </section>
+</div>
+
+<!-- ============== TEK LİSANS — OFFLINE GRACE MODAL ============== -->
+<div id="graceModal" class="modal hidden">
+    <div class="modal-card">
+        <h3>Offline Çalışma İzni</h3>
+        <p class="muted">Müşteri: <strong id="graceModalCustomer"></strong></p>
+        <p class="muted">Lisans: <code id="graceModalLicense"></code></p>
+        <label>Offline süre (gün) — <em>boş bırak veya 0: plan default'a dön</em></label>
+        <input type="number" id="graceModalDays" min="0" max="36500" placeholder="örn: 30">
+        <div class="modal-btns">
+            <button id="graceModalCancel">İptal</button>
+            <button id="graceModalApply" class="primary">Kaydet</button>
+        </div>
+        <div id="graceModalResult" class="result"></div>
+    </div>
+</div>
+
+<script src="/admin/keygen.js"></script>
+</body>
+</html>

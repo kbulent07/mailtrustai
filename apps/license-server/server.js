@@ -29,7 +29,9 @@ const listsRoutes = require('./routes/lists.routes');
 const apiPolicyRoutes = require('./routes/apiPolicy.routes');
 const customerSync = require('./routes/customerSync.routes');
 const dealerAuth = require('./routes/dealerAuth.routes');
+const adminRoutes = require('./routes/admin.routes');
 const { createRateLimiters } = require('./middleware/rateLimit');
+const path = require('path');
 
 const app = express();
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -70,7 +72,10 @@ const PUBLIC_EXACT = new Set([
 ]);
 const PUBLIC_PREFIXES = [
     '/api/customer-sync/',
-    '/api/dealer/auth/'
+    '/api/dealer/auth/',
+    // /api/admin/* admin.routes.js kendi adminAuth middleware'iyle korur (ADMIN_PANEL_TOKEN).
+    // Global DEALER_API_SECRET kontrolünden hariç tutulur.
+    '/api/admin/'
 ];
 
 function isPublic(p) {
@@ -115,11 +120,25 @@ app.use((req, res, next) => {
 
 app.use('/api', customerSync);
 app.use('/api', dealerAuth);
+app.use('/api', adminRoutes);   // /api/admin/* — geliştirici paneli
 app.use('/api', licenseRoutes);
 app.use('/api', centralRoutes);
 app.use('/api', policyRoutes);
 app.use('/api', listsRoutes.router);
 app.use('/api', apiPolicyRoutes.router);
+
+// ============================================================
+// Admin Panel statik servis: keygen.html ve asset'leri.
+// /admin/* → apps/license-server/public/admin/*
+// /admin   → keygen.html
+// ============================================================
+const ADMIN_PUBLIC_DIR = path.join(__dirname, 'public', 'admin');
+app.use('/admin', express.static(ADMIN_PUBLIC_DIR, {
+    etag: true, lastModified: true, maxAge: 0,
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache, must-revalidate')
+}));
+app.get('/admin', (req, res) => res.sendFile(path.join(ADMIN_PUBLIC_DIR, 'keygen.html')));
+app.get('/keygen.html', (req, res) => res.redirect('/admin/'));
 
 app.use('/api', (req, res) => res.status(404).json({ error: `API endpoint bulunamadı: ${req.method} ${req.path}` }));
 app.use((err, req, res, next) => {

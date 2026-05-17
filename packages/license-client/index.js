@@ -68,6 +68,10 @@ async function activate({ remoteUrl, licenseKey }) {
         limits: r.limits || {},
         expiresAt: r.expiresAt,
         graceDays: r.graceDays || 1,
+        // Sunucu admin'i tarafından set edilmiş offline çalışma izni (gün).
+        // graceCheck() bu varsa graceDays yerine kullanır → uzun süre offline çalışabilir.
+        offlineGraceDaysOverride: (typeof r.offlineGraceDaysOverride === 'number' && r.offlineGraceDaysOverride >= 0)
+            ? r.offlineGraceDaysOverride : null,
         licenseStatus: r.licenseStatus || 'active',
         lastValidatedAt: Date.now(),
         lastValidationOk: true
@@ -95,10 +99,22 @@ async function validate({ remoteUrl, licenseKey }) {
 function graceCheck() {
     const cache = readCache();
     if (!cache) return { ok: false, status: 'unlicensed', fromCache: false };
-    const days = cache.graceDays || 1;
+    // Sunucu admin override'ı varsa graceDays yerine onu kullan (uzun offline mod).
+    const days = (typeof cache.offlineGraceDaysOverride === 'number' && cache.offlineGraceDaysOverride >= 0)
+        ? cache.offlineGraceDaysOverride
+        : (cache.graceDays || 1);
     const ageMs = Date.now() - (cache.lastValidatedAt || 0);
     const limitMs = days * 24 * 60 * 60 * 1000;
-    if (ageMs <= limitMs) return { ok: true, status: cache.licenseStatus || 'active', fromCache: true, graceRemainingMs: limitMs - ageMs };
+    if (ageMs <= limitMs) {
+        return {
+            ok: true,
+            status: cache.licenseStatus || 'active',
+            fromCache: true,
+            graceRemainingMs: limitMs - ageMs,
+            // Hangi grace kullanılıyor görünür olsun (debug / panel feedback)
+            graceSource: (cache.offlineGraceDaysOverride != null) ? 'admin-override' : 'plan-default'
+        };
+    }
     return { ok: false, status: 'grace_expired', fromCache: true };
 }
 

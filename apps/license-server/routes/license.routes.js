@@ -134,6 +134,9 @@ router.post('/license/activate', asyncH(async (req, res) => {
         tier: license.tier,
         expiresAt: license.expires_at,
         graceDays: license.grace_days,
+        // Admin paneli (keygen.html) tarafından set edilen offline grace override.
+        // Customer license-client graceCheck()'te bunu graceDays yerine kullanır.
+        offlineGraceDaysOverride: license.offline_grace_days_override ?? null,
         features: safeJSON(license.features_json, {}),
         limits,
         licenseStatus: license.status
@@ -165,6 +168,7 @@ router.post('/license/validate', asyncH(async (req, res) => {
         tier: license.tier,
         expiresAt: license.expires_at,
         graceDays: license.grace_days,
+        offlineGraceDaysOverride: license.offline_grace_days_override ?? null,
         features: safeJSON(license.features_json, {}),
         limits: safeJSON(license.limits_json, {})
     });
