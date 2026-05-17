@@ -359,6 +359,185 @@ router.get('/admin/dealers', adminAuth, asyncH(async (req, res) => {
 }));
 
 // ============================================================
+// DEALER YÖNETİMİ (admin paneli)
+// ============================================================
+const { v4: uuid } = require('uuid');
+let bcrypt = null;
+try { bcrypt = require('bcrypt'); } catch (_) {}
+
+// POST /api/admin/dealers — yeni bayi olustur
+router.post('/admin/dealers', adminAuth, asyncH(async (req, res) => {
+    const { id, name, email, password } = req.body || {};
+    if (!id || typeof id !== 'string') return res.status(400).json({ error: 'id gerekli' });
+    if (id.length > 64) return res.status(400).json({ error: 'id 64 karakteri aşmamalı' });
+
+    const existing = await get('SELECT id FROM dealers WHERE id = ?', [id]);
+    if (existing) return res.status(409).json({ error: 'bu id mevcut' });
+
+    let hash = null;
+    if (password) {
+        if (typeof password !== 'string' || password.length < 8) {
+            return res.status(400).json({ error: 'parola 8+ karakter olmalı' });
+        }
+        if (!bcrypt) return res.status(503).json({ error: 'bcrypt kurulu değil' });
+        hash = bcrypt.hashSync(password, 10);
+    }
+
+    await run('INSERT INTO dealers(id, name, email, api_token_hash, credits, created_at) VALUES(?,?,?,?,?,?)',
+        [id, name || id, email || null, hash, 0, Date.now()]);
+    await audit('admin', 'dealer.create', id, { name, email, hasPassword: !!hash });
+    res.json({ ok: true, id, name: name || id, email: email || null });
+}));
+
+// POST /api/admin/dealers/:id/password — parolayi guncelle/set
+router.post('/admin/dealers/:id/password', adminAuth, asyncH(async (req, res) => {
+    const { password } = req.body || {};
+    if (!password || typeof password !== 'string' || password.length < 8) {
+        return res.status(400).json({ error: 'parola 8+ karakter olmalı' });
+    }
+    if (!bcrypt) return res.status(503).json({ error: 'bcrypt kurulu değil' });
+
+    const dealer = await get('SELECT id FROM dealers WHERE id = ?', [req.params.id]);
+    if (!dealer) return res.status(404).json({ error: 'bayi bulunamadı' });
+
+    const hash = bcrypt.hashSync(password, 10);
+    await run('UPDATE dealers SET api_token_hash = ? WHERE id = ?', [hash, req.params.id]);
+    await audit('admin', 'dealer.password.set', req.params.id, null);
+    res.json({ ok: true });
+}));
+
+// DELETE /api/admin/dealers/:id — bayi sil (yumusak: customer.dealer_id NULL kalir)
+router.delete('/admin/dealers/:id', adminAuth, asyncH(async (req, res) => {
+    const dealer = await get('SELECT id FROM dealers WHERE id = ?', [req.params.id]);
+    if (!dealer) return res.status(404).json({ error: 'bayi bulunamadı' });
+    // 0001 migration: customers.dealer_id ON DELETE SET NULL (mariadb) / no-action (sqlite)
+    // SQLite tarafinda foreign_keys=ON, FK NULL'a set olur ya da silme reddedilir.
+    // Once musteri lisanslarini orphan etmemek icin dealer_id'leri NULL'a cevirelim
+    await run('UPDATE customers SET dealer_id = NULL WHERE dealer_id = ?', [req.params.id]);
+    await run('UPDATE licenses SET dealer_id = NULL WHERE dealer_id = ?', [req.params.id]);
+    await run('DELETE FROM dealers WHERE id = ?', [req.params.id]);
+    await audit('admin', 'dealer.delete', req.params.id, null);
+    res.json({ ok: true });
+}));
+
+// ============================================================
+// LİSANS YÖNETİMİ (admin direkt)
+// ============================================================
+const { sha256 } = require('@mailtrustai/security');
+const { generateLicenseKey, getPlan, PLAN_MATRIX } = require('@mailtrustai/license-core');
+
+// POST /api/admin/licenses — admin'in direkt lisans uretmesi
+router.post('/admin/licenses', adminAuth, asyncH(async (req, res) => {
+    const { customerId, dealerId, plan = 'pro', companyName, email, validDays = 365, label } = req.body || {};
+    if (!customerId) return res.status(400).json({ error: 'customerId gerekli' });
+    const validDaysNum = Number(validDays);
+    if (!Number.isFinite(validDaysNum) || validDaysNum <= 0 || validDaysNum > 36500) {
+        return res.status(400).json({ error: 'validDays 1..36500 olmalı' });
+    }
+    if (!PLAN_MATRIX[plan]) {
+        return res.status(400).json({ error: `plan geçersiz: ${plan}` });
+    }
+    const labelClean = (typeof label === 'string' && label.trim()) ? label.trim().slice(0, 128) : null;
+
+    if (dealerId) {
+        const dlr = await get('SELECT id FROM dealers WHERE id = ?', [dealerId]);
+        if (!dlr) return res.status(400).json({ error: `dealer bulunamadı: ${dealerId}` });
+    }
+
+    const upsertSql = isMariaCheck()
+        ? `INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)
+           ON DUPLICATE KEY UPDATE
+             dealer_id    = COALESCE(VALUES(dealer_id), dealer_id),
+             company_name = COALESCE(VALUES(company_name), company_name),
+             email        = COALESCE(VALUES(email), email)`
+        : `INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)
+           ON CONFLICT(id) DO UPDATE SET
+             dealer_id    = COALESCE(excluded.dealer_id,   customers.dealer_id),
+             company_name = COALESCE(excluded.company_name, customers.company_name),
+             email        = COALESCE(excluded.email,       customers.email)`;
+    await run(upsertSql, [customerId, dealerId || null, companyName || null, email || null, Date.now()]);
+
+    const planDef = getPlan(plan);
+    const { key, keyHash } = generateLicenseKey({ customerId, dealerId, plan });
+    const id = uuid();
+    const issuedAt = Date.now();
+    const expiresAt = issuedAt + validDaysNum * 86400 * 1000;
+
+    await run(
+        `INSERT INTO licenses(id,customer_id,dealer_id,license_key_hash,license_key_masked,plan,tier,status,issued_at,expires_at,grace_days,features_json,limits_json,label)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, customerId, dealerId || null, keyHash, `${key.slice(0, 8)}…${key.slice(-4)}`, plan, planDef.tier, 'active', issuedAt, expiresAt, planDef.graceDays, JSON.stringify(planDef.features), JSON.stringify(planDef.limits), labelClean]
+    );
+    await audit('admin', 'license.create', id, { customerId, dealerId, plan, label: labelClean, source: 'admin-panel' });
+
+    res.json({ ok: true, id, licenseKey: key, plan, tier: planDef.tier, expiresAt, label: labelClean });
+}));
+
+function isMariaCheck() {
+    // db.isMaria getter — admin.routes en üstte require edildi
+    return require('../db').isMaria;
+}
+
+// POST /api/admin/licenses/:id/revoke
+router.post('/admin/licenses/:id/revoke', adminAuth, asyncH(async (req, res) => {
+    const { reason } = req.body || {};
+    const license = await get('SELECT id, customer_id FROM licenses WHERE id = ?', [req.params.id]);
+    if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
+    await run("UPDATE licenses SET status = 'revoked' WHERE id = ?", [req.params.id]);
+    await audit('admin', 'license.revoke', req.params.id, { reason: reason || null });
+    res.json({ ok: true });
+}));
+
+// POST /api/admin/licenses/:id/unrevoke — yeniden aktive et
+router.post('/admin/licenses/:id/unrevoke', adminAuth, asyncH(async (req, res) => {
+    const license = await get('SELECT id, expires_at FROM licenses WHERE id = ?', [req.params.id]);
+    if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
+    await run("UPDATE licenses SET status = 'active' WHERE id = ?", [req.params.id]);
+    await audit('admin', 'license.unrevoke', req.params.id, null);
+    res.json({ ok: true });
+}));
+
+// POST /api/admin/licenses/:id/renew { addDays }
+router.post('/admin/licenses/:id/renew', adminAuth, asyncH(async (req, res) => {
+    const { addDays = 365 } = req.body || {};
+    const days = Number(addDays);
+    if (!Number.isFinite(days) || days <= 0 || days > 36500) {
+        return res.status(400).json({ error: 'addDays geçersiz' });
+    }
+    const license = await get('SELECT id, expires_at FROM licenses WHERE id = ?', [req.params.id]);
+    if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
+    const newExpiry = Math.max(license.expires_at || Date.now(), Date.now()) + days * 86400 * 1000;
+    await run("UPDATE licenses SET expires_at = ?, status = 'active' WHERE id = ?", [newExpiry, req.params.id]);
+    await audit('admin', 'license.renew', req.params.id, { addDays: days, newExpiry });
+    res.json({ ok: true, expiresAt: newExpiry });
+}));
+
+// ============================================================
+// GET /api/admin/audit — filtreli
+// ============================================================
+router.get('/admin/audit', adminAuth, asyncH(async (req, res) => {
+    const { actor, action, target, limit, since } = req.query;
+    const lim = Math.min(Math.max(Number(limit) || 200, 1), 1000);
+
+    let where = [];
+    let params = [];
+    if (actor)  { where.push('actor LIKE ?');  params.push(`%${actor}%`); }
+    if (action) { where.push('action LIKE ?'); params.push(`%${action}%`); }
+    if (target) { where.push('target LIKE ?'); params.push(`%${target}%`); }
+    if (since)  {
+        const s = Number(since);
+        if (Number.isFinite(s)) { where.push('ts >= ?'); params.push(s); }
+    }
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+    const rows = await all(
+        `SELECT id, ts, actor, action, target, detail_json FROM audit_log ${whereSql} ORDER BY id DESC LIMIT ?`,
+        [...params, lim]
+    );
+    res.json({ count: rows.length, entries: rows });
+}));
+
+// ============================================================
 // GET /api/admin/stats — özet kart'lar için
 // ============================================================
 router.get('/admin/stats', adminAuth, asyncH(async (req, res) => {
