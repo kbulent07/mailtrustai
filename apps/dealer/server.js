@@ -134,12 +134,13 @@ app.post('/api/dealer/customers/create', requireDealer, asyncH(async (req, res) 
 
 // Müşteri + lisans oluştur (mevcut akış)
 app.post('/api/dealer/customers', requireDealer, asyncH(async (req, res) => {
-    const { customerId, companyName, email, plan = 'pro', validDays = 365 } = req.body || {};
+    const { customerId, companyName, email, plan = 'pro', tier, validDays = 365 } = req.body || {};
     if (!customerId || typeof customerId !== 'string') return res.status(400).json({ error: 'customerId gerekli' });
     const result = await ls.createLicense({
         customerId,
         dealerId: req.dealer.dealerId,
         plan,
+        tier,
         companyName,
         email,
         validDays

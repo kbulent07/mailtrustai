@@ -4,7 +4,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { asyncH, safeJSON } = require('@mailtrustai/shared');
 const { sha256 } = require('@mailtrustai/security');
-const { generateLicenseKey, getPlan, PLAN_MATRIX } = require('@mailtrustai/license-core');
+const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX } = require('@mailtrustai/license-core');
 const { get, all, run, audit, isMaria } = require('../db');
 
 const router = express.Router();
@@ -48,7 +48,7 @@ router.post('/license/customers', asyncH(async (req, res) => {
 }));
 
 router.post('/license/create', asyncH(async (req, res) => {
-    const { customerId, dealerId, plan = 'pro', companyName, email, label } = req.body || {};
+    const { customerId, dealerId, plan = 'pro', tier, companyName, email, label } = req.body || {};
     const validDays = Number(req.body?.validDays ?? 365);
     if (!customerId) return badRequest(res, 'customerId gerekli');
     if (!Number.isFinite(validDays) || validDays <= 0 || validDays > 36500) {
@@ -56,6 +56,9 @@ router.post('/license/create', asyncH(async (req, res) => {
     }
     if (!PLAN_MATRIX[plan]) {
         return badRequest(res, `plan geçersiz: ${plan}. Geçerli: ${Object.keys(PLAN_MATRIX).join(', ')}`);
+    }
+    if (tier && !TIER_MATRIX[tier]) {
+        return badRequest(res, `tier geçersiz: ${tier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`);
     }
     // Label opsiyonel — boş string null'a dönüşür.
     const licenseLabel = (typeof label === 'string' && label.trim()) ? label.trim().slice(0, 128) : null;
@@ -74,7 +77,8 @@ router.post('/license/create', asyncH(async (req, res) => {
              email        = COALESCE(excluded.email,       customers.email)`;
     await run(upsertSql, [customerId, dealerId || null, companyName || null, email || null, Date.now()]);
 
-    const planDef = getPlan(plan);
+    // tier varsa planDef'in tarama limitini tier ile override et
+    const planDef = getPlan(plan, tier);
     const { key, keyHash } = generateLicenseKey({ customerId, dealerId, plan });
     const id = uuid();
     const issuedAt = Date.now();
@@ -86,7 +90,7 @@ router.post('/license/create', asyncH(async (req, res) => {
         [id, customerId, dealerId || null, keyHash, `${key.slice(0, 8)}…${key.slice(-4)}`, plan, planDef.tier, 'active', issuedAt, expiresAt, planDef.graceDays, JSON.stringify(planDef.features), JSON.stringify(planDef.limits), licenseLabel]
     );
 
-    await audit(dealerId || 'admin', 'license.create', id, { customerId, plan, label: licenseLabel });
+    await audit(dealerId || 'admin', 'license.create', id, { customerId, plan, tier: planDef.tier, label: licenseLabel });
     res.json({ ok: true, id, licenseKey: key, plan, tier: planDef.tier, expiresAt, label: licenseLabel, features: planDef.features, limits: planDef.limits });
 }));
 

@@ -267,20 +267,34 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
             <input type="text" id="newCustId" required maxlength="64" placeholder="acme-corp">
           </div>
           <div>
-            <label>Plan *</label>
-            <select id="newPlan" required>
-              <option value="demo">demo</option>
-              <option value="pro" selected>pro</option>
-              <option value="enterprise">enterprise</option>
-            </select>
-          </div>
-          <div>
             <label>Şirket Adı</label>
             <input type="text" id="newCompany" maxlength="128" placeholder="ACME Corp">
           </div>
           <div>
             <label>E-posta</label>
             <input type="email" id="newEmail" placeholder="it@acme.com">
+          </div>
+          <div>
+            <label>Plan *</label>
+            <select id="newPlan" required>
+              <option value="demo">demo — Temel özellikler</option>
+              <option value="pro" selected>pro — Gelişmiş özellikler</option>
+              <option value="enterprise">enterprise — Tüm özellikler</option>
+            </select>
+          </div>
+          <div>
+            <label>Tarama Tieri *</label>
+            <select id="newTier" required>
+              <option value="T1">T1 — 50/ay</option>
+              <option value="T2">T2 — 100/ay</option>
+              <option value="T3">T3 — 250/ay</option>
+              <option value="T4">T4 — 500/ay</option>
+              <option value="T5" selected>T5 — 1.000/ay</option>
+              <option value="T6">T6 — 2.000/ay</option>
+              <option value="T7">T7 — 5.000/ay</option>
+              <option value="T8">T8 — 10.000/ay</option>
+              <option value="T9">T9 — Sınırsız</option>
+            </select>
           </div>
           <div class="full">
             <label>Geçerlilik (gün) *</label>
@@ -378,9 +392,21 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
     <p class="muted">Müşteri: <strong id="quickLicCustName"></strong></p>
     <label>Plan</label>
     <select id="quickLicPlan">
-      <option value="demo">demo</option>
-      <option value="pro" selected>pro</option>
-      <option value="enterprise">enterprise</option>
+      <option value="demo">demo — Temel özellikler</option>
+      <option value="pro" selected>pro — Gelişmiş özellikler</option>
+      <option value="enterprise">enterprise — Tüm özellikler</option>
+    </select>
+    <label>Tarama Tieri</label>
+    <select id="quickLicTier">
+      <option value="T1">T1 — 50/ay</option>
+      <option value="T2">T2 — 100/ay</option>
+      <option value="T3">T3 — 250/ay</option>
+      <option value="T4">T4 — 500/ay</option>
+      <option value="T5" selected>T5 — 1.000/ay</option>
+      <option value="T6">T6 — 2.000/ay</option>
+      <option value="T7">T7 — 5.000/ay</option>
+      <option value="T8">T8 — 10.000/ay</option>
+      <option value="T9">T9 — Sınırsız</option>
     </select>
     <label>Geçerlilik (gün)</label>
     <input type="number" id="quickLicDays" min="1" max="36500" value="365">
@@ -746,6 +772,7 @@ $('createForm').addEventListener('submit', async e => {
     companyName: $('newCompany').value.trim() || undefined,
     email      : $('newEmail').value.trim()   || undefined,
     plan       : $('newPlan').value,
+    tier       : $('newTier').value,
     validDays  : Number($('newDays').value)
   };
   if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
@@ -761,10 +788,12 @@ $('createForm').addEventListener('submit', async e => {
     $('generatedKeyMeta').innerHTML =
       `<span>Müşteri: <code>${escapeHtml(body.customerId)}</code></span> &nbsp;|&nbsp; ` +
       `<span>Plan: <strong>${escapeHtml(body.plan)}</strong></span> &nbsp;|&nbsp; ` +
+      `<span>Tier: <strong>${escapeHtml(body.tier)}</strong></span> &nbsp;|&nbsp; ` +
+      `<span>Tarama: <strong>${escapeHtml(String(r.monthlyScanCount ?? '—'))}/ay</strong></span> &nbsp;|&nbsp; ` +
       `<span>Bitiş: <strong>${fmtDate(r.expiresAt || r.license?.expiresAt)}</strong></span>`;
     boxEl.classList.remove('hidden');
 
-    $('createForm').reset(); $('newPlan').value = 'pro'; $('newDays').value = '365';
+    $('createForm').reset(); $('newPlan').value = 'pro'; $('newTier').value = 'T5'; $('newDays').value = '365';
     await loadCustomers();
   } catch (err) {
     resEl.textContent = 'Hata: ' + err.message; resEl.className = 'result err';
@@ -890,6 +919,7 @@ function openQuickLicModal(custId, name, company) {
   quickLicTarget = { custId, company };
   $('quickLicCustName').textContent = name || custId;
   $('quickLicPlan').value = 'pro';
+  $('quickLicTier').value = 'T5';
   $('quickLicDays').value = '365';
   $('quickLicResult').textContent = ''; $('quickLicResult').className = 'result';
   $('quickLicKeyBox').classList.add('hidden');
@@ -903,6 +933,7 @@ $('quickLicModal').addEventListener('click', e => { if (e.target === $('quickLic
 $('quickLicApply').addEventListener('click', async () => {
   const validDays = Number($('quickLicDays').value);
   const plan = $('quickLicPlan').value;
+  const tier = $('quickLicTier').value;
   if (!validDays || validDays < 1) {
     $('quickLicResult').textContent = 'En az 1 gün girin.'; $('quickLicResult').className = 'result err'; return;
   }
@@ -911,13 +942,16 @@ $('quickLicApply').addEventListener('click', async () => {
   try {
     const r = await api('/api/dealer/customers', {
       method: 'POST',
-      body: { customerId: quickLicTarget.custId, companyName: quickLicTarget.company || undefined, plan, validDays }
+      body: { customerId: quickLicTarget.custId, companyName: quickLicTarget.company || undefined, plan, tier, validDays }
     });
     $('quickLicResult').textContent = '✓ Lisans üretildi!'; $('quickLicResult').className = 'result ok';
     const key = r.licenseKey || r.key || '—';
     $('quickLicKeyValue').textContent = key;
     $('quickLicKeyMeta').innerHTML =
-      `Plan: <strong>${escapeHtml(plan)}</strong> &nbsp;|&nbsp; Bitiş: <strong>${fmtDate(r.expiresAt)}</strong>`;
+      `Plan: <strong>${escapeHtml(plan)}</strong> &nbsp;|&nbsp; ` +
+      `Tier: <strong>${escapeHtml(tier)}</strong> &nbsp;|&nbsp; ` +
+      `Tarama: <strong>${escapeHtml(String(r.monthlyScanCount ?? '—'))}/ay</strong> &nbsp;|&nbsp; ` +
+      `Bitiş: <strong>${fmtDate(r.expiresAt)}</strong>`;
     $('quickLicKeyBox').classList.remove('hidden');
     $('quickLicApply').textContent = '🔑 Tekrar Üret';
     $('quickLicApply').disabled = false;

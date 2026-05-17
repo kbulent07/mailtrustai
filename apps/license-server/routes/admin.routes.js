@@ -424,11 +424,11 @@ router.delete('/admin/dealers/:id', adminAuth, asyncH(async (req, res) => {
 // LİSANS YÖNETİMİ (admin direkt)
 // ============================================================
 const { sha256 } = require('@mailtrustai/security');
-const { generateLicenseKey, getPlan, PLAN_MATRIX } = require('@mailtrustai/license-core');
+const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX } = require('@mailtrustai/license-core');
 
 // POST /api/admin/licenses — admin'in direkt lisans uretmesi
 router.post('/admin/licenses', adminAuth, asyncH(async (req, res) => {
-    const { customerId, dealerId, plan = 'pro', companyName, email, validDays = 365, label } = req.body || {};
+    const { customerId, dealerId, plan = 'pro', tier, companyName, email, validDays = 365, label } = req.body || {};
     if (!customerId) return res.status(400).json({ error: 'customerId gerekli' });
     const validDaysNum = Number(validDays);
     if (!Number.isFinite(validDaysNum) || validDaysNum <= 0 || validDaysNum > 36500) {
@@ -436,6 +436,9 @@ router.post('/admin/licenses', adminAuth, asyncH(async (req, res) => {
     }
     if (!PLAN_MATRIX[plan]) {
         return res.status(400).json({ error: `plan geçersiz: ${plan}` });
+    }
+    if (tier && !TIER_MATRIX[tier]) {
+        return res.status(400).json({ error: `tier geçersiz: ${tier}. Geçerli: T1..T9` });
     }
     const labelClean = (typeof label === 'string' && label.trim()) ? label.trim().slice(0, 128) : null;
 
@@ -457,7 +460,7 @@ router.post('/admin/licenses', adminAuth, asyncH(async (req, res) => {
              email        = COALESCE(excluded.email,       customers.email)`;
     await run(upsertSql, [customerId, dealerId || null, companyName || null, email || null, Date.now()]);
 
-    const planDef = getPlan(plan);
+    const planDef = getPlan(plan, tier);
     const { key, keyHash } = generateLicenseKey({ customerId, dealerId, plan });
     const id = uuid();
     const issuedAt = Date.now();
@@ -468,9 +471,9 @@ router.post('/admin/licenses', adminAuth, asyncH(async (req, res) => {
          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [id, customerId, dealerId || null, keyHash, `${key.slice(0, 8)}…${key.slice(-4)}`, plan, planDef.tier, 'active', issuedAt, expiresAt, planDef.graceDays, JSON.stringify(planDef.features), JSON.stringify(planDef.limits), labelClean]
     );
-    await audit('admin', 'license.create', id, { customerId, dealerId, plan, label: labelClean, source: 'admin-panel' });
+    await audit('admin', 'license.create', id, { customerId, dealerId, plan, tier: planDef.tier, label: labelClean, source: 'admin-panel' });
 
-    res.json({ ok: true, id, licenseKey: key, plan, tier: planDef.tier, expiresAt, label: labelClean });
+    res.json({ ok: true, id, licenseKey: key, plan, tier: planDef.tier, expiresAt, label: labelClean, monthlyScanCount: planDef.limits.monthlyScanCount });
 }));
 
 function isMariaCheck() {

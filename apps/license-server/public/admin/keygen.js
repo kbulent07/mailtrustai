@@ -501,6 +501,7 @@ $('licenseCreateForm').addEventListener('submit', async (e) => {
         companyName: $('newLicCompany').value.trim()    || undefined,
         email      : $('newLicEmail').value.trim()      || undefined,
         plan       : $('newLicPlan').value,
+        tier       : $('newLicTier').value,
         validDays  : Number($('newLicDays').value),
         label      : $('newLicLabel').value.trim()      || undefined
     };
@@ -519,7 +520,9 @@ $('licenseCreateForm').addEventListener('submit', async (e) => {
         $('generatedKeyValue').textContent = shownKey;
         $('generatedKeyMeta').innerHTML =
             `<span>Müşteri: <code>${escapeHtml(shownCustomer)}</code></span> &nbsp;|&nbsp; ` +
-            `<span>Plan: <strong>${escapeHtml(r.plan)}</strong></span> &nbsp;|&nbsp; ` +
+            `<span>Plan: <strong>${escapeHtml(r.plan || body.plan)}</strong></span> &nbsp;|&nbsp; ` +
+            `<span>Tier: <strong>${escapeHtml(r.tier || body.tier)}</strong></span> &nbsp;|&nbsp; ` +
+            `<span>Tarama: <strong>${escapeHtml(String(r.monthlyScanCount ?? '—'))}/ay</strong></span> &nbsp;|&nbsp; ` +
             `<span>Bitiş: <strong>${fmtDate(r.expiresAt)}</strong></span>` +
             (r.label ? ` &nbsp;|&nbsp; <span class="label-tag">${escapeHtml(r.label)}</span>` : '');
         boxEl.classList.remove('hidden');
