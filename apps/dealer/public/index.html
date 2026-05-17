@@ -589,7 +589,7 @@ function renderCustomersTable() {
     const dead = c.expiresAt && c.expiresAt < now;
     const ls   = dead ? 'expired' : (c.licenseStatus || '—');
     const da   = encodeURIComponent(c.companyName || c.customerId);
-    const dk   = encodeURIComponent(c.licenseKey  || c.customerId);
+    const dlid = encodeURIComponent(c.licenseId  || '');
 
     return `<tr>
       <td><strong>${escapeHtml(c.companyName || c.customerId)}</strong><br>
@@ -603,9 +603,9 @@ function renderCustomersTable() {
       <td><small class="muted">${timeAgo(c.lastHeartbeatAt)}</small></td>
       <td>${c.monthlyScanCount ?? '—'}</td>
       <td class="btn-group">
-        <button class="action-btn" data-action="renew" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-key="${dk}">⏳ Uzat</button>
-        ${ls !== 'revoked'
-          ? `<button class="action-btn danger" data-action="revoke" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-key="${dk}">🚫 İptal</button>`
+        ${dlid ? `<button class="action-btn" data-action="renew" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-lid="${dlid}">⏳ Uzat</button>` : ''}
+        ${dlid && ls !== 'revoked'
+          ? `<button class="action-btn danger" data-action="revoke" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-lid="${dlid}">🚫 İptal</button>`
           : ''}
       </td>
     </tr>`;
@@ -646,7 +646,7 @@ function renderManageTable() {
     const dead = c.expiresAt && c.expiresAt < now;
     const ls   = dead ? 'expired' : (c.licenseStatus || '—');
     const da   = encodeURIComponent(c.companyName || c.customerId);
-    const dk   = encodeURIComponent(c.licenseKey  || c.customerId);
+    const dlid = encodeURIComponent(c.licenseId  || '');
     return `<tr>
       <td><strong>${escapeHtml(c.companyName || c.customerId)}</strong><br>
           <small class="muted">${escapeHtml(c.customerId)}</small></td>
@@ -654,9 +654,9 @@ function renderManageTable() {
       <td><span class="tag tag-${ls}">${ls}</span></td>
       <td>${fmtDate(c.expiresAt)}</td>
       <td class="btn-group">
-        <button class="action-btn" data-action="renew" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-key="${dk}">⏳ Uzat</button>
-        ${ls !== 'revoked'
-          ? `<button class="action-btn danger" data-action="revoke" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-key="${dk}">🚫 İptal</button>`
+        ${dlid ? `<button class="action-btn" data-action="renew" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-lid="${dlid}">⏳ Uzat</button>` : ''}
+        ${dlid && ls !== 'revoked'
+          ? `<button class="action-btn danger" data-action="revoke" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-lid="${dlid}">🚫 İptal</button>`
           : ''}
       </td>
     </tr>`;
@@ -670,9 +670,9 @@ function bindTableActions(tbody) {
     const a    = btn.dataset.action;
     const id   = btn.dataset.id;
     const name = decodeURIComponent(btn.dataset.name || '');
-    const key  = decodeURIComponent(btn.dataset.key  || '');
-    if (a === 'renew')  btn.addEventListener('click', () => openRenewModal(id, name, key));
-    if (a === 'revoke') btn.addEventListener('click', () => openRevokeModal(id, name, key));
+    const lid  = decodeURIComponent(btn.dataset.lid  || '');
+    if (a === 'renew')  btn.addEventListener('click', () => openRenewModal(id, name, lid));
+    if (a === 'revoke') btn.addEventListener('click', () => openRevokeModal(id, name, lid));
   });
 }
 
@@ -731,8 +731,8 @@ $('copyKeyBtn').addEventListener('click', async () => {
 // ================================================================
 let renewTarget = null;
 
-function openRenewModal(custId, name, licKey) {
-  renewTarget = { custId, licKey };
+function openRenewModal(custId, name, licenseId) {
+  renewTarget = { custId, licenseId };
   $('renewCustName').textContent = name;
   $('renewDays').value = '365';
   $('renewResult').textContent = ''; $('renewResult').className = 'result';
@@ -750,7 +750,7 @@ $('renewApply').addEventListener('click', async () => {
   try {
     await api('/api/dealer/license/renew', {
       method: 'POST',
-      body  : { licenseKey: renewTarget.licKey, customerId: renewTarget.custId, addDays }
+      body  : { id: renewTarget.licenseId, addDays }
     });
     $('renewResult').textContent = '✓ Lisans uzatıldı.'; $('renewResult').className = 'result ok';
     await loadCustomers();
@@ -765,8 +765,8 @@ $('renewApply').addEventListener('click', async () => {
 // ================================================================
 let revokeTarget = null;
 
-function openRevokeModal(custId, name, licKey) {
-  revokeTarget = { custId, licKey };
+function openRevokeModal(custId, name, licenseId) {
+  revokeTarget = { custId, licenseId };
   $('revokeCustName').textContent = name;
   $('revokeResult').textContent = ''; $('revokeResult').className = 'result';
   $('revokeModal').classList.remove('hidden');
@@ -778,7 +778,7 @@ $('revokeApply').addEventListener('click', async () => {
   try {
     await api('/api/dealer/license/revoke', {
       method: 'POST',
-      body  : { licenseKey: revokeTarget.licKey, customerId: revokeTarget.custId }
+      body  : { id: revokeTarget.licenseId }
     });
     $('revokeResult').textContent = '✓ Lisans iptal edildi.'; $('revokeResult').className = 'result ok';
     await loadCustomers();

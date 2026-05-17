@@ -4,6 +4,7 @@ const ALLOWED_FIELDS = [
     'customerId',
     'companyName',
     'dealerId',
+    'licenseId',
     'licenseStatus',
     'plan',
     'tier',

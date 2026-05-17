@@ -29,6 +29,7 @@ function customerRowToStatus(row) {
         customerId: row.customer_id,
         companyName: row.company_name,
         dealerId: row.dealer_id,
+        licenseId: row.license_id || null,
         licenseStatus: row.lic_status,
         plan: row.plan,
         tier: row.tier,
@@ -49,7 +50,7 @@ function customerRowToStatus(row) {
 
 const baseQuery = `
 SELECT c.id AS customer_id, c.company_name, c.dealer_id,
-       l.status AS lic_status, l.plan, l.tier, l.expires_at,
+       l.id AS license_id, l.status AS lic_status, l.plan, l.tier, l.expires_at,
        a.instance_id, a.app_version, a.last_heartbeat_at, a.last_payload_json
 FROM customers c
 LEFT JOIN licenses l ON l.customer_id = c.id AND l.status='active'
