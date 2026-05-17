@@ -36,6 +36,11 @@ services:
       MSA_HEARTBEAT_INTERVAL_SECONDS: ${MSA_HEARTBEAT_INTERVAL_SECONDS:-300}
       MSA_POLICY_SYNC_INTERVAL_SECONDS: ${MSA_POLICY_SYNC_INTERVAL_SECONDS:-900}
       MSA_LOCAL_ENCRYPTION_KEY: ${MSA_LOCAL_ENCRYPTION_KEY:-}
+      # Legacy IMAP credential encryption (src/imap/connection.js)
+      MSA_ENC_PASSWORD: ${MSA_ENC_PASSWORD:?MSA_ENC_PASSWORD zorunlu (IMAP cred encrypt)}
+      MSA_ENC_SALT: ${MSA_ENC_SALT:?MSA_ENC_SALT zorunlu}
+      # Legacy license HMAC (src/license/license.js fallback)
+      MSA_LICENSE_SECRET: ${MSA_LICENSE_SECRET:?MSA_LICENSE_SECRET zorunlu}
     ports:
       - "${CUSTOMER_PORT:-3000}:3000"
     volumes:

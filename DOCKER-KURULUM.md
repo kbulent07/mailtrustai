@@ -1,854 +1,499 @@
-# MailTrustAI — Docker Kurulum Kılavuzu
+# MailTrustAI — Docker Kurulum Kılavuzu (3-Tier)
 
-> **Versiyon:** 1.0 · **Güncelleme:** 2026-05  
-> Bu kılavuz MailTrustAI'ı Docker ile hem **Linux** hem **Windows** ortamında
-> nasıl kuracağınızı ve çalıştıracağınızı adım adım anlatır.
+> **Versiyon:** 2.0 · **Mimari:** 3-Tier (Sunucu + Müşteri ayrı host'lar)
+
+MailTrustAI 3 ayrı bileşene sahiptir ve **ÜRETİMDE iki farklı host'a kurulur**:
+
+```
+┌──────────────────────────────────────┐       ┌──────────────────────────────────┐
+│   KURUCU / SATICI SUNUCUSU           │       │   MÜŞTERİ HOST'U                 │
+│   (Sizin sunucunuz)                  │       │   (Müşteri yerinde)              │
+│                                      │       │                                  │
+│   docker-compose.server.yml          │       │   docker-compose.customer.yml    │
+│                                      │       │                                  │
+│   ┌────────────┐  ┌────────────┐    │  HTTPS │   ┌────────────────────────┐    │
+│   │  MariaDB   │◄─┤ license-   │◄───┼────────┼───┤ customer (mail tarama) │    │
+│   │ (yönetim)  │  │  server    │    │ 3200   │   │ portu: 3000            │    │
+│   └────────────┘  │  3200      │    │        │   │                        │    │
+│                   └─────┬──────┘    │        │   │ - Heartbeat (5 dk)     │    │
+│                         │           │        │   │ - Policy sync (15 dk)  │    │
+│                   ┌─────▼──────┐    │        │   │ - Lisans validate      │    │
+│                   │  dealer    │    │        │   └────────────────────────┘    │
+│                   │  3100      │    │        │                                  │
+│                   └────────────┘    │        │                                  │
+└──────────────────────────────────────┘       └──────────────────────────────────┘
+
+      ↑ İNTERNET (HTTPS, sertifika)                ↑ Müşteri kuruluşu IMAP/SMTP
+        - Bayi paneli (https://dealer...)            - IMAP/SMTP'lerine erişir
+        - Müşteri lisans API'leri                    - Tarama sonuçları LOKAL kalır
+        - Bayi auth                                  - Sunucuya SADECE telemetri
+```
+
+| Katman | Nerede çalışır | Veri |
+|--------|----------------|------|
+| **license-server + dealer + mariadb** | Sizin sunucunuz (1 adet) | Lisans kayıtları, bayi/customer hesapları, audit log |
+| **customer** | Her müşteri host'u (N adet) | IMAP credential, mail tarama sonuçları (LOKAL, dışarı çıkmaz) |
+
+> ⚠️ **GÜVENLİK İLKESİ:** Müşteri imajına `license-server`, `dealer` veya `license-core` paketi **fiziksel olarak girmez**. Dockerfile build sırasında bu dizinleri siler ve `scripts/check-customer-package.js` ile doğrulanır.
 
 ---
 
 ## İçindekiler
 
-1. [Docker Dosya Yapısı](#1-docker-dosya-yapısı)
-2. [Linux Kurulumu](#2-linux-kurulumu)
-   - 2.1 [Docker Engine Kurulumu (Ubuntu/Debian)](#21-docker-engine-kurulumu-ubuntudebian)
-   - 2.2 [Docker Engine Kurulumu (RHEL/AlmaLinux)](#22-docker-engine-kurulumu-rhelalmalinux)
-   - 2.3 [Geliştirme Ortamı Başlatma](#23-geliştirme-ortamı-başlatma)
-   - 2.4 [Üretim Ortamı Başlatma (Nginx + SSL)](#24-üretim-ortamı-başlatma-nginx--ssl)
-   - 2.5 [Systemd ile Otomatik Başlatma](#25-systemd-ile-otomatik-başlatma)
-3. [Windows Kurulumu](#3-windows-kurulumu)
-   - 3.1 [Docker Desktop Kurulumu](#31-docker-desktop-kurulumu)
-   - 3.2 [Geliştirme Ortamı Başlatma](#32-geliştirme-ortamı-başlatma)
-   - 3.3 [Üretim Ortamı Başlatma (Nginx + SSL)](#33-üretim-ortamı-başlatma-nginx--ssl)
-   - 3.4 [Windows Servis Olarak Çalıştırma](#34-windows-servis-olarak-çalıştırma)
-4. [Ortam Değişkenleri (.env)](#4-ortam-değişkenleri-env)
-5. [SSL Sertifikası Yapılandırması](#5-ssl-sertifikası-yapılandırması)
-6. [Veri Yönetimi ve Yedekleme](#6-veri-yönetimi-ve-yedekleme)
-7. [Güncelleme](#7-güncelleme)
-8. [Yararlı Komutlar](#8-yararlı-komutlar)
-9. [Sorun Giderme](#9-sorun-giderme)
+1. [Dosya Yapısı](#1-dosya-yapısı)
+2. [Sunucu Kurulumu (Kurucu/Satıcı tarafı)](#2-sunucu-kurulumu)
+   - 2.1 [Ön Hazırlık](#21-ön-hazırlık)
+   - 2.2 [Secret Üretimi (.env.docker)](#22-secret-üretimi)
+   - 2.3 [Stack'i Başlatma](#23-stacki-başlatma)
+   - 2.4 [İlk Bayi Oluşturma](#24-i̇lk-bayi-oluşturma)
+   - 2.5 [TLS / Reverse Proxy](#25-tls--reverse-proxy)
+3. [Müşteri Kurulumu (Customer host)](#3-müşteri-kurulumu)
+   - 3.1 [Lisans Anahtarı Edinme](#31-lisans-anahtarı-edinme)
+   - 3.2 [Müşteri Stack'i](#32-müşteri-stacki)
+4. [Geliştirme Ortamı (Yerel)](#4-geliştirme-ortamı-yerel)
+5. [Test Çalıştırma (Docker'da)](#5-test-çalıştırma)
+6. [Operasyon: Loglar, Yedek, Güncelleme](#6-operasyon)
+7. [Sorun Giderme](#7-sorun-giderme)
 
 ---
 
-## 1. Docker Dosya Yapısı
+## 1. Dosya Yapısı
 
 ```
 mailtrustai/
-├── Dockerfile                  # Ana imaj tanımı (Node.js 20 Alpine)
-├── .dockerignore               # İmajdan hariç tutulan dosyalar
-├── docker-compose.yml          # Geliştirme ortamı
-├── docker-compose.prod.yml     # Üretim ortamı (Nginx + SSL)
-├── nginx/
-│   ├── nginx.conf              # Nginx ters proxy yapılandırması
-│   └── certs/                  # SSL sertifikaları buraya yerleştirilir
-│       ├── fullchain.pem       # (git'te yok — kendiniz ekleyin)
-│       └── privkey.pem         # (git'te yok — kendiniz ekleyin)
-├── data/                       # Uygulama verileri (volume ile bağlı)
-└── logs/                       # Log dosyaları (volume ile bağlı)
-```
-
-### İmaj Mimarisi
-
-```
-┌─────────────────────────────────────────────┐
-│  Aşama 1: builder (node:20-alpine)          │
-│  python3 + make + g++ → native npm modülleri│
-│  npm ci --omit=dev                          │
-└──────────────────┬──────────────────────────┘
-                   │ COPY node_modules
-┌──────────────────▼──────────────────────────┐
-│  Aşama 2: runner (node:20-alpine)           │
-│  tini (PID 1) + non-root kullanıcı          │
-│  VOLUME /app/data  VOLUME /app/logs         │
-│  EXPOSE 3000                                │
-│  HEALTHCHECK GET /api/health                │
-└─────────────────────────────────────────────┘
+├── docker-compose.server.yml      # 🟦 KURUCU/SATICI SUNUCUSU — siz kurun
+├── docker-compose.customer.yml    # 🟩 MÜŞTERİ HOST'U — müşteri kurar
+├── docker-compose.test.yml        # ⚙️  Test runner (CI / dahili)
+├── docker-compose.yml             # 🛠️  Dev master (server + customer aynı host)
+├── Dockerfile.test                # Test image (dev deps + native rebuild)
+├── .env.docker.example            # Tüm secret env'lerin template'i
+├── .dockerignore                  # node_modules/data/logs exclude
+│
+├── apps/
+│   ├── customer/Dockerfile        # Müşteri image (3000) — sunucu kodu YOK
+│   ├── dealer/Dockerfile          # Bayi panel image (3100)
+│   └── license-server/Dockerfile  # Lisans server image (3200)
+│
+├── packages/                      # Paylaşımlı paketler
+├── data/                          # Runtime — volume mount edilir (host'ta)
+└── logs/
 ```
 
 ---
 
-## 2. Linux Kurulumu
+## 2. Sunucu Kurulumu
 
-### 2.1 Docker Engine Kurulumu (Ubuntu/Debian)
+> Bu adımlar **SİZİN sunucunuzda** (bir kez) yapılır. Tüm bayiler ve müşteriler bu merkezi sunucuya bağlanır.
 
+### 2.1 Ön Hazırlık
+
+#### Linux (Ubuntu/Debian)
 ```bash
-# Eski Docker sürümlerini kaldır
-sudo apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
+# Docker + Compose
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER && newgrp docker
 
-# Gerekli paketleri yükle
-sudo apt update
-sudo apt install -y ca-certificates curl gnupg lsb-release
-
-# Docker GPG anahtarını ekle
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
-# Docker deposunu ekle
-echo "deb [arch=$(dpkg --print-architecture) \
-  signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Docker Engine + Compose Plugin'i yükle
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io \
-                    docker-buildx-plugin docker-compose-plugin
-
-# Docker'ı başlat ve otomatik başlatmayı etkinleştir
-sudo systemctl enable --now docker
-
-# Mevcut kullanıcıyı docker grubuna ekle (sudo gerektirmemesi için)
-sudo usermod -aG docker $USER
-newgrp docker   # veya yeniden giriş yap
-
-# Kurulum doğrulama
-docker --version
-docker compose version
-docker run --rm hello-world
-```
-
----
-
-### 2.2 Docker Engine Kurulumu (RHEL/AlmaLinux)
-
-```bash
-# Eski sürümleri kaldır
-sudo dnf remove -y docker docker-client docker-client-latest \
-                   docker-common docker-latest docker-engine 2>/dev/null || true
-
-# Docker deposunu ekle
-sudo dnf config-manager --add-repo \
-  https://download.docker.com/linux/centos/docker-ce.repo
-
-# Docker Engine + Compose Plugin'i yükle
-sudo dnf install -y docker-ce docker-ce-cli containerd.io \
-                    docker-buildx-plugin docker-compose-plugin
-
-# Servisi başlat
-sudo systemctl enable --now docker
-
-# Kullanıcıyı docker grubuna ekle
-sudo usermod -aG docker $USER
-newgrp docker
-
-# Doğrulama
-docker --version
-docker compose version
-```
-
----
-
-### 2.3 Geliştirme Ortamı Başlatma
-
-```bash
-# 1. Repoyu klonla (veya mevcut klasörüne geç)
+# Repo clone
 git clone https://github.com/kbulent07/mailtrustai.git
 cd mailtrustai
-
-# 2. Ortam dosyasını oluştur
-cp .env.example .env
-nano .env          # zorunlu değişkenleri doldur (bkz. Bölüm 4)
-
-# 3. Veri ve log dizinlerini oluştur
-mkdir -p data logs
-
-# 4. İmajı derle ve başlat (arka planda)
-docker compose up --build -d
-
-# 5. Başlatma loglarını izle
-docker compose logs -f
-
-# 6. Sağlık kontrolü
-curl http://localhost:3000/api/health
-# Beklenen çıktı: {"status":"ok","uptime":...,"version":"1.0.0",...}
+git checkout mainpaketler
 ```
 
-Uygulama `http://localhost:3000` adresinde çalışır.
-
-**Geliştirme ortamı durdurmak için:**
-```bash
-docker compose down
-```
-
----
-
-### 2.4 Üretim Ortamı Başlatma (Nginx + SSL)
-
-#### Adım 1 — SSL Sertifikası Edinme
-
-```bash
-# certbot yükle
-sudo apt install -y certbot   # Ubuntu/Debian
-# sudo dnf install -y certbot # RHEL/AlmaLinux
-
-# Standalone mod ile sertifika al (80 portu boş olmalı)
-sudo certbot certonly --standalone -d mailtrustai.sirketiniz.com
-
-# Sertifika dosyalarını nginx/certs/ dizinine kopyala
-mkdir -p nginx/certs
-sudo cp /etc/letsencrypt/live/mailtrustai.sirketiniz.com/fullchain.pem nginx/certs/
-sudo cp /etc/letsencrypt/live/mailtrustai.sirketiniz.com/privkey.pem  nginx/certs/
-sudo chown $USER:$USER nginx/certs/*.pem
-chmod 600 nginx/certs/privkey.pem
-```
-
-#### Adım 2 — Nginx Yapılandırması
-
-`nginx/nginx.conf` dosyasındaki `server_name` satırını düzenle:
-```nginx
-server_name mailtrustai.sirketiniz.com;
-```
-
-#### Adım 3 — Üretim Stack'ini Başlat
-
-```bash
-# Üretim ortamını başlat
-docker compose -f docker-compose.prod.yml up -d --build
-
-# Çalışan servisleri doğrula
-docker compose -f docker-compose.prod.yml ps
-
-# Beklenen çıktı:
-# NAME                 STATUS          PORTS
-# mailtrustai-app      Up (healthy)    3000/tcp
-# mailtrustai-nginx    Up (healthy)    0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp
-
-# HTTPS sağlık kontrolü
-curl https://mailtrustai.sirketiniz.com/api/health
-```
-
-#### Adım 4 — Let's Encrypt Otomatik Yenileme
-
-```bash
-# Yenileme + nginx reload scripti oluştur
-sudo tee /usr/local/bin/mailtrustai-certrenew.sh << 'EOF'
-#!/bin/bash
-DOMAIN="mailtrustai.sirketiniz.com"
-APP_DIR="/opt/mailtrustai"
-certbot renew --quiet
-cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem $APP_DIR/nginx/certs/
-cp /etc/letsencrypt/live/$DOMAIN/privkey.pem  $APP_DIR/nginx/certs/
-chmod 600 $APP_DIR/nginx/certs/privkey.pem
-docker compose -f $APP_DIR/docker-compose.prod.yml exec nginx nginx -s reload
-EOF
-sudo chmod +x /usr/local/bin/mailtrustai-certrenew.sh
-
-# Crontab'a ekle (her gün gece 03:00)
-(crontab -l 2>/dev/null; echo "0 3 * * * /usr/local/bin/mailtrustai-certrenew.sh >> /var/log/certrenew.log 2>&1") | crontab -
-```
-
----
-
-### 2.5 Systemd ile Otomatik Başlatma
-
-Sunucu yeniden başladığında Docker Compose stack'inin otomatik olarak başlaması için:
-
-```bash
-# Uygulama dizinini /opt'a taşı (önerilen)
-sudo mv ~/mailtrustai /opt/mailtrustai
-cd /opt/mailtrustai
-
-# Systemd servis dosyası oluştur
-sudo tee /etc/systemd/system/mailtrustai.service << 'EOF'
-[Unit]
-Description=MailTrustAI Docker Stack
-Requires=docker.service
-After=docker.service network-online.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-WorkingDirectory=/opt/mailtrustai
-ExecStart=/usr/bin/docker compose -f docker-compose.prod.yml up -d --remove-orphans
-ExecStop=/usr/bin/docker compose -f docker-compose.prod.yml down
-TimeoutStartSec=300
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Servisi etkinleştir
-sudo systemctl daemon-reload
-sudo systemctl enable mailtrustai.service
-sudo systemctl start  mailtrustai.service
-
-# Durum kontrolü
-sudo systemctl status mailtrustai.service
-```
-
----
-
-## 3. Windows Kurulumu
-
-### 3.1 Docker Desktop Kurulumu
-
-#### Sistem Gereksinimleri
-
-| Bileşen | Gereksinim |
-|---|---|
-| İşletim Sistemi | Windows 10 Pro/Enterprise (21H2+) veya Windows 11 |
-| Mimari | 64-bit (x86-64) |
-| RAM | En az 4 GB (8 GB önerilen) |
-| Sanallaştırma | BIOS'ta VT-x / AMD-V etkin |
-| WSL 2 | Windows Subsystem for Linux 2 (önerilen backend) |
-
-#### WSL 2 Kurulumu
-
-PowerShell'i **Yönetici** olarak açın:
-
+#### Windows (Docker Desktop kurulu)
 ```powershell
-# WSL 2'yi etkinleştir
-wsl --install
-
-# Bilgisayarı yeniden başlat, ardından WSL sürümünü doğrula
-wsl --version
-
-# Ubuntu dağıtımını kur (isteğe bağlı, Docker için gerekli değil)
-wsl --install -d Ubuntu
-```
-
-#### Docker Desktop İndirme ve Kurma
-
-1. [https://www.docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop) adresine gidin
-2. **Docker Desktop for Windows** sürümünü indirin
-3. İndirilen `Docker Desktop Installer.exe` dosyasını yönetici olarak çalıştırın
-4. Kurulum sırasında **"Use WSL 2 instead of Hyper-V"** seçeneğini işaretli bırakın
-5. Kurulum tamamlandıktan sonra bilgisayarı yeniden başlatın
-
-#### Docker Desktop Doğrulama
-
-PowerShell veya Command Prompt:
-```powershell
-docker --version
-docker compose version
-docker run --rm hello-world
-```
-
----
-
-### 3.2 Geliştirme Ortamı Başlatma
-
-PowerShell veya Windows Terminal'i açın:
-
-```powershell
-# 1. Repoyu klonla
 git clone https://github.com/kbulent07/mailtrustai.git
 cd mailtrustai
-
-# 2. Ortam dosyasını oluştur
-Copy-Item .env.example .env
-notepad .env    # zorunlu değişkenleri doldur (bkz. Bölüm 4)
-
-# 3. Veri ve log dizinlerini oluştur
-New-Item -ItemType Directory -Force -Path data, logs
-
-# 4. İmajı derle ve başlat
-docker compose up --build -d
-
-# 5. Logları izle
-docker compose logs -f
-
-# 6. Sağlık kontrolü
-Invoke-RestMethod http://localhost:3000/api/health
+git checkout mainpaketler
 ```
 
-Tarayıcıdan `http://localhost:3000` adresine gidin.
+### 2.2 Secret Üretimi
 
-**Durdurmak için:**
-```powershell
-docker compose down
+```bash
+# Template'i kopyala
+cp .env.docker.example .env.docker
+
+# Secret değerlerini üret (Linux/macOS)
+echo "LICENSE_SIGNING_SECRET=$(openssl rand -hex 32)" >> .env.docker
+echo "DEALER_API_SECRET=$(openssl rand -hex 32)"     >> .env.docker
+echo "DEALER_SESSION_SECRET=$(openssl rand -hex 32)" >> .env.docker
+echo "MARIADB_PASSWORD=$(openssl rand -hex 24)"      >> .env.docker
+echo "MARIADB_ROOT_PASSWORD=$(openssl rand -hex 24)" >> .env.docker
+# Sonra .env.docker'ı düzenle, alternatif olarak sadece üretilenleri tutmak için
+# eski örnek satırları sil.
 ```
 
----
-
-### 3.3 Üretim Ortamı Başlatma (Nginx + SSL)
-
-Windows'ta üretim ortamı için iki seçenek vardır:
-
-#### Seçenek A — WSL 2 içinde (Önerilen)
-
-WSL 2 terminali açın ve Linux bölümündeki [2.4](#24-üretim-ortamı-başlatma-nginx--ssl) adımlarını uygulayın. WSL 2 içindeki Docker, Docker Desktop'ın aynı motorunu kullanır.
-
-#### Seçenek B — Windows PowerShell ile
-
+PowerShell (Windows):
 ```powershell
-# 1. SSL sertifikasını hazırla
-# win-acme ile Let's Encrypt sertifikası al:
-# https://www.win-acme.com/ adresinden wacs.exe'yi indirin
-
-# Sertifika klasörünü oluştur
-New-Item -ItemType Directory -Force -Path nginx\certs
-
-# win-acme ile sertifika al
-.\wacs.exe --target manual --host mailtrustai.sirketiniz.com `
-           --installation none `
-           --store pemfiles `
-           --pemfilespath .\nginx\certs\
-
-# win-acme PEM dosyalarını oluşturur:
-# nginx\certs\mailtrustai.sirketiniz.com-chain.pem → fullchain.pem olarak yeniden adlandır
-# nginx\certs\mailtrustai.sirketiniz.com-key.pem   → privkey.pem olarak yeniden adlandır
-Rename-Item nginx\certs\mailtrustai.sirketiniz.com-chain.pem fullchain.pem
-Rename-Item nginx\certs\mailtrustai.sirketiniz.com-key.pem   privkey.pem
-
-# 2. nginx.conf içindeki server_name'i güncelle
-(Get-Content nginx\nginx.conf) -replace 'server_name _;', `
-  'server_name mailtrustai.sirketiniz.com;' | Set-Content nginx\nginx.conf
-
-# 3. Üretim stack'ini başlat
-docker compose -f docker-compose.prod.yml up -d --build
-
-# 4. Durum kontrolü
-docker compose -f docker-compose.prod.yml ps
-
-# 5. HTTPS testi
-Invoke-RestMethod https://mailtrustai.sirketiniz.com/api/health
+function rand32 { [Convert]::ToHexString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower() }
+@"
+LICENSE_SIGNING_SECRET=$(rand32)
+DEALER_API_SECRET=$(rand32)
+DEALER_SESSION_SECRET=$(rand32)
+MARIADB_PASSWORD=$(rand32)
+MARIADB_ROOT_PASSWORD=$(rand32)
+"@ | Out-File -Encoding utf8 .env.docker.secrets
+# .env.docker.example içeriğini .env.docker'a kopyala, sonra üstteki satırları ekle.
 ```
 
-#### Windows Güvenlik Duvarı Ayarları
+> 🔒 **VAULT KURALI:** `LICENSE_SIGNING_SECRET` bir kez üretilir, **asla değiştirilmez** (mevcut lisansların imzaları bozulur). Bu değeri parola yöneticisinde / vault'ta saklayın.
 
-```powershell
-# 80 ve 443 portlarını aç (Yönetici PowerShell)
-New-NetFirewallRule -DisplayName "MailTrustAI HTTP" `
-  -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow
-New-NetFirewallRule -DisplayName "MailTrustAI HTTPS" `
-  -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow
+### 2.3 Stack'i Başlatma
+
+```bash
+# Build + ayağa kaldır
+npm run up:server
+#    ↑ Bu, şu komutun kısaltması:
+# docker compose --env-file .env.docker -f docker-compose.server.yml up -d --build
+
+# Sağlık kontrolü
+docker compose -f docker-compose.server.yml ps
+# Beklenen:
+# mailtrustai-mariadb         Up (healthy)
+# mailtrustai-license-server  Up (healthy)
+# mailtrustai-dealer          Up (healthy)
+
+# Test endpoint
+curl http://localhost:3200/healthz
+# {"ok":true,"service":"license-server",...}
+curl http://localhost:3100/healthz
 ```
 
----
+### 2.4 İlk Bayi Oluşturma
 
-### 3.4 Windows Servis Olarak Çalıştırma
+Bayi (kendi satış kanalınız) hesabı CLI ile oluşturulur:
 
-Sunucu yeniden başladığında Docker Compose'un otomatik çalışması için **Windows Görev Zamanlayıcısı** kullanabilirsiniz.
+```bash
+# Bayi kaydı oluştur (container içinde)
+docker exec mailtrustai-license-server \
+  node apps/license-server/bin/bootstrap.js create-dealer \
+  --id bayi-01 --name "Bayi A" --email bayi@cwenerji.com
 
-#### Yöntem A — Task Scheduler (GUI)
+# Parolasını belirle (en az 8 karakter)
+docker exec mailtrustai-license-server \
+  node apps/license-server/bin/bootstrap.js set-dealer-password \
+  --id bayi-01 --password "G%c1%uP@rolaXyz!2026"
 
-1. `taskschd.msc` açın
-2. **Temel Görev Oluştur** → Ad: `MailTrustAI Docker`
-3. Tetikleyici: **Bilgisayar Başlangıcında**
-4. Eylem: **Program Başlat**
-   - Program: `"C:\Program Files\Docker\Docker\Docker Desktop.exe"`  
-     *(Docker Desktop açık değilse önce başlatmak için)*
-5. İkinci bir görev oluşturun:
-   - Program: `powershell.exe`
-   - Bağımsız değişkenler: `-NonInteractive -Command "docker compose -f C:\mailtrustai\docker-compose.prod.yml up -d"`
-   - Tetikleyici: Bilgisayar başlangıcında + **60 saniye gecikme** (Docker Desktop'ın hazır olması için)
+# Listele
+docker exec mailtrustai-license-server \
+  node apps/license-server/bin/bootstrap.js list-dealers
+```
 
-#### Yöntem B — PowerShell Script + Task Scheduler
+Bayi panel'e giriş: `http://<sunucu>:3100` — kullanıcı `bayi-01`, parola yukarıdaki.
 
-```powershell
-# Başlatma scripti oluştur
-$scriptPath = "C:\mailtrustai\start-mailtrustai.ps1"
-Set-Content $scriptPath @'
-# Docker Desktop hazır olana kadar bekle
-$maxWait = 120
-$waited = 0
-while (-not (docker info 2>$null)) {
-    Start-Sleep -Seconds 5
-    $waited += 5
-    if ($waited -ge $maxWait) { exit 1 }
+### 2.5 TLS / Reverse Proxy
+
+Üretimde **mutlaka HTTPS arkasında** olmalı. license-server (3200) ve dealer (3100) için TLS reverse proxy önerilir (nginx/caddy/Traefik).
+
+Örnek Caddy yapılandırması (`/etc/caddy/Caddyfile`):
+```
+license.sirketiniz.com {
+    reverse_proxy localhost:3200
 }
-# Stack'i başlat
-Set-Location "C:\mailtrustai"
-docker compose -f docker-compose.prod.yml up -d --remove-orphans
-'@
-
-# Görevi kaydet
-$action  = New-ScheduledTaskAction -Execute "powershell.exe" `
-             -Argument "-NonInteractive -ExecutionPolicy Bypass -File $scriptPath"
-$trigger = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-
-Register-ScheduledTask -TaskName "MailTrustAI" `
-  -Action $action -Trigger $trigger -Principal $principal `
-  -Description "MailTrustAI Docker Stack otomatik başlatma" -Force
-
-# Görevi hemen çalıştır (test için)
-Start-ScheduledTask -TaskName "MailTrustAI"
+bayi.sirketiniz.com {
+    reverse_proxy localhost:3100
+}
 ```
+
+Sonra:
+```bash
+sudo systemctl reload caddy
+```
+
+> Bu URL'ler müşteri host'unun `MSA_LICENSE_REMOTE_URL` env'inde kullanılır.
 
 ---
 
-## 4. Ortam Değişkenleri (.env)
+## 3. Müşteri Kurulumu
 
-`.env.example` dosyasını `.env` olarak kopyalayın ve aşağıdaki değişkenleri doldurun:
+> Bu adımlar **MÜŞTERİ'nin host'unda** (her müşteri için ayrı ayrı) yapılır.
 
-```dotenv
-# ── Temel ─────────────────────────────────────────────────
-PORT=3000
-NODE_ENV=production          # development | production
+### 3.1 Lisans Anahtarı Edinme
 
-# ── Şifreleme (zorunlu — rastgele güçlü değer girin) ──────
-MSA_ENC_PASSWORD=guclu-sifre-buraya-yazin
-MSA_ENC_SALT=rastgele-tuz-degeri
+Bayi paneline gir (sunucudaki `bayi.sirketiniz.com`), müşteri için lisans oluştur:
 
-# ── Lisans ────────────────────────────────────────────────
-MSA_LICENSE_SECRET=lisans-imza-anahtari
-# Online lisans kontrolü için (isteğe bağlı):
-MSA_LICENSE_REMOTE_URL=https://license.sirketiniz.com/api/license/check
+1. **Yeni Müşteri** → `customerId`, `companyName`, `plan` (`demo` / `pro` / `enterprise`)
+2. Sistem `MTAI-PRO-XXXX-XXXX` formatında bir **license key** üretir
+3. Bu key müşteriye verilir (e-posta, parola yöneticisi, vs.)
 
-# ── Kurtarma E-postası ───────────────────────────────────
-MSA_RECOVERY_EMAIL=admin@sirketiniz.com
+### 3.2 Müşteri Stack'i
 
-# ── VirusTotal API (isteğe bağlı) ────────────────────────
-VIRUSTOTAL_API_KEY=
+#### Linux (müşteri sunucusu)
+```bash
+# Repo clone (müşteri de bu repo'yu kullanır — ama image'a sadece customer kodu girer)
+git clone https://github.com/kbulent07/mailtrustai.git
+cd mailtrustai
+git checkout mainpaketler
 
-# ── OpenAI API (isteğe bağlı) ────────────────────────────
-OPENAI_API_KEY=
+# Env hazırla
+cp .env.docker.example .env.docker
+# .env.docker dosyasında DOLDUR:
+#   MSA_LICENSE_KEY=MTAI-PRO-XXXX-XXXX           ← bayiden gelen
+#   MSA_LICENSE_REMOTE_URL=https://license.sirketiniz.com
+#   MSA_CENTRAL_SYNC_URL=https://license.sirketiniz.com
+#   MSA_LOCAL_ENCRYPTION_KEY=$(openssl rand -hex 32)  ← lokal şifreleme için
 ```
 
-> ⚠️ **Güvenlik:** `.env` dosyası `.gitignore`'a dahildir ve asla Git'e eklenmez.
-> `MSA_ENC_PASSWORD` ve `MSA_ENC_SALT` üretim ortamında en az 32 karakter olmalıdır.
-
----
-
-## 5. SSL Sertifikası Yapılandırması
-
-SSL sertifika dosyaları `nginx/certs/` dizinine yerleştirilmelidir:
-
-```
-nginx/certs/
-├── fullchain.pem    # Sertifika zinciri (sertifika + ara CA)
-└── privkey.pem      # Özel anahtar
-```
-
-### Let's Encrypt (Linux)
+> **Müşteri tarafında ÜRETİLMEMESİ gereken env'ler:** `LICENSE_SIGNING_SECRET`, `DEALER_API_SECRET`, `DEALER_SESSION_SECRET`, `MARIADB_*`. Bu değerleri müşteri host'unda bulundurmayın — sunucuda kalır.
 
 ```bash
-# İlk kez
-sudo certbot certonly --standalone -d alan-adiniz.com
-sudo cp /etc/letsencrypt/live/alan-adiniz.com/fullchain.pem nginx/certs/
-sudo cp /etc/letsencrypt/live/alan-adiniz.com/privkey.pem  nginx/certs/
-sudo chown $USER:$USER nginx/certs/*.pem
+# Build + ayağa kaldır (SADECE customer)
+npm run up:customer
+#    ↑ docker compose --env-file .env.docker -f docker-compose.customer.yml up -d --build
+
+# Doğrula
+docker compose -f docker-compose.customer.yml ps
+# mailtrustai-customer  Up (healthy)
+
+curl http://localhost:3000/healthz
+# {"ok":true,"service":"customer",...}
+
+# Lisans aktivasyon durumu
+curl http://localhost:3000/api/customer/license/status
 ```
 
-### Kurumsal / Satın Alınan Sertifika
+Müşteri paneli: `http://<musteri-host>:3000`
 
-Sağlayıcınızdan aldığınız dosyaları doğrudan kopyalayın:
-```bash
-cp /path/to/certificate-chain.pem nginx/certs/fullchain.pem
-cp /path/to/private-key.pem       nginx/certs/privkey.pem
-```
+İlk açılış adımları (panel arayüzünden):
+1. Yönetici hesabı oluştur (ilk açılışta zorunlu)
+2. IMAP hesabı tanımla (mail tarama hedefi)
+3. Lisans aktivasyonu otomatik gerçekleşir (env'deki `MSA_LICENSE_KEY` kullanılır)
 
-### Self-Signed (Geliştirme / Test)
-
-```bash
-# Linux/macOS veya WSL 2
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout nginx/certs/privkey.pem \
-  -out    nginx/certs/fullchain.pem \
-  -subj "/C=TR/ST=Istanbul/L=Istanbul/O=MailTrustAI/CN=localhost"
-
-# Windows (PowerShell)
-$cert = New-SelfSignedCertificate -DnsName "localhost" `
-  -CertStoreLocation "cert:\LocalMachine\My" `
-  -NotAfter (Get-Date).AddYears(1)
-# Ardından .pfx → .pem dönüşümü için openssl kullanın
-```
-
----
-
-## 6. Veri Yönetimi ve Yedekleme
-
-### Veri Dizini
-
-| Ortam | Volume Türü | Konum |
-|---|---|---|
-| Geliştirme | Host bind mount | `./data/` (proje klasörü) |
-| Üretim (Linux) | Docker named volume | `mailtrustai_data` |
-| Üretim (Windows) | Docker named volume | Docker Desktop tarafından yönetilir |
-
-### Kritik Dosyalar
-
-```
-data/
-├── credentials.enc          # Şifreli IMAP hesapları
-├── settings.json            # Tüm uygulama ayarları + API anahtarları
-├── msa.db                   # Customer local veri cache (merkezi lisans DB degil)
-├── scan-history.json        # Tarama geçmişi
-└── domain-lists.json        # Güvenilir/engellenen listeler
-```
-
-### Yedekleme Komutları
-
-**Linux — Named Volume Yedeği:**
-```bash
-# Yedek al
-docker run --rm \
-  -v mailtrustai_data:/source \
-  -v $(pwd)/backups:/backup \
-  alpine tar czf /backup/mailtrustai-$(date +%Y%m%d-%H%M).tar.gz -C /source .
-
-# Geri yükle
-docker compose -f docker-compose.prod.yml down
-docker run --rm \
-  -v mailtrustai_data:/target \
-  -v $(pwd)/backups:/backup \
-  alpine sh -c "rm -rf /target/* && tar xzf /backup/mailtrustai-TARIH.tar.gz -C /target"
-docker compose -f docker-compose.prod.yml up -d
-```
-
-**Windows — Named Volume Yedeği (PowerShell):**
+#### Windows (müşteri Docker Desktop)
 ```powershell
-# Yedek klasörü
-New-Item -ItemType Directory -Force -Path backups
-$date = Get-Date -Format "yyyyMMdd-HHmm"
-
-# Yedek al
-docker run --rm `
-  -v mailtrustai_data:/source `
-  -v "${PWD}/backups:/backup" `
-  alpine tar czf /backup/mailtrustai-$date.tar.gz -C /source .
-
-# Geri yükle
-docker compose -f docker-compose.prod.yml down
-docker run --rm `
-  -v mailtrustai_data:/target `
-  -v "${PWD}/backups:/backup" `
-  alpine sh -c "rm -rf /target/* && tar xzf /backup/mailtrustai-TARIH.tar.gz -C /target"
-docker compose -f docker-compose.prod.yml up -d
+git clone https://github.com/kbulent07/mailtrustai.git
+cd mailtrustai
+git checkout mainpaketler
+Copy-Item .env.docker.example .env.docker
+notepad .env.docker  # MSA_LICENSE_KEY ve MSA_LICENSE_REMOTE_URL doldur
+npm run up:customer
 ```
 
-### Otomatik Yedekleme (Linux Crontab)
+### Müşteri Image — Güvenlik Doğrulaması
 
+Build sırasında otomatik kontrol var; manuel test:
 ```bash
-# Her gece 02:00'da yedek al, 30 günden eski yedekleri sil
-(crontab -l 2>/dev/null; cat << 'EOF'
-0 2 * * * cd /opt/mailtrustai && \
-  docker run --rm \
-    -v mailtrustai_data:/source \
-    -v /opt/mailtrustai/backups:/backup \
-    alpine tar czf /backup/mailtrustai-$(date +\%Y\%m\%d).tar.gz -C /source . && \
-  find /opt/mailtrustai/backups -name "*.tar.gz" -mtime +30 -delete
-EOF
-) | crontab -
+docker run --rm mailtrustai-customer:latest sh -c \
+  "ls apps/ packages/ 2>/dev/null; echo '---'; \
+   test ! -d apps/dealer && echo 'OK: dealer yok' || echo 'HATA: dealer var'; \
+   test ! -d apps/license-server && echo 'OK: license-server yok' || echo 'HATA: license-server var'; \
+   test ! -d packages/license-core && echo 'OK: license-core yok' || echo 'HATA: license-core var'"
 ```
+
+Beklenen çıktı: 3 satır da `OK:` ile başlar.
 
 ---
 
-## 7. Güncelleme
+## 4. Geliştirme Ortamı (Yerel)
 
-### Linux
+Yerel makinede TÜM 4 servisi tek host'ta ayağa kaldırmak için:
 
+```bash
+cp .env.docker.example .env.docker
+# Secret'ları üret (yukarıdaki bash/PowerShell)
+
+# Sadece sunucu tarafı:
+docker compose --env-file .env.docker up -d --build
+
+# Sunucu + customer (e2e dev):
+docker compose --env-file .env.docker --profile dev up -d --build
+```
+
+> `customer` servisi `profiles: ["dev"]` arkasında — production'da yanlışlıkla `docker compose up` deyince kalkmaz, sadece `--profile dev` ile.
+
+Erişim:
+- License-server: `http://localhost:3200`
+- Dealer panel:   `http://localhost:3100`
+- Customer (dev): `http://localhost:3000`
+
+---
+
+## 5. Test Çalıştırma
+
+**Testler ZORUNLU olarak Docker'da çalışır** — host platformuna (Windows/Linux/macOS) bağımlı değil:
+
+```bash
+# İlk kez (image build)
+npm run test:docker:build
+
+# Tüm test suite (123 test, ~3 sn)
+npm run test:docker
+
+# Belirli bir test dosyası
+docker compose -f docker-compose.test.yml run --rm test \
+    node --test tests/security/hardening.test.js
+
+# Image'ı sıfırdan build + test
+npm run test:docker:rebuild
+```
+
+CI/CD pipeline'da aynı komut kullanılır.
+
+---
+
+## 6. Operasyon
+
+### Logları İzleme
+```bash
+# Sunucu
+npm run logs:server
+# docker compose -f docker-compose.server.yml logs -f --tail=200
+
+# Müşteri
+npm run logs:customer
+```
+
+### Yedekleme
+
+#### Sunucu (MariaDB + license-server data)
+```bash
+# MariaDB dump
+docker exec mailtrustai-mariadb \
+  mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD" --all-databases \
+  > backups/mariadb-$(date +%Y%m%d-%H%M).sql
+
+# Veya volume tar
+docker run --rm \
+  -v mailtrustai-server_mariadb-data:/source \
+  -v "$(pwd)/backups:/backup" \
+  alpine tar czf /backup/mariadb-$(date +%Y%m%d).tar.gz -C /source .
+```
+
+#### Müşteri (lokal cache + ayarlar)
+```bash
+docker run --rm \
+  -v mailtrustai-customer_customer-data:/source \
+  -v "$(pwd)/backups:/backup" \
+  alpine tar czf /backup/customer-$(date +%Y%m%d).tar.gz -C /source .
+```
+
+### Güncelleme
+
+#### Sunucu tarafı
 ```bash
 cd /opt/mailtrustai
-
-# 1. Yeni kodu çek
 git pull
-
-# 2. Sadece uygulama konteynerini yeniden derle (nginx çalışmaya devam eder)
-docker compose -f docker-compose.prod.yml up -d --build --no-deps mailtrustai
-
-# 3. Eski imajları temizle
-docker image prune -f
-
-# 4. Güncellemeyi doğrula
-curl https://mailtrustai.sirketiniz.com/api/health
+npm run down:server
+npm run up:server   # build + up (cache kullanır)
 ```
 
-### Windows (PowerShell)
-
-```powershell
-Set-Location C:\mailtrustai
-
-# 1. Kodu güncelle
+#### Müşteri tarafı
+```bash
+cd /opt/mailtrustai
 git pull
+npm run down:customer
+npm run up:customer
+```
 
-# 2. Yeniden derle
-docker compose -f docker-compose.prod.yml up -d --build --no-deps mailtrustai
+### Stack'i Durdurma
+```bash
+npm run down:server          # veri korunur (volume kalır)
+npm run down:customer
 
-# 3. Temizle
-docker image prune -f
-
-# 4. Doğrula
-Invoke-RestMethod https://mailtrustai.sirketiniz.com/api/health
+# Volume'larla birlikte sil (DİKKAT — veri kaybı):
+docker compose -f docker-compose.server.yml --env-file .env.docker down -v
 ```
 
 ---
 
-## 8. Yararlı Komutlar
+## 7. Sorun Giderme
 
-### Genel Komutlar (Linux ve Windows)
+| Belirti | Olası Sebep | Çözüm |
+|---------|-------------|-------|
+| `MARIADB_ROOT_PASSWORD zorunlu` | `--env-file .env.docker` unutuldu | `npm run up:server` kullan veya `--env-file` ekle |
+| `invalid ELF header` | `node_modules` host'tan kopyalanmış | `.dockerignore`'a `node_modules/**` ekli mi? `--no-cache` ile rebuild |
+| `license-server unhealthy` | DB'ye bağlanamıyor | `docker logs mailtrustai-license-server`, MariaDB password kontrol |
+| customer "license not found" | `MSA_LICENSE_KEY` boş / hatalı | `.env.docker` dosyasına bayiden gelen key'i yapıştır, customer restart |
+| customer'da `/api/dealer/*` 404 | **Beklenen davranış** | Müşteri image'inde dealer kodu yok (HARD-GATE) |
+| Port çakışması (3000/3100/3200) | Başka bir uygulama | `.env.docker`'da `CUSTOMER_PORT=`, `DEALER_PORT=`, `LICENSE_SERVER_PORT=` değiştir |
+| `LICENSE_SIGNING_SECRET zorunlu` | Sunucuda secret eksik | `.env.docker`'a 32-byte hex ekle, restart |
+| dealer panel `gecersiz kimlik` | Yanlış parola | CLI ile yeni parola: `bootstrap.js set-dealer-password ...` |
+| Customer log'unda `central /api... 401` | `MSA_LICENSE_REMOTE_URL` yanlış | URL'i ve `MSA_LICENSE_KEY`'i kontrol et |
+| `bootstrap.js: dealer bulunamadı` | Dealer henüz oluşturulmamış | Önce `create-dealer` çalıştır |
+
+### Tanı Komutları
+```bash
+# Container detayları
+docker inspect mailtrustai-license-server --format='{{json .State.Health}}'
+
+# Network bağlantı testi
+docker exec mailtrustai-dealer wget -qO- http://license-server:3200/healthz
+
+# DB tablolarını gör
+docker exec mailtrustai-mariadb \
+  mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" mailtrustai_license \
+  -e "SHOW TABLES; SELECT id,name FROM dealers; SELECT COUNT(*) FROM licenses;"
+
+# Customer'dan license-server'a görünebiliyor mu (aynı network'te değiller — internet üzerinden)
+docker exec mailtrustai-customer wget -qO- "$MSA_LICENSE_REMOTE_URL/healthz"
+```
+
+---
+
+## Mimari Notları
+
+### Müşteri Host'unda NE BULUNUR / NE BULUNMAZ
+
+✅ **Var olan:**
+- `apps/customer/` (mail tarama + arayüz)
+- `packages/{analyzer,mail,storage,security,shared}` (paylaşımlı)
+- `packages/{license-client,central-sync,policy-client}` (read-only istemciler)
+
+❌ **YOK (Dockerfile build sırasında silinir):**
+- `apps/dealer/`
+- `apps/license-server/`
+- `packages/license-core/` (key generator)
+- `src/license/keygenTool.js`, `license-generator.js`
+- `src/storage/dealerStore.js`, `dealerSales.js`, `issuedLicenseStore.js`, `creditTransactionStore.js`
+- `public/keygen.html`, `bayi.html`
+- `src/middleware/adminAuth.js`
+
+🛡️ **Runtime HARD-GATE** (müşteri server.js):
+- `/api/dealer/*`, `/api/admin/*`, `/api/license/{generate,batch,trial,revoke,create,renew,customer}`, `/api/resellers`, `/api/central/*`, `/api/customer-sync/*` (in-bound), `/api/policy/*`, `/api/lists/*`, `/api/config/*` → tümü **404**
+
+### Hangi Veri Hangi Tarafta
+
+| Veri | Sunucu | Müşteri | Sızar mı? |
+|------|--------|---------|-----------|
+| License key | hash (sha256) | plaintext + encrypted cache | ❌ asla (hash one-way) |
+| Mail içerikleri | YOK | local SQLite | ❌ payload'da forbidden |
+| IMAP/SMTP credential | YOK | encrypted cache | ❌ asla |
+| Plan/limits | yetkili tek kaynak | encrypted snapshot | ✅ sadece sunucudan müşteriye |
+| Whitelist/blacklist | yetkili tek kaynak | encrypted snapshot | ✅ sadece sunucudan müşteriye |
+| Heartbeat telemetri | activations.last_payload_json | gönderir | ✅ sadece sayaçlar + version'lar (PII yok) |
+| Audit log | merkezi | YOK | — |
+
+Heartbeat'in **PII koruması** her iki tarafta enforce edilir:
+- Müşteri tarafı: `sanitizeHeartbeatPayload` whitelist (`packages/central-sync`)
+- Sunucu tarafı: `serverWhitelistTelemetry` whitelist (`customerSync.routes.js`) + `ensureNoPII` + 16KB limit + recursion depth 8
+
+---
+
+## Yararlı npm Scriptleri
 
 ```bash
-# ── Durum ────────────────────────────────────────────────
-docker compose ps                            # Servis durumu
-docker compose -f docker-compose.prod.yml ps # Üretim servis durumu
-docker stats                                  # Canlı kaynak kullanımı
+# Build
+npm run build:license     # sadece license-server image
+npm run build:dealer      # sadece dealer image
+npm run build:customer    # sadece customer image
 
-# ── Loglar ───────────────────────────────────────────────
-docker compose logs -f                        # Canlı log izleme
-docker compose logs -f mailtrustai            # Sadece uygulama logu
-docker compose logs --tail=100 mailtrustai    # Son 100 satır
+# Up/Down
+npm run up:server         # mariadb + license-server + dealer
+npm run down:server
+npm run up:customer       # customer
+npm run down:customer
 
-# ── Shell Erişimi ─────────────────────────────────────────
-docker compose exec mailtrustai sh            # Konteynere bağlan
+# Loglar (canlı)
+npm run logs:server
+npm run logs:customer
 
-# ── Başlat / Durdur ──────────────────────────────────────
-docker compose up -d                          # Başlat (arka planda)
-docker compose down                           # Durdur (veri korunur)
-docker compose restart mailtrustai            # Sadece uygulamayı yeniden başlat
-
-# ── İmaj ─────────────────────────────────────────────────
-docker build -t mailtrustai:latest .          # İmajı manuel derle
-docker images mailtrustai                     # İmaj listesi ve boyutlar
-docker image prune -f                         # Kullanılmayan imajları sil
-
-# ── Volume ───────────────────────────────────────────────
-docker volume ls                              # Volume listesi
-docker volume inspect mailtrustai_data        # Volume detayları
-```
-
-### Sağlık Kontrolü
-
-```bash
-# Linux
-curl -s http://localhost:3000/api/health | python3 -m json.tool
-
-# Windows PowerShell
-Invoke-RestMethod http://localhost:3000/api/health | ConvertTo-Json
-
-# Beklenen yanıt:
-# {
-#   "status": "ok",
-#   "uptime": 3600,
-#   "version": "1.0.0",
-#   "timestamp": "2026-05-08T12:00:00.000Z"
-# }
+# Test
+npm run test:docker          # tüm test suite Docker'da
+npm run test:docker:build    # sadece test image build
+npm run test:docker:rebuild  # --no-cache build + run
 ```
 
 ---
 
-## 9. Sorun Giderme
-
-### Native module derleme hatasi
-
-**Hata:**
-```
-Error: Could not locate the bindings file
-gyp ERR! build error
-```
-
-**Çözüm:** İmajı önbellek olmadan yeniden derleyin:
-```bash
-docker compose build --no-cache
-docker compose up -d
-```
-
----
-
-### Port zaten kullanımda
-
-**Hata:**
-```
-Error response from daemon: Ports are not available: bind: address already in use
-```
-
-**Linux Çözümü:**
-```bash
-# Portu kim kullanıyor?
-sudo ss -tulpn | grep :3000
-sudo ss -tulpn | grep :80
-
-# Varsa durdurun veya docker-compose.yml'de portu değiştirin:
-# ports: - "3001:3000"
-```
-
-**Windows Çözümü (PowerShell):**
-```powershell
-# Portu kim kullanıyor?
-netstat -ano | findstr :3000
-netstat -ano | findstr :80
-# PID'yi bulun, ardından:
-tasklist | findstr <PID>
-Stop-Process -Id <PID> -Force
-```
-
----
-
-### Konteyner sürekli yeniden başlıyor
-
-```bash
-# Hata nedenini görmek için logları incele
-docker compose logs --tail=50 mailtrustai
-
-# Healthcheck durumunu kontrol et
-docker inspect mailtrustai-app --format='{{json .State.Health}}' | python3 -m json.tool
-```
-
-Yaygın nedenler:
-- `.env` dosyası eksik veya yanlış yapılandırılmış
-- `data/` dizinine yazma izni yok
-- `MSA_ENC_PASSWORD` değiştirilmiş (şifreli verileri bozar)
-
----
-
-### Volume izin hatası (Linux)
-
-**Hata:**
-```
-EACCES: permission denied, open '/app/data/settings.json'
-```
-
-**Çözüm:** Host dizin sahipliğini düzelt (UID 1001 = mailtrustai kullanıcısı):
-```bash
-sudo chown -R 1001:1001 ./data ./logs
-docker compose restart mailtrustai
-```
-
----
-
-### Windows'ta WSL 2 Backend Hatası
-
-**Hata:** `Docker Desktop requires WSL 2 to be enabled`
-
-**Çözüm:**
-```powershell
-# Yönetici PowerShell
-wsl --install
-wsl --set-default-version 2
-# Bilgisayarı yeniden başlatın
-```
-
----
-
-### Nginx 502 Bad Gateway
-
-Nginx başladı ama uygulama henüz hazır değil:
-```bash
-# Uygulama sağlık durumunu kontrol et
-docker compose -f docker-compose.prod.yml ps
-
-# Uygulama loglarını incele
-docker compose -f docker-compose.prod.yml logs mailtrustai
-
-# Nginx loglarını incele
-docker compose -f docker-compose.prod.yml logs nginx
-```
-
-Genellikle uygulama 30-60 saniye içinde hazır olur. `healthcheck` yapılandırması sayesinde nginx yalnızca uygulama `healthy` durumuna geçince başlar.
-
----
-
-### Docker Desktop Windows'ta Yavaş
-
-WSL 2 backend kullanırken projeyi WSL 2 dosya sistemine taşımak performansı artırır:
-
-```powershell
-# WSL 2 terminalini aç
-wsl
-
-# Proje dosyalarını WSL dosya sistemine taşı
-cp -r /mnt/c/mailtrustai ~/mailtrustai
-cd ~/mailtrustai
-
-# Buradan docker compose komutlarını çalıştır
-docker compose up --build -d
-```
-
----
-
-> 💡 **İpucu:** Docker loglarına her zaman `docker compose logs -f` komutuyla göz atın.
-> Sorunların %90'ı log çıktısında açıkça görünür.
+> 💡 **Hızlı Başlangıç (Sunucu):** `cp .env.docker.example .env.docker` → secret'ları üret → `npm run up:server` → `bootstrap.js create-dealer` → bayi panele gir.
+>
+> 💡 **Hızlı Başlangıç (Müşteri):** bayiden lisans key'i al → `cp .env.docker.example .env.docker` → `MSA_LICENSE_KEY` + `MSA_LICENSE_REMOTE_URL` doldur → `npm run up:customer`.

@@ -48,9 +48,11 @@ RUN rm -f \
 # 4) public/ içinden bayi ve keygen sayfalarını + bayi-app.js'i sil
 RUN rm -f public/bayi.html public/keygen.html public/js/bayi-app.js
 
-# 5) Native bağımlılıkları Linux için yeniden derle
-# (npm install bug workaround: sadece gerekli native modül rebuild edilir)
-RUN npm_config_nodedir=/usr/local npm rebuild better-sqlite3 --build-from-source --no-audit --no-fund
+# 5) Production bağımlılıkları yükle + native modülleri Linux için derle
+# `.dockerignore` host'taki node_modules'i exclude eder — Linux için
+# yeniden install zorunlu.
+RUN npm install --omit=dev --no-audit --no-fund --ignore-scripts \
+    && npm_config_nodedir=/usr/local npm rebuild better-sqlite3 bcrypt --build-from-source --no-audit --no-fund || true
 
 # 6) Yasak içerik kontrolü — image'a girmeden önce taranır.
 RUN node scripts/check-customer-package.js --scope=image
