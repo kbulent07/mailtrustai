@@ -24,6 +24,29 @@ function assertHash(res, h, field = 'licenseKeyHash') {
 // plan tarafından gelmiyorsa default 10.
 const DEFAULT_MAX_ACTIVATIONS = 10;
 
+// POST /license/customers — Müşteri kaydı oluştur/güncelle (lisans üretmeden).
+// Bayi yeni bir müşteri eklerken önce bu endpoint'i çağırabilir.
+router.post('/license/customers', asyncH(async (req, res) => {
+    const { customerId, dealerId, companyName, email } = req.body || {};
+    if (!customerId || typeof customerId !== 'string') {
+        return badRequest(res, 'customerId gerekli');
+    }
+    const upsertSql = isMaria
+        ? `INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)
+           ON DUPLICATE KEY UPDATE
+             dealer_id    = COALESCE(VALUES(dealer_id), dealer_id),
+             company_name = COALESCE(VALUES(company_name), company_name),
+             email        = COALESCE(VALUES(email), email)`
+        : `INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)
+           ON CONFLICT(id) DO UPDATE SET
+             dealer_id    = COALESCE(excluded.dealer_id,   customers.dealer_id),
+             company_name = COALESCE(excluded.company_name, customers.company_name),
+             email        = COALESCE(excluded.email,       customers.email)`;
+    await run(upsertSql, [customerId, dealerId || null, companyName || null, email || null, Date.now()]);
+    await audit(dealerId || 'admin', 'customer.create', customerId, { companyName, email, source: 'dealer' });
+    res.json({ ok: true, customerId, dealerId: dealerId || null, companyName: companyName || null, email: email || null });
+}));
+
 router.post('/license/create', asyncH(async (req, res) => {
     const { customerId, dealerId, plan = 'pro', companyName, email, label } = req.body || {};
     const validDays = Number(req.body?.validDays ?? 365);

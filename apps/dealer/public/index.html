@@ -242,6 +242,7 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
             <option value="revoked">revoked</option>
           </select>
           <button onclick="loadCustomers()">↻ Yenile</button>
+          <button onclick="openAddCustomerModal()" style="background:var(--ok);border:none;color:#fff;padding:7px 15px;border-radius:6px;cursor:pointer;font-size:.88em">➕ Müşteri Ekle</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -367,6 +368,54 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
       <button id="revokeApply" class="primary" style="background:var(--err);border-color:var(--err)">İptal Et</button>
     </div>
     <div id="revokeResult" class="result"></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Hızlı Lisans Üret (müşteri listesinden) ===== -->
+<div id="quickLicModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>🔑 Lisans Üret</h3>
+    <p class="muted">Müşteri: <strong id="quickLicCustName"></strong></p>
+    <label>Plan</label>
+    <select id="quickLicPlan">
+      <option value="demo">demo</option>
+      <option value="pro" selected>pro</option>
+      <option value="enterprise">enterprise</option>
+    </select>
+    <label>Geçerlilik (gün)</label>
+    <input type="number" id="quickLicDays" min="1" max="36500" value="365">
+    <div id="quickLicKeyBox" class="generated-key hidden" style="margin-top:14px">
+      <h3 style="font-size:.95em">✓ Lisans Anahtarı</h3>
+      <div class="key-display">
+        <code id="quickLicKeyValue">—</code>
+        <button id="quickLicCopyBtn" title="Kopyala">📋</button>
+      </div>
+      <div class="key-meta" id="quickLicKeyMeta"></div>
+    </div>
+    <div id="quickLicResult" class="result"></div>
+    <div class="modal-btns">
+      <button id="quickLicCancel">Kapat</button>
+      <button id="quickLicApply" class="primary">🔑 Üret</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Yeni Müşteri Ekle ===== -->
+<div id="addCustomerModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>➕ Yeni Müşteri Ekle</h3>
+    <p class="muted" style="margin-bottom:14px">Müşteri kaydı oluşturulur. Lisansı daha sonra müşteri listesinden üretebilirsiniz.</p>
+    <label>Müşteri ID *</label>
+    <input type="text" id="addCustId" maxlength="64" placeholder="acme-corp">
+    <label>Şirket Adı</label>
+    <input type="text" id="addCustCompany" maxlength="128" placeholder="ACME Corp">
+    <label>E-posta</label>
+    <input type="email" id="addCustEmail" placeholder="it@acme.com">
+    <div id="addCustResult" class="result"></div>
+    <div class="modal-btns">
+      <button id="addCustCancel">İptal</button>
+      <button id="addCustApply" class="primary">➕ Ekle</button>
+    </div>
   </div>
 </div>
 
@@ -603,6 +652,10 @@ function renderCustomersTable() {
       <td><small class="muted">${timeAgo(c.lastHeartbeatAt)}</small></td>
       <td>${c.monthlyScanCount ?? '—'}</td>
       <td class="btn-group">
+        <button class="action-btn ok" data-action="quicklic"
+          data-id="${escapeHtml(c.customerId)}"
+          data-name="${da}"
+          data-company="${escapeHtml(c.companyName || '')}">🔑 Lisans Üret</button>
         ${dlid ? `<button class="action-btn" data-action="renew" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-lid="${dlid}">⏳ Uzat</button>` : ''}
         ${dlid && ls !== 'revoked'
           ? `<button class="action-btn danger" data-action="revoke" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-lid="${dlid}">🚫 İptal</button>`
@@ -667,12 +720,14 @@ function renderManageTable() {
 
 function bindTableActions(tbody) {
   tbody.querySelectorAll('button.action-btn').forEach(btn => {
-    const a    = btn.dataset.action;
-    const id   = btn.dataset.id;
-    const name = decodeURIComponent(btn.dataset.name || '');
-    const lid  = decodeURIComponent(btn.dataset.lid  || '');
-    if (a === 'renew')  btn.addEventListener('click', () => openRenewModal(id, name, lid));
-    if (a === 'revoke') btn.addEventListener('click', () => openRevokeModal(id, name, lid));
+    const a       = btn.dataset.action;
+    const id      = btn.dataset.id;
+    const name    = decodeURIComponent(btn.dataset.name    || '');
+    const lid     = decodeURIComponent(btn.dataset.lid     || '');
+    const company = btn.dataset.company || '';
+    if (a === 'renew')    btn.addEventListener('click', () => openRenewModal(id, name, lid));
+    if (a === 'revoke')   btn.addEventListener('click', () => openRevokeModal(id, name, lid));
+    if (a === 'quicklic') btn.addEventListener('click', () => openQuickLicModal(id, name, company));
   });
 }
 
@@ -825,6 +880,101 @@ async function loadLog() {
     tbody.innerHTML = `<tr><td colspan="4" class="loading" style="color:var(--err)">Hata: ${escapeHtml(err.message)}</td></tr>`;
   }
 }
+
+// ================================================================
+// MODAL: Hızlı Lisans Üret
+// ================================================================
+let quickLicTarget = null;
+
+function openQuickLicModal(custId, name, company) {
+  quickLicTarget = { custId, company };
+  $('quickLicCustName').textContent = name || custId;
+  $('quickLicPlan').value = 'pro';
+  $('quickLicDays').value = '365';
+  $('quickLicResult').textContent = ''; $('quickLicResult').className = 'result';
+  $('quickLicKeyBox').classList.add('hidden');
+  $('quickLicApply').disabled = false;
+  $('quickLicModal').classList.remove('hidden');
+  setTimeout(() => $('quickLicDays').focus(), 50);
+}
+$('quickLicCancel').addEventListener('click', () => $('quickLicModal').classList.add('hidden'));
+$('quickLicModal').addEventListener('click', e => { if (e.target === $('quickLicModal')) $('quickLicModal').classList.add('hidden'); });
+
+$('quickLicApply').addEventListener('click', async () => {
+  const validDays = Number($('quickLicDays').value);
+  const plan = $('quickLicPlan').value;
+  if (!validDays || validDays < 1) {
+    $('quickLicResult').textContent = 'En az 1 gün girin.'; $('quickLicResult').className = 'result err'; return;
+  }
+  $('quickLicApply').disabled = true;
+  $('quickLicResult').textContent = '⏳ Üretiliyor...'; $('quickLicResult').className = 'result';
+  try {
+    const r = await api('/api/dealer/customers', {
+      method: 'POST',
+      body: { customerId: quickLicTarget.custId, companyName: quickLicTarget.company || undefined, plan, validDays }
+    });
+    $('quickLicResult').textContent = '✓ Lisans üretildi!'; $('quickLicResult').className = 'result ok';
+    const key = r.licenseKey || r.key || '—';
+    $('quickLicKeyValue').textContent = key;
+    $('quickLicKeyMeta').innerHTML =
+      `Plan: <strong>${escapeHtml(plan)}</strong> &nbsp;|&nbsp; Bitiş: <strong>${fmtDate(r.expiresAt)}</strong>`;
+    $('quickLicKeyBox').classList.remove('hidden');
+    $('quickLicApply').textContent = '🔑 Tekrar Üret';
+    $('quickLicApply').disabled = false;
+    await loadCustomers();
+  } catch (err) {
+    $('quickLicResult').textContent = 'Hata: ' + err.message; $('quickLicResult').className = 'result err';
+    $('quickLicApply').disabled = false;
+  }
+});
+
+$('quickLicCopyBtn').addEventListener('click', async () => {
+  const key = $('quickLicKeyValue').textContent;
+  if (!key || key === '—') return;
+  try {
+    await navigator.clipboard.writeText(key);
+    $('quickLicCopyBtn').textContent = '✓';
+    setTimeout(() => ($('quickLicCopyBtn').textContent = '📋'), 1500);
+  } catch (_) { prompt('Kopyalamak için Ctrl+C:', key); }
+});
+
+// ================================================================
+// MODAL: Yeni Müşteri Ekle (lisanssız)
+// ================================================================
+function openAddCustomerModal() {
+  $('addCustId').value = '';
+  $('addCustCompany').value = '';
+  $('addCustEmail').value = '';
+  $('addCustResult').textContent = ''; $('addCustResult').className = 'result';
+  $('addCustApply').disabled = false;
+  $('addCustomerModal').classList.remove('hidden');
+  setTimeout(() => $('addCustId').focus(), 50);
+}
+$('addCustCancel').addEventListener('click', () => $('addCustomerModal').classList.add('hidden'));
+$('addCustomerModal').addEventListener('click', e => { if (e.target === $('addCustomerModal')) $('addCustomerModal').classList.add('hidden'); });
+
+$('addCustApply').addEventListener('click', async () => {
+  const customerId  = $('addCustId').value.trim();
+  const companyName = $('addCustCompany').value.trim() || undefined;
+  const email       = $('addCustEmail').value.trim()   || undefined;
+  if (!customerId) {
+    $('addCustResult').textContent = 'Müşteri ID zorunlu.'; $('addCustResult').className = 'result err'; return;
+  }
+  $('addCustApply').disabled = true;
+  $('addCustResult').textContent = '⏳ Ekleniyor...'; $('addCustResult').className = 'result';
+  try {
+    await api('/api/dealer/customers/create', { method: 'POST', body: { customerId, companyName, email } });
+    $('addCustResult').textContent = `✓ Müşteri "${customerId}" eklendi. Şimdi lisans üretebilirsiniz.`;
+    $('addCustResult').className = 'result ok';
+    $('addCustApply').disabled = false;
+    await loadCustomers();
+    // 1.5 sn sonra kapat
+    setTimeout(() => $('addCustomerModal').classList.add('hidden'), 1500);
+  } catch (err) {
+    $('addCustResult').textContent = 'Hata: ' + err.message; $('addCustResult').className = 'result err';
+    $('addCustApply').disabled = false;
+  }
+});
 
 // ================================================================
 // BOOT: Cookie / sessionStorage'dan oturumu kontrol et

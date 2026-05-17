@@ -35,6 +35,7 @@ async function verifyDealer(dealerId, password) {
 
 module.exports = {
     verifyDealer,
+    createCustomer: (body) => _req('POST', '/api/license/customers', body),
     createLicense:  (body) => _req('POST', '/api/license/create', body),
     revokeLicense:  (body) => _req('POST', '/api/license/revoke', body),
     renewLicense:   (body) => _req('POST', '/api/license/renew', body),

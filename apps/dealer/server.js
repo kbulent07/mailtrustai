@@ -119,6 +119,20 @@ app.post('/api/dealer/logout', asyncH(async (req, res) => {
     res.json({ ok: true });
 }));
 
+// Sadece müşteri kaydı oluştur (lisans üretmeden) — admin panelinde de görünür.
+app.post('/api/dealer/customers/create', requireDealer, asyncH(async (req, res) => {
+    const { customerId, companyName, email } = req.body || {};
+    if (!customerId || typeof customerId !== 'string') return res.status(400).json({ error: 'customerId gerekli' });
+    const result = await ls.createCustomer({
+        customerId,
+        dealerId: req.dealer.dealerId,
+        companyName,
+        email
+    });
+    res.json(result);
+}));
+
+// Müşteri + lisans oluştur (mevcut akış)
 app.post('/api/dealer/customers', requireDealer, asyncH(async (req, res) => {
     const { customerId, companyName, email, plan = 'pro', validDays = 365 } = req.body || {};
     if (!customerId || typeof customerId !== 'string') return res.status(400).json({ error: 'customerId gerekli' });
