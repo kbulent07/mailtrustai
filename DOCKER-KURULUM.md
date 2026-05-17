@@ -182,21 +182,43 @@ Bayi panel'e giriş: `http://<sunucu>:3100` — kullanıcı `bayi-01`, parola yu
 
 ### 2.5 TLS / Reverse Proxy
 
-Üretimde **mutlaka HTTPS arkasında** olmalı. license-server (3200) ve dealer (3100) için TLS reverse proxy önerilir (nginx/caddy/Traefik).
+Üretimde **mutlaka HTTPS arkasında** olmalı. Aşağıdaki domain şemasını öneriyoruz:
 
-Örnek Caddy yapılandırması (`/etc/caddy/Caddyfile`):
-```
-license.sirketiniz.com {
-    reverse_proxy localhost:3200
-}
-bayi.sirketiniz.com {
-    reverse_proxy localhost:3100
-}
-```
+| Subdomain | Yönlenir | Kim kullanır |
+|-----------|----------|--------------|
+| `license.mailtrustai.com` | localhost:3200 | Müşteri customer container'ları (lisans/heartbeat) |
+| `bayi.mailtrustai.com`    | localhost:3100 | Bayi/satıcı (panel arayüzü) |
+| `mailtrustai.com`         | landing/optional | Genel sayfa |
 
-Sonra:
+**DNS:** Her subdomain için **A kaydı** → sunucunuzun public IP'sine.
+
+#### Caddy (otomatik SSL — önerilen)
+
 ```bash
+sudo apt install -y caddy
+sudo cp /opt/mailtrustai/deploy/Caddyfile.example /etc/caddy/Caddyfile
+# Caddyfile içinde domain'leri istediğiniz gibi düzenleyin (default: mailtrustai.com)
 sudo systemctl reload caddy
+```
+
+Caddy otomatik Let's Encrypt sertifika alır, yeniler. Detay: `deploy/Caddyfile.example`.
+
+#### Nginx (manuel SSL)
+
+```bash
+sudo apt install -y nginx certbot python3-certbot-nginx
+sudo cp /opt/mailtrustai/deploy/nginx-server.conf.example /etc/nginx/sites-available/mailtrustai
+sudo ln -s /etc/nginx/sites-available/mailtrustai /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d license.mailtrustai.com -d bayi.mailtrustai.com
+```
+
+#### Firewall (UFW)
+
+```bash
+sudo ufw allow 22,80,443/tcp
+sudo ufw deny 3100,3200/tcp   # localhost-only; reverse proxy ile erişilir
+sudo ufw enable
 ```
 
 > Bu URL'ler müşteri host'unun `MSA_LICENSE_REMOTE_URL` env'inde kullanılır.
@@ -209,7 +231,7 @@ sudo systemctl reload caddy
 
 ### 3.1 Lisans Anahtarı Edinme
 
-Bayi paneline gir (sunucudaki `bayi.sirketiniz.com`), müşteri için lisans oluştur:
+Bayi paneline gir (sunucudaki `bayi.mailtrustai.com`), müşteri için lisans oluştur:
 
 1. **Yeni Müşteri** → `customerId`, `companyName`, `plan` (`demo` / `pro` / `enterprise`)
 2. Sistem `MTAI-PRO-XXXX-XXXX` formatında bir **license key** üretir
@@ -228,8 +250,8 @@ git checkout mainpaketler
 cp .env.docker.example .env.docker
 # .env.docker dosyasında DOLDUR:
 #   MSA_LICENSE_KEY=MTAI-PRO-XXXX-XXXX           ← bayiden gelen
-#   MSA_LICENSE_REMOTE_URL=https://license.sirketiniz.com
-#   MSA_CENTRAL_SYNC_URL=https://license.sirketiniz.com
+#   MSA_LICENSE_REMOTE_URL=https://license.mailtrustai.com
+#   MSA_CENTRAL_SYNC_URL=https://license.mailtrustai.com
 #   MSA_LOCAL_ENCRYPTION_KEY=$(openssl rand -hex 32)  ← lokal şifreleme için
 ```
 

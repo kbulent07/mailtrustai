@@ -1,0 +1,57 @@
+# =============================================================
+# MailTrustAI — Caddy reverse proxy (mailtrustai.com)
+#
+# Caddy otomatik Let's Encrypt sertifikası alır.
+# Kurulum:
+#   sudo apt install -y caddy
+#   sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# DNS A kayıtları (DNS sağlayıcınızda):
+#   license.mailtrustai.com   → SUNUCU_IP
+#   bayi.mailtrustai.com      → SUNUCU_IP
+#
+# Firewall (UFW):
+#   sudo ufw allow 80,443/tcp
+#   sudo ufw deny 3100,3200/tcp   # localhost-only — Caddy proxylesin
+# =============================================================
+
+# License-server: müşterilerin lisans/heartbeat/policy çağrıları
+license.mailtrustai.com {
+    encode gzip
+    reverse_proxy localhost:3200 {
+        header_up X-Real-IP {remote_host}
+        health_uri /healthz
+        health_interval 30s
+        health_timeout 5s
+    }
+    # /api dışı path'ler için 404 (license-server SPA değil, salt API)
+    @notApi not path /api/* /healthz /health
+    respond @notApi 404
+    # Genel rate-limit (caddy plugin yoksa skip): cidr-bazli mate-mate
+    log {
+        output file /var/log/caddy/license-access.log
+        format json
+    }
+}
+
+# Dealer panel: bayi kullanıcılarının yönetim arayüzü
+bayi.mailtrustai.com {
+    encode gzip
+    reverse_proxy localhost:3100 {
+        header_up X-Real-IP {remote_host}
+        health_uri /healthz
+    }
+    log {
+        output file /var/log/caddy/bayi-access.log
+        format json
+    }
+    # Bayi paneli için ek IP allowlist (opsiyonel — kendi IP'nizi ekleyin)
+    # @blocked not remote_ip 192.0.2.1/32 198.51.100.0/24
+    # respond @blocked 403
+}
+
+# Default: sunucu kök domain (mailtrustai.com) için landing veya 404
+mailtrustai.com, www.mailtrustai.com {
+    respond "MailTrustAI" 200
+}

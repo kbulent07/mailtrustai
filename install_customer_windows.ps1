@@ -68,7 +68,8 @@ if ([string]::IsNullOrWhiteSpace($LicenseKey) -and -not $Yes) {
     $LicenseKey = Read-Host "Bayiden aldiginiz lisans key (MTAI-...)"
 }
 if ([string]::IsNullOrWhiteSpace($RemoteUrl) -and -not $Yes) {
-    $RemoteUrl = Read-Host "Bayi sunucu URL'i (orn: https://license.bayiniz.com)"
+    $RemoteUrl = Read-Host "Bayi sunucu URL'i (default: https://license.mailtrustai.com)"
+    if ([string]::IsNullOrWhiteSpace($RemoteUrl)) { $RemoteUrl = "https://license.mailtrustai.com" }
 }
 if ([string]::IsNullOrWhiteSpace($LicenseKey)) { Write-Err "LicenseKey zorunlu."; exit 1 }
 if ([string]::IsNullOrWhiteSpace($RemoteUrl))  { Write-Err "RemoteUrl zorunlu."; exit 1 }

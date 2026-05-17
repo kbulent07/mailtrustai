@@ -52,7 +52,8 @@ Kullanım: sudo ./install_customer_ubuntu.sh [SEÇENEKLER]
 SEÇENEKLER:
   --yes, -y                Onay sorma (sessiz mod)
   --license-key <KEY>      Bayiden aldığınız lisans (MTAI-PRO-...)
-  --remote-url <URL>       Bayi/satıcı license-server URL'i (https://...)
+  --remote-url <URL>       Bayi/satıcı license-server URL'i
+                           (default: https://license.mailtrustai.com)
   --port <PORT>            Customer panel dış port (default: 3000)
   --branch <name>          Git branch (default: mainpaketler)
   --app-dir <path>         Kurulum dizini (default: /opt/mailtrustai-customer)
@@ -60,7 +61,7 @@ SEÇENEKLER:
 
 ÖNCEDEN HAZIR OLMASI GEREKEN:
   - Bayi/satıcının verdiği lisans key (MTAI-PRO-...)
-  - Bayi/satıcının license-server URL'i (https://license.bayi.com)
+  - Bayi/satıcının license-server URL'i (örn: https://license.mailtrustai.com)
 HELP
             exit 0 ;;
         *) log_warn "Bilinmeyen argüman: $1"; shift ;;
@@ -84,7 +85,8 @@ if [[ -z "$LICENSE_KEY" && "$ASSUME_YES" == "false" ]]; then
     read -r -p "Bayi/satıcıdan aldığınız lisans key (MTAI-...): " LICENSE_KEY
 fi
 if [[ -z "$REMOTE_URL" && "$ASSUME_YES" == "false" ]]; then
-    read -r -p "Bayi sunucusu URL'i (örn: https://license.bayiniz.com): " REMOTE_URL
+    read -r -p "Bayi sunucusu URL'i (default: https://license.mailtrustai.com): " REMOTE_URL
+    REMOTE_URL="${REMOTE_URL:-https://license.mailtrustai.com}"
 fi
 [[ -n "$LICENSE_KEY" ]] || { log_error "--license-key zorunlu"; exit 1; }
 [[ -n "$REMOTE_URL" ]] || { log_error "--remote-url zorunlu"; exit 1; }
