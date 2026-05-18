@@ -130,7 +130,8 @@ function getSnapshot() {
     // Sızıntıya karşı PII scrub'lı snapshot
     return scrubPII({
         licenseStatus: c.licenseStatus, plan: c.plan, tier: c.tier,
-        features: c.features, expiresAt: c.expiresAt,
+        features: c.features, limits: c.limits || {},
+        expiresAt: c.expiresAt,
         customerId: c.customerId, dealerId: c.dealerId,
         instanceId: c.instanceId, activationId: c.activationId,
         licenseKeyHash: c.licenseKeyHash

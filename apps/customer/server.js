@@ -142,7 +142,10 @@ app.post('/api/customer/license/validate', asyncH(async (req, res) => {
     const licenseKey = req.body?.licenseKey || settings.activeLicenseKey;
     if (!licenseKey) return res.status(400).json({ error: 'licenseKey yok' });
     const r = await licenseClient.validate({ remoteUrl, licenseKey });
-    res.json(r);
+    // Snapshot'ı dahil et: UI badge'i için plan/tier/features/limits gerekli.
+    // validate() cache'i güncelledikten sonra getSnapshot() güncel veriyi döner.
+    const snapshot = licenseClient.getSnapshot();
+    res.json({ ...r, snapshot });
 }));
 
 app.get('/api/customer/policy/snapshot', (req, res) => {
