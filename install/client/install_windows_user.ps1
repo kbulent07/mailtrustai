@@ -28,15 +28,15 @@
 
 .EXAMPLE
     # Etkileşimli kurulum (en basit yol):
-    powershell -ExecutionPolicy Bypass -File install\client\install_windows.ps1
+    powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1
 
     # Parametrelerle:
-    powershell -ExecutionPolicy Bypass -File install\client\install_windows.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1 `
         -LicenseKey "MSA-XXXX-XXXX-XXXX" `
         -LicenseServerUrl "https://license.firma.com"
 
     # Hazır image tar dosyasıyla:
-    powershell -ExecutionPolicy Bypass -File install\client\install_windows.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1 `
         -ImageFile "C:\Downloads\mailtrustai-customer.tar"
 #>
 
@@ -154,14 +154,16 @@ $EnvFile      = Join-Path $InstallDir '.env'
 $ComposeFile  = Join-Path $InstallDir 'docker-compose.customer.yml'
 $SkipEnv      = $false
 
+# İlk kurulum mu, güncelleme mi? (OTOMATİK)
+# .env zaten varsa → güncelleme: secret'lar DOKUNULMADAN korunur.
+# .env yoksa       → ilk kurulum: secret'lar otomatik üretilir.
 if (Test-Path $EnvFile) {
+    $SkipEnv = $true
     Write-Host ""
-    Warn "Mevcut yapılandırma bulundu: $EnvFile"
-    $keepExisting = Read-Host "  Mevcut secret'ları koru (güncelleme modu)? [E/h]"
-    if ($keepExisting -eq '' -or $keepExisting -match '^[EeYy]') {
-        $SkipEnv = $true
-        Info "Mevcut .env korunuyor."
-    }
+    Ok "Mevcut yapılandırma korunuyor (güncelleme modu): $EnvFile"
+    Info "Secret'lar değiştirilmeyecek — yalnızca image yeniden derlenecek."
+} else {
+    Info "İlk kurulum tespit edildi. Secret'lar otomatik üretilecek."
 }
 
 # ─── 5. Dizin yapısı ────────────────────────────────────────────────────────

@@ -179,7 +179,7 @@ if (-not $Purge) {
     Write-Color "  Veriler korundu: $InstallDir" 'Yellow'
     Write-Color ""
     Write-Color "  Yeniden kurmak için:" 'White'
-    Write-Color "  powershell -ExecutionPolicy Bypass -File install\client\install_windows.ps1" 'Cyan'
+    Write-Color "  powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1" 'Cyan'
 }
 
 Write-Host ""

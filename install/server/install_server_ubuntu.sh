@@ -6,10 +6,10 @@
 # Gereksinim: Ubuntu 22.04 LTS / 24.04 LTS, Docker 24+, 2 GB RAM
 #
 # Kullanım (repo kök dizininden):
-#   sudo bash install/server/install_ubuntu.sh
+#   sudo bash install/server/install_server_ubuntu.sh
 #
-# Güncelleme (aynı komut — mevcut .env korunur, image yeniden build edilir):
-#   sudo bash install/server/install_ubuntu.sh
+# İlk kurulum : Secret'lar otomatik üretilir ve .env dosyasına yazılır.
+# Güncelleme  : Mevcut .env korunur, yalnızca image yeniden derlenir.
 # ============================================================
 set -euo pipefail
 
@@ -37,8 +37,8 @@ genpass() { openssl rand -base64 24 | tr -d '/+=' | head -c 28; }
 echo ""
 echo -e "${CYAN}${BOLD}"
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║    MailTrustAI  —  Ubuntu Sunucu Kurulum Betiği     ║"
-echo "  ║    license-server + dealer panel + MariaDB           ║"
+echo "  ║   MailTrustAI  —  Sunucu Kurulum Betiği (Ubuntu)    ║"
+echo "  ║   license-server + dealer panel + MariaDB            ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -100,7 +100,7 @@ fi
 ok "Docker hazır: $(docker --version)"
 ok "Compose  : $($DOCKER_COMPOSE_CMD version --short 2>/dev/null || echo 'v1')"
 
-# ─── 2. Yapılandırma ────────────────────────────────────────
+# ─── 3. Yapılandırma ────────────────────────────────────────
 step "Kurulum yapılandırması..."
 hr
 
@@ -122,25 +122,25 @@ DB_PORT="${DB_PORT:-0}"
 
 ENV_FILE="$INSTALL_DIR/.env"
 
-# ─── 3. Mevcut kurulum kontrolü ─────────────────────────────
-SKIP_ENV=false
+# ─── 4. İlk kurulum mu, güncelleme mi? (OTOMATİK) ──────────
+# .env zaten varsa → güncelleme: secret'lar DOKUNULMADAN korunur.
+# .env yoksa       → ilk kurulum: secret'lar otomatik üretilir.
 if [[ -f "$ENV_FILE" ]]; then
+    SKIP_ENV=true
     echo ""
-    warn "Mevcut yapılandırma bulundu: $ENV_FILE"
-    read -rp "  Mevcut secret'ları koru (güncelleme modu)? [E/h]: " KEEP_EXISTING
-    KEEP_EXISTING="${KEEP_EXISTING:-E}"
-    if [[ "${KEEP_EXISTING^^}" =~ ^(E|Y|EVET|YES)$ ]]; then
-        SKIP_ENV=true
-        info "Mevcut .env korunuyor. Yalnızca image yeniden build edilecek."
-    fi
+    ok "Mevcut yapılandırma korunuyor (güncelleme modu): $ENV_FILE"
+    info "Secret'lar değiştirilmeyecek — yalnızca image yeniden derlenecek."
+else
+    SKIP_ENV=false
+    info "İlk kurulum tespit edildi. Secret'lar otomatik üretilecek."
 fi
 
-# ─── 4. Dizin yapısı ────────────────────────────────────────
+# ─── 5. Dizin yapısı ────────────────────────────────────────
 step "Dizin yapısı oluşturuluyor: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"/{logs,backups}
 chmod 750 "$INSTALL_DIR"
 
-# ─── 5. Secret üretimi ve .env yazımı ───────────────────────
+# ─── 6. Secret üretimi ve .env yazımı ───────────────────────
 if [[ "$SKIP_ENV" == "false" ]]; then
     step "Güvenli secret'lar üretiliyor..."
 
@@ -200,12 +200,12 @@ else
     ok ".env mevcut → $ENV_FILE"
 fi
 
-# ─── 6. Compose dosyasını güncelle ──────────────────────────
+# ─── 7. Compose dosyasını güncelle ──────────────────────────
 step "Compose dosyası güncelleniyor..."
 cp "$REPO_ROOT/docker-compose.server.yml" "$INSTALL_DIR/docker-compose.server.yml"
 ok "docker-compose.server.yml kopyalandı."
 
-# ─── 7. Image build ─────────────────────────────────────────
+# ─── 8. Image build ─────────────────────────────────────────
 step "Docker image'lar derleniyor (bu 3-10 dakika sürebilir)..."
 cd "$REPO_ROOT"
 
@@ -215,15 +215,15 @@ $DOCKER_COMPOSE_CMD \
     build --pull
 ok "Image'lar derlendi."
 
-# ─── 8. Servisleri başlat ───────────────────────────────────
+# ─── 9. Servisleri başlat ───────────────────────────────────
 step "Servisler başlatılıyor..."
 $DOCKER_COMPOSE_CMD \
     --env-file "$ENV_FILE" \
     -f docker-compose.server.yml \
     up -d --remove-orphans
 
-# ─── 9. Sağlık kontrolü ─────────────────────────────────────
-step "Sağlık kontrolü (45 saniye bekleniyor)..."
+# ─── 10. Sağlık kontrolü ────────────────────────────────────
+step "Sağlık kontrolü (60 saniye bekleniyor)..."
 sleep 20
 
 MAX_WAIT=60
@@ -243,7 +243,7 @@ if [[ $ELAPSED -ge $MAX_WAIT ]]; then
     warn "  docker compose -f $INSTALL_DIR/docker-compose.server.yml logs --tail=30"
 fi
 
-# ─── 10. Bakım scripti oluştur ──────────────────────────────
+# ─── 11. Bakım scripti oluştur ──────────────────────────────
 cat > "$INSTALL_DIR/mailtrustai-ctl.sh" <<'CTLEOF'
 #!/usr/bin/env bash
 # MailTrustAI sunucu yönetim aracı
@@ -293,7 +293,7 @@ chmod +x "$INSTALL_DIR/mailtrustai-ctl.sh"
 # Repo yolunu kaydet (update komutu için)
 echo "$REPO_ROOT" > "$INSTALL_DIR/.repo_path"
 
-# ─── 11. Özet ───────────────────────────────────────────────
+# ─── 12. Özet ───────────────────────────────────────────────
 hr
 echo ""
 echo -e "${GREEN}${BOLD}"
@@ -301,6 +301,12 @@ echo "  ╔═══════════════════════
 echo "  ║          ✓  Kurulum Tamamlandı!                      ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
+
+if [[ "$SKIP_ENV" == "false" ]]; then
+    echo -e "  ${YELLOW}⚠  İLK KURULUM — Secret'larınızı hemen yedekleyin:${NC}"
+    echo -e "  ${YELLOW}     cat ${ENV_FILE}${NC}"
+    echo ""
+fi
 
 echo -e "  ${BOLD}Erişim Adresleri:${NC}"
 echo -e "  ├─ License Server API : ${CYAN}http://${SERVER_HOST}:${LS_PORT}/healthz${NC}"
@@ -318,7 +324,6 @@ echo -e "  ├─ Loglar : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh logs${NC}"
 echo -e "  ├─ Yedek  : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh backup${NC}"
 echo -e "  └─ Durdur : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh stop${NC}"
 echo ""
-echo -e "  ${YELLOW}⚠  SECRET'LARI YEDEKLEYİN: ${ENV_FILE}${NC}"
 echo -e "  ${YELLOW}⚠  Firewall: ${LS_PORT}/tcp ve ${DEALER_PORT_VAR}/tcp portlarını açın.${NC}"
 echo -e "  ${YELLOW}⚠  HTTPS için Nginx reverse proxy önerilir (Let's Encrypt).${NC}"
 echo ""
