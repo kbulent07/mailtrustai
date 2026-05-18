@@ -21,11 +21,13 @@ function escapeLike(s) {
 
 const ADMIN_TOKEN = env('ADMIN_PANEL_TOKEN') || '';
 const isProd = String(env('NODE_ENV', 'development')).toLowerCase() === 'production';
-if (!ADMIN_TOKEN && isProd) {
-    // server.js boot probe — bu modul require edilirse direkt log uyarisi
-    require('@mailtrustai/shared').logger.warn(
-        '[admin] UYARI: ADMIN_PANEL_TOKEN tanımsız. Admin panel kullanılamaz (boot fail-fast yok — uçlar 401).'
-    );
+if (!ADMIN_TOKEN) {
+    const { logger: _log } = require('@mailtrustai/shared');
+    if (isProd) {
+        _log.error('[admin] FATAL: ADMIN_PANEL_TOKEN production\'da zorunludur. Sunucu durduruluyor.');
+        process.exit(1);
+    }
+    _log.warn('[admin] UYARI: ADMIN_PANEL_TOKEN tanımsız — admin panel yalnızca development için kapalı (uçlar 503).');
 }
 
 function adminAuth(req, res, next) {

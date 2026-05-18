@@ -129,9 +129,17 @@ app.get('/api/customer/license/status', asyncH((req, res) => {
     res.json({ snapshot: snap, grace });
 }));
 
+// Lisans anahtarı formatı: MSA-XXXX-XXXX-XXXX — max 128 karakter, yalnızca alfanümerik + tire.
+const LICENSE_KEY_RE = /^[A-Z0-9\-]{4,128}$/;
+
 app.post('/api/customer/license/activate', asyncH(async (req, res) => {
     const { licenseKey } = req.body || {};
-    if (!licenseKey) return res.status(400).json({ error: 'licenseKey gerekli' });
+    if (!licenseKey || typeof licenseKey !== 'string') {
+        return res.status(400).json({ error: 'licenseKey gerekli' });
+    }
+    if (!LICENSE_KEY_RE.test(licenseKey)) {
+        return res.status(400).json({ error: 'licenseKey geçersiz format (A-Z, 0-9, tire, max 128 karakter)' });
+    }
     const remoteUrl = env('MSA_LICENSE_REMOTE_URL');
     if (!remoteUrl) return res.status(503).json({ error: 'MSA_LICENSE_REMOTE_URL tanımlı değil' });
     try {
@@ -180,7 +188,12 @@ app.post('/api/customer/license/validate', asyncH(async (req, res) => {
     const remoteUrl = env('MSA_LICENSE_REMOTE_URL');
     if (!remoteUrl) return res.status(503).json({ error: 'MSA_LICENSE_REMOTE_URL tanımlı değil' });
     const settings = (() => { try { return loadSettings(); } catch (_) { return {}; } })();
-    const licenseKey = req.body?.licenseKey || settings.activeLicenseKey;
+    const bodyKey = req.body?.licenseKey;
+    // Body'den geliyorsa format kontrolü yap; settings'ten geliyorsa zaten doğrulanmış.
+    if (bodyKey !== undefined && bodyKey !== null && !LICENSE_KEY_RE.test(String(bodyKey))) {
+        return res.status(400).json({ error: 'licenseKey geçersiz format' });
+    }
+    const licenseKey = bodyKey || settings.activeLicenseKey;
     if (!licenseKey) return res.status(400).json({ error: 'licenseKey yok' });
     const r = await licenseClient.validate({ remoteUrl, licenseKey });
     // Snapshot'ı dahil et: UI badge'i için plan/tier/features/limits gerekli.
