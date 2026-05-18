@@ -265,7 +265,32 @@ router.get('/license/revoked', requireAdminAuth, (req, res) => {
 
 router.get('/license/usage', (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
-    res.json({ monthlyCount: getMonthlyCount(), monthKey: getCurrentMonthKey(), dailyCount: getDailyCount(today) });
+    // Aktif lisans anahtarından monthlyLimit ve usageScope al
+    const settings = loadSettings();
+    const key = (settings.activeLicenseKey || '').trim();
+    let monthlyLimit = 30;   // lisanssız varsayılan
+    let usageScope   = 'unlicensed';
+    let unlimited    = false;
+    if (key) {
+        try {
+            const v = validateLicenseKey(key);
+            if (v.valid) {
+                monthlyLimit = v.monthlyLimit ?? 30;
+                unlimited    = monthlyLimit === Infinity;
+                // usageScope: SHA-256(key) ilk 16 hex
+                const crypto = require('crypto');
+                usageScope   = crypto.createHash('sha256').update(key).digest('hex').slice(0, 16);
+            }
+        } catch (_) { /* ignore */ }
+    }
+    const monthlyCount = getMonthlyCount(undefined, usageScope);
+    const remaining    = unlimited ? null : Math.max(0, monthlyLimit - monthlyCount);
+    res.json({
+        monthlyCount, monthKey: getCurrentMonthKey(), dailyCount: getDailyCount(today),
+        monthlyLimit: unlimited ? null : monthlyLimit,
+        remaining,
+        unlimited
+    });
 });
 
 // ── Parmak İzi — müşteri aktivasyon bilgisi ──────────────────

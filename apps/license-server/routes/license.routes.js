@@ -94,6 +94,9 @@ router.post('/license/create', asyncH(async (req, res) => {
     if (!Number.isFinite(validDays) || validDays <= 0 || validDays > 36500) {
         return badRequest(res, 'validDays geçersiz (1..36500)');
     }
+    if (plan === 'demo' && validDays > 14) {
+        return badRequest(res, 'Demo lisans maksimum 14 gün olabilir.');
+    }
     if (!PLAN_MATRIX[plan]) {
         return badRequest(res, `plan geçersiz: ${plan}. Geçerli: ${Object.keys(PLAN_MATRIX).join(', ')}`);
     }

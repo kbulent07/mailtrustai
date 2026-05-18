@@ -855,7 +855,7 @@ function renderCustomersTable() {
             ${dlid ? `<button class="action-btn" data-action="renew" data-id="${escapeHtml(custId)}" data-name="${dlan}" data-lid="${dlid}">⏳ Uzat</button>` : ''}
             ${dlid && ls !== 'revoked'
               ? `<button class="action-btn danger" data-action="revoke" data-id="${escapeHtml(custId)}" data-name="${dlan}" data-lid="${dlid}">🚫 İptal</button>`
-              : ''}
+              : dlid ? `<span class="muted" style="font-size:.78em;display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border:1px solid var(--border);border-radius:5px" title="Yeniden aktivasyon yalnızca merkezi yönetim (admin) panelinden yapılabilir">🔒 Admin aktive edebilir</span>` : ''}
           </div>
         </div>
       </div>`;
@@ -931,7 +931,7 @@ function renderManageTable() {
         ${dlid ? `<button class="action-btn" data-action="renew" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-lid="${dlid}">⏳ Uzat</button>` : ''}
         ${dlid && ls !== 'revoked'
           ? `<button class="action-btn danger" data-action="revoke" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-lid="${dlid}">🚫 İptal</button>`
-          : ''}
+          : dlid ? `<span class="muted" style="font-size:.78em;display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border:1px solid var(--border);border-radius:5px" title="Yeniden aktivasyon yalnızca merkezi yönetim (admin) panelinden yapılabilir">🔒 Admin aktive edebilir</span>` : ''}
       </td>
     </tr>`;
   }).join('');

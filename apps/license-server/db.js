@@ -72,6 +72,7 @@ async function _waitMaria() {
         user: env('MARIADB_USER', 'mailtrustai'),
         password: env('MARIADB_PASSWORD', ''),
         database: env('MARIADB_DATABASE', 'mailtrustai_license'),
+        charset: 'utf8mb4',
         waitForConnections: true,
         connectionLimit: envInt('MARIADB_POOL_SIZE', 10),
         queueLimit: 0,

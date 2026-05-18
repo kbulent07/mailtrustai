@@ -293,6 +293,8 @@ document.addEventListener('DOMContentLoaded', () => {
     syncLicenseFromServer().then(() => {
         if (licenseKey) validateStoredLicense();
     });
+    // Tarama kotası widget'ını hemen yükle (lisans aktif olsun olmasın)
+    loadLicenseUsage();
     connectWebSocket();
     loadImapAccounts();
     initializeNavigationState();
@@ -5279,10 +5281,34 @@ async function loadLicenseUsage() {
         const data = await res.json();
         const counter = document.getElementById('usageCounter');
         if (!counter) return;
-        const limit = licenseInfo?.monthlyLimit;
-        const limitLabel = !limit || limit === Infinity ? '∞' : limit.toLocaleString();
-        counter.textContent = `${data.monthlyCount} / ${limitLabel}`;
+
+        const used      = data.monthlyCount ?? 0;
+        const unlimited = data.unlimited === true;
+        const limit     = (!unlimited && data.monthlyLimit != null) ? data.monthlyLimit
+                        : (licenseInfo?.monthlyLimit ?? null);
+        const remaining = (unlimited || limit == null) ? null : Math.max(0, limit - used);
+
+        // Renk: yeşil → sarı (%80) → kırmızı (%100)
+        let color = 'rgba(255,255,255,0.55)';
+        if (!unlimited && limit != null && limit > 0) {
+            const pct = used / limit;
+            if (pct >= 1)        color = '#ef4444';
+            else if (pct >= 0.8) color = '#f59e0b';
+            else                 color = '#10b981';
+        }
+
+        const limitLabel    = unlimited || limit == null ? '∞' : limit.toLocaleString('tr-TR');
+        const remainLabel   = unlimited || remaining == null ? '∞' : remaining.toLocaleString('tr-TR');
+        counter.innerHTML =
+            `<span style="color:${color};font-weight:600">${used.toLocaleString('tr-TR')}</span>` +
+            `<span style="color:rgba(255,255,255,0.35)"> / ${limitLabel}</span>` +
+            `<span style="color:rgba(255,255,255,0.45);font-size:10px;margin-left:4px">(${remainLabel} kalan)</span>`;
+        counter.title = `Bu ay kullanılan: ${used.toLocaleString('tr-TR')} / ${limitLabel} — Kalan: ${remainLabel}`;
         counter.classList.remove('hidden');
+        counter.style.background = 'rgba(255,255,255,0.06)';
+        counter.style.border = `1px solid ${color}40`;
+        counter.style.borderRadius = '5px';
+        counter.style.padding = '2px 8px';
     } catch {}
 }
 
