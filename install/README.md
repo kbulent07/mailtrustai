@@ -46,7 +46,7 @@ git clone https://github.com/kbulent07/mailtrustai.git /opt/mailtrustai-repo
 cd /opt/mailtrustai-repo
 
 # 2. Kurulum betiğini çalıştırın
-sudo bash install/server/install.sh
+sudo bash install/server/install_ubuntu.sh
 
 # Betik şunları yapar:
 #   ✓ Docker kurulumu/kontrolü
@@ -87,10 +87,10 @@ sudo bash install/server/install.sh
 
 ```bash
 # Sadece servisleri durdur (veriler korunur):
-sudo bash install/server/uninstall.sh
+sudo bash install/server/uninstall_ubuntu.sh
 
 # Tüm verileri SİL (MariaDB, lisans DB, .env):
-sudo bash install/server/uninstall.sh --purge
+sudo bash install/server/uninstall_ubuntu.sh --purge
 ```
 
 > ⚠ `--purge` geri alınamaz. Önce `backup` alın.
@@ -114,16 +114,16 @@ sudo bash install/server/uninstall.sh --purge
 
 # Yöntem A: Etkileşimli (en kolay)
 cd C:\path\to\mailtrustai-repo
-powershell -ExecutionPolicy Bypass -File install\client\install.ps1
+powershell -ExecutionPolicy Bypass -File install\client\install_windows.ps1
 
 # Yöntem B: Parametreli
-powershell -ExecutionPolicy Bypass -File install\client\install.ps1 `
+powershell -ExecutionPolicy Bypass -File install\client\install_windows.ps1 `
     -LicenseKey "MSA-XXXX-XXXX-XXXX" `
     -LicenseServerUrl "https://license.firma.com" `
     -Port 3000
 
 # Yöntem C: Hazır image tar dosyasıyla (build gerekmez)
-powershell -ExecutionPolicy Bypass -File install\client\install.ps1 `
+powershell -ExecutionPolicy Bypass -File install\client\install_windows.ps1 `
     -LicenseKey "MSA-XXXX-XXXX-XXXX" `
     -LicenseServerUrl "https://license.firma.com" `
     -ImageFile "C:\Downloads\mailtrustai-customer.tar"
@@ -168,10 +168,10 @@ Admin e-postanızı ve şifrenizi oluşturun.
 # PowerShell'i "Yönetici olarak çalıştır" ile açın
 
 # Sadece konteyneri durdur (veriler korunur):
-powershell -ExecutionPolicy Bypass -File install\client\uninstall.ps1
+powershell -ExecutionPolicy Bypass -File install\client\uninstall_windows.ps1
 
 # Tüm verileri SİL + image'ı da kaldır:
-powershell -ExecutionPolicy Bypass -File install\client\uninstall.ps1 -Purge -RemoveImage
+powershell -ExecutionPolicy Bypass -File install\client\uninstall_windows.ps1 -Purge -RemoveImage
 ```
 
 ---
@@ -198,7 +198,7 @@ Müşteri `install.ps1 -ImageFile mailtrustai-customer.tar.gz` ile yükler.
 # Sunucu:
 cd /path/to/mailtrustai-repo
 git pull
-sudo bash install/server/install.sh  # mevcut .env korunur
+sudo bash install/server/install_ubuntu.sh  # mevcut .env korunur
 
 # Müşteri (PowerShell - Yönetici):
 & 'C:\MailTrustAI\mailtrustai-ctl.ps1' update

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ============================================================
-# MailTrustAI — Linux Sunucu Kaldırma Betiği
+# MailTrustAI — Ubuntu Sunucu Kaldırma Betiği
 #
 # Kullanım:
-#   sudo bash install/server/uninstall.sh [--purge]
+#   sudo bash install/server/uninstall_ubuntu.sh [--purge]
 #
 # --purge  : Tüm verileri (MariaDB, license-server) ve .env'i SİL.
 #            GERI ALINAMAZ — dikkatli kullanın!
@@ -29,7 +29,7 @@ done
 echo ""
 echo -e "${RED}${BOLD}"
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║       MailTrustAI  —  Sunucu Kaldırma Betiği        ║"
+echo "  ║   MailTrustAI  —  Ubuntu Sunucu Kaldırma Betiği     ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -118,7 +118,7 @@ else
     # Sadece konteyner kaldırma — volume ve dizin korunuyor
     ok "Veriler korundu: $INSTALL_DIR"
     echo ""
-    warn "Verileri de silmek için: sudo bash install/server/uninstall.sh --purge"
+    warn "Verileri de silmek için: sudo bash install/server/uninstall_ubuntu.sh --purge"
 fi
 
 # ─── Özet ───────────────────────────────────────────────────

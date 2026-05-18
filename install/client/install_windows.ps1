@@ -28,15 +28,15 @@
 
 .EXAMPLE
     # Etkileşimli kurulum (en basit yol):
-    powershell -ExecutionPolicy Bypass -File install\client\install.ps1
+    powershell -ExecutionPolicy Bypass -File install\client\install_windows.ps1
 
     # Parametrelerle:
-    powershell -ExecutionPolicy Bypass -File install\client\install.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\install_windows.ps1 `
         -LicenseKey "MSA-XXXX-XXXX-XXXX" `
         -LicenseServerUrl "https://license.firma.com"
 
     # Hazır image tar dosyasıyla:
-    powershell -ExecutionPolicy Bypass -File install\client\install.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\install_windows.ps1 `
         -ImageFile "C:\Downloads\mailtrustai-customer.tar"
 #>
 

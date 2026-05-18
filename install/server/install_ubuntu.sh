@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # ============================================================
-# MailTrustAI — Linux Sunucu Kurulum Betiği
+# MailTrustAI — Ubuntu Sunucu Kurulum Betiği
 #
 # Kurar: license-server (port 3200) + dealer panel (3100) + MariaDB
-# Gereksinim: Debian/Ubuntu/RHEL/Rocky, Docker 24+, 2 GB RAM
+# Gereksinim: Ubuntu 22.04 LTS / 24.04 LTS, Docker 24+, 2 GB RAM
 #
 # Kullanım (repo kök dizininden):
-#   sudo bash install/server/install.sh
+#   sudo bash install/server/install_ubuntu.sh
 #
 # Güncelleme (aynı komut — mevcut .env korunur, image yeniden build edilir):
-#   sudo bash install/server/install.sh
+#   sudo bash install/server/install_ubuntu.sh
 # ============================================================
 set -euo pipefail
 
@@ -37,52 +37,50 @@ genpass() { openssl rand -base64 24 | tr -d '/+=' | head -c 28; }
 echo ""
 echo -e "${CYAN}${BOLD}"
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║       MailTrustAI  —  Sunucu Kurulum Betiği         ║"
+echo "  ║    MailTrustAI  —  Ubuntu Sunucu Kurulum Betiği     ║"
 echo "  ║    license-server + dealer panel + MariaDB           ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-# ─── 1. Docker kurulum kontrolü ─────────────────────────────
+# ─── 1. Ubuntu kontrolü ─────────────────────────────────────
+step "Ubuntu kontrol ediliyor..."
+
+if [[ ! -f /etc/lsb-release ]] || ! grep -qi ubuntu /etc/lsb-release 2>/dev/null; then
+    fatal "Bu betik yalnızca Ubuntu (22.04 / 24.04 LTS) üzerinde çalışır."
+fi
+
+UBUNTU_VER=$(grep DISTRIB_RELEASE /etc/lsb-release | cut -d= -f2)
+info "Ubuntu $UBUNTU_VER tespit edildi."
+
+# ─── 2. Docker kurulum kontrolü ─────────────────────────────
 step "Docker kontrol ediliyor..."
 
-install_docker_debian() {
-    info "Docker kuruluyor (apt)..."
+install_docker_ubuntu() {
+    info "Docker Engine kuruluyor (resmi Docker deposu)..."
     apt-get update -qq
-    apt-get install -y -qq ca-certificates curl gnupg
+    apt-get install -y -qq ca-certificates curl gnupg lsb-release
+
     install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
         | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     chmod a+r /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-        https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") \
-        $(. /etc/os-release; echo "$VERSION_CODENAME") stable" \
-        > /etc/apt/sources.list.d/docker.list
-    apt-get update -qq
-    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
-    systemctl enable --now docker
-    ok "Docker kuruldu."
-}
 
-install_docker_rhel() {
-    info "Docker kuruluyor (dnf/yum)..."
-    if command -v dnf &>/dev/null; then
-        dnf install -y -q docker docker-compose-plugin
-    else
-        yum install -y -q docker docker-compose-plugin
-    fi
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+        https://download.docker.com/linux/ubuntu \
+        $(lsb_release -cs) stable" \
+        > /etc/apt/sources.list.d/docker.list
+
+    apt-get update -qq
+    apt-get install -y -qq docker-ce docker-ce-cli containerd.io \
+        docker-buildx-plugin docker-compose-plugin
+
     systemctl enable --now docker
-    ok "Docker kuruldu."
+    ok "Docker Engine kuruldu."
 }
 
 if ! command -v docker &>/dev/null; then
-    warn "Docker bulunamadı. Otomatik kurulum deneniyor..."
-    if [[ -f /etc/debian_version ]]; then
-        install_docker_debian
-    elif [[ -f /etc/redhat-release ]]; then
-        install_docker_rhel
-    else
-        fatal "Desteklenmeyen dağıtım. Docker'ı manuel kurun: https://docs.docker.com/engine/install/"
-    fi
+    warn "Docker bulunamadı. Ubuntu için otomatik kurulum yapılıyor..."
+    install_docker_ubuntu
 fi
 
 if ! docker info &>/dev/null; then
