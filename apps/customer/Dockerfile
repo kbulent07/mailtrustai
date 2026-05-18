@@ -56,7 +56,9 @@ RUN npm install --omit=dev --no-audit --no-fund --ignore-scripts \
     && npm_config_nodedir=/usr/local npm rebuild better-sqlite3 bcrypt --build-from-source --no-audit --no-fund || true
 
 # 6) Yasak içerik kontrolü — image'a girmeden önce taranır.
-RUN node scripts/check-customer-package.js --scope=image
+#    MSA_CUSTOMER_BUILD env'i ile script'in image-scope modunu yasal kabul ediyoruz
+#    (host'tan yanlislikla calistirma uyarisini bastirir).
+RUN MSA_CUSTOMER_BUILD=1 node scripts/check-customer-package.js --scope=image
 
 # ---------- Runtime image ----------
 FROM node:22-bookworm-slim

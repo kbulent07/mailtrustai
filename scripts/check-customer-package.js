@@ -29,7 +29,16 @@ const FORBIDDEN_PATHS_IMAGE = [
     'public/bayi.html'
 ];
 
+// NOT: `packages/license-core` ve `packages/license-server` (apps/license-server)
+// REPO scope'unda taranmaz cunku bu paketler dogal olarak generator/sign kodu
+// barindirir. Customer image build'inde bu paketler .dockerignore + FORBIDDEN_PATHS_IMAGE
+// kontrolu sayesinde fiziksel olarak girmez. SCOPE=image'da bu yollar ayrica
+// kontrol edilir.
 const SCAN_DIRS = ['apps/customer', 'packages', 'src', 'public'];
+const SCAN_SKIP_DIRS = new Set([
+    'packages/license-core',
+    'packages/license-server'
+]);
 const FORBIDDEN_NAME_TOKENS = [
     'keygen',
     'reseller',
@@ -76,6 +85,15 @@ const ALLOWLIST_FILES = new Set([
 const errors = [];
 
 if (SCOPE_IMAGE) {
+    // `--scope=image` SADECE Dockerfile build asamasinda calistirilmalidir
+    // (apps/customer/Dockerfile, generator/dealer/license-server dosyalari
+    // silindikten SONRA). Host'tan calistirilirsa repo'da bu dosyalar
+    // hala var olacagi icin yanlis-pozitif uretir.
+    if (!process.env.MSA_CUSTOMER_BUILD) {
+        console.warn('UYARI: --scope=image yalnız Docker build içinde anlamlı.');
+        console.warn('       Host\'tan çalıştırıyorsanız `MSA_CUSTOMER_BUILD=1` set edin');
+        console.warn('       veya scope=repo (varsayılan) kullanın.\n');
+    }
     for (const rel of FORBIDDEN_PATHS_IMAGE) {
         if (fs.existsSync(path.join(ROOT, rel))) {
             errors.push(`[FORBIDDEN-PATH] ${rel} customer image icinde olmamali`);
@@ -85,6 +103,8 @@ if (SCOPE_IMAGE) {
 
 function walk(dir, out = []) {
     if (!fs.existsSync(dir)) return out;
+    const relDir = path.relative(ROOT, dir).replace(/\\/g, '/');
+    if (SCAN_SKIP_DIRS.has(relDir)) return out;
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
         const full = path.join(dir, ent.name);
         if (ent.isDirectory()) {

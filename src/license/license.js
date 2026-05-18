@@ -187,18 +187,17 @@ function generateChecksum(data) {
 }
 
 // ============================================================
-// Generator fonksiyonları lazy-require shim'dir. Gerçek implementasyon
-// src/license/license-generator.js'tedir. Customer Docker image'inde
-// license-generator.js dosyası BULUNMAZ → çağrılırsa MODULE_NOT_FOUND
-// (HARD-GATE admin path'leri zaten 404'ler, bu satıra erişilmemelidir).
+// Bu dosya validateLicenseKey() icin musteri ve license-server'da
+// ortak kullanilir. Generator fonksiyonlari (generateLicenseKey,
+// generateBatchKeys) artik YALNIZ license-server'da yasar:
+//   apps/license-server → @mailtrustai/license-core (MTAI- format)
+//
+// Eski MSA- formatli generator silindi (commit dcf33af). Bu fonksiyonlar
+// kasten throw eder — customer image'de cagrilirsa anlik fail-loud verir.
 // ============================================================
-let _gen = null;
-function _generator() {
-    if (!_gen) _gen = require('./license-generator');
-    return _gen;
+function generateLicenseKey() {
+    throw new Error('[license] generateLicenseKey customer scope\'unda yoktur — license-server /api/license/create kullanin.');
 }
-
-function generateLicenseKey(...args) { return _generator().generateLicenseKey(...args); }
 
 function validateLicenseKey(key) {
     try {
@@ -283,7 +282,9 @@ function validateLicenseKey(key) {
     }
 }
 
-function generateBatchKeys(...args) { return _generator().generateBatchKeys(...args); }
+function generateBatchKeys() {
+    throw new Error('[license] generateBatchKeys customer scope\'unda yoktur — license-server admin paneli kullanin.');
+}
 
 function getPriceTable(customPrices = null) {
     return customPrices || DEFAULT_PRICES;

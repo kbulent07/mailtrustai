@@ -11,8 +11,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
+// `--scope=image` modunda calistiriyoruz (Dockerfile build asamasinda
+// kullanilan asil mod). Bu mod FORBIDDEN_PATHS_IMAGE yollarinin
+// varligini kontrol eder; staged tree'de bu yollar varsa FAIL beklenir.
 function runCheck(cwd) {
-    return spawnSync(process.execPath, [path.resolve(__dirname, '..', '..', 'scripts', 'check-customer-package.js')], { cwd, encoding: 'utf8' });
+    return spawnSync(
+        process.execPath,
+        [path.resolve(__dirname, '..', '..', 'scripts', 'check-customer-package.js'), '--scope=image'],
+        { cwd, encoding: 'utf8', env: { ...process.env, MSA_CUSTOMER_BUILD: '1' } }
+    );
 }
 
 test('staging prune oncesi FAIL, prune sonrasi PASS', () => {
@@ -27,18 +34,24 @@ test('staging prune oncesi FAIL, prune sonrasi PASS', () => {
             for (const e of fs.readdirSync(src)) copy(path.join(src, e), path.join(dst, e));
         } else fs.copyFileSync(src, dst);
     };
-    copy(path.join(root, 'apps', 'customer'), path.join(stage, 'apps', 'customer'));
-    copy(path.join(root, 'packages'),         path.join(stage, 'packages'));
-    copy(path.join(root, 'src'),              path.join(stage, 'src'));
-    copy(path.join(root, 'public'),           path.join(stage, 'public'));
-    copy(path.join(root, 'scripts'),          path.join(stage, 'scripts'));
-    copy(path.join(root, 'docs'),             path.join(stage, 'docs'));
+    copy(path.join(root, 'apps', 'customer'),       path.join(stage, 'apps', 'customer'));
+    // Dealer ve license-server'i bilerek STAGE'e KOPYALIYORUZ — gercek build
+    // oncesi durumu simule eder (apps/customer/Dockerfile bunlari siler).
+    copy(path.join(root, 'apps', 'dealer'),         path.join(stage, 'apps', 'dealer'));
+    copy(path.join(root, 'apps', 'license-server'), path.join(stage, 'apps', 'license-server'));
+    copy(path.join(root, 'packages'),               path.join(stage, 'packages'));
+    copy(path.join(root, 'src'),                    path.join(stage, 'src'));
+    copy(path.join(root, 'public'),                 path.join(stage, 'public'));
+    copy(path.join(root, 'scripts'),                path.join(stage, 'scripts'));
+    copy(path.join(root, 'docs'),                   path.join(stage, 'docs'));
 
     const before = runCheck(stage);
     assert.notStrictEqual(before.status, 0, 'prune oncesi staged tree FAIL olmali');
 
     // Customer-only image gibi temizle (Dockerfile ile aynı)
     const rm = (p) => { try { fs.rmSync(path.join(stage, p), { recursive: true, force: true }); } catch (_) {} };
+    rm('apps/dealer');
+    rm('apps/license-server');
     rm('packages/license-core');
     rm('src/license/keygenTool.js');
     rm('src/license/license-generator.js');
