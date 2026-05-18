@@ -7876,6 +7876,20 @@ async function _cuFetch(path, opts = {}) {
     return { ok: res.ok, status: res.status, data };
 }
 
+// Network hatalarında UI'ın "loading" stuck kalmaması için güvenli fetch sarmalayıcı.
+// Her zaman { ok, status, data, networkError } döner — asla throw etmez.
+async function _safeFetch(path, opts = {}) {
+    try {
+        const headers = Object.assign({}, opts.headers || {});
+        if (licenseKey) headers['x-license-key'] = licenseKey;
+        const res = await fetch(path, Object.assign({}, opts, { headers }));
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok, status: res.status, data, networkError: false };
+    } catch (e) {
+        return { ok: false, status: 0, data: {}, networkError: true, error: e.message };
+    }
+}
+
 async function loadCustomerUsersList() {
     const cont = document.getElementById('cuListContainer');
     if (!cont) return;
