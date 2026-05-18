@@ -224,7 +224,7 @@ function renderStats(s) {
 
 // Tüm dealer <select>'lerini güncelle
 function populateDealerSelects() {
-    const ids = ['filterDealer','bulkDealer','newLicDealer'];
+    const ids = ['filterDealer','bulkDealer','newLicDealer','newCustDealer'];
     for (const id of ids) {
         const sel = $(id);
         if (!sel) continue;
@@ -529,6 +529,40 @@ $('dealerCreateForm').addEventListener('submit', async (e) => {
         res.className   = 'result ok';
         $('dealerCreateForm').reset();
         await loadDealers();
+    } catch (err) {
+        res.textContent = 'Hata: ' + err.message;
+        res.className   = 'result err';
+    }
+});
+
+// ================================================================
+// MÜŞTERİ EKLEME (lisans üretmeden)
+// ================================================================
+$('customerCreateForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const res = $('customerCreateResult');
+    res.textContent = '';
+    const body = {
+        customerId    : $('newCustId').value.trim(),
+        dealerId      : $('newCustDealer').value || undefined,
+        companyName   : $('newCustCompany').value.trim()       || undefined,
+        email         : $('newCustEmail').value.trim()         || undefined,
+        phone         : $('newCustPhone').value.trim()         || undefined,
+        address       : $('newCustAddress').value.trim()       || undefined,
+        taxOffice     : $('newCustTaxOffice').value.trim()     || undefined,
+        taxNumber     : $('newCustTaxNumber').value.trim()     || undefined,
+        billingAddress: $('newCustBilling').value.trim()       || undefined,
+        contactName   : $('newCustContactName').value.trim()   || undefined,
+        contactEmail  : $('newCustContactEmail').value.trim()  || undefined,
+        contactPhone  : $('newCustContactPhone').value.trim()  || undefined
+    };
+    if (!body.customerId) { res.textContent = 'Müşteri ID zorunlu.'; res.className = 'result err'; return; }
+    try {
+        await api('/api/admin/customers', { method: 'POST', body });
+        res.textContent = `✓ Müşteri "${body.customerId}" kaydedildi.`;
+        res.className   = 'result ok';
+        $('customerCreateForm').reset();
+        await loadAll();
     } catch (err) {
         res.textContent = 'Hata: ' + err.message;
         res.className   = 'result err';

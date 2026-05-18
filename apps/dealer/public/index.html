@@ -462,15 +462,37 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
 
 <!-- ===== MODAL: Yeni Müşteri Ekle ===== -->
 <div id="addCustomerModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="addCustModalTitle">
-  <div class="modal-card">
+  <div class="modal-card" style="max-width:560px">
     <h3 id="addCustModalTitle">➕ Yeni Müşteri Ekle</h3>
     <p class="muted" style="margin-bottom:14px">Müşteri kaydı oluşturulur. Lisansı daha sonra müşteri listesinden üretebilirsiniz.</p>
+
     <label for="addCustId">Müşteri ID *</label>
     <input type="text" id="addCustId" maxlength="64" placeholder="acme-corp" autocomplete="off">
     <label for="addCustCompany">Şirket Adı</label>
     <input type="text" id="addCustCompany" maxlength="128" placeholder="ACME Corp" autocomplete="organization">
-    <label for="addCustEmail">E-posta</label>
-    <input type="email" id="addCustEmail" placeholder="it@acme.com" autocomplete="email">
+    <label for="addCustEmail">Genel E-posta</label>
+    <input type="email" id="addCustEmail" placeholder="info@acme.com" autocomplete="email">
+    <label for="addCustPhone">Şirket Telefonu</label>
+    <input type="tel" id="addCustPhone" maxlength="32" placeholder="+90 212 ...">
+    <label for="addCustAddress">Adres</label>
+    <input type="text" id="addCustAddress" maxlength="255" placeholder="Cadde / Mahalle / İl">
+
+    <h4 style="margin:16px 0 6px;font-size:14px;color:#94a3b8">📄 Fatura Bilgileri</h4>
+    <label for="addCustTaxOffice">Vergi Dairesi</label>
+    <input type="text" id="addCustTaxOffice" maxlength="128" placeholder="Beşiktaş VD">
+    <label for="addCustTaxNumber">Vergi / TC No</label>
+    <input type="text" id="addCustTaxNumber" maxlength="32" placeholder="1234567890">
+    <label for="addCustBilling">Fatura Adresi (varsa farklı)</label>
+    <input type="text" id="addCustBilling" maxlength="255" placeholder="Fatura adresi (boşsa adres kullanılır)">
+
+    <h4 style="margin:16px 0 6px;font-size:14px;color:#94a3b8">💻 Bilgi İşlem İletişim</h4>
+    <label for="addCustContactName">BI Sorumlusu Adı</label>
+    <input type="text" id="addCustContactName" maxlength="128" placeholder="Ahmet Yılmaz">
+    <label for="addCustContactEmail">BI E-posta</label>
+    <input type="email" id="addCustContactEmail" placeholder="it@acme.com">
+    <label for="addCustContactPhone">BI Telefon</label>
+    <input type="tel" id="addCustContactPhone" maxlength="32" placeholder="+90 5xx ...">
+
     <div id="addCustResult" class="result"></div>
     <div class="modal-btns">
       <button id="addCustCancel">İptal</button>
@@ -1023,9 +1045,10 @@ $('quickLicCopyBtn').addEventListener('click', async () => {
 // MODAL: Yeni Müşteri Ekle (lisanssız)
 // ================================================================
 function openAddCustomerModal() {
-  $('addCustId').value = '';
-  $('addCustCompany').value = '';
-  $('addCustEmail').value = '';
+  ['addCustId','addCustCompany','addCustEmail','addCustPhone','addCustAddress',
+   'addCustTaxOffice','addCustTaxNumber','addCustBilling',
+   'addCustContactName','addCustContactEmail','addCustContactPhone']
+    .forEach(id => { const el = $(id); if (el) el.value = ''; });
   $('addCustResult').textContent = ''; $('addCustResult').className = 'result';
   $('addCustApply').disabled = false;
   $('addCustomerModal').classList.remove('hidden');
@@ -1036,15 +1059,26 @@ $('addCustomerModal').addEventListener('click', e => { if (e.target === $('addCu
 
 $('addCustApply').addEventListener('click', async () => {
   const customerId  = $('addCustId').value.trim();
-  const companyName = $('addCustCompany').value.trim() || undefined;
-  const email       = $('addCustEmail').value.trim()   || undefined;
   if (!customerId) {
     $('addCustResult').textContent = 'Müşteri ID zorunlu.'; $('addCustResult').className = 'result err'; return;
   }
+  const body = {
+    customerId,
+    companyName    : $('addCustCompany').value.trim()       || undefined,
+    email          : $('addCustEmail').value.trim()         || undefined,
+    phone          : $('addCustPhone').value.trim()         || undefined,
+    address        : $('addCustAddress').value.trim()       || undefined,
+    taxOffice      : $('addCustTaxOffice').value.trim()     || undefined,
+    taxNumber      : $('addCustTaxNumber').value.trim()     || undefined,
+    billingAddress : $('addCustBilling').value.trim()       || undefined,
+    contactName    : $('addCustContactName').value.trim()   || undefined,
+    contactEmail   : $('addCustContactEmail').value.trim()  || undefined,
+    contactPhone   : $('addCustContactPhone').value.trim()  || undefined
+  };
   $('addCustApply').disabled = true;
   $('addCustResult').textContent = '⏳ Ekleniyor...'; $('addCustResult').className = 'result';
   try {
-    await api('/api/dealer/customers/create', { method: 'POST', body: { customerId, companyName, email } });
+    await api('/api/dealer/customers/create', { method: 'POST', body });
     $('addCustResult').textContent = `✓ Müşteri "${customerId}" eklendi. Şimdi lisans üretebilirsiniz.`;
     $('addCustResult').className = 'result ok';
     $('addCustApply').disabled = false;

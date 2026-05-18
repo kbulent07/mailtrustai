@@ -25,26 +25,65 @@ function assertHash(res, h, field = 'licenseKeyHash') {
 const DEFAULT_MAX_ACTIVATIONS = 10;
 
 // POST /license/customers — Müşteri kaydı oluştur/güncelle (lisans üretmeden).
-// Bayi yeni bir müşteri eklerken önce bu endpoint'i çağırabilir.
+// Bayi/admin yeni bir müşteri eklerken önce bu endpoint'i çağırabilir.
+// Genişletilmiş alanlar (opsiyonel): fatura, BI iletişim, adres.
 router.post('/license/customers', asyncH(async (req, res) => {
-    const { customerId, dealerId, companyName, email } = req.body || {};
+    const {
+        customerId, dealerId, companyName, email,
+        taxOffice, taxNumber, billingAddress,
+        contactName, contactEmail, contactPhone,
+        address, phone
+    } = req.body || {};
     if (!customerId || typeof customerId !== 'string') {
         return badRequest(res, 'customerId gerekli');
     }
     const upsertSql = isMaria
-        ? `INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)
+        ? `INSERT INTO customers(id,dealer_id,company_name,email,created_at,
+                tax_office,tax_number,billing_address,
+                contact_name,contact_email,contact_phone,
+                address,phone)
+           VALUES(?,?,?,?,?, ?,?,?, ?,?,?, ?,?)
            ON DUPLICATE KEY UPDATE
-             dealer_id    = COALESCE(VALUES(dealer_id), dealer_id),
-             company_name = COALESCE(VALUES(company_name), company_name),
-             email        = COALESCE(VALUES(email), email)`
-        : `INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)
+             dealer_id       = COALESCE(VALUES(dealer_id), dealer_id),
+             company_name    = COALESCE(VALUES(company_name), company_name),
+             email           = COALESCE(VALUES(email), email),
+             tax_office      = COALESCE(VALUES(tax_office), tax_office),
+             tax_number      = COALESCE(VALUES(tax_number), tax_number),
+             billing_address = COALESCE(VALUES(billing_address), billing_address),
+             contact_name    = COALESCE(VALUES(contact_name), contact_name),
+             contact_email   = COALESCE(VALUES(contact_email), contact_email),
+             contact_phone   = COALESCE(VALUES(contact_phone), contact_phone),
+             address         = COALESCE(VALUES(address), address),
+             phone           = COALESCE(VALUES(phone), phone)`
+        : `INSERT INTO customers(id,dealer_id,company_name,email,created_at,
+                tax_office,tax_number,billing_address,
+                contact_name,contact_email,contact_phone,
+                address,phone)
+           VALUES(?,?,?,?,?, ?,?,?, ?,?,?, ?,?)
            ON CONFLICT(id) DO UPDATE SET
-             dealer_id    = COALESCE(excluded.dealer_id,   customers.dealer_id),
-             company_name = COALESCE(excluded.company_name, customers.company_name),
-             email        = COALESCE(excluded.email,       customers.email)`;
-    await run(upsertSql, [customerId, dealerId || null, companyName || null, email || null, Date.now()]);
-    await audit(dealerId || 'admin', 'customer.create', customerId, { companyName, email, source: 'dealer' });
-    res.json({ ok: true, customerId, dealerId: dealerId || null, companyName: companyName || null, email: email || null });
+             dealer_id       = COALESCE(excluded.dealer_id, customers.dealer_id),
+             company_name    = COALESCE(excluded.company_name, customers.company_name),
+             email           = COALESCE(excluded.email, customers.email),
+             tax_office      = COALESCE(excluded.tax_office, customers.tax_office),
+             tax_number      = COALESCE(excluded.tax_number, customers.tax_number),
+             billing_address = COALESCE(excluded.billing_address, customers.billing_address),
+             contact_name    = COALESCE(excluded.contact_name, customers.contact_name),
+             contact_email   = COALESCE(excluded.contact_email, customers.contact_email),
+             contact_phone   = COALESCE(excluded.contact_phone, customers.contact_phone),
+             address         = COALESCE(excluded.address, customers.address),
+             phone           = COALESCE(excluded.phone, customers.phone)`;
+    await run(upsertSql, [
+        customerId, dealerId || null, companyName || null, email || null, Date.now(),
+        taxOffice || null, taxNumber || null, billingAddress || null,
+        contactName || null, contactEmail || null, contactPhone || null,
+        address || null, phone || null
+    ]);
+    await audit(dealerId || 'admin', 'customer.create', customerId,
+        { companyName, email, source: dealerId ? 'dealer' : 'admin' });
+    res.json({
+        ok: true, customerId, dealerId: dealerId || null,
+        companyName: companyName || null, email: email || null
+    });
 }));
 
 router.post('/license/create', asyncH(async (req, res) => {

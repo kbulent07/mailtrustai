@@ -9,7 +9,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { asyncH, env, safeJSON, envInt } = require('@mailtrustai/shared');
-const { all, get, run, audit } = require('../db');
+const { all, get, run, audit, isMaria } = require('../db');
 
 const router = express.Router();
 
@@ -58,6 +58,79 @@ router.post('/admin/login', asyncH(async (req, res) => {
     }
     await audit('admin', 'admin.login.ok', null, null);
     res.json({ ok: true, expiresIn: envInt('ADMIN_PANEL_SESSION_HOURS', 12) * 3600 });
+}));
+
+// ============================================================
+// POST /api/admin/customers — Müşteri kaydı oluştur (lisans üretmeden)
+//   Genişletilmiş alanlar: fatura (vergi dairesi/no + adres), BI iletişim, adres.
+// ============================================================
+router.post('/admin/customers', adminAuth, asyncH(async (req, res) => {
+    const {
+        customerId, dealerId, companyName, email,
+        taxOffice, taxNumber, billingAddress,
+        contactName, contactEmail, contactPhone,
+        address, phone
+    } = req.body || {};
+    if (!customerId || typeof customerId !== 'string') {
+        return res.status(400).json({ error: 'customerId gerekli' });
+    }
+    if (customerId.length > 64) return res.status(400).json({ error: 'customerId 64 karakteri aşmamalı' });
+
+    if (dealerId) {
+        const dlr = await get('SELECT id FROM dealers WHERE id = ?', [dealerId]);
+        if (!dlr) return res.status(404).json({ error: `dealer bulunamadı: ${dealerId}` });
+    }
+
+    const upsertSql = isMaria
+        ? `INSERT INTO customers(id,dealer_id,company_name,email,created_at,
+                tax_office,tax_number,billing_address,
+                contact_name,contact_email,contact_phone,
+                address,phone)
+           VALUES(?,?,?,?,?, ?,?,?, ?,?,?, ?,?)
+           ON DUPLICATE KEY UPDATE
+             dealer_id       = COALESCE(VALUES(dealer_id), dealer_id),
+             company_name    = COALESCE(VALUES(company_name), company_name),
+             email           = COALESCE(VALUES(email), email),
+             tax_office      = COALESCE(VALUES(tax_office), tax_office),
+             tax_number      = COALESCE(VALUES(tax_number), tax_number),
+             billing_address = COALESCE(VALUES(billing_address), billing_address),
+             contact_name    = COALESCE(VALUES(contact_name), contact_name),
+             contact_email   = COALESCE(VALUES(contact_email), contact_email),
+             contact_phone   = COALESCE(VALUES(contact_phone), contact_phone),
+             address         = COALESCE(VALUES(address), address),
+             phone           = COALESCE(VALUES(phone), phone)`
+        : `INSERT INTO customers(id,dealer_id,company_name,email,created_at,
+                tax_office,tax_number,billing_address,
+                contact_name,contact_email,contact_phone,
+                address,phone)
+           VALUES(?,?,?,?,?, ?,?,?, ?,?,?, ?,?)
+           ON CONFLICT(id) DO UPDATE SET
+             dealer_id       = COALESCE(excluded.dealer_id, customers.dealer_id),
+             company_name    = COALESCE(excluded.company_name, customers.company_name),
+             email           = COALESCE(excluded.email, customers.email),
+             tax_office      = COALESCE(excluded.tax_office, customers.tax_office),
+             tax_number      = COALESCE(excluded.tax_number, customers.tax_number),
+             billing_address = COALESCE(excluded.billing_address, customers.billing_address),
+             contact_name    = COALESCE(excluded.contact_name, customers.contact_name),
+             contact_email   = COALESCE(excluded.contact_email, customers.contact_email),
+             contact_phone   = COALESCE(excluded.contact_phone, customers.contact_phone),
+             address         = COALESCE(excluded.address, customers.address),
+             phone           = COALESCE(excluded.phone, customers.phone)`;
+    await run(upsertSql, [
+        customerId, dealerId || null, companyName || null, email || null, Date.now(),
+        taxOffice || null, taxNumber || null, billingAddress || null,
+        contactName || null, contactEmail || null, contactPhone || null,
+        address || null, phone || null
+    ]);
+    await audit('admin', 'customer.create', customerId, { companyName, email, source: 'admin' });
+    res.json({ ok: true, customerId });
+}));
+
+// GET /api/admin/customers/:id — tek müşteri detayı
+router.get('/admin/customers/:id', adminAuth, asyncH(async (req, res) => {
+    const row = await get('SELECT * FROM customers WHERE id = ?', [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'müşteri bulunamadı' });
+    res.json({ customer: row });
 }));
 
 // ============================================================

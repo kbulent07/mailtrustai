@@ -120,14 +120,22 @@ app.post('/api/dealer/logout', asyncH(async (req, res) => {
 }));
 
 // Sadece müşteri kaydı oluştur (lisans üretmeden) — admin panelinde de görünür.
+// Genişletilmiş alanlar: fatura, BI iletişim, adres.
 app.post('/api/dealer/customers/create', requireDealer, asyncH(async (req, res) => {
-    const { customerId, companyName, email } = req.body || {};
+    const {
+        customerId, companyName, email,
+        taxOffice, taxNumber, billingAddress,
+        contactName, contactEmail, contactPhone,
+        address, phone
+    } = req.body || {};
     if (!customerId || typeof customerId !== 'string') return res.status(400).json({ error: 'customerId gerekli' });
     const result = await ls.createCustomer({
         customerId,
         dealerId: req.dealer.dealerId,
-        companyName,
-        email
+        companyName, email,
+        taxOffice, taxNumber, billingAddress,
+        contactName, contactEmail, contactPhone,
+        address, phone
     });
     res.json(result);
 }));

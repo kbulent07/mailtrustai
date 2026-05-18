@@ -106,6 +106,66 @@
 
         <!-- =========== TAB: MÜŞTERİLER =========== -->
         <section class="tab-content" data-tab="customers">
+            <details class="form-card" id="customerCreateCard" style="margin-bottom:16px">
+                <summary style="cursor:pointer;font-weight:600;font-size:15px;padding:4px 0">➕ Yeni Müşteri Ekle (lisans üretmeden)</summary>
+                <form id="customerCreateForm" class="form-grid" style="margin-top:14px">
+                    <div>
+                        <label for="newCustId">Müşteri ID *</label>
+                        <input type="text" id="newCustId" required maxlength="64" placeholder="acme-corp" autocomplete="off">
+                    </div>
+                    <div>
+                        <label for="newCustDealer">Bayi (opsiyonel)</label>
+                        <select id="newCustDealer"><option value="">— Atanmamış —</option></select>
+                    </div>
+                    <div>
+                        <label for="newCustCompany">Şirket Adı</label>
+                        <input type="text" id="newCustCompany" maxlength="128" placeholder="ACME Corp" autocomplete="organization">
+                    </div>
+                    <div>
+                        <label for="newCustEmail">Genel E-posta</label>
+                        <input type="email" id="newCustEmail" placeholder="info@acme.com" autocomplete="email">
+                    </div>
+                    <div>
+                        <label for="newCustPhone">Şirket Telefonu</label>
+                        <input type="tel" id="newCustPhone" maxlength="32" placeholder="+90 212 ...">
+                    </div>
+                    <div class="full">
+                        <label for="newCustAddress">Adres</label>
+                        <input type="text" id="newCustAddress" maxlength="255" placeholder="Cadde / Mahalle / İl">
+                    </div>
+                    <div class="full"><h3 style="margin:14px 0 6px;font-size:14px;color:#94a3b8">📄 Fatura Bilgileri</h3></div>
+                    <div>
+                        <label for="newCustTaxOffice">Vergi Dairesi</label>
+                        <input type="text" id="newCustTaxOffice" maxlength="128" placeholder="Beşiktaş VD">
+                    </div>
+                    <div>
+                        <label for="newCustTaxNumber">Vergi / TC No</label>
+                        <input type="text" id="newCustTaxNumber" maxlength="32" placeholder="1234567890">
+                    </div>
+                    <div class="full">
+                        <label for="newCustBilling">Fatura Adresi (varsa farklı)</label>
+                        <input type="text" id="newCustBilling" maxlength="255" placeholder="Fatura adresi (boşsa adres alanı kullanılır)">
+                    </div>
+                    <div class="full"><h3 style="margin:14px 0 6px;font-size:14px;color:#94a3b8">💻 Bilgi İşlem İletişim</h3></div>
+                    <div>
+                        <label for="newCustContactName">BI Sorumlusu Adı</label>
+                        <input type="text" id="newCustContactName" maxlength="128" placeholder="Ahmet Yılmaz">
+                    </div>
+                    <div>
+                        <label for="newCustContactEmail">BI E-posta</label>
+                        <input type="email" id="newCustContactEmail" placeholder="it@acme.com">
+                    </div>
+                    <div>
+                        <label for="newCustContactPhone">BI Telefon</label>
+                        <input type="tel" id="newCustContactPhone" maxlength="32" placeholder="+90 5xx ...">
+                    </div>
+                    <div class="full">
+                        <button type="submit" class="primary">💾 Müşteriyi Kaydet</button>
+                    </div>
+                </form>
+                <div id="customerCreateResult" class="result"></div>
+            </details>
+
             <section class="filters" role="search" aria-label="Müşteri Filtrele">
                 <input type="text" id="filterQ" placeholder="🔍 Müşteri adı, ID, e-posta veya lisans etiketi..." aria-label="Müşteri ara">
                 <select id="filterDealer" aria-label="Bayi filtresi"><option value="">Bayi: tümü</option></select>
