@@ -335,7 +335,7 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
           <div>
             <label for="newPlan">Plan *</label>
             <select id="newPlan" required>
-              <option value="demo">demo — Temel özellikler</option>
+              <option value="trial">trial — Deneme (14 gün, T1)</option>
               <option value="pro" selected>pro — Gelişmiş özellikler</option>
               <option value="enterprise">enterprise — Tüm özellikler</option>
             </select>
@@ -450,7 +450,7 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
     <p class="muted">Müşteri: <strong id="quickLicCustName"></strong></p>
     <label for="quickLicPlan">Plan</label>
     <select id="quickLicPlan">
-      <option value="demo">demo — Temel özellikler</option>
+      <option value="trial">trial — Deneme (14 gün, T1)</option>
       <option value="pro" selected>pro — Gelişmiş özellikler</option>
       <option value="enterprise">enterprise — Tüm özellikler</option>
     </select>
@@ -1017,7 +1017,7 @@ $('createForm').addEventListener('submit', async e => {
   };
   if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
   if (!body.validDays || body.validDays < 1) { resEl.textContent = 'Geçerli bir gün sayısı girin.'; resEl.className = 'result err'; return; }
-  if (body.plan === 'demo' && body.validDays > 14) {
+  if (body.plan === 'trial' && body.validDays > 14) {
     resEl.textContent = 'Demo lisans en fazla 14 gün olabilir.'; resEl.className = 'result err'; return;
   }
 
@@ -1178,7 +1178,7 @@ function _wirePlanDaysClamp(planId, daysId) {
   const plan = $(planId), days = $(daysId);
   if (!plan || !days) return;
   plan.addEventListener('change', () => {
-    if (plan.value === 'demo') {
+    if (plan.value === 'trial') {
       days.max = '14';
       if (Number(days.value) > 14 || Number(days.value) === 365) days.value = '14';
     } else {
@@ -1197,7 +1197,7 @@ $('quickLicApply').addEventListener('click', async () => {
   if (!validDays || validDays < 1) {
     $('quickLicResult').textContent = 'En az 1 gün girin.'; $('quickLicResult').className = 'result err'; return;
   }
-  if (plan === 'demo' && validDays > 14) {
+  if (plan === 'trial' && validDays > 14) {
     $('quickLicResult').textContent = 'Demo lisans en fazla 14 gün olabilir.'; $('quickLicResult').className = 'result err'; return;
   }
   $('quickLicApply').disabled = true;

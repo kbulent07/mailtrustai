@@ -96,8 +96,8 @@ router.post('/license/create', asyncH(async (req, res) => {
     if (!PLAN_MATRIX[plan]) {
         return badRequest(res, `plan geçersiz: ${plan}. Geçerli: ${Object.keys(PLAN_MATRIX).join(', ')}`);
     }
-    if (plan === 'demo' && validDays > 14) {
-        return badRequest(res, 'Demo lisans en fazla 14 gün olabilir.');
+    if (plan === 'trial' && validDays > 14) {
+        return badRequest(res, 'Trial lisans en fazla 14 gün olabilir.');
     }
     if (tier && !TIER_MATRIX[tier]) {
         return badRequest(res, `tier geçersiz: ${tier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`);
