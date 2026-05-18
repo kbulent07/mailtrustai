@@ -28,7 +28,11 @@ class ScanMailboxMonitor {
         this.allowedDomains = Array.isArray(allowedDomains)
             ? allowedDomains.map(d => String(d || '').toLowerCase()).filter(Boolean)
             : [];
-        this.imapMonitor = new ImapMonitor(account, this._onNewEmail.bind(this));
+        this.imapMonitor = new ImapMonitor(
+            account,
+            this._onNewEmail.bind(this),
+            this._onReconnected.bind(this)
+        );
         this.startedAt = null;
     }
 
@@ -60,6 +64,20 @@ class ScanMailboxMonitor {
             }
         }
         throw lastError;
+    }
+
+    /**
+     * Yeniden bağlantı sonrası çağrılır.
+     * Bağlantı kopuk geçen sürede gelen mailler kaçırılmış olabilir;
+     * son işlenen UID'den sonrasını tarayarak bunları telafi eder.
+     */
+    async _onReconnected() {
+        console.log(`[ScanMailbox] Yeniden bağlantı: ${this.account.email} — kaçırılan mailler taranıyor...`);
+        try {
+            await this.processPendingRecent();
+        } catch (e) {
+            console.error(`[ScanMailbox] Yeniden bağlantı tarama hatası (${this.account.email}):`, e.message);
+        }
     }
 
     async stop() {

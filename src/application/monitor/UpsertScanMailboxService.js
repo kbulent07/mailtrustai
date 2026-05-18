@@ -5,7 +5,11 @@
 // ============================================================
 const { loadSettings, saveSettings } = require('../../storage/settingsStore');
 const { encrypt } = require('../../imap/connection');
-const { scanMailboxMonitors, startScanMailboxMonitor } = require('../../services/scanMailboxService');
+const {
+    scanMailboxMonitors,
+    startScanMailboxMonitorSupervised,
+    stopScanMailboxMonitor
+} = require('../../services/scanMailboxService');
 
 /**
  * Tarama posta kutusu kaydını ekler veya günceller.
@@ -90,15 +94,12 @@ async function upsertScanMailbox(input, license) {
     if (idx >= 0) mailboxes[idx] = entry; else mailboxes.push(entry);
     saveSettings({ ...current, scanMailboxes: mailboxes });
 
-    const existing = scanMailboxMonitors.get(imapEmail);
-    if (existing) {
-        await existing.stop();
-        scanMailboxMonitors.delete(imapEmail);
-    }
+    // Varsa önceki monitörü + supervisor'ını durdur
+    stopScanMailboxMonitor(imapEmail);
+
     if (entry.enabled) {
-        await startScanMailboxMonitor(entry).catch(e =>
-            console.error('[ScanMailbox] Start error:', e.message)
-        );
+        // Supervisor korumasıyla başlat: ilk bağlantı başarısız olsa bile retry
+        await startScanMailboxMonitorSupervised(entry);
     }
 
     return { ok: true, body: { success: true, count: mailboxes.length } };
@@ -123,15 +124,11 @@ async function patchScanMailbox(imapEmail, patch, license) {
     mailboxes[idx] = { ...mailboxes[idx], ...patch, imapEmail };
     saveSettings({ ...current, scanMailboxes: mailboxes });
 
-    const existing = scanMailboxMonitors.get(imapEmail);
-    if (existing) {
-        await existing.stop();
-        scanMailboxMonitors.delete(imapEmail);
-    }
+    // Varsa önceki monitörü + supervisor'ını durdur
+    stopScanMailboxMonitor(imapEmail);
+
     if (mailboxes[idx].enabled) {
-        await startScanMailboxMonitor(mailboxes[idx]).catch(e =>
-            console.error('[ScanMailbox] Restart error:', e.message)
-        );
+        await startScanMailboxMonitorSupervised(mailboxes[idx]);
     }
 
     return { ok: true, body: { success: true } };

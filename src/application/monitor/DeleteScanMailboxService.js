@@ -2,14 +2,11 @@
 // USE-CASE: Tarama posta kutusunu sil (monitör + ayar)
 // ============================================================
 const { loadSettings, saveSettings } = require('../../storage/settingsStore');
-const { scanMailboxMonitors } = require('../../services/scanMailboxService');
+const { stopScanMailboxMonitor } = require('../../services/scanMailboxService');
 
 async function deleteScanMailbox(imapEmail) {
-    const monitor = scanMailboxMonitors.get(imapEmail);
-    if (monitor) {
-        await monitor.stop();
-        scanMailboxMonitors.delete(imapEmail);
-    }
+    // Monitor'ü durdur + supervisor retry timer'ını iptal et
+    stopScanMailboxMonitor(imapEmail);
 
     const current = loadSettings();
     saveSettings({

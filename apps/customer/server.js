@@ -32,6 +32,7 @@ const policyClient  = require('@mailtrustai/policy-client');
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const customerApi = express.Router();
 const { setupWebSocket } = require(path.join(REPO_ROOT, 'src/routes/websocket'));
+const { resumeScanMailboxMonitors } = require(path.join(REPO_ROOT, 'src/services/scanMailboxService'));
 const { loadSettings } = require(path.join(REPO_ROOT, 'src/storage/settingsStore'));
 const { checkAndSeedInitialPasswords } = require(path.join(REPO_ROOT, 'src/services/initialSetupService'));
 const customerUserStore = require(path.join(REPO_ROOT, 'src/storage/customerUserStore'));
@@ -267,6 +268,14 @@ customerApi.use((req, res, next) => {
 app.use('/api', customerApi);
 
 setupWebSocket(wss);
+
+// Sunucu hazır olduktan ~12s sonra scan mailbox monitörlerini yeniden başlat.
+// (WebSocket monitörleri 8s sonra resume ediyor; bu 4s gecikmeli çalışır.)
+setTimeout(() => {
+    resumeScanMailboxMonitors().catch(e =>
+        logger.error('[ScanMailbox] Resume hatası:', e.message)
+    );
+}, 12_000);
 
 app.use('/api', (req, res) => res.status(404).json({ error: `API endpoint bulunamadı: ${req.method} ${req.path}` }));
 app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));

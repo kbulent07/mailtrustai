@@ -8,9 +8,16 @@ const MAX_RECONNECT_DELAY_MS = 60 * 1000; // 60s üst sınır
 const BASE_RECONNECT_DELAY_MS = 5000;
 
 class ImapMonitor {
-    constructor(account, onNewEmail) {
+    /**
+     * @param {object}   account        - IMAP hesap bilgileri
+     * @param {Function} onNewEmail     - Yeni mail callback'i
+     * @param {Function} [onReconnected] - Yeniden bağlantı sonrası çağrılır;
+     *                                    kaçırılan mailler burada işlenir.
+     */
+    constructor(account, onNewEmail, onReconnected) {
         this.account = account;
         this.onNewEmail = onNewEmail;
+        this.onReconnected = onReconnected || null;
         this.client = null;
         this.lock = null;
         this.running = false;
@@ -40,6 +47,8 @@ class ImapMonitor {
             await this.client.connect();
             this.lock = await this.client.getMailboxLock('INBOX');
             this.running = true;
+            // Yeniden bağlantı mıydı? (sıfırlamadan önce yakala)
+            const wasReconnect = this._reconnectAttempts > 0;
             this._reconnectAttempts = 0;
 
             this.client.on('exists', async (data) => {
@@ -82,7 +91,17 @@ class ImapMonitor {
                 console.error(`[Monitor] ${this.account.email} IMAP error:`, err.message);
             });
 
-            console.log(`[Monitor] Bağlandı: ${this.account.email}`);
+            if (wasReconnect) {
+                console.log(`[Monitor] Yeniden bağlandı: ${this.account.email}`);
+                if (this.onReconnected) {
+                    // Arka planda çalıştır — _connect'i bloke etme
+                    Promise.resolve().then(() => this.onReconnected()).catch(e =>
+                        console.error(`[Monitor] onReconnected hatası (${this.account.email}):`, e.message)
+                    );
+                }
+            } else {
+                console.log(`[Monitor] Bağlandı: ${this.account.email}`);
+            }
             return { success: true, message: `Monitoring ${this.account.email}` };
         } catch (e) {
             this.running = false;

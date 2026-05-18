@@ -33,6 +33,10 @@ const { stopAutoMonitor }  = require('../application/monitor/StopAutoMonitorServ
 const monitors = new Map();
 const clients = new Set();
 
+// WebSocket monitör supervisor backoff (ms): 10s, 30s, 60s, 2dk, 5dk
+const WS_MONITOR_BACKOFF = [10_000, 30_000, 60_000, 120_000, 300_000];
+const _wsMonitorRetryTimers = new Map();
+
 function resolveLicense(licenseKey) {
     if (!licenseKey) return { valid: false, features: { ...UNLICENSED_FEATURES } };
     const result = validateLicenseKey(licenseKey);
@@ -161,6 +165,47 @@ function recalcMeta(result) {
     };
 }
 
+/**
+ * Başlatma başarısız olan WebSocket monitörlerini üstel geri çekilme ile yeniden dener.
+ */
+function _scheduleWsMonitorRetry(account, license, entry, attempt = 0) {
+    const delay = WS_MONITOR_BACKOFF[Math.min(attempt, WS_MONITOR_BACKOFF.length - 1)];
+    console.warn(
+        `[AutoMonitor] ${account.email} yeniden denenecek — ` +
+        `${Math.round(delay / 1000)}s sonra (deneme ${attempt + 1})`
+    );
+
+    const prev = _wsMonitorRetryTimers.get(account.email);
+    if (prev) clearTimeout(prev);
+
+    const timer = setTimeout(async () => {
+        _wsMonitorRetryTimers.delete(account.email);
+
+        // Dışarıdan zaten başlatıldıysa atla
+        if (monitors.get(account.email)?.isRunning?.()) return;
+
+        // Lisans hâlâ geçerli mi?
+        const lic = resolveLicense(entry?.licenseKey);
+        if (!lic.features?.autoMonitor) {
+            console.warn(`[AutoMonitor] ${account.email} lisans geçersiz, retry iptal edildi.`);
+            return;
+        }
+
+        console.log(`[AutoMonitor] ${account.email} yeniden başlatılıyor... (deneme ${attempt + 1})`);
+        try {
+            await startMonitorForAccount(account, lic);
+            broadcast({ type: 'monitor-started', email: account.email });
+            console.log(`[AutoMonitor] ${account.email} yeniden başlatıldı.`);
+        } catch (e) {
+            console.error(`[AutoMonitor] ${account.email} yeniden başlatma başarısız:`, e.message);
+            _scheduleWsMonitorRetry(account, lic, entry, attempt + 1);
+        }
+    }, delay);
+
+    if (timer.unref) timer.unref();
+    _wsMonitorRetryTimers.set(account.email, timer);
+}
+
 async function startMonitorForAccount(account, license) {
     const existing = monitors.get(account.email);
     if (existing?.isRunning?.()) return existing;
@@ -250,6 +295,8 @@ async function resumePersistedMonitors() {
             broadcast({ type: 'monitor-started', email: entry.email });
         } catch (e) {
             console.error(`[AutoMonitor] ${entry.email} devam ettirilemedi:`, e.message);
+            // Ağ geçici olarak erişilemez olabilir — supervisor retry başlat
+            _scheduleWsMonitorRetry(account, license, entry, 0);
         }
     }
 }
@@ -316,6 +363,12 @@ function setupWebSocket(wss) {
                     const licStop = resolveLicense(msg.licenseKey);
                     if (!licStop.features?.autoMonitor) {
                         throw new Error('Otomatik izleme Enterprise lisansı gerektirir');
+                    }
+                    // Bekleyen supervisor retry'ı iptal et
+                    const retryTimer = _wsMonitorRetryTimers.get(msg.email);
+                    if (retryTimer) {
+                        clearTimeout(retryTimer);
+                        _wsMonitorRetryTimers.delete(msg.email);
                     }
                     await stopAutoMonitor({ email: msg.email, monitors });
                     broadcast({ type: 'monitor-stopped', email: msg.email });
