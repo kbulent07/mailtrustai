@@ -144,17 +144,14 @@
     let _resetToken  = '';
 
     function _hideAll() {
-        loginForm.style.display  = 'none';
-        setupForm.style.display  = 'none';
-        forgotForm.style.display = 'none';
-        resetForm.style.display  = 'none';
+        [loginForm, setupForm, forgotForm, resetForm].forEach(f => f.classList.add('hidden'));
     }
 
     function showLogin() {
         titleEl.textContent = 'Müşteri Yönetimi';
         subEl.textContent   = 'Devam etmek için giriş yapın.';
         _hideAll();
-        loginForm.style.display = '';
+        loginForm.classList.remove('hidden');
         setTimeout(() => document.getElementById('customerAuthPwd')?.focus(), 50);
     }
     window.showLogin = showLogin;
@@ -163,7 +160,7 @@
         titleEl.textContent = 'İlk Kurulum';
         subEl.textContent   = 'Yönetim paneli için şifre oluşturun.';
         _hideAll();
-        setupForm.style.display = '';
+        setupForm.classList.remove('hidden');
         setTimeout(() => document.getElementById('customerAuthSetupPwd')?.focus(), 50);
     }
 
@@ -171,7 +168,7 @@
         titleEl.textContent = 'Şifremi Unuttum';
         subEl.textContent   = 'Sıfırlama bağlantısı e-postanıza gönderilecek.';
         _hideAll();
-        forgotForm.style.display = '';
+        forgotForm.classList.remove('hidden');
         errEl.textContent = '';
         setTimeout(() => document.getElementById('customerAuthForgotEmail')?.focus(), 50);
     };
@@ -206,7 +203,7 @@
         titleEl.textContent = 'Yeni Şifre Belirle';
         subEl.textContent   = 'Hesabınız için yeni şifrenizi girin.';
         _hideAll();
-        resetForm.style.display = '';
+        resetForm.classList.remove('hidden');
         errEl.textContent = '';
         errEl.style.color = '#f87171';
         setTimeout(() => document.getElementById('customerAuthResetPwd')?.focus(), 50);
