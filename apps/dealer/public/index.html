@@ -216,7 +216,7 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
 
   <div class="app-layout">
     <!-- SIDEBAR -->
-    <aside class="sidebar">
+    <aside class="sidebar" role="navigation" aria-label="Ana Menü">
       <a class="nav-item active" data-tab="overview">📊 <span>Özet</span></a>
       <a class="nav-item" data-tab="customers">👤 <span>Müşteriler</span></a>
       <a class="nav-item" data-tab="create">🔑 <span>Lisans Üret</span></a>
@@ -224,7 +224,7 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
       <a class="nav-item" data-tab="log">📜 <span>Log</span></a>
     </aside>
 
-    <main class="main">
+    <main class="main" role="main" aria-label="Bayi Paneli İçeriği">
 
       <!-- ===== TAB: ÖZET ===== -->
       <section class="tab-content active" data-tab="overview">
@@ -247,15 +247,15 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
 
       <!-- ===== TAB: MÜŞTERİLER ===== -->
       <section class="tab-content" data-tab="customers">
-        <div class="filters">
-          <input type="text" id="custQ" placeholder="🔍 Şirket adı, müşteri ID...">
-          <select id="custStatus">
+        <div class="filters" role="search" aria-label="Müşteri Filtrele">
+          <input type="text" id="custQ" placeholder="🔍 Şirket adı, müşteri ID..." aria-label="Müşteri ara">
+          <select id="custStatus" aria-label="Durum filtresi">
             <option value="">Durum: tümü</option>
             <option value="active">active</option>
             <option value="revoked">revoked</option>
           </select>
-          <button onclick="loadCustomers()">↻ Yenile</button>
-          <button onclick="openAddCustomerModal()" style="background:var(--ok);border:none;color:#fff;padding:7px 15px;border-radius:6px;cursor:pointer;font-size:.88em">➕ Müşteri Ekle</button>
+          <button onclick="loadCustomers()" aria-label="Müşteri listesini yenile">↻ Yenile</button>
+          <button onclick="openAddCustomerModal()" style="background:var(--ok);border:none;color:#fff;padding:7px 15px;border-radius:6px;cursor:pointer;font-size:.88em" aria-label="Yeni müşteri ekle">➕ Müşteri Ekle</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -276,19 +276,19 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
         <p class="muted" style="margin-bottom:16px">Müşteri daha önce kayıtlıysa bilgileri güncellenir; yeni bir lisans üretilir.</p>
         <form id="createForm" class="form-card form-grid">
           <div>
-            <label>Müşteri ID *</label>
+            <label for="newCustId">Müşteri ID *</label>
             <input type="text" id="newCustId" required maxlength="64" placeholder="acme-corp" autocomplete="off">
           </div>
           <div>
-            <label>Şirket Adı</label>
+            <label for="newCompany">Şirket Adı</label>
             <input type="text" id="newCompany" maxlength="128" placeholder="ACME Corp" autocomplete="organization">
           </div>
           <div>
-            <label>E-posta</label>
+            <label for="newEmail">E-posta</label>
             <input type="email" id="newEmail" placeholder="it@acme.com" autocomplete="email">
           </div>
           <div>
-            <label>Plan *</label>
+            <label for="newPlan">Plan *</label>
             <select id="newPlan" required>
               <option value="demo">demo — Temel özellikler</option>
               <option value="pro" selected>pro — Gelişmiş özellikler</option>
@@ -296,7 +296,7 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
             </select>
           </div>
           <div>
-            <label>Tarama Tieri *</label>
+            <label for="newTier">Tarama Tieri *</label>
             <select id="newTier" required>
               <option value="T1">T1 — 50/ay</option>
               <option value="T2">T2 — 100/ay</option>
@@ -310,8 +310,8 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
             </select>
           </div>
           <div class="full">
-            <label>Geçerlilik (gün) *</label>
-            <input type="number" id="newDays" min="1" max="36500" value="365" required>
+            <label for="newDays">Geçerlilik (gün) *</label>
+            <input type="number" id="newDays" min="1" max="36500" value="365" required autocomplete="off">
           </div>
           <div class="full">
             <button type="submit" class="primary">🔑 Lisans Üret</button>
@@ -332,9 +332,9 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
       <!-- ===== TAB: LİSANS YÖNET ===== -->
       <section class="tab-content" data-tab="manage">
         <h2>⚙️ Lisans Yönetimi</h2>
-        <div class="filters">
-          <input type="text" id="manageQ" placeholder="🔍 Şirket / müşteri ID...">
-          <select id="manageStatus">
+        <div class="filters" role="search" aria-label="Lisans Filtrele">
+          <input type="text" id="manageQ" placeholder="🔍 Şirket / müşteri ID..." aria-label="Lisans ara">
+          <select id="manageStatus" aria-label="Lisans durum filtresi">
             <option value="">Durum: tümü</option>
             <option value="active">active</option>
             <option value="revoked">revoked</option>
@@ -370,12 +370,12 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
 </div>
 
 <!-- ===== MODAL: Lisans Uzat ===== -->
-<div id="renewModal" class="modal hidden">
+<div id="renewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="renewModalTitle">
   <div class="modal-card">
-    <h3>⏳ Lisans Süresi Uzat</h3>
+    <h3 id="renewModalTitle">⏳ Lisans Süresi Uzat</h3>
     <p class="muted">Müşteri: <strong id="renewCustName"></strong></p>
-    <label>Eklenecek gün</label>
-    <input type="number" id="renewDays" min="1" max="36500" value="365">
+    <label for="renewDays">Eklenecek gün</label>
+    <input type="number" id="renewDays" min="1" max="36500" value="365" autocomplete="off">
     <div class="modal-btns">
       <button id="renewCancel">İptal</button>
       <button id="renewApply" class="primary">Uzat</button>
@@ -385,9 +385,9 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
 </div>
 
 <!-- ===== MODAL: Lisans İptal ===== -->
-<div id="revokeModal" class="modal hidden">
+<div id="revokeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="revokeModalTitle">
   <div class="modal-card">
-    <h3>🚫 Lisans İptal</h3>
+    <h3 id="revokeModalTitle">🚫 Lisans İptal</h3>
     <p class="muted">Müşteri: <strong id="revokeCustName"></strong></p>
     <p class="muted" style="margin-top:6px">Bu işlem lisansı devre dışı bırakır. Onaylıyor musunuz?</p>
     <div class="modal-btns">
@@ -399,17 +399,17 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
 </div>
 
 <!-- ===== MODAL: Hızlı Lisans Üret (müşteri listesinden) ===== -->
-<div id="quickLicModal" class="modal hidden">
+<div id="quickLicModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="quickLicModalTitle">
   <div class="modal-card">
-    <h3>🔑 Lisans Üret</h3>
+    <h3 id="quickLicModalTitle">🔑 Lisans Üret</h3>
     <p class="muted">Müşteri: <strong id="quickLicCustName"></strong></p>
-    <label>Plan</label>
+    <label for="quickLicPlan">Plan</label>
     <select id="quickLicPlan">
       <option value="demo">demo — Temel özellikler</option>
       <option value="pro" selected>pro — Gelişmiş özellikler</option>
       <option value="enterprise">enterprise — Tüm özellikler</option>
     </select>
-    <label>Tarama Tieri</label>
+    <label for="quickLicTier">Tarama Tieri</label>
     <select id="quickLicTier">
       <option value="T1">T1 — 50/ay</option>
       <option value="T2">T2 — 100/ay</option>
@@ -421,17 +421,17 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
       <option value="T8">T8 — 10.000/ay</option>
       <option value="T9">T9 — Sınırsız</option>
     </select>
-    <label>Geçerlilik (gün)</label>
-    <input type="number" id="quickLicDays" min="1" max="36500" value="365">
+    <label for="quickLicDays">Geçerlilik (gün)</label>
+    <input type="number" id="quickLicDays" min="1" max="36500" value="365" autocomplete="off">
     <div id="quickLicKeyBox" class="generated-key hidden" style="margin-top:14px">
       <h3 style="font-size:.95em">✓ Lisans Anahtarı</h3>
       <div class="key-display">
         <code id="quickLicKeyValue">—</code>
-        <button id="quickLicCopyBtn" title="Kopyala">📋</button>
+        <button id="quickLicCopyBtn" title="Kopyala" aria-label="Lisans anahtarını kopyala">📋</button>
       </div>
       <div class="key-meta" id="quickLicKeyMeta"></div>
     </div>
-    <div id="quickLicResult" class="result"></div>
+    <div id="quickLicResult" class="result" role="status" aria-live="polite"></div>
     <div class="modal-btns">
       <button id="quickLicCancel">Kapat</button>
       <button id="quickLicApply" class="primary">🔑 Üret</button>
@@ -440,15 +440,15 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
 </div>
 
 <!-- ===== MODAL: Yeni Müşteri Ekle ===== -->
-<div id="addCustomerModal" class="modal hidden">
+<div id="addCustomerModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="addCustModalTitle">
   <div class="modal-card">
-    <h3>➕ Yeni Müşteri Ekle</h3>
+    <h3 id="addCustModalTitle">➕ Yeni Müşteri Ekle</h3>
     <p class="muted" style="margin-bottom:14px">Müşteri kaydı oluşturulur. Lisansı daha sonra müşteri listesinden üretebilirsiniz.</p>
-    <label>Müşteri ID *</label>
+    <label for="addCustId">Müşteri ID *</label>
     <input type="text" id="addCustId" maxlength="64" placeholder="acme-corp" autocomplete="off">
-    <label>Şirket Adı</label>
+    <label for="addCustCompany">Şirket Adı</label>
     <input type="text" id="addCustCompany" maxlength="128" placeholder="ACME Corp" autocomplete="organization">
-    <label>E-posta</label>
+    <label for="addCustEmail">E-posta</label>
     <input type="email" id="addCustEmail" placeholder="it@acme.com" autocomplete="email">
     <div id="addCustResult" class="result"></div>
     <div class="modal-btns">
