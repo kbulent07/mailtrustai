@@ -506,13 +506,17 @@ case "${1:-help}" in
     restart) $DC restart ;;
     status)  $DC ps ;;
     logs)    $DC logs -f --tail=200 ;;
-    update)
-        echo "Servisler durduruluyor..."
-        $DC down
-        echo "Image'lar yeniden derleniyor..."
-        cd "$(cat "$INSTALL_DIR/.repo_path" 2>/dev/null || echo '.')"
-        $DC build --pull
-        $DC up -d
+    update|upgrade)
+        # Tam ozellikli upgrade script'ini cagir (git pull + yedek + rebuild + healthcheck)
+        REPO=$(cat "$INSTALL_DIR/.repo_path" 2>/dev/null || echo '')
+        UPGRADE_SCRIPT="$REPO/install/server/upgrade_server_ubuntu.sh"
+        if [[ -n "$REPO" && -f "$UPGRADE_SCRIPT" ]]; then
+            exec sudo bash "$UPGRADE_SCRIPT"
+        else
+            echo "Upgrade script bulunamadi: $UPGRADE_SCRIPT"
+            echo "Manuel: cd $REPO && git pull && sudo bash install/server/upgrade_server_ubuntu.sh"
+            exit 1
+        fi
         ;;
     backup)
         TS=$(date +%Y%m%d_%H%M%S)
@@ -532,7 +536,15 @@ case "${1:-help}" in
             && echo "License-server verisi yedegi: $BDIR/license-server-data-$TS.tar.gz"
         ;;
     help|*)
-        echo "Kullanim: $0 {start|stop|restart|status|logs|update|backup}"
+        echo "Kullanim: $0 {start|stop|restart|status|logs|upgrade|backup}"
+        echo ""
+        echo "  start    - Servisleri baslat"
+        echo "  stop     - Servisleri durdur"
+        echo "  restart  - Servisleri yeniden baslat"
+        echo "  status   - Container durumlarini goster"
+        echo "  logs     - Tum servislerin loglarini takip et"
+        echo "  upgrade  - Yeni surume yukselt (git pull + rebuild)"
+        echo "  backup   - .env + MariaDB + license-server verisi yedekle"
         ;;
 esac
 CTLEOF
@@ -581,10 +593,11 @@ echo -e "  ├─ Yonetim araci: ${YELLOW}${INSTALL_DIR}/mailtrustai-ctl.sh${NC}
 echo -e "  └─ Yedekler     : ${YELLOW}${INSTALL_DIR}/backups/${NC}"
 echo ""
 echo -e "  ${BOLD}Hizli Komutlar:${NC}"
-echo -e "  ├─ Durum  : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh status${NC}"
-echo -e "  ├─ Loglar : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh logs${NC}"
-echo -e "  ├─ Yedek  : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh backup${NC}"
-echo -e "  └─ Durdur : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh stop${NC}"
+echo -e "  ├─ Durum    : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh status${NC}"
+echo -e "  ├─ Loglar   : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh logs${NC}"
+echo -e "  ├─ Yedek    : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh backup${NC}"
+echo -e "  ├─ Guncelle : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh upgrade${NC}"
+echo -e "  └─ Durdur   : ${CYAN}${INSTALL_DIR}/mailtrustai-ctl.sh stop${NC}"
 echo ""
 echo -e "  ${YELLOW}Firewall: ${LS_PORT}/tcp ve ${DEALER_PORT_VAR}/tcp portlarini acin.${NC}"
 echo ""
