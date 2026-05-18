@@ -38,7 +38,68 @@ async function api(path, opts = {}) {
 // ================================================================
 function escapeHtml(s) {
     return String(s == null ? '' : s)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ============================================================
+// Toast + Confirm helpers (native alert/confirm yerine)
+// ============================================================
+function _toastHost() {
+    let host = document.getElementById('toast-host');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'toast-host';
+        document.body.appendChild(host);
+    }
+    return host;
+}
+
+function showToast(msg, type = 'info', timeoutMs = 4000) {
+    const icons = { info: 'ℹ', error: '✕', success: '✓', warning: '⚠' };
+    const host = _toastHost();
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.innerHTML = `
+        <span class="toast-icon">${icons[type] || 'ℹ'}</span>
+        <div class="toast-body"></div>
+        <button class="toast-x" aria-label="Kapat">×</button>
+    `;
+    el.querySelector('.toast-body').textContent = String(msg || '');
+    const close = () => {
+        el.classList.add('leaving');
+        setTimeout(() => el.remove(), 200);
+    };
+    el.querySelector('.toast-x').addEventListener('click', close);
+    host.appendChild(el);
+    if (timeoutMs > 0) setTimeout(close, timeoutMs);
+}
+
+function showConfirm({ title = 'Onay', message = '', confirmText = 'Onayla', cancelText = 'İptal', danger = false } = {}) {
+    return new Promise((resolve) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'modal';
+        wrap.setAttribute('role', 'dialog');
+        wrap.setAttribute('aria-modal', 'true');
+        wrap.innerHTML = `
+            <div class="modal-card confirm">
+                <h3></h3>
+                <p></p>
+                <div class="modal-btns">
+                    <button type="button" data-act="cancel">${escapeHtml(cancelText)}</button>
+                    <button type="button" class="${danger ? 'danger' : 'primary'}" data-act="ok">${escapeHtml(confirmText)}</button>
+                </div>
+            </div>
+        `;
+        wrap.querySelector('h3').textContent = title;
+        wrap.querySelector('p').textContent = message;
+        const done = (ok) => { wrap.remove(); resolve(ok); };
+        wrap.querySelector('[data-act="ok"]').addEventListener('click', () => done(true));
+        wrap.querySelector('[data-act="cancel"]').addEventListener('click', () => done(false));
+        wrap.addEventListener('click', (e) => { if (e.target === wrap) done(false); });
+        document.body.appendChild(wrap);
+        wrap.querySelector('[data-act="ok"]').focus();
+    });
 }
 
 function timeAgo(ms) {
@@ -144,11 +205,11 @@ async function loadAll() {
     } catch (e) {
         if (e.status === 401) {
             sessionStorage.removeItem(TOKEN_KEY);
-            alert('Oturum süresi doldu. Yeniden giriş yapın.');
-            location.reload();
+            showToast('Oturum süresi doldu. Yeniden giriş yapın.', 'warning');
+            setTimeout(() => location.reload(), 1500);
             return;
         }
-        alert('Veri yüklenemedi: ' + e.message);
+        showToast('Veri yüklenemedi: ' + e.message, 'error');
     }
 }
 
@@ -475,12 +536,20 @@ $('dealerCreateForm').addEventListener('submit', async (e) => {
 });
 
 async function confirmDeleteDealer(id, name) {
-    if (!confirm(`"${name}" bayisini silmek istediğinizden emin misiniz?\nBayiye bağlı müşterilerin dealer_id'si temizlenecek.`)) return;
+    const ok = await showConfirm({
+        title: 'Bayi Silinecek',
+        message: `"${name}" bayisini silmek istediğinizden emin misiniz?\nBayiye bağlı müşterilerin dealer_id'si temizlenecek.`,
+        confirmText: 'Sil',
+        cancelText: 'Vazgeç',
+        danger: true
+    });
+    if (!ok) return;
     try {
         await api(`/api/admin/dealers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        showToast('Bayi silindi.', 'success');
         await loadDealers();
     } catch (e) {
-        alert('Hata: ' + e.message);
+        showToast('Hata: ' + e.message, 'error');
     }
 }
 
@@ -623,19 +692,31 @@ function renderManageTable() {
 });
 
 async function doRevoke(licenseId, name) {
-    if (!confirm(`"${name}" için lisansı iptal etmek istiyor musunuz?`)) return;
+    const ok = await showConfirm({
+        title: 'Lisansı İptal Et',
+        message: `"${name}" için lisansı iptal etmek istiyor musunuz?`,
+        confirmText: 'İptal Et', cancelText: 'Vazgeç', danger: true
+    });
+    if (!ok) return;
     try {
         await api(`/api/admin/licenses/${encodeURIComponent(licenseId)}/revoke`, { method: 'POST' });
+        showToast('Lisans iptal edildi.', 'success');
         await loadAll();
-    } catch (e) { alert('Hata: ' + e.message); }
+    } catch (e) { showToast('Hata: ' + e.message, 'error'); }
 }
 
 async function doUnrevoke(licenseId, name) {
-    if (!confirm(`"${name}" için lisansı yeniden etkinleştirmek istiyor musunuz?`)) return;
+    const ok = await showConfirm({
+        title: 'Lisansı Yeniden Etkinleştir',
+        message: `"${name}" için lisansı yeniden etkinleştirmek istiyor musunuz?`,
+        confirmText: 'Etkinleştir', cancelText: 'Vazgeç'
+    });
+    if (!ok) return;
     try {
         await api(`/api/admin/licenses/${encodeURIComponent(licenseId)}/unrevoke`, { method: 'POST' });
+        showToast('Lisans yeniden etkinleştirildi.', 'success');
         await loadAll();
-    } catch (e) { alert('Hata: ' + e.message); }
+    } catch (e) { showToast('Hata: ' + e.message, 'error'); }
 }
 
 // ================================================================
@@ -705,13 +786,15 @@ $('bulkApplyBtn').addEventListener('click', async () => {
         status  : $('bulkStatus').value || undefined,
         days
     };
-    const ok = confirm(
-        `Toplu uygulama:\n` +
-        `  Bayi  : ${filter.dealerId || 'TÜMÜ'}\n` +
-        `  Plan  : ${filter.plan     || 'TÜMÜ'}\n` +
-        `  Durum : ${filter.status   || 'active'}\n` +
-        `  Offline: ${days == null ? '(plan default\'a dön)' : days + ' gün'}\n\nDevam edilsin mi?`
-    );
+    const ok = await showConfirm({
+        title: 'Toplu Offline Grace Uygulama',
+        message:
+            `Bayi  : ${filter.dealerId || 'TÜMÜ'}\n` +
+            `Plan  : ${filter.plan     || 'TÜMÜ'}\n` +
+            `Durum : ${filter.status   || 'active'}\n` +
+            `Offline: ${days == null ? '(plan default\'a dön)' : days + ' gün'}\n\nDevam edilsin mi?`,
+        confirmText: 'Uygula', cancelText: 'Vazgeç'
+    });
     if (!ok) return;
     try {
         const r = await api('/api/admin/offline-grace/bulk', { method: 'POST', body: filter });

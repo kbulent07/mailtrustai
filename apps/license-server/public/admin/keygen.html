@@ -9,18 +9,18 @@
 <body class="dark">
 
 <!-- ============== LOGIN ============== -->
-<div id="loginScreen" class="login-wrap">
+<div id="loginScreen" class="login-wrap" role="dialog" aria-labelledby="loginTitle" aria-modal="true">
     <div class="login-card">
         <div class="brand">
-            <div class="logo">🛡️</div>
-            <h1>MailTrustAI</h1>
+            <div class="logo" aria-hidden="true">🛡️</div>
+            <h1 id="loginTitle">MailTrustAI</h1>
             <p class="muted">Merkezi Yönetim Paneli</p>
         </div>
-        <form id="loginForm" autocomplete="off">
-            <label>Admin Token</label>
-            <input type="password" id="adminToken" placeholder="ADMIN_PANEL_TOKEN" required>
+        <form id="loginForm" autocomplete="on">
+            <label for="adminToken">Admin Token</label>
+            <input type="password" id="adminToken" placeholder="ADMIN_PANEL_TOKEN" autocomplete="current-password" required minlength="8">
             <button type="submit" id="loginBtn">🔓 Giriş Yap</button>
-            <div id="loginError" class="error"></div>
+            <div id="loginError" class="error" role="alert" aria-live="polite"></div>
             <p class="hint">Token <code>license-server/.env.docker</code> içindeki <code>ADMIN_PANEL_TOKEN</code> değeridir.</p>
         </form>
     </div>

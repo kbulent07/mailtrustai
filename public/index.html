@@ -14,10 +14,11 @@
 <body>
 
 <!-- ─── MÜŞTERİ YÖNETİMİ GİRİŞ / KURULUM OVERLAY'I ─── -->
-<div id="customerAuthOverlay" style="position:fixed;inset:0;z-index:99999;background:rgba(10,14,23,0.97);display:flex;align-items:center;justify-content:center">
+<div id="customerAuthOverlay" role="dialog" aria-modal="true" aria-labelledby="customerAuthTitle"
+     style="position:fixed;inset:0;z-index:99999;background:rgba(10,14,23,0.97);display:flex;align-items:center;justify-content:center">
     <div style="background:#111827;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:36px 32px;width:380px;max-width:95vw;box-shadow:0 24px 64px rgba(0,0,0,0.6)">
         <div style="text-align:center;margin-bottom:18px">
-            <div style="font-size:40px">🛡️</div>
+            <div style="font-size:40px" aria-hidden="true">🛡️</div>
             <h2 id="customerAuthTitle" style="margin:8px 0 4px;font-size:20px;font-weight:700;color:#f1f5f9">Müşteri Yönetimi</h2>
             <p id="customerAuthSubtitle" style="margin:0;font-size:13px;color:#94a3b8">Devam etmek için giriş yapın.</p>
         </div>
@@ -25,13 +26,13 @@
         <!-- Giriş Formu -->
         <div id="customerAuthLoginForm" style="display:none">
             <div style="margin-bottom:12px">
-                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">E-posta</label>
-                <input id="customerAuthEmail" type="email" placeholder="ornek@sirket.com" autocomplete="username"
+                <label for="customerAuthEmail" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">E-posta</label>
+                <input id="customerAuthEmail" type="email" placeholder="ornek@sirket.com" autocomplete="username" required
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px">
             </div>
             <div style="margin-bottom:14px">
-                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Şifre</label>
-                <input id="customerAuthPwd" type="password" placeholder="••••••••" autocomplete="current-password"
+                <label for="customerAuthPwd" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Şifre</label>
+                <input id="customerAuthPwd" type="password" placeholder="••••••••" autocomplete="current-password" required minlength="6"
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
                     onkeydown="if(event.key==='Enter')customerAuthLogin()">
             </div>
@@ -50,8 +51,8 @@
         <div id="customerAuthForgotForm" style="display:none">
             <p style="font-size:13px;color:#94a3b8;margin:0 0 16px">Kayıtlı e-posta adresinizi girin. Şifre sıfırlama bağlantısı gönderilecek.</p>
             <div style="margin-bottom:14px">
-                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">E-posta</label>
-                <input id="customerAuthForgotEmail" type="email" placeholder="ornek@sirket.com"
+                <label for="customerAuthForgotEmail" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">E-posta</label>
+                <input id="customerAuthForgotEmail" type="email" placeholder="ornek@sirket.com" autocomplete="email" required
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
                     onkeydown="if(event.key==='Enter')customerAuthForgotSend()">
             </div>
@@ -70,13 +71,13 @@
         <div id="customerAuthResetForm" style="display:none">
             <p style="font-size:13px;color:#94a3b8;margin:0 0 16px">Yeni şifrenizi belirleyin.</p>
             <div style="margin-bottom:12px">
-                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yeni Şifre <span style="color:#94a3b8;font-size:11px">(en az 6 karakter)</span></label>
-                <input id="customerAuthResetPwd" type="password" placeholder="••••••••" autocomplete="new-password"
+                <label for="customerAuthResetPwd" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yeni Şifre <span style="color:#94a3b8;font-size:11px">(en az 6 karakter)</span></label>
+                <input id="customerAuthResetPwd" type="password" placeholder="••••••••" autocomplete="new-password" required minlength="6"
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px">
             </div>
             <div style="margin-bottom:14px">
-                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yeni Şifre Tekrar</label>
-                <input id="customerAuthResetPwd2" type="password" placeholder="••••••••" autocomplete="new-password"
+                <label for="customerAuthResetPwd2" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yeni Şifre Tekrar</label>
+                <input id="customerAuthResetPwd2" type="password" placeholder="••••••••" autocomplete="new-password" required minlength="6"
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
                     onkeydown="if(event.key==='Enter')customerAuthResetSubmit()">
             </div>
@@ -92,18 +93,18 @@
                 ℹ️ <strong>İlk Kurulum — Müşteri Admin oluştur.</strong> Bu hesap müşteri panelindeki her şeyi yönetir (API ayarları, IMAP hesapları, müşteri kullanıcıları). E-posta ve şifrenizi not edin.
             </div>
             <div style="margin-bottom:12px">
-                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Admin E-postası</label>
-                <input id="customerAuthSetupEmail" type="email" placeholder="admin@sirketiniz.com" autocomplete="email"
+                <label for="customerAuthSetupEmail" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Admin E-postası</label>
+                <input id="customerAuthSetupEmail" type="email" placeholder="admin@sirketiniz.com" autocomplete="email" required
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px">
             </div>
             <div style="margin-bottom:12px">
-                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Şifre <span style="color:#94a3b8;font-size:11px">(en az 6 karakter)</span></label>
-                <input id="customerAuthSetupPwd" type="password" placeholder="••••••••" autocomplete="new-password"
+                <label for="customerAuthSetupPwd" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Şifre <span style="color:#94a3b8;font-size:11px">(en az 6 karakter)</span></label>
+                <input id="customerAuthSetupPwd" type="password" placeholder="••••••••" autocomplete="new-password" required minlength="6"
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px">
             </div>
             <div style="margin-bottom:14px">
-                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Şifre Tekrar</label>
-                <input id="customerAuthSetupPwd2" type="password" placeholder="••••••••" autocomplete="new-password"
+                <label for="customerAuthSetupPwd2" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Şifre Tekrar</label>
+                <input id="customerAuthSetupPwd2" type="password" placeholder="••••••••" autocomplete="new-password" required minlength="6"
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
                     onkeydown="if(event.key==='Enter')customerAuthSetup()">
             </div>
@@ -113,7 +114,7 @@
             </button>
         </div>
 
-        <div id="customerAuthError" style="margin-top:12px;color:#f87171;font-size:13px;text-align:center;min-height:18px"></div>
+        <div id="customerAuthError" role="alert" aria-live="polite" style="margin-top:12px;color:#f87171;font-size:13px;text-align:center;min-height:18px"></div>
     </div>
 </div>
 

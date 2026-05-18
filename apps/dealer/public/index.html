@@ -170,20 +170,20 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
 <body>
 
 <!-- ===== LOGIN ===== -->
-<div id="loginScreen" class="login-wrap">
+<div id="loginScreen" class="login-wrap" role="dialog" aria-labelledby="loginTitle" aria-modal="true">
   <div class="login-card">
     <div class="brand">
-      <div class="logo">🤝</div>
-      <h1>MailTrustAI</h1>
+      <div class="logo" aria-hidden="true">🤝</div>
+      <h1 id="loginTitle">MailTrustAI</h1>
       <p class="muted">Bayi Paneli</p>
     </div>
-    <form id="loginForm" autocomplete="off">
-      <label>Bayi ID</label>
-      <input type="text" id="inpUser" placeholder="bayi-id" required>
-      <label>Parola</label>
-      <input type="password" id="inpPass" placeholder="••••••••" required>
+    <form id="loginForm" autocomplete="on">
+      <label for="inpUser">Bayi ID</label>
+      <input type="text" id="inpUser" placeholder="bayi-id" autocomplete="username" required>
+      <label for="inpPass">Parola</label>
+      <input type="password" id="inpPass" placeholder="••••••••" autocomplete="current-password" required minlength="6">
       <button type="submit" id="loginBtn">🔓 Giriş Yap</button>
-      <div id="loginErr" class="error"></div>
+      <div id="loginErr" class="error" role="alert" aria-live="polite"></div>
     </form>
   </div>
 </div>
@@ -479,7 +479,8 @@ async function api(path, opts = {}) {
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function fmtDate(ms) {
   if (!ms) return '—';

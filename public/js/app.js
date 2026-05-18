@@ -3,6 +3,28 @@
 // ============================================================
 
 // ────────────────────────────────────────────────────────────
+// Production console suppression
+// Localhost/127.0.0.1 dışındaki origin'lerde console.log/debug/info
+// bastırılır (network sniff'i + DevTools clutter azaltır).
+// console.warn ve console.error production'da DA görünür (gerçek sorunlar).
+// Debug için: ?debug=1 query param ile devre dışı bırakılabilir.
+// ────────────────────────────────────────────────────────────
+(function suppressDevLogsInProd() {
+    try {
+        const host = window.location.hostname;
+        const isLocal = host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host === '';
+        const debugFlag = window.location.search.includes('debug=1');
+        if (!isLocal && !debugFlag) {
+            const noop = () => {};
+            console.log   = noop;
+            console.info  = noop;
+            console.debug = noop;
+            // console.warn ve console.error KALIR
+        }
+    } catch (_) { /* silent */ }
+})();
+
+// ────────────────────────────────────────────────────────────
 // UI HELPERS — Toast & Dialog (alert/confirm replacement)
 // ────────────────────────────────────────────────────────────
 (function initToastContainer() {
@@ -161,6 +183,18 @@ function _escHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
+
+// ────────────────────────────────────────────────────────────
+// Native alert() -> showToast monkey-patch.
+// Mevcut kodun 44 alert() çağrısı native blocking dialog yerine
+// brand-uyumlu toast bildirimi gösterir. UX tutarlılığı + mobile UX iyileşir.
+// NOT: confirm() monkey-patch'i SYNC/ASYNC uyumsuzluğu yaratır — manuel refactor.
+// ────────────────────────────────────────────────────────────
+const _nativeAlert = window.alert.bind(window);
+window.alert = function (message) {
+    try { showToast(String(message ?? ''), 'warning', { title: 'Uyarı' }); }
+    catch (_) { _nativeAlert(message); }   // showToast hazır değilse fallback
+};
 
 // Teknik hata mesajlarını kullanıcı dostu Türkçeye çevirir
 function humanizeAnalyzeError(msg) {
@@ -2180,11 +2214,15 @@ async function loadImapAccounts() {
 
 async function deleteImapAccount(email) {
     if (_denyIfCustomerUser('IMAP Hesabı Sil')) return;
-    const okay = confirm(
-        currentLang === 'tr'
+    const okay = await showConfirm({
+        title:       currentLang === 'tr' ? 'IMAP Hesabı Sil' : 'Delete IMAP Account',
+        message:     currentLang === 'tr'
             ? `${email} hesabini silmek istediginize emin misiniz?`
-            : `Are you sure you want to delete ${email}?`
-    );
+            : `Are you sure you want to delete ${email}?`,
+        confirmText: currentLang === 'tr' ? 'Sil' : 'Delete',
+        cancelText:  currentLang === 'tr' ? 'Vazgeç' : 'Cancel',
+        danger: true
+    });
     if (!okay) return;
 
     await fetch(`/api/imap/accounts/${encodeURIComponent(email)}`, { method: 'DELETE' });
@@ -3738,9 +3776,12 @@ async function deleteScanHistoryByRange() {
         status.innerHTML = '<span style="color:#f87171">Başlangıç bitişten büyük olamaz</span>';
         return;
     }
-    if (!confirm(`⚠️ ${from} → ${to} aralığındaki TÜM tarama kayıtları kalıcı olarak silinecek.\n\nDevam edilsin mi?`)) {
-        return;
-    }
+    const ok = await showConfirm({
+        title: 'Tarama Geçmişini Sil',
+        message: `${from} → ${to} aralığındaki TÜM tarama kayıtları kalıcı olarak silinecek.\n\nDevam edilsin mi?`,
+        confirmText: 'Sil', cancelText: 'Vazgeç', danger: true
+    });
+    if (!ok) return;
 
     status.innerHTML = '⏳ Siliniyor…';
     try {
@@ -5700,7 +5741,14 @@ async function saveScanMailbox() {
 }
 
 async function deleteScanMailbox(imapEmail) {
-    if (!confirm(currentLang === 'tr' ? `${imapEmail} silinsin mi?` : `Delete ${imapEmail}?`)) return;
+    const ok = await showConfirm({
+        title: currentLang === 'tr' ? 'Tarama Posta Kutusu Sil' : 'Delete Scan Mailbox',
+        message: currentLang === 'tr' ? `${imapEmail} silinsin mi?` : `Delete ${imapEmail}?`,
+        confirmText: currentLang === 'tr' ? 'Sil' : 'Delete',
+        cancelText: currentLang === 'tr' ? 'Vazgeç' : 'Cancel',
+        danger: true
+    });
+    if (!ok) return;
     try {
         await fetch(`/api/scan-mailboxes/${encodeURIComponent(imapEmail)}`, { method: 'DELETE' });
         loadScanMailboxes();
@@ -5729,7 +5777,9 @@ let _serviceStatusInterval = null;
 
 async function loadServiceStatus() {
     try {
-        const res = await fetch('/api/admin/status');
+        // Eski /api/admin/status (monolith) silindi → /api/system/status (meta.routes)
+        const res = await fetch('/api/system/status');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         const el = document.getElementById('serviceStatusInfo');
         if (!el) return;
@@ -6431,7 +6481,12 @@ function _cuRenderOtxDomainList(panel, list) {
 
 async function reportFpFromStats(domain, severity, message) {
     if (!domain) return;
-    if (!confirm(`"${domain}" için yanlış pozitif raporu gönderilsin mi?\nAdmin onayından sonra güvenilir listeye eklenir.`)) return;
+    const ok = await showConfirm({
+        title: 'Yanlış Pozitif Raporu',
+        message: `"${domain}" için yanlış pozitif raporu gönderilsin mi?\nAdmin onayından sonra güvenilir listeye eklenir.`,
+        confirmText: 'Gönder', cancelText: 'Vazgeç'
+    });
+    if (!ok) return;
     try {
         const headers = { 'Content-Type': 'application/json' };
         if (licenseKey) headers['x-license-key'] = licenseKey;
@@ -6708,7 +6763,12 @@ async function userTdRestoreBackup() {
     if (!_userTdBackup || !_userTdBackup.length) {
         alert('Geri dönülecek yedek bulunamadı. Sayfayı yenilediyseniz yedek kaybolmuş olabilir.\nDosya olarak indirdiğiniz yedeği "İçe Aktar" ile yükleyin.'); return;
     }
-    if (!confirm(`${_userTdBackup.length} domainlik önceki listeye dönmek istiyor musunuz?\n\nBu işlem mevcut listeyi temizleyip yedeği geri yükleyecek.`)) return;
+    const ok = await showConfirm({
+        title: 'Yedeği Geri Yükle',
+        message: `${_userTdBackup.length} domainlik önceki listeye dönmek istiyor musunuz?\n\nBu işlem mevcut listeyi temizleyip yedeği geri yükleyecek.`,
+        confirmText: 'Geri Yükle', cancelText: 'Vazgeç', danger: true
+    });
+    if (!ok) return;
 
     const resEl  = document.getElementById('userTdImportResult');
     _userTdShowResult(resEl, null, '⏳ Önceki listeye dönülüyor…');
@@ -7923,7 +7983,12 @@ async function cuToggleActive(email, makeActive) {
 window.cuToggleActive = cuToggleActive;
 
 async function cuDelete(email) {
-    if (!confirm(`${email} kullanıcısı silinsin mi?`)) return;
+    const ok = await showConfirm({
+        title: 'Kullanıcıyı Sil',
+        message: `${email} kullanıcısı silinsin mi?`,
+        confirmText: 'Sil', cancelText: 'Vazgeç', danger: true
+    });
+    if (!ok) return;
     const r = await _cuFetch('/api/customer-users/' + encodeURIComponent(email), { method: 'DELETE' });
     if (!r.ok) return alert('Hata: ' + (r.data.error || r.status));
     loadCustomerUsersList();
