@@ -847,6 +847,9 @@ $('createForm').addEventListener('submit', async e => {
   };
   if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
   if (!body.validDays || body.validDays < 1) { resEl.textContent = 'Geçerli bir gün sayısı girin.'; resEl.className = 'result err'; return; }
+  if (body.plan === 'demo' && body.validDays > 14) {
+    resEl.textContent = 'Demo lisans en fazla 14 gün olabilir.'; resEl.className = 'result err'; return;
+  }
 
   try {
     const r = await api('/api/dealer/customers', { method: 'POST', body });
@@ -1000,12 +1003,32 @@ function openQuickLicModal(custId, name, company) {
 $('quickLicCancel').addEventListener('click', () => $('quickLicModal').classList.add('hidden'));
 $('quickLicModal').addEventListener('click', e => { if (e.target === $('quickLicModal')) $('quickLicModal').classList.add('hidden'); });
 
+// Demo plan → max 14 gün. Plan değişimine reaktif clamp (her iki form için).
+function _wirePlanDaysClamp(planId, daysId) {
+  const plan = $(planId), days = $(daysId);
+  if (!plan || !days) return;
+  plan.addEventListener('change', () => {
+    if (plan.value === 'demo') {
+      days.max = '14';
+      if (Number(days.value) > 14 || Number(days.value) === 365) days.value = '14';
+    } else {
+      days.max = '36500';
+      if (Number(days.value) === 14) days.value = '365';
+    }
+  });
+}
+_wirePlanDaysClamp('newPlan', 'newDays');
+_wirePlanDaysClamp('quickLicPlan', 'quickLicDays');
+
 $('quickLicApply').addEventListener('click', async () => {
   const validDays = Number($('quickLicDays').value);
   const plan = $('quickLicPlan').value;
   const tier = $('quickLicTier').value;
   if (!validDays || validDays < 1) {
     $('quickLicResult').textContent = 'En az 1 gün girin.'; $('quickLicResult').className = 'result err'; return;
+  }
+  if (plan === 'demo' && validDays > 14) {
+    $('quickLicResult').textContent = 'Demo lisans en fazla 14 gün olabilir.'; $('quickLicResult').className = 'result err'; return;
   }
   $('quickLicApply').disabled = true;
   $('quickLicResult').textContent = '⏳ Üretiliyor...'; $('quickLicResult').className = 'result';

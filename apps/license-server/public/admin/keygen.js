@@ -590,6 +590,19 @@ async function confirmDeleteDealer(id, name) {
 // ================================================================
 // LİSANS ÜRETME SEKMESİ
 // ================================================================
+// Demo plan → max 14 gün. Plan değişince validDays otomatik clamp.
+$('newLicPlan')?.addEventListener('change', () => {
+    const days = $('newLicDays');
+    if (!days) return;
+    if ($('newLicPlan').value === 'demo') {
+        days.max = '14';
+        if (Number(days.value) > 14 || Number(days.value) === 365) days.value = '14';
+    } else {
+        days.max = '36500';
+        if (Number(days.value) === 14) days.value = '365';
+    }
+});
+
 $('licenseCreateForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const resEl = $('licenseCreateResult');
@@ -611,6 +624,9 @@ $('licenseCreateForm').addEventListener('submit', async (e) => {
 
     if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
     if (!body.validDays || body.validDays < 1) { resEl.textContent = 'Geçerli bir gün sayısı girin.'; resEl.className = 'result err'; return; }
+    if (body.plan === 'demo' && body.validDays > 14) {
+        resEl.textContent = 'Demo lisans en fazla 14 gün olabilir.'; resEl.className = 'result err'; return;
+    }
 
     try {
         const r = await api('/api/admin/licenses', { method: 'POST', body });

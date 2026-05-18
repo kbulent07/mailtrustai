@@ -510,6 +510,9 @@ router.post('/admin/licenses', adminAuth, asyncH(async (req, res) => {
     if (!PLAN_MATRIX[plan]) {
         return res.status(400).json({ error: `plan geçersiz: ${plan}` });
     }
+    if (plan === 'demo' && validDaysNum > 14) {
+        return res.status(400).json({ error: 'Demo lisans en fazla 14 gün olabilir.' });
+    }
     if (tier && !TIER_MATRIX[tier]) {
         return res.status(400).json({ error: `tier geçersiz: ${tier}. Geçerli: T1..T9` });
     }
