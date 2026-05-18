@@ -36,12 +36,12 @@
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
                     onkeydown="if(event.key==='Enter')customerAuthLogin()">
             </div>
-            <button onclick="customerAuthLogin()" id="customerAuthLoginBtn"
+            <button data-fn="customerAuthLogin" id="customerAuthLoginBtn"
                 style="width:100%;padding:11px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
                 🔓 Giriş Yap
             </button>
             <div style="text-align:center;margin-top:12px">
-                <button onclick="showForgotPasswordView()" style="background:none;border:none;color:#6366f1;font-size:13px;cursor:pointer;text-decoration:underline">
+                <button data-fn="showForgotPasswordView" style="background:none;border:none;color:#6366f1;font-size:13px;cursor:pointer;text-decoration:underline">
                     Şifremi Unuttum
                 </button>
             </div>
@@ -56,12 +56,12 @@
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
                     onkeydown="if(event.key==='Enter')customerAuthForgotSend()">
             </div>
-            <button onclick="customerAuthForgotSend()" id="customerAuthForgotBtn"
+            <button data-fn="customerAuthForgotSend" id="customerAuthForgotBtn"
                 style="width:100%;padding:11px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
                 📧 Bağlantı Gönder
             </button>
             <div style="text-align:center;margin-top:12px">
-                <button onclick="showLogin()" style="background:none;border:none;color:#6366f1;font-size:13px;cursor:pointer;text-decoration:underline">
+                <button data-fn="showLogin" style="background:none;border:none;color:#6366f1;font-size:13px;cursor:pointer;text-decoration:underline">
                     ← Giriş Yap
                 </button>
             </div>
@@ -81,7 +81,7 @@
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
                     onkeydown="if(event.key==='Enter')customerAuthResetSubmit()">
             </div>
-            <button onclick="customerAuthResetSubmit()" id="customerAuthResetBtn"
+            <button data-fn="customerAuthResetSubmit" id="customerAuthResetBtn"
                 style="width:100%;padding:11px;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
                 ✅ Şifremi Güncelle
             </button>
@@ -108,7 +108,7 @@
                     style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
                     onkeydown="if(event.key==='Enter')customerAuthSetup()">
             </div>
-            <button onclick="customerAuthSetup()" id="customerAuthSetupBtn"
+            <button data-fn="customerAuthSetup" id="customerAuthSetupBtn"
                 style="width:100%;padding:11px;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
                 ✨ Admin Hesabını Oluştur
             </button>
@@ -468,19 +468,19 @@
         <span>MailTrustAI</span>
     </div>
     <div class="navbar-tabs">
-        <button class="nav-tab" id="navTabHome" onclick="showPage('home')" title="Ana Sayfa">
+        <button class="nav-tab" id="navTabHome" data-fn="showPage" data-arg="home" title="Ana Sayfa">
             <span class="nav-tab-icon">🏠</span><span class="nav-tab-label">Ana Sayfa</span>
         </button>
-        <button class="nav-tab active" id="navTabScan" onclick="showPage('scan')" title="Tarama">
+        <button class="nav-tab active" id="navTabScan" data-fn="showPage" data-arg="scan" title="Tarama">
             <span class="nav-tab-icon">🔍</span><span class="nav-tab-label">Tarama</span>
         </button>
-        <button class="nav-tab" id="navTabStats" onclick="showPage('stats')" title="İstatistik">
+        <button class="nav-tab" id="navTabStats" data-fn="showPage" data-arg="stats" title="İstatistik">
             <span class="nav-tab-icon">📊</span><span class="nav-tab-label">İstatistik</span>
         </button>
-        <button class="nav-tab" id="navTabScanList" onclick="showPage('scan-list')" title="Tarama Geçmişi">
+        <button class="nav-tab" id="navTabScanList" data-fn="showPage" data-arg="scan-list" title="Tarama Geçmişi">
             <span class="nav-tab-icon">📋</span><span class="nav-tab-label">Tarama Geçmişi</span>
         </button>
-        <button class="nav-tab" id="navTabOtxApproval" onclick="showPage('otx-approval')" title="OTX Onay">
+        <button class="nav-tab" id="navTabOtxApproval" data-fn="showPage" data-arg="otx-approval" title="OTX Onay">
             <span class="nav-tab-icon">🛡️</span><span class="nav-tab-label">OTX Onay</span>
         </button>
     </div>
@@ -488,31 +488,31 @@
         <span class="license-badge free" id="licenseBadge">🆓 Free</span>
         <span class="text-muted hidden" id="usageCounter" title="Aylık tarama kullanımı" style="font-size:12px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.05)">0 / ∞</span>
         <span id="roleBadge" title="Oturum açık kullanıcı" style="font-size:11px;padding:3px 8px;border-radius:4px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);color:#c7d2fe;display:none;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0">👤</span>
-        <button class="btn btn-ghost btn-sm" id="btnLang" onclick="toggleLang()">🌐 EN</button>
-        <button class="btn btn-ghost btn-sm admin-only" id="btnCustomerUsers" onclick="showCustomerUsersModal()" title="Müşteri Kullanıcıları (admin)" class="hidden">👥</button>
-        <button class="btn btn-ghost btn-sm admin-only" id="btnSettings" onclick="showSettings()">⚙️</button>
-        <button class="btn btn-ghost btn-sm admin-only" id="btnLicense" onclick="showLicenseModal()">🔑</button>
-        <button class="btn btn-ghost btn-sm" id="btnLogout" onclick="customerAuthLogout()" title="Oturumu Kapat">🚪</button>
+        <button class="btn btn-ghost btn-sm" id="btnLang" data-fn="toggleLang">🌐 EN</button>
+        <button class="btn btn-ghost btn-sm admin-only" id="btnCustomerUsers" data-fn="showCustomerUsersModal" title="Müşteri Kullanıcıları (admin)" class="hidden">👥</button>
+        <button class="btn btn-ghost btn-sm admin-only" id="btnSettings" data-fn="showSettings">⚙️</button>
+        <button class="btn btn-ghost btn-sm admin-only" id="btnLicense" data-fn="showLicenseModal">🔑</button>
+        <button class="btn btn-ghost btn-sm" id="btnLogout" data-fn="customerAuthLogout" title="Oturumu Kapat">🚪</button>
     </div>
     <!-- Hamburger — sadece mobilde görünür -->
-    <button class="navbar-hamburger" id="navHamburger" onclick="toggleMobileMenu()" aria-label="Menü" aria-expanded="false">
+    <button class="navbar-hamburger" id="navHamburger" data-fn="toggleMobileMenu" aria-label="Menü" aria-expanded="false">
         <span></span><span></span><span></span>
     </button>
 </nav>
 
 <!-- Mobil açılır menü -->
 <div class="mobile-nav-menu" id="mobileNavMenu">
-    <button class="mobile-nav-tab" onclick="showPage('home');  closeMobileMenu()" id="mNavTabHome">🏠 Ana Sayfa</button>
-    <button class="mobile-nav-tab" onclick="showPage('scan');  closeMobileMenu()" id="mNavTabScan">🔍 Tarama</button>
-    <button class="mobile-nav-tab" onclick="showPage('stats'); closeMobileMenu()" id="mNavTabStats">📊 İstatistik</button>
-    <button class="mobile-nav-tab" onclick="showPage('scan-list'); closeMobileMenu()" id="mNavTabScanList">📋 Tarama Geçmişi</button>
-    <button class="mobile-nav-tab" onclick="showPage('otx-approval'); closeMobileMenu()" id="mNavTabOtx">🛡️ OTX Onay</button>
+    <button class="mobile-nav-tab" data-fn="showHome_closeMenu" id="mNavTabHome">🏠 Ana Sayfa</button>
+    <button class="mobile-nav-tab" data-fn="showScan_closeMenu" id="mNavTabScan">🔍 Tarama</button>
+    <button class="mobile-nav-tab" data-fn="showStats_closeMenu" id="mNavTabStats">📊 İstatistik</button>
+    <button class="mobile-nav-tab" data-fn="showScanList_closeMenu" id="mNavTabScanList">📋 Tarama Geçmişi</button>
+    <button class="mobile-nav-tab" data-fn="showOtxApproval_closeMenu" id="mNavTabOtx">🛡️ OTX Onay</button>
     <div class="mobile-nav-divider"></div>
     <div class="mobile-nav-actions">
-        <button class="btn btn-ghost btn-sm" onclick="toggleLang(); closeMobileMenu()">🌐 Dil</button>
-        <button class="btn btn-ghost btn-sm admin-only" id="mBtnSettings" onclick="showSettings(); closeMobileMenu()">⚙️ Ayarlar</button>
-        <button class="btn btn-ghost btn-sm admin-only" id="mBtnLicense" onclick="showLicenseModal(); closeMobileMenu()">🔑 Lisans</button>
-        <button class="btn btn-ghost btn-sm" onclick="customerAuthLogout()">🚪 Çıkış</button>
+        <button class="btn btn-ghost btn-sm" data-fn="showLang_closeMenu">🌐 Dil</button>
+        <button class="btn btn-ghost btn-sm admin-only" id="mBtnSettings" data-fn="showSettings_closeMenu">⚙️ Ayarlar</button>
+        <button class="btn btn-ghost btn-sm admin-only" id="mBtnLicense" data-fn="showLicense_closeMenu">🔑 Lisans</button>
+        <button class="btn btn-ghost btn-sm" data-fn="customerAuthLogout">🚪 Çıkış</button>
     </div>
 </div>
 
@@ -539,7 +539,7 @@
 
         <!-- Onboarding Checklist (ilk kurulum yardımcısı) -->
         <div class="onboarding-card" id="onboardingCard" class="hidden">
-            <button class="onboarding-dismiss" onclick="dismissOnboarding()" title="Kapat">✕</button>
+            <button class="onboarding-dismiss" data-fn="dismissOnboarding" title="Kapat">✕</button>
             <div class="onboarding-header">
                 <div class="onboarding-title">🚀 Hızlı Başlangıç Rehberi</div>
                 <div class="onboarding-progress" id="onboardingProgressLabel">0 / 5 tamamlandı</div>
@@ -595,7 +595,7 @@
             <div class="home-risk-alerts" id="homeRiskAlerts">
                 <div class="home-risk-alert"><span>Risk verisi yukleniyor...</span></div>
             </div>
-            <button class="btn btn-primary" onclick="exportExecutivePDF()" id="btnExecutivePdf">Executive PDF</button>
+            <button class="btn btn-primary" data-fn="exportExecutivePDF" id="btnExecutivePdf">Executive PDF</button>
         </div>
 
         <div class="home-bottom-grid">
@@ -604,7 +604,7 @@
             <div class="card">
                 <div class="card-header">
                     <span class="card-title">🕒 Son Taramalar</span>
-                    <button class="btn btn-ghost btn-sm" onclick="showPage('scan')" style="margin-left:auto">Tümünü Gör →</button>
+                    <button class="btn btn-ghost btn-sm" data-fn="showPage" data-arg="scan" style="margin-left:auto">Tümünü Gör →</button>
                 </div>
                 <div id="homeRecentList" style="display:flex;flex-direction:column;gap:8px">
                     <p class="text-muted" style="font-size:13px">Yükleniyor...</p>
@@ -630,16 +630,16 @@
                         <span class="card-title">⚡ Hızlı Eylemler</span>
                     </div>
                     <div style="display:flex;flex-direction:column;gap:8px">
-                        <button class="btn btn-primary" style="justify-content:flex-start" onclick="showPage('scan');selectMode('upload')">
+                        <button class="btn btn-primary" style="justify-content:flex-start" data-fn="showScan_upload">
                             📁 EML Dosyası Tara
                         </button>
-                        <button class="btn btn-ghost" style="justify-content:flex-start" onclick="showPage('scan');selectMode('imap')">
+                        <button class="btn btn-ghost" style="justify-content:flex-start" data-fn="showScan_imap">
                             📡 IMAP Gelen Kutusunu Aç
                         </button>
-                        <button class="btn btn-ghost admin-only" style="justify-content:flex-start" onclick="openListsPanel()">
+                        <button class="btn btn-ghost admin-only" style="justify-content:flex-start" data-fn="openListsPanel">
                             🛡️ Allowlist / Blocklist Yönet
                         </button>
-                        <button class="btn btn-ghost" style="justify-content:flex-start" onclick="exportHistoryCsv()">
+                        <button class="btn btn-ghost" style="justify-content:flex-start" data-fn="exportHistoryCsv">
                             ⬇️ Geçmişi CSV İndir
                         </button>
                     </div>
@@ -649,7 +649,7 @@
                 <div class="card" id="fpCard">
                     <div class="card-header">
                         <span class="card-title">🔒 Cihaz Parmak İzi</span>
-                        <button class="btn btn-ghost btn-sm" onclick="loadFingerprintCard()" title="Yenile">🔄</button>
+                        <button class="btn btn-ghost btn-sm" data-fn="loadFingerprintCard" title="Yenile">🔄</button>
                     </div>
                     <div id="fpCardBody">
                         <p class="text-muted" style="font-size:13px">Yükleniyor…</p>
@@ -668,18 +668,18 @@
             <h2 style="margin:0">📊 Sistem İstatistikleri</h2>
             <div class="stats-range-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                 <span style="font-size:12px;color:var(--text-secondary)">⏱ Tarih aralığı:</span>
-                <button class="btn btn-ghost btn-sm" onclick="setStatsRange('today')"     id="rangeBtnToday">Bugün</button>
-                <button class="btn btn-ghost btn-sm" onclick="setStatsRange('yesterday')" id="rangeBtnYesterday">Dün</button>
-                <button class="btn btn-ghost btn-sm" onclick="setStatsRange('thisWeek')"  id="rangeBtnThisWeek">Bu Hafta</button>
-                <button class="btn btn-ghost btn-sm" onclick="setStatsRange('thisMonth')" id="rangeBtnThisMonth">Bu Ay</button>
-                <button class="btn btn-ghost btn-sm" onclick="setStatsRange('lastMonth')" id="rangeBtnLastMonth">Geçen Ay</button>
+                <button class="btn btn-ghost btn-sm" data-fn="setStatsRange" data-arg="today"     id="rangeBtnToday">Bugün</button>
+                <button class="btn btn-ghost btn-sm" data-fn="setStatsRange" data-arg="yesterday" id="rangeBtnYesterday">Dün</button>
+                <button class="btn btn-ghost btn-sm" data-fn="setStatsRange" data-arg="thisWeek"  id="rangeBtnThisWeek">Bu Hafta</button>
+                <button class="btn btn-ghost btn-sm" data-fn="setStatsRange" data-arg="thisMonth" id="rangeBtnThisMonth">Bu Ay</button>
+                <button class="btn btn-ghost btn-sm" data-fn="setStatsRange" data-arg="lastMonth" id="rangeBtnLastMonth">Geçen Ay</button>
                 <span style="color:var(--text-secondary);opacity:0.4;margin:0 2px">|</span>
-                <button class="btn btn-ghost btn-sm" onclick="setStatsRange(7)"   id="rangeBtn7">7g</button>
-                <button class="btn btn-ghost btn-sm" onclick="setStatsRange(30)"  id="rangeBtn30" style="border-color:var(--accent)">30g</button>
-                <button class="btn btn-ghost btn-sm" onclick="setStatsRange(90)"  id="rangeBtn90">90g</button>
-                <button class="btn btn-ghost btn-sm" onclick="setStatsRange(365)" id="rangeBtn365">1yıl</button>
-                <button class="btn btn-ghost btn-sm" onclick="setStatsRange('custom')" id="rangeBtnCustom" title="Başlangıç ve bitiş tarihi seçin">📅 Özel</button>
-                <button class="btn btn-ghost btn-sm" onclick="loadStatsPage()" title="Yenile">🔄</button>
+                <button class="btn btn-ghost btn-sm" data-fn="setStatsRange" data-arg="7"   id="rangeBtn7">7g</button>
+                <button class="btn btn-ghost btn-sm" data-fn="setStatsRange" data-arg="30"  id="rangeBtn30" style="border-color:var(--accent)">30g</button>
+                <button class="btn btn-ghost btn-sm" data-fn="setStatsRange" data-arg="90"  id="rangeBtn90">90g</button>
+                <button class="btn btn-ghost btn-sm" data-fn="setStatsRange" data-arg="365" id="rangeBtn365">1yıl</button>
+                <button class="btn btn-ghost btn-sm" data-fn="setStatsRange" data-arg="custom" id="rangeBtnCustom" title="Başlangıç ve bitiş tarihi seçin">📅 Özel</button>
+                <button class="btn btn-ghost btn-sm" data-fn="loadStatsPage" title="Yenile">🔄</button>
             </div>
         </div>
         <!-- Üst seviye custom range — açıkken hem üst hem alt bölümler aynı aralığı kullanır -->
@@ -689,7 +689,7 @@
                 <input type="date" id="topStatsStart" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text-primary);font-size:13px">
                 <span style="color:var(--text-secondary)">— Bitiş:</span>
                 <input type="date" id="topStatsEnd" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text-primary);font-size:13px">
-                <button class="btn btn-primary btn-sm" onclick="applyTopCustomRange()">✓ Uygula</button>
+                <button class="btn btn-primary btn-sm" data-fn="applyTopCustomRange">✓ Uygula</button>
                 <span id="topRangeStatus" style="font-size:12px;color:var(--text-secondary);margin-left:8px"></span>
             </div>
         </div>
@@ -763,9 +763,9 @@
                     <input type="date" id="cuStatsStart" style="background:#0b1220;border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text-primary);font-size:13px;min-height:32px">
                     <span style="color:var(--text-secondary)">–</span>
                     <input type="date" id="cuStatsEnd" style="background:#0b1220;border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text-primary);font-size:13px;min-height:32px">
-                    <button class="btn btn-primary btn-sm" onclick="loadDetailedStatsCustomer()">Uygula</button>
+                    <button class="btn btn-primary btn-sm" data-fn="loadDetailedStatsCustomer">Uygula</button>
                 </span>
-                <button class="btn btn-ghost btn-sm" onclick="exportDetailedCsvCustomer()" title="CSV indir">⬇️ CSV</button>
+                <button class="btn btn-ghost btn-sm" data-fn="exportDetailedCsvCustomer" title="CSV indir">⬇️ CSV</button>
             </div>
         </div>
 
@@ -806,8 +806,8 @@
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
             <h2 style="margin:0">📋 Tarama Geçmişi</h2>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button class="btn btn-ghost btn-sm" onclick="scanListLoad(1)">🔄 Yenile</button>
-                <button class="btn btn-ghost btn-sm" id="scanListExportBtn" onclick="scanListExportCsv()">⬇️ CSV</button>
+                <button class="btn btn-ghost btn-sm" data-fn="scanListLoad" data-arg="1">🔄 Yenile</button>
+                <button class="btn btn-ghost btn-sm" id="scanListExportBtn" data-fn="scanListExportCsv">⬇️ CSV</button>
             </div>
         </div>
 
@@ -849,8 +849,8 @@
                     </select>
                 </div>
                 <div style="display:flex;align-items:flex-end;gap:6px">
-                    <button class="btn btn-primary btn-sm" style="flex:1;padding:8px" onclick="scanListLoad(1)">🔍 Ara</button>
-                    <button class="btn btn-ghost btn-sm" style="padding:8px 10px" onclick="scanListReset()" title="Filtreleri temizle">✕</button>
+                    <button class="btn btn-primary btn-sm" style="flex:1;padding:8px" data-fn="scanListLoad" data-arg="1">🔍 Ara</button>
+                    <button class="btn btn-ghost btn-sm" style="padding:8px 10px" data-fn="scanListReset" title="Filtreleri temizle">✕</button>
                 </div>
             </div>
         </div>
@@ -889,7 +889,7 @@
         <div class="card">
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
                 <span class="card-title">🛡️ OTX Yanlış Pozitif Onayları</span>
-                <button class="btn btn-ghost btn-sm" onclick="loadUserFpSuggestions()">Yenile</button>
+                <button class="btn btn-ghost btn-sm" data-fn="loadUserFpSuggestions">Yenile</button>
             </div>
             <p class="text-muted" style="font-size:13px;line-height:1.6;margin-bottom:14px">
                 IMAP veya tarama raporlarında yanlış pozitif olarak işaretlenen OTX domainleri burada onaylayabilirsiniz.
@@ -911,25 +911,25 @@
 
     <!-- SCAN MODE SELECTOR -->
     <div class="scan-modes" id="scanModes">
-        <div class="scan-mode active" data-mode="upload" onclick="selectMode('upload')">
+        <div class="scan-mode active" data-mode="upload" data-fn="selectMode" data-arg="upload">
             <div class="mode-icon">📁</div>
             <div class="mode-title" data-i18n="mode_upload">EML Dosya Yükle</div>
             <div class="mode-desc" data-i18n="mode_upload_desc">Sürükle-bırak veya dosya seç</div>
             <span class="mode-badge badge-free">Free+</span>
         </div>
-        <div class="scan-mode" data-mode="paste" onclick="selectMode('paste')">
+        <div class="scan-mode" data-mode="paste" data-fn="selectMode" data-arg="paste">
             <div class="mode-icon">📋</div>
             <div class="mode-title" data-i18n="mode_paste">Ham Kaynak Yapıştır</div>
             <div class="mode-desc" data-i18n="mode_paste_desc">E-posta kaynağını yapıştırın</div>
             <span class="mode-badge badge-free">Free+</span>
         </div>
-        <div class="scan-mode" data-mode="imap" onclick="selectMode('imap')">
+        <div class="scan-mode" data-mode="imap" data-fn="selectMode" data-arg="imap">
             <div class="mode-icon">📡</div>
             <div class="mode-title" data-i18n="mode_imap">IMAP Tarama</div>
             <div class="mode-desc" data-i18n="mode_imap_desc">Gelen kutusunu tara ve izle</div>
             <span class="mode-badge badge-ent">Enterprise</span>
         </div>
-        <div class="scan-mode admin-only" data-mode="scan-mailbox" onclick="selectMode('scan-mailbox')">
+        <div class="scan-mode admin-only" data-mode="scan-mailbox" data-fn="selectMode" data-arg="scan-mailbox">
             <div class="mode-icon">📬</div>
             <div class="mode-title" data-i18n="mode_scanmailbox">Tarama Posta Kutusu</div>
             <div class="mode-desc" data-i18n="mode_scanmailbox_desc">Gelen mail → otomatik rapor</div>
@@ -954,7 +954,7 @@
         </div>
         <textarea class="form-textarea" id="sourceInput" placeholder="E-posta kaynağını buraya yapıştırın..." rows="10"></textarea>
         <div class="mt-16">
-            <button class="btn btn-primary" onclick="analyzePaste()">
+            <button class="btn btn-primary" data-fn="analyzePaste">
                 🔍 <span data-i18n="btn_analyze">Analiz Et</span>
             </button>
         </div>
@@ -965,8 +965,8 @@
         <div class="card-header">
             <span class="card-title">📡 <span data-i18n="imap_title">IMAP Gelen Kutusu</span></span>
             <div class="flex gap-16">
-                <button class="btn btn-ghost btn-sm admin-only" onclick="showImapModal()">➕ Hesap Ekle</button>
-                <button class="btn btn-primary btn-sm" onclick="refreshInbox()">🔄 Yenile</button>
+                <button class="btn btn-ghost btn-sm admin-only" data-fn="showImapModal">➕ Hesap Ekle</button>
+                <button class="btn btn-primary btn-sm" data-fn="refreshInbox">🔄 Yenile</button>
             </div>
         </div>
         <div id="imapAccountSelect" class="mb-16"></div>
@@ -977,21 +977,21 @@
             <p class="text-muted" data-i18n="imap_no_account">Henüz IMAP hesabı eklenmedi</p>
         </div>
                 <div class="mt-16">
-                    <button class="btn btn-ghost btn-sm hidden" onclick="loadMoreInbox()" id="btnLoadMoreImap">
+                    <button class="btn btn-ghost btn-sm hidden" data-fn="loadMoreInbox" id="btnLoadMoreImap">
                         ⬇️ <span>Daha Fazla Yükle</span>
                     </button>
                 </div>
                 <div class="mt-16 flex gap-16">
-            <button class="btn btn-primary" onclick="scanSelected()" id="btnScanSelected" disabled>
+            <button class="btn btn-primary" data-fn="scanSelected" id="btnScanSelected" disabled>
                 ✅ <span data-i18n="btn_scan_selected">Seçilenleri Tara</span>
             </button>
-            <button class="btn btn-ghost admin-only" onclick="startMonitor()" id="btnMonitor">
+            <button class="btn btn-ghost admin-only" data-fn="startMonitor" id="btnMonitor">
                 📡 <span data-i18n="btn_monitor">Otomatik İzle</span>
             </button>
                 </div>
             </div>
             <div class="imap-report-column">
-                <button class="imap-mobile-back-btn" onclick="imapMobileBackToList()" title="Listeye dön">
+                <button class="imap-mobile-back-btn" data-fn="imapMobileBackToList" title="Listeye dön">
                     ← Mail Listesine Dön
                 </button>
                 <div class="imap-section-title">Mail Saglik Raporu</div>
@@ -1009,7 +1009,7 @@
         <div class="card">
             <div class="card-header">
                 <span class="card-title">📬 <span data-i18n="scanmailbox_title">Tarama Posta Kutuları</span> <span style="font-size:11px;color:var(--green);font-weight:600;margin-left:6px">[Pro+]</span></span>
-                <button class="btn btn-primary btn-sm" onclick="showScanMailboxModal()">➕ <span data-i18n="scanmailbox_add">Ekle</span></button>
+                <button class="btn btn-primary btn-sm" data-fn="showScanMailboxModal">➕ <span data-i18n="scanmailbox_add">Ekle</span></button>
             </div>
             <div id="scanMailboxList"><p class="text-muted" data-i18n="scanmailbox_no_items">Henüz tarama posta kutusu eklenmedi</p></div>
         </div>
@@ -1042,9 +1042,9 @@
                 <p id="riskDescription"></p>
             </div>
             <span style="flex:1"></span>
-            <button class="btn btn-ghost btn-sm" onclick="exportPDF()">📄 PDF</button>
-            <button class="btn btn-ghost btn-sm" onclick="exportJSON()">📋 JSON</button>
-            <button class="btn btn-ghost btn-sm" onclick="resetView()">🔄 <span data-i18n="btn_new">Yeni</span></button>
+            <button class="btn btn-ghost btn-sm" data-fn="exportPDF">📄 PDF</button>
+            <button class="btn btn-ghost btn-sm" data-fn="exportJSON">📋 JSON</button>
+            <button class="btn btn-ghost btn-sm" data-fn="resetView">🔄 <span data-i18n="btn_new">Yeni</span></button>
         </div>
 
         <!-- Email Meta -->
@@ -1060,9 +1060,9 @@
                 <span style="margin-left:auto;font-size:11px;color:var(--text-secondary);align-self:center">Yapay zekâ analizleri</span>
             </div>
             <div class="tabs" id="aiViewsTabs" style="margin:0;padding:6px 12px 0;border-bottom:1px solid var(--border)">
-                <button class="tab active" data-ai-tab="deep"   onclick="switchAiTab('deep')">🔬 Derinlemesine</button>
-                <button class="tab"        data-ai-tab="openai" onclick="switchAiTab('openai')">🤖 OpenAI</button>
-                <button class="tab"        data-ai-tab="claude" onclick="switchAiTab('claude')">🧠 Claude</button>
+                <button class="tab active" data-ai-tab="deep"   data-fn="switchAiTab" data-arg="deep">🔬 Derinlemesine</button>
+                <button class="tab"        data-ai-tab="openai" data-fn="switchAiTab" data-arg="openai">🤖 OpenAI</button>
+                <button class="tab"        data-ai-tab="claude" data-fn="switchAiTab" data-arg="claude">🧠 Claude</button>
             </div>
             <div id="aiTab-deep"   class="ai-tab-body"></div>
             <div id="aiTab-openai" class="ai-tab-body hidden"></div>
@@ -1077,11 +1077,11 @@
         <!-- Findings Tabs -->
         <div class="card">
             <div class="tabs mb-16" id="findingTabs">
-                <button class="tab active" data-tab="all" onclick="filterFindings('all')">📊 Tümü</button>
-                <button class="tab" data-tab="header" onclick="filterFindings('header')">📧 Header</button>
-                <button class="tab" data-tab="content" onclick="filterFindings('content')">📝 İçerik</button>
-                <button class="tab" data-tab="link" onclick="filterFindings('link')">🔗 Link</button>
-                <button class="tab" data-tab="attachment" onclick="filterFindings('attachment')">📎 Ekler</button>
+                <button class="tab active" data-tab="all" data-fn="filterFindings" data-arg="all">📊 Tümü</button>
+                <button class="tab" data-tab="header" data-fn="filterFindings" data-arg="header">📧 Header</button>
+                <button class="tab" data-tab="content" data-fn="filterFindings" data-arg="content">📝 İçerik</button>
+                <button class="tab" data-tab="link" data-fn="filterFindings" data-arg="link">🔗 Link</button>
+                <button class="tab" data-tab="attachment" data-fn="filterFindings" data-arg="attachment">📎 Ekler</button>
             </div>
             <div class="findings-list" id="findingsList"></div>
         </div>
@@ -1108,7 +1108,7 @@
     <div class="card mt-24" id="historyPanel">
         <div class="card-header">
             <span class="card-title">📋 <span data-i18n="history">Son Taramalar</span></span>
-            <button class="btn btn-ghost btn-sm" onclick="exportHistoryCsv()" title="Tarama geçmişini CSV olarak indir" style="margin-left:auto">⬇️ CSV</button>
+            <button class="btn btn-ghost btn-sm" data-fn="exportHistoryCsv" title="Tarama geçmişini CSV olarak indir" style="margin-left:auto">⬇️ CSV</button>
         </div>
         <div id="historyList" class="flex flex-col gap-16"></div>
     </div>
@@ -1118,7 +1118,7 @@
         <div class="card-header">
             <span class="card-title">🛡️ Allowlist / Blocklist Yönetimi</span>
             <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
-                <button class="btn btn-ghost btn-sm" onclick="exportLists()" title="Listeyi JSON olarak dışa aktar">📤 Dışa Aktar</button>
+                <button class="btn btn-ghost btn-sm" data-fn="exportLists" title="Listeyi JSON olarak dışa aktar">📤 Dışa Aktar</button>
                 <label class="btn btn-ghost btn-sm" title="JSON dosyasından içe aktar" style="cursor:pointer;margin:0">
                     📥 İçe Aktar
                     <input type="file" id="listsImportFile" accept=".json" onchange="importListsFile(this)" class="hidden">
@@ -1132,14 +1132,14 @@
                 <input type="checkbox" id="listsResetCheck" style="accent-color:#ff5c7a">
                 <span style="color:#ff5c7a">Mevcut listeyi sıfırla (içe aktarmadan önce temizle)</span>
             </label>
-            <button id="btnListsRestore" onclick="listsRestoreBackup()" class="hidden" class="btn btn-ghost btn-sm">↩ Son yedekten geri dön</button>
+            <button id="btnListsRestore" data-fn="listsRestoreBackup" class="hidden" class="btn btn-ghost btn-sm">↩ Son yedekten geri dön</button>
         </div>
         <div class="grid-2" style="gap:20px">
             <div>
                 <div style="font-weight:700;color:#2ee59d;margin-bottom:8px">✅ Güvenilir Domainler (Allowlist)</div>
                 <div style="display:flex;gap:8px;margin-bottom:8px">
                     <input class="form-input" id="allowlistInput" placeholder="ornek.com" style="flex:1">
-                    <button class="btn btn-primary btn-sm" onclick="addListEntry('allowlist')">Ekle</button>
+                    <button class="btn btn-primary btn-sm" data-fn="addListEntry" data-arg="allowlist">Ekle</button>
                 </div>
                 <div id="allowlistItems" class="flex flex-col gap-8"></div>
             </div>
@@ -1147,7 +1147,7 @@
                 <div style="font-weight:700;color:#ff5c7a;margin-bottom:8px">🚫 Engellenen Domainler (Blocklist)</div>
                 <div style="display:flex;gap:8px;margin-bottom:8px">
                     <input class="form-input" id="blocklistInput" placeholder="tehdit.com" style="flex:1">
-                    <button class="btn btn-primary btn-sm" onclick="addListEntry('blocklist')">Ekle</button>
+                    <button class="btn btn-primary btn-sm" data-fn="addListEntry" data-arg="blocklist">Ekle</button>
                 </div>
                 <div id="blocklistItems" class="flex flex-col gap-8"></div>
             </div>
@@ -1169,8 +1169,8 @@
         </div>
         <div id="licenseResult" class="mb-16"></div>
         <div class="flex gap-16">
-            <button class="btn btn-primary" onclick="activateLicense()">✅ <span data-i18n="btn_activate">Etkinleştir</span></button>
-            <button class="btn btn-ghost" onclick="closeLicenseModal()">❌ <span data-i18n="btn_close">Kapat</span></button>
+            <button class="btn btn-primary" data-fn="activateLicense">✅ <span data-i18n="btn_activate">Etkinleştir</span></button>
+            <button class="btn btn-ghost" data-fn="closeLicenseModal">❌ <span data-i18n="btn_close">Kapat</span></button>
         </div>
     </div>
 </div>
@@ -1235,7 +1235,7 @@
                         • Alıcı: <strong id="imapAlertSummaryRecipient">bu hesabın kendisi</strong><br>
                         • Gönderen: <strong>bu hesabın SMTP ayarları</strong> · Dil: <strong>Türkçe</strong>
                     </div>
-                    <button type="button" class="btn btn-ghost btn-sm" onclick="toggleImapAlertAdvanced()" id="imapAlertAdvancedBtn" style="margin-top:8px;font-size:12px;padding:4px 10px">⚙️ Özelleştir</button>
+                    <button type="button" class="btn btn-ghost btn-sm" data-fn="toggleImapAlertAdvanced" id="imapAlertAdvancedBtn" style="margin-top:8px;font-size:12px;padding:4px 10px">⚙️ Özelleştir</button>
                 </div>
 
                 <!-- İleri ayarlar — varsayılan kapalı -->
@@ -1279,9 +1279,9 @@
 
         <div id="imapTestResult" class="mb-16"></div>
         <div class="flex gap-16">
-            <button class="btn btn-ghost" onclick="testImapConnection()">🔄 <span data-i18n="btn_test">Test Et</span></button>
-            <button class="btn btn-primary" onclick="saveImapAccount()">💾 <span data-i18n="btn_save">Kaydet</span></button>
-            <button class="btn btn-ghost" onclick="closeImapModal()">❌</button>
+            <button class="btn btn-ghost" data-fn="testImapConnection">🔄 <span data-i18n="btn_test">Test Et</span></button>
+            <button class="btn btn-primary" data-fn="saveImapAccount">💾 <span data-i18n="btn_save">Kaydet</span></button>
+            <button class="btn btn-ghost" data-fn="closeImapModal">❌</button>
         </div>
     </div>
 </div>
@@ -1293,7 +1293,7 @@
     <div class="modal" style="max-width:840px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
             <h2 style="margin:0">👥 Müşteri Kullanıcıları</h2>
-            <button onclick="closeCustomerUsersModal()" title="Kapat (ESC)" style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:22px;line-height:1;padding:4px 8px;border-radius:6px">✕</button>
+            <button data-fn="closeCustomerUsersModal" title="Kapat (ESC)" style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:22px;line-height:1;padding:4px 8px;border-radius:6px">✕</button>
         </div>
         <div style="background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.25);border-radius:6px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#7dd3fc">
             ℹ️ <strong>admin</strong>: müşteri panelindeki her şeyi yönetir.
@@ -1324,7 +1324,7 @@
                     <input class="form-input" type="email" id="cuImapEmail" placeholder="kullanici@sirket.com">
                 </div>
             </div>
-            <button class="btn btn-primary btn-sm" onclick="createCustomerUser()">💾 Kullanıcı Oluştur</button>
+            <button class="btn btn-primary btn-sm" data-fn="createCustomerUser">💾 Kullanıcı Oluştur</button>
             <span id="cuCreateStatus" style="margin-left:10px;font-size:12px"></span>
         </div>
 
@@ -1341,14 +1341,14 @@
     <div class="modal">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
             <h2 style="margin:0">⚙️ <span data-i18n="settings">Ayarlar</span></h2>
-            <button onclick="closeSettings()" title="Kapat (ESC)" style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:22px;line-height:1;padding:4px 8px;border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">✕</button>
+            <button data-fn="closeSettings" title="Kapat (ESC)" style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:22px;line-height:1;padding:4px 8px;border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">✕</button>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 18px">
-            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="api" onclick="showSettingsTab('api')">API</button>
-            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="general" onclick="showSettingsTab('general')">Genel</button>
-            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="reports" onclick="showSettingsTab('reports')">Rapor</button>
-            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="system" onclick="showSettingsTab('system')">Sistem</button>
-            <button type="button" class="btn btn-ghost btn-sm admin-only" data-settings-tab-btn="system-smtp" onclick="showSettingsTab('system-smtp')">📧 Sistem SMTP</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="api" data-fn="showSettingsTab" data-arg="api">API</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="general" data-fn="showSettingsTab" data-arg="general">Genel</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="reports" data-fn="showSettingsTab" data-arg="reports">Rapor</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-settings-tab-btn="system" data-fn="showSettingsTab" data-arg="system">Sistem</button>
+            <button type="button" class="btn btn-ghost btn-sm admin-only" data-settings-tab-btn="system-smtp" data-fn="showSettingsTab" data-arg="system-smtp">📧 Sistem SMTP</button>
         </div>
         <div data-settings-tab="api">
         <!-- ── Entegrasyon API Anahtarları ── -->
@@ -1367,7 +1367,7 @@
                 <label class="form-label">🛰️ AlienVault OTX API Anahtarı</label>
                 <div style="display:flex;gap:8px;align-items:flex-start">
                     <input class="form-input" id="otxApiKeyInput" placeholder="AlienVault OTX API anahtarı" style="flex:1">
-                    <button class="btn btn-ghost btn-sm" onclick="testOtxConnection()" style="white-space:nowrap;margin-top:0;height:38px">🔗 Test</button>
+                    <button class="btn btn-ghost btn-sm" data-fn="testOtxConnection" style="white-space:nowrap;margin-top:0;height:38px">🔗 Test</button>
                 </div>
                 <div class="text-muted" style="font-size:11px;margin-top:4px">
                     IP ve domain itibar sorgulama — <a href="https://otx.alienvault.com/api" target="_blank" style="color:#60a5fa">otx.alienvault.com</a> (ücretsiz)
@@ -1471,10 +1471,10 @@
             <label class="report-toggle"><input type="checkbox" id="periodicMonthly"> Aylik</label>
         </div>
         <div class="flex gap-16 mb-16" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost btn-sm" onclick="triggerPeriodicReport('daily')">Gunluk Rapor Gonder</button>
-            <button class="btn btn-ghost btn-sm" onclick="triggerPeriodicReport('weekly')">Haftalik Rapor Gonder</button>
-            <button class="btn btn-ghost btn-sm" onclick="triggerPeriodicReport('monthly')">Aylik Rapor Gonder</button>
-            <button class="btn btn-ghost btn-sm" onclick="triggerPeriodicReport('yearly')">Yillik Rapor Gonder</button>
+            <button class="btn btn-ghost btn-sm" data-fn="triggerPeriodicReport" data-arg="daily">Gunluk Rapor Gonder</button>
+            <button class="btn btn-ghost btn-sm" data-fn="triggerPeriodicReport" data-arg="weekly">Haftalik Rapor Gonder</button>
+            <button class="btn btn-ghost btn-sm" data-fn="triggerPeriodicReport" data-arg="monthly">Aylik Rapor Gonder</button>
+            <button class="btn btn-ghost btn-sm" data-fn="triggerPeriodicReport" data-arg="yearly">Yillik Rapor Gonder</button>
         </div>
         <div id="periodicReportStatus" class="text-muted" style="font-size:12px; margin-bottom:12px;"></div>
 
@@ -1503,21 +1503,21 @@
                     </select>
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-                    <button class="btn btn-ghost btn-sm" onclick="testWebhookConnection()">🔄 Bağlantıyı Test Et</button>
-                    <button class="btn btn-ghost btn-sm admin-only" onclick="openListsPanel()">🛡️ Allowlist/Blocklist Yönet</button>
+                    <button class="btn btn-ghost btn-sm" data-fn="testWebhookConnection">🔄 Bağlantıyı Test Et</button>
+                    <button class="btn btn-ghost btn-sm admin-only" data-fn="openListsPanel">🛡️ Allowlist/Blocklist Yönet</button>
                 </div>
                 <div id="webhookTestStatus" class="text-muted" style="font-size:12px;margin-top:8px"></div>
             </div>
             <div id="listsShortcut" style="margin-top:10px" class="hidden admin-only">
-                <button class="btn btn-ghost btn-sm" onclick="openListsPanel()">🛡️ Allowlist / Blocklist Yönet</button>
+                <button class="btn btn-ghost btn-sm" data-fn="openListsPanel">🛡️ Allowlist / Blocklist Yönet</button>
             </div>
         </div>
 
         </div>
         <div id="settingsStatus" class="text-muted" style="font-size:12px; margin-bottom:12px;"></div>
         <div class="flex gap-16 mt-16">
-            <button class="btn btn-primary" onclick="saveSettings()">💾 Kaydet</button>
-            <button class="btn btn-ghost" onclick="closeSettings()">❌</button>
+            <button class="btn btn-primary" data-fn="saveSettings">💾 Kaydet</button>
+            <button class="btn btn-ghost" data-fn="closeSettings">❌</button>
         </div>
 
         <div data-settings-tab="system" class="hidden">
@@ -1543,8 +1543,8 @@
                     </div>
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                    <button class="btn btn-ghost btn-sm" onclick="loadDiskUsage()" title="Disk bilgisini yenile">🔄 Yenile</button>
-                    <button class="btn btn-ghost btn-sm" onclick="deleteScanHistoryByRange()" style="color:#fca5a5;border-color:#f87171">🗑️ Aralığı Sil</button>
+                    <button class="btn btn-ghost btn-sm" data-fn="loadDiskUsage" title="Disk bilgisini yenile">🔄 Yenile</button>
+                    <button class="btn btn-ghost btn-sm" data-fn="deleteScanHistoryByRange" style="color:#fca5a5;border-color:#f87171">🗑️ Aralığı Sil</button>
                     <span id="histDelStatus" class="text-muted" style="font-size:11px"></span>
                 </div>
             </div>
@@ -1557,9 +1557,9 @@
                 Yükleniyor...
             </div>
             <div class="flex gap-16" style="flex-wrap:wrap;margin-bottom:8px">
-                <button class="btn btn-ghost btn-sm" onclick="serviceAction('restart')" style="border-color:#60a5fa;color:#60a5fa">🔄 Yeniden Başlat</button>
-                <button class="btn btn-ghost btn-sm" onclick="serviceAction('stop')" style="border-color:#f87171;color:#f87171">⏹️ Durdur</button>
-                <button class="btn btn-ghost btn-sm" onclick="loadServiceStatus()">📊 Durumu Yenile</button>
+                <button class="btn btn-ghost btn-sm" data-fn="serviceAction" data-arg="restart" style="border-color:#60a5fa;color:#60a5fa">🔄 Yeniden Başlat</button>
+                <button class="btn btn-ghost btn-sm" data-fn="serviceAction" data-arg="stop" style="border-color:#f87171;color:#f87171">⏹️ Durdur</button>
+                <button class="btn btn-ghost btn-sm" data-fn="loadServiceStatus">📊 Durumu Yenile</button>
             </div>
             <div id="serviceActionStatus" class="text-muted" style="font-size:12px"></div>
         </div>
@@ -1574,10 +1574,10 @@
 
             <!-- Export -->
             <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
-                <button class="btn btn-ghost btn-sm" onclick="userTdExport()" title="Mevcut listeyi JSON olarak indir">📤 Dışa Aktar</button>
+                <button class="btn btn-ghost btn-sm" data-fn="userTdExport" title="Mevcut listeyi JSON olarak indir">📤 Dışa Aktar</button>
                 <span id="userTdExportCount" style="font-size:12px;color:var(--text-secondary)"></span>
                 <span id="userTdExportStatus" style="display:none;font-size:12px;color:var(--text-secondary)"></span>
-                <button id="btnUserTdRestore" onclick="userTdRestoreBackup()" style="display:none;background:transparent;border:1px solid #f59e0b;color:#f59e0b;border-radius:6px;font-size:12px;padding:4px 10px;cursor:pointer" title="Son otomatik yedekten geri yükle">↩ Son yedekten geri dön</button>
+                <button id="btnUserTdRestore" data-fn="userTdRestoreBackup" style="display:none;background:transparent;border:1px solid #f59e0b;color:#f59e0b;border-radius:6px;font-size:12px;padding:4px 10px;cursor:pointer" title="Son otomatik yedekten geri yükle">↩ Son yedekten geri dön</button>
             </div>
 
             <!-- Import -->
@@ -1643,8 +1643,8 @@
                 </label>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
-                <button class="btn btn-primary btn-sm" onclick="saveSystemSmtp()">💾 Kaydet</button>
-                <button class="btn btn-ghost btn-sm" onclick="testSystemSmtp()">🔄 Bağlantıyı Test Et</button>
+                <button class="btn btn-primary btn-sm" data-fn="saveSystemSmtp">💾 Kaydet</button>
+                <button class="btn btn-ghost btn-sm" data-fn="testSystemSmtp">🔄 Bağlantıyı Test Et</button>
             </div>
             <div id="sysSmtpStatus" class="text-muted" style="font-size:12px;margin-top:10px"></div>
         </div>
@@ -1786,9 +1786,9 @@
 
             <div id="smTestResult" style="margin-bottom:12px"></div>
             <div class="flex gap-16">
-                <button class="btn btn-ghost" onclick="testScanMailboxImap()">🔌 Bağlantı Test Et</button>
-                <button class="btn btn-primary" id="smSaveBtn" onclick="saveScanMailbox()">💾 Kaydet</button>
-                <button class="btn btn-ghost" onclick="closeScanMailboxModal()">❌</button>
+                <button class="btn btn-ghost" data-fn="testScanMailboxImap">🔌 Bağlantı Test Et</button>
+                <button class="btn btn-primary" id="smSaveBtn" data-fn="saveScanMailbox">💾 Kaydet</button>
+                <button class="btn btn-ghost" data-fn="closeScanMailboxModal">❌</button>
             </div>
         </div>
     </div>
@@ -1800,13 +1800,14 @@
         <!-- Başlık -->
         <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid var(--border);flex-shrink:0">
             <h2 id="listDetailModalTitle" style="margin:0;font-size:18px"></h2>
-            <button onclick="closeListDetailModal()" title="Kapat (ESC)" style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:22px;line-height:1;padding:4px 8px;border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">✕</button>
+            <button data-fn="closeListDetailModal" title="Kapat (ESC)" style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:22px;line-height:1;padding:4px 8px;border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">✕</button>
         </div>
         <!-- İçerik -->
         <div id="listDetailModalBody" style="flex:1;overflow-y:auto;padding:20px 24px"></div>
     </div>
 </div>
 
+<script src="/js/events.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/history-state.js"></script>
 <script src="/js/app.js"></script>
