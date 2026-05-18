@@ -153,6 +153,15 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
 .modal-btns button.primary{background:var(--primary);border-color:var(--primary);color:#fff}
 .modal-btns button.primary:hover{background:var(--primary-h)}
 
+/* Detay modal grid */
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}
+.detail-sec{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.detail-sec h4{margin:0 0 8px;font-size:.9em;color:var(--muted)}
+.detail-sec dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:.85em}
+.detail-sec dt{color:var(--muted);font-weight:500;white-space:nowrap}
+.detail-sec dd{margin:0;color:var(--text);word-break:break-word}
+@media (max-width:720px){ .detail-grid{grid-template-columns:1fr} }
+
 /* ===== Audit detail ===== */
 .audit-detail{font-family:ui-monospace,monospace;font-size:.8em;background:var(--bg);
               padding:5px 9px;border-radius:4px;max-width:380px;word-break:break-all;white-space:pre-wrap}
@@ -461,6 +470,17 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
   </div>
 </div>
 
+<!-- ===== MODAL: Lisans/Müşteri Detay ===== -->
+<div id="detailModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle">
+  <div class="modal-card" style="max-width:780px">
+    <h3 id="detailModalTitle">📋 Müşteri Detayı</h3>
+    <div id="detailModalBody"></div>
+    <div class="modal-btns">
+      <button id="detailModalClose" class="primary">Kapat</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL: Yeni Müşteri Ekle ===== -->
 <div id="addCustomerModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="addCustModalTitle">
   <div class="modal-card" style="max-width:560px">
@@ -749,6 +769,7 @@ function renderCustomersTable() {
       <td><small class="muted">${timeAgo(c.lastHeartbeatAt)}</small></td>
       <td>${c.monthlyScanCount ?? '—'}</td>
       <td class="btn-group">
+        <button class="action-btn" data-action="detay" data-id="${escapeHtml(c.customerId)}">📋 Detay</button>
         <button class="action-btn ok" data-action="quicklic"
           data-id="${escapeHtml(c.customerId)}"
           data-name="${da}"
@@ -825,8 +846,68 @@ function bindTableActions(tbody) {
     if (a === 'renew')    btn.addEventListener('click', () => openRenewModal(id, name, lid));
     if (a === 'revoke')   btn.addEventListener('click', () => openRevokeModal(id, name, lid));
     if (a === 'quicklic') btn.addEventListener('click', () => openQuickLicModal(id, name, company));
+    if (a === 'detay')    btn.addEventListener('click', () => openDetailModal(id));
   });
 }
+
+// ================================================================
+// MÜŞTERİ / LİSANS DETAY MODAL
+// ================================================================
+function _fmtFull(ts) {
+  if (!ts) return '—';
+  try { return new Date(ts).toLocaleString('tr-TR'); } catch { return '—'; }
+}
+function openDetailModal(custId) {
+  const c = customers.find(x => x.customerId === custId);
+  if (!c) { showToast('Müşteri bulunamadı.', 'err'); return; }
+  const body = $('detailModalBody');
+  const payload = c.lastPayload || {};
+  const enabled = c.enabledFeatures || {};
+  body.innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-sec"><h4>🏢 Müşteri</h4>
+        <dl>
+          <dt>Şirket</dt><dd>${escapeHtml(c.companyName || '—')}</dd>
+          <dt>Müşteri ID</dt><dd><code>${escapeHtml(c.customerId)}</code></dd>
+          <dt>E-posta</dt><dd>${escapeHtml(c.customerEmail || '—')}</dd>
+          <dt>Telefon</dt><dd>${escapeHtml(c.phone || '—')}</dd>
+          <dt>BI Sorumlusu</dt><dd>${escapeHtml(c.contactName || '—')}${c.contactPhone ? ' — ' + escapeHtml(c.contactPhone) : ''}${c.contactEmail ? ' — ' + escapeHtml(c.contactEmail) : ''}</dd>
+          <dt>Kayıt</dt><dd>${_fmtFull(c.customerCreatedAt)}</dd>
+        </dl>
+      </div>
+      <div class="detail-sec"><h4>🔑 Lisans</h4>
+        <dl>
+          <dt>Anahtar</dt><dd><code>${escapeHtml(c.keyMasked || '—')}</code></dd>
+          <dt>Etiket</dt><dd>${escapeHtml(c.licenseLabel || '—')}</dd>
+          <dt>Plan / Tier</dt><dd><strong>${escapeHtml(c.plan || '—')}</strong> / ${escapeHtml(c.tier || '—')}</dd>
+          <dt>Durum</dt><dd><span class="tag tag-${c.licenseStatus || 'never'}">${c.licenseStatus || '—'}</span></dd>
+          <dt>Oluşturma</dt><dd>${_fmtFull(c.issuedAt)}</dd>
+          <dt>Bitiş</dt><dd>${_fmtFull(c.expiresAt)}</dd>
+          <dt>Grace gün</dt><dd>${c.graceDays ?? '—'}</dd>
+        </dl>
+      </div>
+      <div class="detail-sec"><h4>📊 Kullanım</h4>
+        <dl>
+          <dt>Bu ay tarama</dt><dd><strong>${c.monthlyScanCount ?? '—'}</strong></dd>
+          <dt>Sağlık</dt><dd>${escapeHtml(c.healthStatus || '—')}</dd>
+          <dt>Online</dt><dd><span class="tag tag-${c.onlineStatus || 'never'}">${c.onlineStatus || '—'}</span></dd>
+          <dt>Son bağlantı</dt><dd>${_fmtFull(c.lastHeartbeatAt)}</dd>
+        </dl>
+      </div>
+      <div class="detail-sec"><h4>🖥️ Instance</h4>
+        <dl>
+          <dt>Instance ID</dt><dd><code style="font-size:.78em">${escapeHtml(c.instanceId || '—')}</code></dd>
+          <dt>Uygulama Sürümü</dt><dd>${escapeHtml(c.appVersion || '—')}</dd>
+          <dt>Aktivasyon</dt><dd>${_fmtFull(c.activatedAt)}</dd>
+        </dl>
+      </div>
+    </div>
+  `;
+  $('detailModalTitle').textContent = `📋 ${c.companyName || c.customerId}`;
+  $('detailModal').classList.remove('hidden');
+}
+$('detailModalClose')?.addEventListener('click', () => $('detailModal').classList.add('hidden'));
+$('detailModal')?.addEventListener('click', e => { if (e.target === $('detailModal')) $('detailModal').classList.add('hidden'); });
 
 // ================================================================
 // LİSANS ÜRET SEKMESİ

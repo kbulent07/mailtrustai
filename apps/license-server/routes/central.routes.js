@@ -35,9 +35,18 @@ function customerRowToStatus(row) {
         licenseLabel: row.license_label || null,
         plan: row.plan,
         tier: row.tier,
+        issuedAt: row.license_issued_at || null,
         expiresAt: row.expires_at,
+        graceDays: row.grace_days ?? null,
+        customerEmail: row.customer_email || null,
+        contactName: row.contact_name || null,
+        contactEmail: row.contact_email || null,
+        contactPhone: row.contact_phone || null,
+        phone: row.phone || null,
+        customerCreatedAt: row.customer_created_at || null,
         instanceId: row.instance_id,
         appVersion: row.app_version,
+        activatedAt: row.activated_at || null,
         lastHeartbeatAt: row.last_heartbeat_at,
         onlineStatus: statusOf(row.last_heartbeat_at),
         healthStatus: payload.healthStatus || null,
@@ -51,10 +60,13 @@ function customerRowToStatus(row) {
 }
 
 const baseQuery = `
-SELECT c.id AS customer_id, c.company_name, c.dealer_id,
+SELECT c.id AS customer_id, c.company_name, c.dealer_id, c.email AS customer_email,
+       c.contact_name, c.contact_email, c.contact_phone, c.phone,
+       c.created_at AS customer_created_at,
        l.id AS license_id, l.status AS lic_status, l.plan, l.tier, l.expires_at,
        l.license_key_masked, l.label AS license_label,
-       a.instance_id, a.app_version, a.last_heartbeat_at, a.last_payload_json
+       l.issued_at AS license_issued_at, l.grace_days,
+       a.instance_id, a.app_version, a.activated_at, a.last_heartbeat_at, a.last_payload_json
 FROM customers c
 LEFT JOIN licenses l ON l.customer_id = c.id AND l.status='active'
 LEFT JOIN activations a ON a.license_id = l.id
