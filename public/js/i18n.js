@@ -92,6 +92,10 @@ let currentLang = localStorage.getItem('msa_lang') || 'tr';
 
 function t(key) { return I18N[currentLang]?.[key] || I18N.tr[key] || key; }
 
+// Satır içi literal çeviri: currentLang === 'tr' ? trText : enText yerine kullanılır.
+// Üçüncü dil desteği eklendiğinde yalnızca bu fonksiyon güncellenir.
+function _tLit(trText, enText) { return currentLang === 'tr' ? trText : enText; }
+
 function applyLang() {
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');

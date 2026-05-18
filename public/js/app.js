@@ -338,9 +338,7 @@ function selectMode(mode, updateState = true) {
     if (mode === 'scan-mailbox' && getCustomerRole() === 'user') {
         if (updateState) {
             showToast(
-                currentLang === 'tr'
-                    ? 'Tarama Posta Kutusu yönetimi yalnız müşteri yönetici hesabında.'
-                    : 'Scan Mailbox management is admin-only.',
+                _tLit('Tarama Posta Kutusu yönetimi yalnız müşteri yönetici hesabında.', 'Scan Mailbox management is admin-only.'),
                 'warning',
                 { title: '🔒 Yetki Yok' }
             );
@@ -351,9 +349,7 @@ function selectMode(mode, updateState = true) {
     if (mode === 'imap' && !licenseInfo?.features?.imapConnection) {
         if (updateState) {
             showToast(
-                currentLang === 'tr'
-                    ? 'IMAP Tarama yalnızca Enterprise lisansında kullanılabilir.'
-                    : 'IMAP Scan is available only with an Enterprise license.',
+                _tLit('IMAP Tarama yalnızca Enterprise lisansında kullanılabilir.', 'IMAP Scan is available only with an Enterprise license.'),
                 'warning',
                 { title: '🔒 Lisans Gerekli' }
             );
@@ -363,9 +359,7 @@ function selectMode(mode, updateState = true) {
     if (mode === 'scan-mailbox' && !licenseInfo?.features?.scanMailbox) {
         if (updateState) {
             showToast(
-                currentLang === 'tr'
-                    ? 'Tarama Posta Kutusu Pro veya Enterprise lisansı gerektirir.'
-                    : 'Scan Mailbox requires a Pro or Enterprise license.',
+                _tLit('Tarama Posta Kutusu Pro veya Enterprise lisansı gerektirir.', 'Scan Mailbox requires a Pro or Enterprise license.'),
                 'warning',
                 { title: '🔒 Lisans Gerekli' }
             );
@@ -534,7 +528,7 @@ function renderMainRiskBanner(data) {
     riskScore.style.color = data.color;
 
     const riskLevel = document.getElementById('riskLevel');
-    riskLevel.textContent = currentLang === 'tr' ? data.labelTR : data.labelEN;
+    riskLevel.textContent = _tLit(data.labelTR, data.labelEN);
     riskLevel.style.color = data.color;
 
     document.getElementById('riskDescription').textContent = buildExecutiveSummaryText(data);
@@ -562,15 +556,15 @@ function renderLevelEscalationBanner(data) {
         return;
     }
 
-    const labelTxt = currentLang === 'tr' ? data.labelTR : data.labelEN;
+    const labelTxt = _tLit(data.labelTR, data.labelEN);
     host.innerHTML =
         '<div style="font-weight:700;color:#a5b4fc;font-size:11px;letter-spacing:1px;margin-bottom:4px">⚠️ ' +
-        (currentLang === 'tr' ? 'SKOR & SEVİYE FARKLILIĞI' : 'SCORE / LEVEL DISCREPANCY') + '</div>' +
-        '<div>' + (currentLang === 'tr'
-            ? `Kural motoru skoru <b>${data.score}/100</b> (düşük) çıktı, ancak risk seviyesi <b>${esc(labelTxt)}</b>'a yükseltildi.`
-            : `Rule-engine score is <b>${data.score}/100</b> (low), but the risk level was raised to <b>${esc(labelTxt)}</b>.`) + '</div>' +
+        (_tLit('SKOR & SEVİYE FARKLILIĞI', 'SCORE / LEVEL DISCREPANCY')) + '</div>' +
+        '<div>' + _tLit(
+            `Kural motoru skoru <b>${data.score}/100</b> (düşük) çıktı, ancak risk seviyesi <b>${esc(labelTxt)}</b>'a yükseltildi.`,
+            `Rule-engine score is <b>${data.score}/100</b> (low), but the risk level was raised to <b>${esc(labelTxt)}</b>.`) + '</div>' +
         '<div style="margin-top:6px;color:#e0e7ff"><b>' +
-        (currentLang === 'tr' ? 'Sebep' : 'Reason') + ':</b> ' + esc(reason.reason || reason) + '</div>';
+        (_tLit('Sebep', 'Reason')) + ':</b> ' + esc(reason.reason || reason) + '</div>';
     host.style.display = '';
 }
 
@@ -990,7 +984,7 @@ function renderStructuredReport(data) {
 
     // ─── E-POSTA ÜSTÜ VERDICT BANDI ─────────────────────────────
     const levelIcon = { high: '🔴', medium: '🟠', low: '🟡', safe: '🟢' }[data.level] || '⚠️';
-    const levelText = (currentLang === 'tr' ? data.labelTR : data.labelEN) || data.level || '';
+    const levelText = (_tLit(data.labelTR, data.labelEN)) || data.level || '';
     const verdictColor = data.color || '#94a3b8';
     const isRisky = data.level === 'high' || data.level === 'medium';
     const topTagsHtml = threatTags.slice(0, 4).map(tag =>
@@ -1487,7 +1481,7 @@ function renderClaudeAnalysis(analysis) {
 
     let html = `
         <div style="font-size:15px;line-height:1.6;margin-bottom:16px;">
-            <strong>Ozet:</strong> ${esc(currentLang === 'tr' ? analysis.summaryTR : analysis.summaryEN)}
+            <strong>Ozet:</strong> ${esc(_tLit(analysis.summaryTR, analysis.summaryEN))}
         </div>
         <div class="grid-2" style="margin-bottom:16px;">
             <div class="finding-item">
@@ -1722,8 +1716,8 @@ function renderOpenAIAnalysis(analysis) {
         return;
     }
 
-    const summary   = currentLang === 'tr' ? analysis.summaryTR   : analysis.summaryEN;
-    const narrative = currentLang === 'tr' ? analysis.attackNarrativeTR : analysis.attackNarrativeEN;
+    const summary   = _tLit(analysis.summaryTR, analysis.summaryEN);
+    const narrative = _tLit(analysis.attackNarrativeTR, analysis.attackNarrativeEN);
     const modelName = analysis._model || 'gpt-4o-mini';
 
     openaiContent.innerHTML = `
@@ -1783,7 +1777,7 @@ function renderOpenAIAnalysis(analysis) {
         ${renderAnalysisList('Red Flags', analysis.redFlagsTR)}
         ${renderAnalysisList('Social Engineering Signals', analysis.socialEngineeringSignalsTR)}
         ${renderAnalysisList('Requested Actions', analysis.requestedActionsTR)}
-        ${renderAnalysisList(currentLang === 'tr' ? 'Önerilen Aksiyonlar' : 'Recommended Actions', analysis.recommendedActionsTR)}
+        ${renderAnalysisList(_tLit('Önerilen Aksiyonlar', 'Recommended Actions'), analysis.recommendedActionsTR)}
         </div>
     `;
 }
@@ -1858,9 +1852,7 @@ function restoreMainView(mode = currentMode, updateState = false) {
 // Müşteri user rolü için ortak yetki kontrolü — admin-only işlemleri engeller.
 function _denyIfCustomerUser(actionLabel) {
     if (getCustomerRole() !== 'user') return false;
-    alert(currentLang === 'tr'
-        ? `Bu işlem (${actionLabel}) yalnız müşteri yönetici hesabında yapılabilir.`
-        : `This action (${actionLabel}) is admin-only.`);
+    alert(_tLit(`Bu işlem (${actionLabel}) yalnız müşteri yönetici hesabında yapılabilir.`, `This action (${actionLabel}) is admin-only.`));
     return true;
 }
 
@@ -2052,7 +2044,7 @@ async function saveImapAccount() {
     const isEditMode = !!editingImapAlertAccountEmail;
 
     if (!account.email || !account.host) {
-        alert(currentLang === 'tr' ? 'E-posta ve sunucu zorunludur' : 'Email and host are required');
+        alert(_tLit('E-posta ve sunucu zorunludur', 'Email and host are required'));
         return;
     }
 
@@ -2062,7 +2054,7 @@ async function saveImapAccount() {
 
     // Yeni hesap eklerken şifre zorunlu; düzenlemede boş bırakılırsa IMAP kaydını atla
     if (!account.password && !isEditMode) {
-        alert(currentLang === 'tr' ? 'Yeni hesap icin sifre zorunludur' : 'Password is required for new accounts');
+        alert(_tLit('Yeni hesap icin sifre zorunludur', 'Password is required for new accounts'));
         return;
     }
 
@@ -2104,11 +2096,11 @@ async function saveImapAccount() {
             });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
-                alert((currentLang === 'tr' ? 'Anlık rapor kaydedilemedi: ' : 'Failed to save instant report: ') + (data.error || res.status));
+                alert((_tLit('Anlık rapor kaydedilemedi: ', 'Failed to save instant report: ')) + (data.error || res.status));
                 return;
             }
         } catch (e) {
-            alert((currentLang === 'tr' ? 'Anlık rapor kaydedilemedi: ' : 'Failed to save instant report: ') + e.message);
+            alert((_tLit('Anlık rapor kaydedilemedi: ', 'Failed to save instant report: ')) + e.message);
             return;
         }
     } else {
@@ -2194,7 +2186,7 @@ async function loadImapAccounts() {
             select.innerHTML = '';
             document.getElementById('connectionBar').classList.add('hidden');
             document.getElementById('statusDot').className = 'status-dot disconnected';
-            document.getElementById('connectionText').textContent = currentLang === 'tr' ? 'Bagli degil' : 'Not connected';
+            document.getElementById('connectionText').textContent = _tLit('Bagli degil', 'Not connected');
             document.getElementById('emailList').innerHTML = `<p class="text-muted">${t('imap_no_account')}</p>`;
             renderImapReportPlaceholder(t('imap_no_account'));
             currentImapMessages = [];
@@ -2215,12 +2207,10 @@ async function loadImapAccounts() {
 async function deleteImapAccount(email) {
     if (_denyIfCustomerUser('IMAP Hesabı Sil')) return;
     const okay = await showConfirm({
-        title:       currentLang === 'tr' ? 'IMAP Hesabı Sil' : 'Delete IMAP Account',
-        message:     currentLang === 'tr'
-            ? `${email} hesabini silmek istediginize emin misiniz?`
-            : `Are you sure you want to delete ${email}?`,
-        confirmText: currentLang === 'tr' ? 'Sil' : 'Delete',
-        cancelText:  currentLang === 'tr' ? 'Vazgeç' : 'Cancel',
+        title:       _tLit('IMAP Hesabı Sil', 'Delete IMAP Account'),
+        message:     _tLit(`${email} hesabini silmek istediginize emin misiniz?`, `Are you sure you want to delete ${email}?`),
+        confirmText: _tLit('Sil', 'Delete'),
+        cancelText:  _tLit('Vazgeç', 'Cancel'),
         danger: true
     });
     if (!okay) return;
@@ -2254,9 +2244,7 @@ async function editImapAccount(email) {
     editingImapAlertAccountEmail = account.email;
     document.getElementById('imapEmail').value = account.email;
     document.getElementById('imapPassword').value = '';
-    document.getElementById('imapPassword').placeholder = currentLang === 'tr'
-        ? 'Mevcut sifreyi tekrar girin'
-        : 'Re-enter current password';
+    document.getElementById('imapPassword').placeholder = _tLit('Mevcut sifreyi tekrar girin', 'Re-enter current password');
     document.getElementById('imapHost').value = account.host;
     document.getElementById('imapPort').value = account.port || 993;
     document.getElementById('imapIgnoreSSL').checked = account.rejectUnauthorized === false;
@@ -2389,15 +2377,11 @@ async function refreshInbox(email, options = {}) {
     document.getElementById('emailList').innerHTML = `
         <div class="imap-report-empty">
             <div class="inline-spinner"></div>
-            <span>${currentLang === 'tr' ? 'Mail listesi yukleniyor...' : 'Loading inbox...'}</span>
+            <span>${_tLit('Mail listesi yukleniyor...', 'Loading inbox...')}</span>
         </div>
     `;
     if (!preserveSelection) {
-        renderImapReportPlaceholder(
-            currentLang === 'tr'
-                ? 'Sag tarafta rapor icin bir e-posta sececeksiniz.'
-                : 'Select an email to load its health report.'
-        );
+        renderImapReportPlaceholder(_tLit('Sag tarafta rapor icin bir e-posta sececeksiniz.', 'Select an email to load its health report.'));
     }
 
     try {
@@ -2423,11 +2407,7 @@ async function refreshInbox(email, options = {}) {
         renderImapMessageList();
 
         if (!currentImapMessages.length) {
-            renderImapReportPlaceholder(
-                currentLang === 'tr'
-                    ? 'Bu hesapta listelenecek e-posta bulunamadi.'
-                    : 'No emails found for this account.'
-            );
+            renderImapReportPlaceholder(_tLit('Bu hesapta listelenecek e-posta bulunamadi.', 'No emails found for this account.'));
         }
     } catch (error) {
         currentImapMessages = [];
@@ -2458,7 +2438,7 @@ function renderImapMessageList() {
     if (!currentImapMessages.length) {
         list.innerHTML = `
             <div class="imap-report-empty">
-                ${currentLang === 'tr' ? 'Listelenecek mail bulunamadi.' : 'No messages to display.'}
+                ${_tLit('Listelenecek mail bulunamadi.', 'No messages to display.')}
             </div>
         `;
         if (loadMoreButton) {
@@ -2474,7 +2454,7 @@ function renderImapMessageList() {
             <input type="checkbox" id="imapSelectAll" ${allSelected ? 'checked' : ''}
                 onchange="toggleSelectAllImap(this.checked)"
                 style="width:15px;height:15px;cursor:pointer;accent-color:var(--blue,#60a5fa);flex-shrink:0">
-            <span class="text-muted" style="font-size:11px">${currentLang === 'tr' ? 'Tümünü seç' : 'Select all'} (${currentImapMessages.length})</span>
+            <span class="text-muted" style="font-size:11px">${_tLit('Tümünü seç', 'Select all')} (${currentImapMessages.length})</span>
         </div>`;
 
     list.innerHTML = selectAllHtml + currentImapMessages.map((message) => {
@@ -2501,8 +2481,8 @@ function renderImapMessageList() {
                         <div class="email-head">
                             <div class="email-head-main">
                                 <span class="email-from">${esc(from)}</span>
-                                ${isMonitoringCurrentMailbox ? `<span class="email-monitor-badge">${currentLang === 'tr' ? 'Izleniyor' : 'Monitoring'}</span>` : ''}
-                                ${isScanning ? `<span class="email-monitor-badge">${currentLang === 'tr' ? 'Taraniyor' : 'Scanning'}</span>` : ''}
+                                ${isMonitoringCurrentMailbox ? `<span class="email-monitor-badge">${_tLit('Izleniyor', 'Monitoring')}</span>` : ''}
+                                ${isScanning ? `<span class="email-monitor-badge">${_tLit('Taraniyor', 'Scanning')}</span>` : ''}
                             </div>
                             <span class="email-date">${formatDate(message.date, false)}</span>
                         </div>
@@ -2517,9 +2497,7 @@ function renderImapMessageList() {
         if (currentImapHasMore) {
             loadMoreButton.classList.remove('hidden');
             loadMoreButton.disabled = false;
-            loadMoreButton.innerHTML = currentLang === 'tr'
-                ? `⬇️ <span>Daha Fazla Yükle (${currentImapMessages.length}/${currentImapTotal})</span>`
-                : `⬇️ <span>Load More (${currentImapMessages.length}/${currentImapTotal})</span>`;
+            loadMoreButton.innerHTML = _tLit(`⬇️ <span>Daha Fazla Yükle (${currentImapMessages.length}/${currentImapTotal})</span>`, `⬇️ <span>Load More (${currentImapMessages.length}/${currentImapTotal})</span>`);
         } else {
             loadMoreButton.classList.add('hidden');
         }
@@ -2634,7 +2612,7 @@ async function scanSelected() {
         ? [...selectedImapUids]
         : (currentImapUid ? [currentImapUid] : []);
     if (!uids.length) {
-        alert(currentLang === 'tr' ? 'Önce listeden en az bir mail seçin' : 'Select at least one email from the list first');
+        alert(_tLit('Önce listeden en az bir mail seçin', 'Select at least one email from the list first'));
         return;
     }
     for (const uid of uids) {
@@ -2648,7 +2626,7 @@ function updateScanSelectedButton() {
     const count = selectedImapUids.size || (currentImapUid ? 1 : 0);
     button.disabled = !currentImapEmail || count === 0;
     if (selectedImapUids.size > 1) {
-        button.innerHTML = `✅ <span>${selectedImapUids.size} ${currentLang === 'tr' ? 'Mail Tara' : 'Mails Scan'}</span>`;
+        button.innerHTML = `✅ <span>${selectedImapUids.size} ${_tLit('Mail Tara', 'Mails Scan')}</span>`;
     } else {
         button.innerHTML = `✅ <span data-i18n="btn_scan_selected">${t('btn_scan_selected')}</span>`;
     }
@@ -2664,14 +2642,14 @@ function renderImapReportPlaceholder(message, tone = 'muted') {
 }
 
 function renderImapReportLoading(message) {
-    const subject = message?.subject || (currentLang === 'tr' ? 'Mail raporu yukleniyor' : 'Loading mail report');
+    const subject = message?.subject || (_tLit('Mail raporu yukleniyor', 'Loading mail report'));
     const from = message?.from?.name || message?.from?.address || '';
 
     document.getElementById('imapReportPane').innerHTML = `
         <div class="imap-report-loading">
             <div class="inline-spinner"></div>
             <div>
-                <div class="imap-group-title">${currentLang === 'tr' ? 'Saglik raporu hazirlaniyor' : 'Preparing health report'}</div>
+                <div class="imap-group-title">${_tLit('Saglik raporu hazirlaniyor', 'Preparing health report')}</div>
                 <div class="text-muted">${esc(subject)}${from ? ` - ${esc(from)}` : ''}</div>
             </div>
         </div>
@@ -2695,7 +2673,7 @@ function renderImapReport(data, message = null) {
                 <span>${data.score}</span>
             </div>
             <div class="imap-health-copy">
-                <h3 style="color:${data.color}">${esc(currentLang === 'tr' ? data.labelTR : data.labelEN)}</h3>
+                <h3 style="color:${data.color}">${esc(_tLit(data.labelTR, data.labelEN))}</h3>
                 <p>${esc(buildExecutiveSummaryText(data))}</p>
             </div>
             <div class="imap-health-actions">
@@ -2844,9 +2822,7 @@ window.imapMobileBackToList = function() {
 // Eski cache silinir, yeni tarama yapılır, sonuç kaydedilir ve gösterilir.
 window.reScanCurrentImapMail = function() {
     if (!currentImapEmail || !currentImapUid) {
-        alert(currentLang === 'tr'
-            ? 'Yeniden taranacak mail seçili değil.'
-            : 'No selected mail to re-scan.');
+        alert(_tLit('Yeniden taranacak mail seçili değil.', 'No selected mail to re-scan.'));
         return;
     }
     // forceRefresh=true → openImapMail eski cache'i siler, sunucudan yeni tarama yapar
@@ -3192,8 +3168,8 @@ function renderImapAiSection(analysis, error) {
     }
 
     const modelName  = analysis._model || 'gpt-4o-mini';
-    const summary    = currentLang === 'tr' ? analysis.summaryTR  : analysis.summaryEN;
-    const narrative  = currentLang === 'tr' ? analysis.attackNarrativeTR : analysis.attackNarrativeEN;
+    const summary    = _tLit(analysis.summaryTR, analysis.summaryEN);
+    const narrative  = _tLit(analysis.attackNarrativeTR, analysis.attackNarrativeEN);
     const sev        = severityFromThreatLevel(analysis.threatLevel);
 
     return `
@@ -3235,9 +3211,9 @@ function renderImapAiSection(analysis, error) {
                 KÖTÜ NİYET SKORU: <strong style="font-size:16px;">${esc(String(analysis.maliciousIntentScore || 0))}/100</strong>
             </div>
 
-            ${renderAnalysisList(currentLang === 'tr' ? 'Kırmızı Bayraklar' : 'Red Flags', analysis.redFlagsTR)}
-            ${renderAnalysisList(currentLang === 'tr' ? 'Sosyal Mühendislik Sinyalleri' : 'Social Engineering', analysis.socialEngineeringSignalsTR)}
-            ${renderAnalysisList(currentLang === 'tr' ? 'Önerilen Aksiyonlar' : 'Recommended Actions', analysis.recommendedActionsTR)}
+            ${renderAnalysisList(_tLit('Kırmızı Bayraklar', 'Red Flags'), analysis.redFlagsTR)}
+            ${renderAnalysisList(_tLit('Sosyal Mühendislik Sinyalleri', 'Social Engineering'), analysis.socialEngineeringSignalsTR)}
+            ${renderAnalysisList(_tLit('Önerilen Aksiyonlar', 'Recommended Actions'), analysis.recommendedActionsTR)}
         </div>
     `;
 }
@@ -3246,9 +3222,7 @@ function renderImapClaudeSection(analysis) {
     if (!analysis) return '';
     // Claude returns object: { threatLevel, category, summaryTR, summaryEN, suspiciousElements }
     if (Array.isArray(analysis) || (!analysis.summaryTR && !analysis.summaryEN)) return '';
-    const sum = currentLang === 'tr'
-        ? (analysis.summaryTR || analysis.summaryEN || '')
-        : (analysis.summaryEN || analysis.summaryTR || '');
+    const sum = _tLit(analysis.summaryTR || analysis.summaryEN || '', analysis.summaryEN || analysis.summaryTR || '');
     return `
         <div class="imap-finding-group" style="margin-bottom:16px;">
             <div class="imap-group-title">
@@ -3269,7 +3243,7 @@ function renderImapClaudeSection(analysis) {
                 </div>
             </div>` : ''}
             ${analysis.suspiciousElements?.length ? renderAnalysisList(
-                currentLang === 'tr' ? 'Şüpheli Unsurlar' : 'Suspicious Elements',
+                _tLit('Şüpheli Unsurlar', 'Suspicious Elements'),
                 analysis.suspiciousElements
             ) : ''}
         </div>
@@ -3278,13 +3252,13 @@ function renderImapClaudeSection(analysis) {
 
 function groupFindingsByCategory(findings) {
     const labels = {
-        header:      currentLang === 'tr' ? 'Header Kontrolleri'             : 'Header Checks',
-        content:     currentLang === 'tr' ? 'Icerik Kontrolleri'             : 'Content Checks',
-        link:        currentLang === 'tr' ? 'Link Kontrolleri'                : 'Link Checks',
-        attachment:  currentLang === 'tr' ? 'Ek Kontrolleri'                 : 'Attachment Checks',
-        virusTotal:  currentLang === 'tr' ? 'Tespit Edilen Tehdit Tipleri'  : 'Detected Threat Types',
-        abuse:       currentLang === 'tr' ? 'Link Tarama Motoru Sonuçları'  : 'Link Scan Engine Results',
-        general:     currentLang === 'tr' ? 'Genel Kontroller'                : 'General Checks'
+        header:      _tLit('Header Kontrolleri', 'Header Checks'),
+        content:     _tLit('Icerik Kontrolleri', 'Content Checks'),
+        link:        _tLit('Link Kontrolleri', 'Link Checks'),
+        attachment:  _tLit('Ek Kontrolleri', 'Attachment Checks'),
+        virusTotal:  _tLit('Tespit Edilen Tehdit Tipleri', 'Detected Threat Types'),
+        abuse:       _tLit('Link Tarama Motoru Sonuçları', 'Link Scan Engine Results'),
+        general:     _tLit('Genel Kontroller', 'General Checks')
         // 'ai' kategorisi IMAP görünümünde renderImapAiSection tarafından ayrıca gösterilir
     };
 
@@ -3347,7 +3321,7 @@ function connectWebSocket() {
             loadImapAccounts();
             if (currentMode === 'scan-mailbox') loadScanMailboxes();
             alert(
-                (currentLang === 'tr' ? 'Otomatik izleme baslatildi: ' : 'Automatic monitoring started: ')
+                (_tLit('Otomatik izleme baslatildi: ', 'Automatic monitoring started: '))
                 + msg.email
             );
         }
@@ -3358,7 +3332,7 @@ function connectWebSocket() {
             loadImapAccounts();
             if (currentMode === 'scan-mailbox') loadScanMailboxes();
             alert(
-                (currentLang === 'tr' ? 'Otomatik izleme durduruldu: ' : 'Automatic monitoring stopped: ')
+                (_tLit('Otomatik izleme durduruldu: ', 'Automatic monitoring stopped: '))
                 + msg.email
             );
         }
@@ -3380,18 +3354,18 @@ function startMonitor() {
         .then((res) => res.json())
         .then((accounts) => {
             if (!accounts.length) {
-                alert(currentLang === 'tr' ? 'Kayitli IMAP hesabi yok' : 'No IMAP account');
+                alert(_tLit('Kayitli IMAP hesabi yok', 'No IMAP account'));
                 return;
             }
 
             if (!ws || ws.readyState !== WebSocket.OPEN) {
-                alert(currentLang === 'tr' ? 'WebSocket baglantisi hazir degil' : 'WebSocket connection is not ready yet');
+                alert(_tLit('WebSocket baglantisi hazir degil', 'WebSocket connection is not ready yet'));
                 return;
             }
 
             const targetEmail = currentImapEmail || accounts[0]?.email;
             if (!targetEmail) {
-                alert(currentLang === 'tr' ? 'Once bir hesap secin' : 'Select an account first');
+                alert(_tLit('Once bir hesap secin', 'Select an account first'));
                 return;
             }
 
@@ -3418,8 +3392,8 @@ function updateMonitorButton() {
     button.classList.toggle('btn-ghost', !isActive);
 
     const label = isActive
-        ? (currentLang === 'tr' ? 'Izlemeyi Durdur' : 'Stop Monitoring')
-        : (currentLang === 'tr' ? 'Otomatik Izle' : 'Auto Monitor');
+        ? (_tLit('Izlemeyi Durdur', 'Stop Monitoring'))
+        : (_tLit('Otomatik Izle', 'Auto Monitor'));
 
     button.innerHTML = `${label}${targetEmail ? ` (${esc(targetEmail)})` : ''}${activeCount ? ` [${activeCount}]` : ''}`;
     updateMonitorIndicators();
@@ -3476,7 +3450,7 @@ function showImapBackgroundScanNotification(result, message) {
     notification.innerHTML = `
         <div class="risk-score" style="color:${result.color};width:48px;height:48px;font-size:18px">${result.score}</div>
         <div>
-            <strong>${currentLang === 'tr' ? 'Arka plan taramasi tamamlandi' : 'Background scan completed'}</strong><br>
+            <strong>${_tLit('Arka plan taramasi tamamlandi', 'Background scan completed')}</strong><br>
             <span class="text-muted" style="font-size:12px">${esc(message?.subject || result.emailMeta?.subject || 'Mail')}</span>
         </div>
     `;
@@ -3536,13 +3510,11 @@ async function activateLicense() {
                 ${t('license_valid')}<br>
                 ${esc(data.plan.toUpperCase())} ${esc(data.tier || '')} — ${esc(data.tierInfo?.label || '')}
                 <br>
-                ${currentLang === 'tr' ? 'Aylık limit' : 'Monthly limit'}: ${limitLabel}
+                ${_tLit('Aylık limit', 'Monthly limit')}: ${limitLabel}
                 <br>
-                ${currentLang === 'tr' ? 'Son kullanma' : 'Expires'}: ${formatDate(data.expiryDate, true)}
+                ${_tLit('Son kullanma', 'Expires')}: ${formatDate(data.expiryDate, true)}
                 <div style="font-size:11px;margin-top:8px;color:var(--green)">
-                    ✓ ${currentLang === 'tr'
-                        ? 'Lisans sunucuya kaydedildi — restart ve versiyon geçişlerinde otomatik korunur.'
-                        : 'License saved on server — preserved across restarts and upgrades.'}
+                    ✓ ${_tLit('Lisans sunucuya kaydedildi — restart ve versiyon geçişlerinde otomatik korunur.', 'License saved on server — preserved across restarts and upgrades.')}
                 </div>
             </div>
         `;
@@ -4112,7 +4084,7 @@ function exportPDF() {
     const threatTags = buildThreatTags(result);
     const recommendations = buildRecommendations(result);
     const risky = result.level !== 'safe';
-    const levelLabel = asciiPdfText(currentLang === 'tr' ? (result.labelTR || result.labelEN || result.level) : (result.labelEN || result.level));
+    const levelLabel = asciiPdfText(_tLit(result.labelTR || result.labelEN || result.level, result.labelEN || result.level));
     const verdictLabel = risky ? 'RISKLI' : 'GUVENLI';
     const bannerColor = pdfHexToRgb(result.color || '#94a3b8');
     const dangerColor = risky ? [251, 113, 133] : [52, 211, 153];
@@ -5239,14 +5211,14 @@ function timeAgo(dateStr) {
     const diff = Date.now() - date.getTime();
     const mins = Math.floor(diff / 60000);
 
-    if (mins < 1) return currentLang === 'tr' ? 'az once' : 'just now';
-    if (mins < 60) return `${mins} ${currentLang === 'tr' ? 'dk once' : 'min ago'}`;
+    if (mins < 1) return _tLit('az once', 'just now');
+    if (mins < 60) return `${mins} ${_tLit('dk once', 'min ago')}`;
 
     const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours} ${currentLang === 'tr' ? 'sa once' : 'hr ago'}`;
+    if (hours < 24) return `${hours} ${_tLit('sa once', 'hr ago')}`;
 
     const days = Math.floor(hours / 24);
-    return `${days} ${currentLang === 'tr' ? 'gun once' : 'days ago'}`;
+    return `${days} ${_tLit('gun once', 'days ago')}`;
 }
 
 // ============================================================
@@ -5352,7 +5324,7 @@ async function loadScanMailboxes() {
                 realtimeList.innerHTML = monitors.length
                     ? monitors.map(m => {
                         const isActive = activeMonitorEmails.has(m.email);
-                        const updated = m.updatedAt ? new Date(m.updatedAt).toLocaleString(currentLang === 'tr' ? 'tr-TR' : 'en-US') : '-';
+                        const updated = m.updatedAt ? new Date(m.updatedAt).toLocaleString(_tLit('tr-TR', 'en-US')) : '-';
                         const smbEntry = reportToMap.get(String(m.email || '').toLowerCase());
                         const recipientLabel = smbEntry?.reportToForwarder
                             ? '📤 İletilen adrese'
@@ -5669,9 +5641,9 @@ function onScanMailboxReportModeChange(select) {
 
 function scanMailboxReportModeLabel(reportMode) {
     if (reportMode === 'all') {
-        return currentLang === 'tr' ? 'tum mailler' : 'all emails';
+        return _tLit('tum mailler', 'all emails');
     }
-    return currentLang === 'tr' ? 'yalniz riskli' : 'risky only';
+    return _tLit('yalniz riskli', 'risky only');
 }
 
 async function saveScanMailbox() {
@@ -5698,15 +5670,11 @@ async function saveScanMailbox() {
         return;
     }
     if (!data.reportToForwarder && !data.reportTo) {
-        showSmError(currentLang === 'tr'
-            ? '⚠️ "Belirli adrese gönder" seçildiğinde bir e-posta adresi girilmesi zorunludur.'
-            : '⚠️ Please enter a recipient email address.');
+        showSmError(_tLit('⚠️ "Belirli adrese gönder" seçildiğinde bir e-posta adresi girilmesi zorunludur.', '⚠️ Please enter a recipient email address.'));
         return;
     }
     if (data.reportMode === 'all' && licenseInfo?.plan !== 'enterprise') {
-        showSmError(currentLang === 'tr'
-            ? '❌ "Tüm mailler" modu yalnızca Enterprise lisansında kullanılabilir. Lütfen "Sadece riskli mailler" seçeneğini kullanın.'
-            : '❌ "All emails" report mode requires an Enterprise license. Please use "Risky only".');
+        showSmError(_tLit('❌ "Tüm mailler" modu yalnızca Enterprise lisansında kullanılabilir. Lütfen "Sadece riskli mailler" seçeneğini kullanın.', '❌ "All emails" report mode requires an Enterprise license. Please use "Risky only".'));
         // Seçimi risky'ye döndür
         const rm = document.getElementById('smReportMode');
         if (rm) rm.value = 'risky';
@@ -5731,7 +5699,7 @@ async function saveScanMailbox() {
             closeScanMailboxModal();
             loadScanMailboxes();
         } else {
-            showSmError(`❌ ${result.error || (currentLang === 'tr' ? 'Kayıt başarısız' : 'Save failed')}`);
+            showSmError(`❌ ${result.error || (_tLit('Kayıt başarısız', 'Save failed'))}`);
         }
     } catch (e) {
         showSmError(`❌ ${e.message}`);
@@ -5742,10 +5710,10 @@ async function saveScanMailbox() {
 
 async function deleteScanMailbox(imapEmail) {
     const ok = await showConfirm({
-        title: currentLang === 'tr' ? 'Tarama Posta Kutusu Sil' : 'Delete Scan Mailbox',
-        message: currentLang === 'tr' ? `${imapEmail} silinsin mi?` : `Delete ${imapEmail}?`,
-        confirmText: currentLang === 'tr' ? 'Sil' : 'Delete',
-        cancelText: currentLang === 'tr' ? 'Vazgeç' : 'Cancel',
+        title: _tLit('Tarama Posta Kutusu Sil', 'Delete Scan Mailbox'),
+        message: _tLit(`${imapEmail} silinsin mi?`, `Delete ${imapEmail}?`),
+        confirmText: _tLit('Sil', 'Delete'),
+        cancelText: _tLit('Vazgeç', 'Cancel'),
         danger: true
     });
     if (!ok) return;
@@ -5842,9 +5810,7 @@ async function serviceAction(action) {
 
 async function updateScanMailboxReportMode(imapEmail, reportMode) {
     if (reportMode === 'all' && licenseInfo?.plan !== 'enterprise') {
-        alert(currentLang === 'tr'
-            ? '❌ "Tüm mailler" modu yalnızca Enterprise lisansında kullanılabilir.'
-            : '❌ "All emails" report mode requires an Enterprise license.');
+        alert(_tLit('❌ "Tüm mailler" modu yalnızca Enterprise lisansında kullanılabilir.', '❌ "All emails" report mode requires an Enterprise license.'));
         loadScanMailboxes(); // listeyi sıfırla (select'i geri al)
         return;
     }
@@ -7400,9 +7366,7 @@ function exportHistoryCsv() {
 function openListsPanel() {
     // Sadece müşteri admin açabilir. Müşteri user için 'sınırlı erişim' uyarısı.
     if (getCustomerRole() === 'user') {
-        alert(currentLang === 'tr'
-            ? 'Allowlist / Blocklist yönetimi yalnız müşteri yönetici hesabıyla yapılabilir.'
-            : 'Allowlist / Blocklist management is admin-only.');
+        alert(_tLit('Allowlist / Blocklist yönetimi yalnız müşteri yönetici hesabıyla yapılabilir.', 'Allowlist / Blocklist management is admin-only.'));
         return;
     }
     const panel = document.getElementById('listsPanel');
