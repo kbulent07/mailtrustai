@@ -110,3 +110,4 @@ data/mariadb/
 data/license-server/
 apps/customer/data/
 apps/customer/logs/
+login.tmp.json
