@@ -27,7 +27,8 @@ if (!SESSION_SECRET || SESSION_SECRET === 'CHANGE_ME') {
     }
     logger.warn('[dealer] UYARI: DEALER_SESSION_SECRET tanımsız — yalnızca development için.');
 }
-const SESSION_KEY = SESSION_SECRET || 'dev-only-placeholder';
+// Development fallback: rastgele per-boot key — yeniden başlatmada session'lar sıfırlanır.
+const SESSION_KEY = SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
 // Demo modu yalnızca development'ta serbest.
 const DEMO_MODE = env('MSA_DEALER_AUTH_MODE') === 'demo';

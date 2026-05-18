@@ -12,8 +12,20 @@ const customerUserStore = require('../storage/customerUserStore');
 
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 saat
 
+// Development fallback: MSA_LICENSE_SECRET tanımsızsa rastgele per-boot secret.
+// Production'da process.exit(1) beklenir — aşağıya ulaşmamalı.
+let _devFallbackSecret = null;
 function _getSecret() {
-    return (process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#') + '|customer';
+    const s = process.env.MSA_LICENSE_SECRET;
+    if (s && s !== 'CHANGE_ME') return s + '|customer';
+    if (!_devFallbackSecret) {
+        _devFallbackSecret = require('crypto').randomBytes(32).toString('hex');
+        require('@mailtrustai/shared').logger.warn(
+            '[customerAuth] UYARI: MSA_LICENSE_SECRET tanımsız — rastgele geçici secret kullanılıyor.' +
+            ' Yeniden başlatmada mevcut token\'lar geçersiz olacak.'
+        );
+    }
+    return _devFallbackSecret + '|customer';
 }
 
 /**

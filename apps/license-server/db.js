@@ -66,6 +66,9 @@ async function _waitMaria() {
     const retries = envInt('MARIADB_CONNECT_RETRIES', 20);
     const delayMs = envInt('MARIADB_CONNECT_DELAY_MS', 3000);
 
+    // multipleStatements: havuzda KAPALI bırakılır (SQL injection riski).
+    // Migration bağlantısı bu config'e multipleStatements:true ekleyerek
+    // ayrı bir createConnection() ile oluşturulur; _applyMariaMigrations'a geçirilir.
     const config = {
         host: env('MARIADB_HOST', 'mariadb'),
         port: envInt('MARIADB_PORT', 3306),
@@ -75,8 +78,7 @@ async function _waitMaria() {
         charset: 'utf8mb4',
         waitForConnections: true,
         connectionLimit: envInt('MARIADB_POOL_SIZE', 10),
-        queueLimit: 0,
-        multipleStatements: true
+        queueLimit: 0
     };
 
     for (let attempt = 1; attempt <= retries; attempt += 1) {
@@ -84,7 +86,7 @@ async function _waitMaria() {
             pool = mysql.createPool(config);
             await pool.query('SELECT 1');
             logger.info(`[license-server] MariaDB bağlantısı hazır: ${config.host}:${config.port}/${config.database}`);
-            return;
+            return config;
         } catch (error) {
             if (pool) {
                 try { await pool.end(); } catch (_) { /* ignore */ }
@@ -96,38 +98,43 @@ async function _waitMaria() {
     }
 }
 
-async function _applyMariaMigrations() {
-    await pool.query(`CREATE TABLE IF NOT EXISTS _migrations (
-        id VARCHAR(255) PRIMARY KEY,
-        applied_at BIGINT NOT NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`);
+// Migration'lar için multipleStatements:true olan AYRI bir bağlantı kullanılır.
+// Havuz (pool) bunu desteklemez — her execute() çağrısında tek statement zorunlu.
+async function _applyMariaMigrations(baseConfig) {
+    const mysql = require('mysql2/promise');
+    const migConn = await mysql.createConnection({ ...baseConfig, multipleStatements: true });
+    try {
+        await migConn.query(`CREATE TABLE IF NOT EXISTS _migrations (
+            id VARCHAR(255) PRIMARY KEY,
+            applied_at BIGINT NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`);
 
-    const [rows] = await pool.query('SELECT id FROM _migrations');
-    const applied = new Set(rows.map((row) => row.id));
-    for (const file of _mariaMigrationFiles()) {
-        const id = _migrationId(file);
-        if (applied.has(id)) continue;
-        const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
-        const conn = await pool.getConnection();
-        try {
-            await conn.beginTransaction();
-            await conn.query(sql);
-            await conn.execute('INSERT INTO _migrations(id, applied_at) VALUES(?, ?)', [id, Date.now()]);
-            await conn.commit();
-            logger.info(`[license-server] mariadb migration uygulandı: ${file}`);
-        } catch (error) {
-            await conn.rollback();
-            throw error;
-        } finally {
-            conn.release();
+        const [rows] = await migConn.query('SELECT id FROM _migrations');
+        const applied = new Set(rows.map((row) => row.id));
+        for (const file of _mariaMigrationFiles()) {
+            const id = _migrationId(file);
+            if (applied.has(id)) continue;
+            const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+            await migConn.beginTransaction();
+            try {
+                await migConn.query(sql);
+                await migConn.execute('INSERT INTO _migrations(id, applied_at) VALUES(?, ?)', [id, Date.now()]);
+                await migConn.commit();
+                logger.info(`[license-server] mariadb migration uygulandı: ${file}`);
+            } catch (error) {
+                await migConn.rollback();
+                throw error;
+            }
         }
+    } finally {
+        try { await migConn.end(); } catch (_) { /* ignore */ }
     }
 }
 
 const ready = (async () => {
     if (DB_CLIENT === 'mariadb') {
-        await _waitMaria();
-        await _applyMariaMigrations();
+        const baseConfig = await _waitMaria();
+        await _applyMariaMigrations(baseConfig);
         db = pool;
         return;
     }

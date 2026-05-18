@@ -13,6 +13,12 @@ const { all, get, run, audit, isMaria } = require('../db');
 
 const router = express.Router();
 
+// LIKE wildcard injection koruması: %, _ ve \ karakterlerini escape eder.
+// MySQL/MariaDB ve SQLite her ikisinde de \ varsayılan escape karakteridir.
+function escapeLike(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
 const ADMIN_TOKEN = env('ADMIN_PANEL_TOKEN') || '';
 const isProd = String(env('NODE_ENV', 'development')).toLowerCase() === 'production';
 if (!ADMIN_TOKEN && isProd) {
@@ -147,8 +153,9 @@ router.get('/admin/customers', adminAuth, asyncH(async (req, res) => {
     if (plan)     { where.push('l.plan = ?');      params.push(plan); }
     if (status)   { where.push('l.status = ?');    params.push(status); }
     if (q)        {
+        const qEsc = escapeLike(q);
         where.push('(c.company_name LIKE ? OR c.email LIKE ? OR c.id LIKE ? OR l.label LIKE ?)');
-        params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+        params.push(`%${qEsc}%`, `%${qEsc}%`, `%${qEsc}%`, `%${qEsc}%`);
     }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
@@ -259,8 +266,9 @@ router.get('/admin/customers-grouped', adminAuth, asyncH(async (req, res) => {
     let params = [];
     if (dealerId) { where.push('c.dealer_id = ?'); params.push(dealerId); }
     if (q)        {
+        const qEsc = escapeLike(q);
         where.push('(c.company_name LIKE ? OR c.email LIKE ? OR c.id LIKE ?)');
-        params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+        params.push(`%${qEsc}%`, `%${qEsc}%`, `%${qEsc}%`);
     }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
@@ -604,9 +612,9 @@ router.get('/admin/audit', adminAuth, asyncH(async (req, res) => {
 
     let where = [];
     let params = [];
-    if (actor)  { where.push('actor LIKE ?');  params.push(`%${actor}%`); }
-    if (action) { where.push('action LIKE ?'); params.push(`%${action}%`); }
-    if (target) { where.push('target LIKE ?'); params.push(`%${target}%`); }
+    if (actor)  { where.push('actor LIKE ?');  params.push(`%${escapeLike(actor)}%`); }
+    if (action) { where.push('action LIKE ?'); params.push(`%${escapeLike(action)}%`); }
+    if (target) { where.push('target LIKE ?'); params.push(`%${escapeLike(target)}%`); }
     if (since)  {
         const s = Number(since);
         if (Number.isFinite(s)) { where.push('ts >= ?'); params.push(s); }
