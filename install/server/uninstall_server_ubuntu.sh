@@ -1,18 +1,27 @@
 #!/usr/bin/env bash
 # ============================================================
-# MailTrustAI — Ubuntu Sunucu Kaldırma Betiği
+# MailTrustAI — Ubuntu Sunucu Kaldirma Betigi
 #
-# Kaldırır: license-server + dealer panel + MariaDB konteynerları
+# Kaldirir: license-server + dealer panel + MariaDB konteynerlari
 #
-# Kullanım:
+# Kullanim (interaktif):
 #   sudo bash install/server/uninstall_server_ubuntu.sh
 #
-# Davranış:
-#   • Konteynerler her zaman durdurulur ve kaldırılır.
-#   • MariaDB verileri silinsin mi? → ayrıca sorulur.
-#   • "Evet, sil" seçilirse tüm kurulum (volume, image, dizin) silinir.
+# Otomasyon (cron / CI):
+#   sudo UNATTENDED=true PURGE_DATA=false bash uninstall_server_ubuntu.sh
+#   sudo UNATTENDED=true PURGE_DATA=true KEEP_BACKUPS=true bash uninstall_server_ubuntu.sh
+#
+# Env varsayilanlari:
+#   UNATTENDED      = false  (true ise hicbir soru sorulmaz)
+#   PURGE_DATA      = false  (true ise volume + dizin de silinir)
+#   KEEP_BACKUPS    = true   (PURGE_DATA=true iken backups/ korunsun mu)
+#   INSTALL_DIR     = /opt/mailtrustai
+#
+# Davranis:
+#   - Konteynerler her zaman durdurulur ve kaldirilir.
+#   - PURGE_DATA=true (veya kullanici "EVET SIL" yazarsa) volume + dizin silinir.
 # ============================================================
-set -euo pipefail
+set -Euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -32,10 +41,21 @@ echo "  ║   MailTrustAI  —  Sunucu Kaldırma Betiği (Ubuntu)   ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
+# ─── Otomasyon parametreleri ─────────────────────────────────
+IS_INTERACTIVE=true
+if [[ ! -t 0 ]] || [[ "${UNATTENDED:-false}" == "true" ]]; then
+    IS_INTERACTIVE=false
+fi
+
 # ─── Kurulum dizinini bul ────────────────────────────────────
 DEFAULT_INSTALL_DIR="/opt/mailtrustai"
-read -rp "  Kurulum dizini [${DEFAULT_INSTALL_DIR}]: " INPUT_DIR
-INSTALL_DIR="${INPUT_DIR:-$DEFAULT_INSTALL_DIR}"
+if [[ "$IS_INTERACTIVE" == "true" ]]; then
+    read -rp "  Kurulum dizini [${DEFAULT_INSTALL_DIR}]: " INPUT_DIR || INPUT_DIR=""
+    INSTALL_DIR="${INPUT_DIR:-${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}}"
+else
+    INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+    info "Non-interactive mod: INSTALL_DIR=$INSTALL_DIR"
+fi
 ENV_FILE="$INSTALL_DIR/.env"
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.server.yml"
 
@@ -48,23 +68,35 @@ fi
 [[ -f "$COMPOSE_FILE" ]] || fatal "docker-compose.server.yml bulunamadı. Kurulum dizinini kontrol edin."
 
 # ─── MariaDB verileri silinsin mi? ───────────────────────────
-echo ""
-echo -e "${YELLOW}  Konteynerler (license-server, dealer, MariaDB) durdurulacak ve kaldırılacak.${NC}"
-echo ""
-read -rp "  MariaDB verileri (lisans DB) SİLİNSİN mi? [e/H]: " DEL_DB
-DEL_DB="${DEL_DB:-H}"
-
 DELETE_DATA=false
-if [[ "${DEL_DB,,}" == "e" || "${DEL_DB,,}" == "y" || "${DEL_DB,,}" == "evet" || "${DEL_DB,,}" == "yes" ]]; then
+
+if [[ "$IS_INTERACTIVE" == "true" ]]; then
     echo ""
-    echo -e "${RED}  ⚠  UYARI: MariaDB verileri, license-server verileri ve kurulum dizini${NC}"
-    echo -e "${RED}     kalıcı olarak silinecek. Bu işlem GERİ ALINAMAZ!${NC}"
+    echo -e "${YELLOW}  Konteynerler (license-server, dealer, MariaDB) durdurulacak ve kaldirilacak.${NC}"
     echo ""
-    read -rp "  Emin misiniz? Onaylamak için 'EVET SİL' yazın: " CONFIRM
-    if [[ "$CONFIRM" == "EVET SİL" ]]; then
+    read -rp "  MariaDB verileri (lisans DB) SILINSIN mi? [e/H]: " DEL_DB || DEL_DB="H"
+    DEL_DB="${DEL_DB:-H}"
+
+    if [[ "${DEL_DB,,}" == "e" || "${DEL_DB,,}" == "y" || "${DEL_DB,,}" == "evet" || "${DEL_DB,,}" == "yes" ]]; then
+        echo ""
+        echo -e "${RED}  ! UYARI: MariaDB verileri, license-server verileri ve kurulum dizini${NC}"
+        echo -e "${RED}    kalici olarak silinecek. Bu islem GERI ALINAMAZ!${NC}"
+        echo ""
+        read -rp "  Emin misiniz? Onaylamak icin 'EVET SIL' (veya 'EVET SİL') yazin: " CONFIRM || CONFIRM=""
+        # ASCII ve Turkce I her ikisini de kabul et (locale uyumlulugu).
+        if [[ "$CONFIRM" == "EVET SIL" || "$CONFIRM" == "EVET SİL" ]]; then
+            DELETE_DATA=true
+        else
+            info "Veri silme iptal edildi. Yalnizca konteynerler kaldirilacak."
+        fi
+    fi
+else
+    # Non-interactive: PURGE_DATA env var ile yonet
+    if [[ "${PURGE_DATA:-false}" == "true" ]]; then
         DELETE_DATA=true
+        warn "Non-interactive PURGE_DATA=true: TUM veriler silinecek!"
     else
-        info "Veri silme iptal edildi. Yalnızca konteynerler kaldırılacak."
+        info "Non-interactive PURGE_DATA=false: yalnizca konteynerler kaldirilacak."
     fi
 fi
 
@@ -121,18 +153,33 @@ if [[ "$DELETE_DATA" == "true" ]]; then
     fi
 
     if [[ -d "$INSTALL_DIR" ]]; then
-        if [[ -d "$INSTALL_DIR/backups" ]] && compgen -G "$INSTALL_DIR/backups/*" > /dev/null 2>&1; then
-            echo ""
-            warn "Yedek dosyaları mevcut! Silmeden önce incelemeniz önerilir:"
-            ls -lh "$INSTALL_DIR/backups/" 2>/dev/null || true
-            echo ""
-            read -rp "  Yedekleri de sil? [e/H]: " DEL_BKUP
+        HAS_BACKUPS=false
+        [[ -d "$INSTALL_DIR/backups" ]] && compgen -G "$INSTALL_DIR/backups/*" > /dev/null 2>&1 && HAS_BACKUPS=true
+
+        if [[ "$HAS_BACKUPS" == "true" ]]; then
+            DEL_BKUP="H"  # Default: yedekleri koru
+            if [[ "$IS_INTERACTIVE" == "true" ]]; then
+                echo ""
+                warn "Yedek dosyalari mevcut! Silmeden once incelemeniz onerilir:"
+                ls -lh "$INSTALL_DIR/backups/" 2>/dev/null || true
+                echo ""
+                read -rp "  Yedekleri de sil? [e/H]: " DEL_BKUP || DEL_BKUP="H"
+            else
+                # Non-interactive: KEEP_BACKUPS=false ile yedekler de silinir
+                if [[ "${KEEP_BACKUPS:-true}" == "false" ]]; then
+                    DEL_BKUP="e"
+                    warn "Non-interactive KEEP_BACKUPS=false: yedekler de silinecek!"
+                else
+                    info "Non-interactive KEEP_BACKUPS=true: yedekler korunacak."
+                fi
+            fi
+
             if [[ "${DEL_BKUP,,}" == "e" || "${DEL_BKUP,,}" == "y" ]]; then
                 rm -rf "$INSTALL_DIR"
                 ok "Kurulum dizini tamamen silindi: $INSTALL_DIR"
             else
-                rm -rf "$INSTALL_DIR"/{docker-compose.server.yml,.env,mailtrustai-ctl.sh,.repo_path,logs} 2>/dev/null || true
-                ok "Kurulum dosyaları silindi. Yedekler korundu: $INSTALL_DIR/backups/"
+                rm -rf "$INSTALL_DIR"/{docker-compose.server.yml,.env,mailtrustai-ctl.sh,.repo_path,.install_success,logs} 2>/dev/null || true
+                ok "Kurulum dosyalari silindi. Yedekler korundu: $INSTALL_DIR/backups/"
             fi
         else
             rm -rf "$INSTALL_DIR"

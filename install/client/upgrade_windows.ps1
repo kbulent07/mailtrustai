@@ -132,21 +132,26 @@ $EnvBackup = Join-Path $BackupDir ".env.pre-upgrade.$TS"
 Copy-Item $EnvFile $EnvBackup -Force
 Ok "Env yedegi: $EnvBackup"
 
-# customer-data volume snapshot
-$volExists = docker volume ls --format '{{.Name}}' 2>$null | Select-String -Pattern '^mailtrustai-customer_customer-data$' -Quiet
-if ($volExists) {
-    Info "customer-data volume snapshot aliniyor..."
-    $tarName = "customer-data-pre-upgrade.$TS.tar.gz"
-    docker run --rm `
-        -v "mailtrustai-customer_customer-data:/data:ro" `
-        -v "${BackupDir}:/backup" `
-        alpine tar czf "/backup/$tarName" -C /data . 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        Ok "Veri yedegi: $BackupDir\$tarName"
-    } else {
-        Warn "customer-data yedegi alinamadi (devam ediliyor)."
+# Volume snapshot'lari — hem customer-data hem customer-logs
+function Backup-Volume($volName, $label) {
+    $exists = docker volume ls --format '{{.Name}}' 2>$null |
+        Select-String -Pattern "^$volName$" -Quiet
+    if ($exists) {
+        Info "$label volume snapshot aliniyor..."
+        $tarName = "$label-pre-upgrade.$TS.tar.gz"
+        docker run --rm `
+            -v "${volName}:/data:ro" `
+            -v "${BackupDir}:/backup" `
+            alpine tar czf "/backup/$tarName" -C /data . 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Ok "$label yedegi: $BackupDir\$tarName"
+        } else {
+            Warn "$label yedegi alinamadi (devam ediliyor)."
+        }
     }
 }
+Backup-Volume "mailtrustai-customer_customer-data" "customer-data"
+Backup-Volume "mailtrustai-customer_customer-logs" "customer-logs"
 
 # --- 4. Yeni surumu hazirla --------------------------------------------------
 Step "4/7  Yeni surum hazirlaniyor..."

@@ -82,6 +82,35 @@ ok "Kurulum: $INSTALL_DIR"
 ok "Env    : $ENV_FILE"
 ok "Compose: $COMPOSE_FILE"
 
+# Pre-flight: kurulum saglikli mi? Eger degilse upgrade'i tehlikeli
+# (yarida kalmis kurulum uzerine pull = double trouble) — onayla.
+if [[ -f "$INSTALL_DIR/.install_success" ]]; then
+    INSTALL_INFO=$(grep -E "^INSTALL_DATE=" "$INSTALL_DIR/.install_success" | cut -d= -f2-)
+    ok "Saglikli kurulum tespit edildi: $INSTALL_INFO"
+else
+    warn "Kurulum marker'i (.install_success) bulunamadi."
+    warn "Onceki kurulum yarida kalmis olabilir; upgrade ondan once cozulmeli."
+    if [[ "${SKIP_HEALTH_CHECK:-false}" != "true" ]]; then
+        # Mevcut servis cevap veriyor mu?
+        LS_PORT_CHECK=$(grep -E '^LICENSE_SERVER_PORT=' "$ENV_FILE" | cut -d= -f2 | tr -d ' \r\n')
+        LS_PORT_CHECK="${LS_PORT_CHECK:-3200}"
+        if curl -sf "http://localhost:${LS_PORT_CHECK}/healthz" 2>/dev/null | grep -q '"ok":true'; then
+            ok "License-server cevap veriyor (saglikli) — upgrade devam."
+        else
+            warn "License-server /healthz cevap vermiyor."
+            warn "Onerilen: once kurulumu duzeltin"
+            warn "  sudo RESET=true bash install/server/install_server_ubuntu.sh"
+            if [[ "${UNATTENDED:-false}" == "true" ]]; then
+                fatal "Pre-flight saglik kontrolu basarisiz (UNATTENDED). SKIP_HEALTH_CHECK=true ile gecebilirsiniz."
+            fi
+            read -rp "  Yine de upgrade'e devam edilsin mi? [e/H]: " HC_OVERRIDE || HC_OVERRIDE="H"
+            [[ "${HC_OVERRIDE,,}" == "e" ]] || fatal "Upgrade iptal edildi (pre-flight basarisiz)."
+        fi
+    else
+        warn "SKIP_HEALTH_CHECK=true — pre-flight atlandi."
+    fi
+fi
+
 # ─── 2. Docker / compose kontrolu ───────────────────────────
 step "2/7  Docker kontrol ediliyor..."
 command -v docker &>/dev/null || fatal "Docker bulunamadi."
@@ -104,16 +133,25 @@ TS=$(date +%Y%m%d_%H%M%S)
 cp "$ENV_FILE" "$BACKUP_DIR/.env.pre-upgrade.$TS"
 ok "Env yedegi: $BACKUP_DIR/.env.pre-upgrade.$TS"
 
-# MariaDB volume snapshot (kucuk database'ler icin hizli)
-if docker volume ls --format '{{.Name}}' | grep -q '^mailtrustai-server_mariadb-data$'; then
-    info "MariaDB volume snapshot aliniyor (arka planda)..."
-    docker run --rm \
-        -v mailtrustai-server_mariadb-data:/data:ro \
-        -v "$BACKUP_DIR":/backup \
-        alpine tar czf "/backup/mariadb-pre-upgrade.$TS.tar.gz" -C /data . 2>/dev/null \
-        && ok "MariaDB yedegi: $BACKUP_DIR/mariadb-pre-upgrade.$TS.tar.gz" \
-        || warn "MariaDB yedegi alinamadi (devam ediliyor)"
-fi
+# Volume snapshot'lari — hem mariadb-data hem license-server-data
+backup_volume() {
+    local vol_name="$1"
+    local label="$2"
+    if docker volume ls --format '{{.Name}}' | grep -q "^${vol_name}$"; then
+        info "${label} volume snapshot aliniyor..."
+        if docker run --rm \
+            -v "${vol_name}:/data:ro" \
+            -v "$BACKUP_DIR":/backup \
+            alpine tar czf "/backup/${label}-pre-upgrade.$TS.tar.gz" -C /data . 2>/dev/null
+        then
+            ok "${label} yedegi: $BACKUP_DIR/${label}-pre-upgrade.$TS.tar.gz"
+        else
+            warn "${label} yedegi alinamadi (devam ediliyor)"
+        fi
+    fi
+}
+backup_volume "mailtrustai-server_mariadb-data" "mariadb"
+backup_volume "mailtrustai-server_license-server-data" "license-server-data"
 
 # ─── 4. Git pull ────────────────────────────────────────────
 step "4/7  Repo guncelleniyor..."

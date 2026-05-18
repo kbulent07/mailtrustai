@@ -53,14 +53,38 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# --- Log dosyasi (tum cikti $env:TEMP altina kaydedilir) --------------------
+$InstallLog = Join-Path $env:TEMP "mailtrustai-install-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+try { Start-Transcript -Path $InstallLog -Append | Out-Null } catch { }
+
 # ─── Yardımcı fonksiyonlar ───────────────────────────────────────────────────
 function Write-Color($msg, $color = 'White') { Write-Host $msg -ForegroundColor $color }
 function Info($msg)    { Write-Color "  [BILGI]  $msg" 'Cyan' }
 function Ok($msg)      { Write-Color "  [OK]     $msg" 'Green' }
 function Warn($msg)    { Write-Color "  [UYARI]  $msg" 'Yellow' }
-function Fatal($msg)   { Write-Color "  [HATA]   $msg" 'Red'; exit 1 }
-function Hr()          { Write-Color ('─' * 56) 'DarkCyan' }
-function Step($msg)    { Write-Host ""; Write-Color "▶ $msg" 'White' }
+function Fatal($msg)   {
+    Write-Color "  [HATA]   $msg" 'Red'
+    Write-Color "  Log dosyasi: $InstallLog" 'Yellow'
+    try { Stop-Transcript | Out-Null } catch { }
+    exit 1
+}
+function Hr()          { Write-Color ('-' * 56) 'DarkCyan' }
+function Step($msg)    { Write-Host ""; Write-Color ">>> $msg" 'White' }
+
+# Global error handler — strict mode'da bir cmdlet patladiginda hangi
+# satirda oldugunu net olarak gosterir.
+trap {
+    Write-Host ""
+    Write-Color "  ===== KURULUM BASARISIZ =====" 'Red'
+    Write-Color "  Hata     : $($_.Exception.Message)" 'Red'
+    if ($_.InvocationInfo) {
+        Write-Color "  Konum    : $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)" 'Red'
+        Write-Color "  Satir    : $($_.InvocationInfo.Line.Trim())" 'Red'
+    }
+    Write-Color "  Log      : $InstallLog" 'Yellow'
+    try { Stop-Transcript | Out-Null } catch { }
+    exit 1
+}
 
 function New-RandomHex([int]$bytes = 32) {
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()

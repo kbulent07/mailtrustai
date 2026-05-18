@@ -532,23 +532,46 @@ if [[ "$BUILD_OK" == "true" ]]; then
         warn "Servisler baslatılamadi. Hata kodu: $UP_EXIT"
     else
         # ─── 10. Sağlık kontrolü ────────────────────────────────
-        step "Saglik kontrolu (60 saniye bekleniyor)..."
-        sleep 20
+        # HEALTHCHECK_TIMEOUT env var ile yavas sunucular icin uzatilabilir.
+        HC_TIMEOUT="${HEALTHCHECK_TIMEOUT:-90}"
+        step "Saglik kontrolu (max ${HC_TIMEOUT}s bekleniyor)..."
+        sleep 15
 
-        MAX_WAIT=60
         ELAPSED=0
-        while [[ $ELAPSED -lt $MAX_WAIT ]]; do
+        HEALTH_OK=false
+        while [[ $ELAPSED -lt $HC_TIMEOUT ]]; do
             LS_STATUS=$(curl -sf "http://localhost:${LS_PORT}/healthz" 2>/dev/null | grep -c '"ok":true' || true)
             if [[ "$LS_STATUS" -ge 1 ]]; then
-                ok "License-server calisiyor."
+                ok "License-server calisiyor: http://localhost:${LS_PORT}/healthz"
+                HEALTH_OK=true
                 break
             fi
             sleep 5
             ELAPSED=$((ELAPSED + 5))
-            info "Bekleniyor... ($ELAPSED/${MAX_WAIT}s)"
+            info "Bekleniyor... ($ELAPSED/${HC_TIMEOUT}s)"
         done
-        if [[ $ELAPSED -ge $MAX_WAIT ]]; then
-            warn "Saglik kontrolu zaman asimi. Loglari inceleyin:"
+
+        if [[ "$HEALTH_OK" == "true" ]]; then
+            # Basari marker dosyasi — upgrade ve diagnostik araclari kullanir.
+            cat > "$INSTALL_DIR/.install_success" <<MARKER
+INSTALL_TIMESTAMP=$(date +%s)
+INSTALL_DATE=$(date -Iseconds)
+INSTALLED_BY=$(whoami)
+SERVER_HOST=$SERVER_HOST
+LS_PORT=$LS_PORT
+DEALER_PORT=$DEALER_PORT_VAR
+REPO_COMMIT=$(cd "$REPO_ROOT" 2>/dev/null && git rev-parse HEAD 2>/dev/null || echo unknown)
+MARKER
+            chmod 600 "$INSTALL_DIR/.install_success"
+            ok "Kurulum marker'i yazildi: $INSTALL_DIR/.install_success"
+        else
+            warn "Saglik kontrolu ${HC_TIMEOUT}s icinde basarisiz. Olasi nedenler:"
+            warn "  1) MariaDB henuz init bitirmedi (yavas disk?)"
+            warn "  2) .env / volume parola uyumsuzlugu (yeniden kur: sudo RESET=true bash $0)"
+            warn "  3) Image build bozuk"
+            warn ""
+            warn "Loglar:"
+            warn "  sudo docker logs mailtrustai-license-server --tail 50"
             warn "  $DOCKER_COMPOSE_CMD --env-file $ENV_FILE -f $INSTALL_DIR/docker-compose.server.yml logs --tail=30"
         fi
     fi

@@ -28,7 +28,12 @@
 param(
     [string]$InstallDir  = 'C:\MailTrustAI',
     [switch]$Purge,
-    [switch]$RemoveImage
+    [switch]$RemoveImage,
+    # Otomasyon icin: tum prompt'lari atla. -Purge ile birlikte kullanildiginda
+    # "EVET SIL" onayini ister, yedek silme sorusunu istemez.
+    [switch]$Unattended,
+    # -Purge -Unattended ile yedekleri de sil (varsayilan: koru)
+    [switch]$DeleteBackups
 )
 
 Set-StrictMode -Version Latest
@@ -82,22 +87,28 @@ if (-not (Test-Path $ComposeFile)) {
 # ─── Onay ────────────────────────────────────────────────────────────────────
 Write-Host ""
 if ($Purge) {
-    Write-Color "  ÇOK ÖNEMLİ: Aşağıdakiler kalıcı olarak silinecek:" 'Red'
-    Write-Color "  • Docker konteyneri ve volume'ları (tüm tarama verileri)" 'Red'
-    Write-Color "  • .env dosyası (tüm secret'lar)" 'Red'
-    Write-Color "  • Kurulum dizini: $InstallDir" 'Red'
+    Write-Color "  COK ONEMLI: Asagidakiler kalici olarak silinecek:" 'Red'
+    Write-Color "  - Docker konteyneri ve volume'lari (tum tarama verileri)" 'Red'
+    Write-Color "  - .env dosyasi (tum secret'lar)" 'Red'
+    Write-Color "  - Kurulum dizini: $InstallDir" 'Red'
     Write-Host ""
-    $confirm = Read-Host "  Devam etmek için 'EVET SIL' yazın"
-    if ($confirm -ne 'EVET SIL') {
-        Info "İptal edildi."
-        exit 0
+    if ($Unattended) {
+        Warn "Unattended modda -Purge onaylanmis sayilir."
+    } else {
+        $confirm = Read-Host "  Devam etmek icin 'EVET SIL' yazin"
+        if ($confirm -ne 'EVET SIL') {
+            Info "Iptal edildi."
+            exit 0
+        }
     }
 } else {
     Write-Color "  Konteyner durdurulacak ve silinecek." 'Yellow'
     Write-Color "  Veriler (volumes, .env) KORUNACAK." 'Yellow'
-    Write-Color "  Tüm verileri silmek için: uninstall_windows.ps1 -Purge" 'Yellow'
+    Write-Color "  Tum verileri silmek icin: uninstall_windows.ps1 -Purge" 'Yellow'
     Write-Host ""
-    Read-Host "  Devam etmek için Enter'a basın (Ctrl+C ile iptal)"
+    if (-not $Unattended) {
+        Read-Host "  Devam etmek icin Enter'a basin (Ctrl+C ile iptal)" | Out-Null
+    }
 }
 
 # ─── Docker kontrolü ─────────────────────────────────────────────────────────
@@ -152,7 +163,14 @@ if ($Purge) {
         $backups = @(Get-ChildItem $backupDir -ErrorAction SilentlyContinue)
         if ($backups.Count -gt 0) {
             Warn "Yedek dosyalari mevcut ($($backups.Count) adet): $backupDir"
-            $keepBkp = Read-Host "  Yedekleri koru (sadece kurulum dizinini sil)? [E/h]"
+            $keepBkp = $null
+            if ($Unattended) {
+                # Unattended: DeleteBackups flag'i belirler
+                $keepBkp = if ($DeleteBackups) { 'h' } else { 'e' }
+                Info "Unattended: yedekler $(if ($DeleteBackups) { 'silinecek' } else { 'korunacak' })."
+            } else {
+                $keepBkp = Read-Host "  Yedekleri koru (sadece kurulum dizinini sil)? [E/h]"
+            }
             if ($keepBkp -eq '' -or $keepBkp -match '^[EeYy]') {
                 # Yedekler dışındakileri sil
                 Get-ChildItem $InstallDir -Exclude 'backups' | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
