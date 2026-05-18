@@ -327,7 +327,7 @@ async function syncLicenseFromServer() {
                     plan: snap.plan,
                     tier: snap.tier,
                     features: snap.features || {},
-                    monthlyLimit: snap.limits?.monthlyScans ?? snap.limits?.monthly ?? null,
+                    monthlyLimit: snap.limits?.monthlyScanCount ?? snap.limits?.monthlyScans ?? snap.limits?.monthly ?? null,
                     expiryDate: snap.expiresAt
                 };
                 licenseInfo = info;
@@ -3506,6 +3506,11 @@ function closeLicenseModal() {
 
 async function activateLicense() {
     const key = document.getElementById('licenseKeyInput').value.trim();
+    if (!key) {
+        document.getElementById('licenseResult').innerHTML =
+            `<div class="text-red mt-16">Lisans anahtarı giriniz.</div>`;
+        return;
+    }
     // Activate endpoint license-server'a remote activation yapar + sonuc cache'lenir.
     const res = await fetch('/api/customer/license/activate', {
         method: 'POST',
@@ -3513,14 +3518,42 @@ async function activateLicense() {
         body: JSON.stringify({ licenseKey: key })
     });
     const payload = await res.json();
-    // Yeni endpoint cevabi: { ok, snapshot:{ plan, tier, features, limits, expiresAt, customerId, dealerId } }
+
+    // ── Fingerprint / Transfer gerekiyor ──────────────────────────────────
+    if (res.status === 409) {
+        const isPending  = payload.error === 'transfer_pending';
+        const trId       = payload.transferRequestId || '';
+        const dealerId   = payload.dealerId || '';
+        document.getElementById('licenseResult').innerHTML = `
+            <div style="background:rgba(251,191,36,0.12);border:1px solid #f59e0b;border-radius:8px;padding:14px 16px;margin-top:12px">
+                <div style="font-size:15px;font-weight:700;color:#f59e0b;margin-bottom:6px">
+                    🔐 Cihaz Transferi Onayı Bekleniyor
+                </div>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:1.55">
+                    Bu lisans farklı bir cihaza kayıtlıdır.<br>
+                    ${isPending
+                        ? 'Transfer talebi daha önce oluşturulmuş — bayi veya admin onayı bekleniyor.'
+                        : 'Yeni bir transfer talebi oluşturuldu — bayi veya admin panelinden onaylanması gerekiyor.'}
+                </div>
+                ${trId ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px">Talep ID: <code>${esc(trId)}</code></div>` : ''}
+                ${dealerId ? `<div style="font-size:11px;color:var(--text-muted)">Bayi: ${esc(dealerId)}</div>` : ''}
+                <div style="margin-top:10px;font-size:12px;color:#f59e0b">
+                    ✉ Bayinize veya yöneticinize başvurun. Onay sonrası bu ekranda tekrar <strong>Etkileştir</strong>'e basın.
+                </div>
+            </div>
+        `;
+        return;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
+    // Yeni endpoint cevabi: { ok, snapshot:{ plan, tier, features, limits, expiresAt, ... } }
     const snap = payload.snapshot || payload;
     const data = snap ? {
         valid: !!payload.ok,
         plan: snap.plan,
         tier: snap.tier,
         features: snap.features || {},
-        monthlyLimit: snap.limits?.monthlyScans ?? snap.limits?.monthly ?? null,
+        monthlyLimit: snap.limits?.monthlyScanCount ?? snap.limits?.monthlyScans ?? snap.limits?.monthly ?? null,
         expiryDate: snap.expiresAt,
         tierInfo: snap.tierInfo || {}
     } : {};
@@ -3585,7 +3618,7 @@ async function validateStoredLicense() {
         plan: raw.snapshot?.plan,
         tier: raw.snapshot?.tier,
         features: raw.snapshot?.features || {},
-        monthlyLimit: raw.snapshot?.limits?.monthlyScans ?? raw.snapshot?.limits?.monthly ?? null,
+        monthlyLimit: raw.snapshot?.limits?.monthlyScanCount ?? raw.snapshot?.limits?.monthlyScans ?? raw.snapshot?.limits?.monthly ?? null,
         expiryDate: raw.snapshot?.expiresAt
     } : { valid: false, error: raw.error };
 
@@ -5276,7 +5309,7 @@ function timeAgo(dateStr) {
 // ============================================================
 async function loadLicenseUsage() {
     try {
-        const res = await fetch('/api/license/usage');
+        const res = await fetch('/api/customer/license/usage');
         if (!res.ok) return;
         const data = await res.json();
         const counter = document.getElementById('usageCounter');

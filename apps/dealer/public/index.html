@@ -269,6 +269,7 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
       <a class="nav-item" data-tab="create">🔑 <span>Lisans Üret</span></a>
       <a class="nav-item" data-tab="manage">⚙️ <span>Lisans Yönet</span></a>
       <a class="nav-item" data-tab="log">📜 <span>Log</span></a>
+      <a class="nav-item" data-tab="transfers" id="transfersNavItem">🔁 <span>Transferler</span></a>
     </aside>
 
     <main class="main" role="main" aria-label="Bayi Paneli İçeriği">
@@ -414,6 +415,38 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
             <tbody id="logBody"><tr><td colspan="4" class="loading">Yükleniyor...</td></tr></tbody>
           </table>
         </div>
+      </section>
+
+      <!-- ===== TAB: TRANSFER TALEPLERİ ===== -->
+      <section class="tab-content" data-tab="transfers">
+        <h2>🔁 Cihaz Transfer Talepleri</h2>
+        <p class="muted" style="margin-bottom:14px">
+          Müşterilerinizden gelen lisans transfer talepleri — farklı bir cihaza geçiş için onay/red.
+        </p>
+        <div class="filters" style="gap:8px;margin-bottom:12px">
+          <select id="transferStatusFilter" style="padding:6px 10px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--text)">
+            <option value="pending">Bekleyen</option>
+            <option value="approved">Onaylanan</option>
+            <option value="rejected">Reddedilen</option>
+            <option value="all">Tümü</option>
+          </select>
+          <button id="transfersRefreshBtn">↻ Yenile</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Müşteri</th><th>Lisans</th><th>Plan/Tier</th>
+                <th>Eski Cihaz</th><th>Yeni Cihaz</th>
+                <th>Tarih</th><th>Durum</th><th>İşlem</th>
+              </tr>
+            </thead>
+            <tbody id="transfersBody">
+              <tr><td colspan="8" class="loading">Yükleniyor...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="transferResult" class="result" style="margin-top:10px"></div>
       </section>
 
     </main>
@@ -675,6 +708,7 @@ function activateTab(name) {
     el.classList.toggle('active', el.dataset.tab === name));
   if (name === 'log') loadLog();
   if (name === 'manage') renderManageTable();
+  if (name === 'transfers') loadTransfers();
 }
 document.querySelectorAll('.nav-item').forEach(el =>
   el.addEventListener('click', () => activateTab(el.dataset.tab)));
@@ -1304,6 +1338,81 @@ $('addCustApply').addEventListener('click', async () => {
     $('addCustApply').disabled = false;
   }
 });
+
+// ================================================================
+// TRANSFER TALEPLERİ
+// ================================================================
+async function loadTransfers() {
+  const status = $('transferStatusFilter')?.value || 'pending';
+  $('transfersBody').innerHTML = '<tr><td colspan="8" class="loading">Yükleniyor...</td></tr>';
+  $('transferResult').textContent = '';
+  try {
+    const r = await api(`/api/dealer/transfers?status=${encodeURIComponent(status)}`);
+    const list = r.transfers || [];
+    if (!list.length) {
+      $('transfersBody').innerHTML = `<tr><td colspan="8" class="muted" style="text-align:center;padding:20px">
+        ${status === 'pending' ? 'Bekleyen transfer talebi yok.' : 'Kayıt yok.'}
+      </td></tr>`;
+      return;
+    }
+    $('transfersBody').innerHTML = list.map(tr => {
+      const date = tr.requested_at ? new Date(tr.requested_at).toLocaleString('tr-TR') : '—';
+      const statusBadge = {
+        pending:  '<span style="color:#f59e0b;font-weight:600">⏳ Bekliyor</span>',
+        approved: '<span style="color:#10b981;font-weight:600">✅ Onaylandı</span>',
+        rejected: '<span style="color:#ef4444;font-weight:600">❌ Reddedildi</span>'
+      }[tr.status] || tr.status;
+      const shortHash = h => h ? h.slice(0,12)+'…' : '—';
+      const actions = tr.status === 'pending' ? `
+        <button class="action-btn primary" onclick="approveTransfer('${esc(tr.id)}')">✅ Onayla</button>
+        <button class="action-btn danger"  onclick="rejectTransfer('${esc(tr.id)}')">❌ Reddet</button>
+      ` : `<span class="muted" style="font-size:.8em">${tr.resolved_by || '—'} tarafından</span>`;
+      return `<tr>
+        <td><strong>${esc(tr.company_name || tr.customer_id || '—')}</strong></td>
+        <td style="font-family:monospace;font-size:.8em">${esc(tr.license_key_masked || '—')}</td>
+        <td>${esc(tr.plan || '—')} / ${esc(tr.tier || '—')}</td>
+        <td title="${esc(tr.old_hostname_hash||'')}"><code style="font-size:.75em">${shortHash(tr.old_hostname_hash)}</code></td>
+        <td title="${esc(tr.new_hostname_hash||'')}"><code style="font-size:.75em">${shortHash(tr.new_hostname_hash)}</code></td>
+        <td style="font-size:.82em">${date}</td>
+        <td>${statusBadge}</td>
+        <td style="white-space:nowrap">${actions}</td>
+      </tr>`;
+    }).join('');
+  } catch (err) {
+    $('transfersBody').innerHTML = `<tr><td colspan="8" class="err">Hata: ${esc(err.message)}</td></tr>`;
+  }
+}
+
+async function approveTransfer(id) {
+  if (!confirm('Bu transfer talebini onaylıyor musunuz? Eski cihazın aktivasyonu silinecek.')) return;
+  try {
+    await api(`/api/dealer/transfers/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+    $('transferResult').textContent = '✅ Transfer onaylandı. Müşteri lisansı yeniden aktive edebilir.';
+    $('transferResult').className = 'result ok';
+    loadTransfers();
+  } catch (err) {
+    $('transferResult').textContent = 'Hata: ' + err.message;
+    $('transferResult').className = 'result err';
+  }
+}
+
+async function rejectTransfer(id) {
+  const reason = prompt('Red gerekçesi (opsiyonel):') || '';
+  try {
+    await api(`/api/dealer/transfers/${encodeURIComponent(id)}/reject`, {
+      method: 'POST', body: { reason }
+    });
+    $('transferResult').textContent = '❌ Transfer reddedildi.';
+    $('transferResult').className = 'result ok';
+    loadTransfers();
+  } catch (err) {
+    $('transferResult').textContent = 'Hata: ' + err.message;
+    $('transferResult').className = 'result err';
+  }
+}
+
+$('transfersRefreshBtn')?.addEventListener('click', loadTransfers);
+$('transferStatusFilter')?.addEventListener('change', loadTransfers);
 
 // ================================================================
 // BOOT: Cookie / sessionStorage'dan oturumu kontrol et

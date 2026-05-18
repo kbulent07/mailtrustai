@@ -201,6 +201,24 @@ app.get('/api/dealer/me', requireDealer, (req, res) => {
     res.json({ dealerId: req.dealer.dealerId });
 });
 
+// ============================================================
+// Transfer Talepleri — Bayi sadece kendi lisanslarının transferlerini görür/yönetir
+// ============================================================
+app.get('/api/dealer/transfers', requireDealer, asyncH(async (req, res) => {
+    const result = await ls.listTransfers(req.dealer.dealerId, req.query.status || 'pending');
+    res.json(result);
+}));
+
+app.post('/api/dealer/transfers/:id/approve', requireDealer, asyncH(async (req, res) => {
+    const result = await ls.approveTransfer(req.params.id, req.dealer.dealerId);
+    res.json(result);
+}));
+
+app.post('/api/dealer/transfers/:id/reject', requireDealer, asyncH(async (req, res) => {
+    const result = await ls.rejectTransfer(req.params.id, req.dealer.dealerId, (req.body || {}).reason);
+    res.json(result);
+}));
+
 // HTML dosyaları cache'lenmemeli; JS/CSS production'da kısa TTL
 app.use(express.static(path.join(__dirname, 'public'), {
     setHeaders(res, filePath) {

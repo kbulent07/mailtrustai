@@ -131,9 +131,10 @@ function activateTab(tabName) {
         el.classList.toggle('active', el.dataset.tab === tabName);
     });
     // Her sekme açıldığında ilgili veriyi yükle
-    if (tabName === 'dealers')  loadDealers();
-    if (tabName === 'manage')   renderManageTable();
-    if (tabName === 'audit')    loadAudit();
+    if (tabName === 'dealers')   loadDealers();
+    if (tabName === 'manage')    renderManageTable();
+    if (tabName === 'audit')     loadAudit();
+    if (tabName === 'transfers') loadAdminTransfers();
 }
 
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -1019,6 +1020,75 @@ $('dealerPwApply').addEventListener('click', async () => {
         $('dealerPwResult').className   = 'result err';
     }
 });
+
+// ================================================================
+// TRANSFER TALEPLERİ (Admin)
+// ================================================================
+async function loadAdminTransfers() {
+    const status = $('adminTransferStatus')?.value || 'pending';
+    $('adminTransfersBody').innerHTML = '<tr><td colspan="9" class="loading">Yükleniyor...</td></tr>';
+    $('adminTransferResult').textContent = '';
+    try {
+        const r = await api(`/api/admin/transfers?status=${encodeURIComponent(status)}`);
+        const list = r.transfers || [];
+        if (!list.length) {
+            $('adminTransfersBody').innerHTML =
+                `<tr><td colspan="9" class="muted" style="text-align:center;padding:20px">Kayıt yok.</td></tr>`;
+            return;
+        }
+        const shortH = h => h ? h.slice(0, 12) + '…' : '—';
+        $('adminTransfersBody').innerHTML = list.map(tr => {
+            const date = tr.requested_at ? new Date(tr.requested_at).toLocaleString('tr-TR') : '—';
+            const badge = { pending: '⏳ Bekliyor', approved: '✅ Onaylandı', rejected: '❌ Reddedildi' }[tr.status] || tr.status;
+            const actions = tr.status === 'pending' ? `
+                <button class="action-btn primary" onclick="adminApproveTransfer('${esc(tr.id)}')">✅ Onayla</button>
+                <button class="action-btn danger"  onclick="adminRejectTransfer('${esc(tr.id)}')">❌ Reddet</button>
+            ` : `<span class="muted" style="font-size:.8em">${esc(tr.resolved_by || '—')}</span>`;
+            return `<tr>
+                <td>${esc(tr.company_name || tr.customer_id || '—')}</td>
+                <td>${esc(tr.dealer_id || '—')}</td>
+                <td style="font-family:monospace;font-size:.78em">${esc(tr.license_key_masked || '—')}</td>
+                <td>${esc(tr.plan || '—')} / ${esc(tr.tier || '—')}</td>
+                <td title="${esc(tr.old_hostname_hash||'')}"><code style="font-size:.75em">${shortH(tr.old_hostname_hash)}</code></td>
+                <td title="${esc(tr.new_hostname_hash||'')}"><code style="font-size:.75em">${shortH(tr.new_hostname_hash)}</code></td>
+                <td style="font-size:.8em">${date}</td>
+                <td>${badge}</td>
+                <td style="white-space:nowrap">${actions}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        $('adminTransfersBody').innerHTML = `<tr><td colspan="9" class="err">Hata: ${esc(e.message)}</td></tr>`;
+    }
+}
+
+async function adminApproveTransfer(id) {
+    if (!confirm('Bu transfer onaylansın mı? Eski cihazın aktivasyonu silinecek.')) return;
+    try {
+        await api(`/api/admin/transfers/${encodeURIComponent(id)}/approve`, { method: 'POST', body: {} });
+        $('adminTransferResult').textContent = '✅ Transfer onaylandı.';
+        $('adminTransferResult').className = 'result ok';
+        loadAdminTransfers();
+    } catch (e) {
+        $('adminTransferResult').textContent = 'Hata: ' + e.message;
+        $('adminTransferResult').className = 'result err';
+    }
+}
+
+async function adminRejectTransfer(id) {
+    const reason = prompt('Red gerekçesi (opsiyonel):') || '';
+    try {
+        await api(`/api/admin/transfers/${encodeURIComponent(id)}/reject`, { method: 'POST', body: { reason } });
+        $('adminTransferResult').textContent = '❌ Transfer reddedildi.';
+        $('adminTransferResult').className = 'result ok';
+        loadAdminTransfers();
+    } catch (e) {
+        $('adminTransferResult').textContent = 'Hata: ' + e.message;
+        $('adminTransferResult').className = 'result err';
+    }
+}
+
+$('adminTransfersRefresh')?.addEventListener('click', loadAdminTransfers);
+$('adminTransferStatus')?.addEventListener('change', loadAdminTransfers);
 
 // ================================================================
 // BOOT: sessionStorage'da token varsa doğrula ve giriş yap

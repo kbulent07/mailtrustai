@@ -12,6 +12,13 @@
 
 name: mailtrustai-customer
 
+networks:
+  # Server tarafı ile ortak ağ — license-server hostname'i çözülebilir olur.
+  # docker-compose.server.yml önce ayağa kalkmalı (up:server).
+  msa-internal:
+    external: true
+    name: mailtrustai-server_msa-internal
+
 services:
   customer:
     image: mailtrustai-customer:latest
@@ -22,6 +29,7 @@ services:
     restart: unless-stopped
     # hostname sabit — settingsStore şifreleme anahtarı türevi.
     hostname: mailtrustai
+    networks: [msa-internal]
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -65,3 +73,4 @@ services:
 volumes:
   customer-data:
   customer-logs:
+

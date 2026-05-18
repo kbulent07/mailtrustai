@@ -44,5 +44,9 @@ module.exports = {
     dealerCustomersStatus: (dealerId) => _req('GET', `/api/central/dealers/${encodeURIComponent(dealerId)}/customers/status`),
     customerStatus:        (id) => _req('GET', `/api/central/customers/${encodeURIComponent(id)}/status`),
     auditForDealer:        (dealerId) => _req('GET', `/api/license/audit?dealerId=${encodeURIComponent(dealerId)}`),
-    audit:                 () => _req('GET', '/api/license/audit')
+    audit:                 () => _req('GET', '/api/license/audit'),
+    listTransfers:   (dealerId, status = 'pending') => _req('GET',
+        `/api/license/transfers?dealerId=${encodeURIComponent(dealerId)}&status=${encodeURIComponent(status)}`),
+    approveTransfer: (id, dealerId) => _req('POST', `/api/license/transfers/${encodeURIComponent(id)}/approve`, { dealerId }),
+    rejectTransfer:  (id, dealerId, reason) => _req('POST', `/api/license/transfers/${encodeURIComponent(id)}/reject`, { dealerId, reason })
 };

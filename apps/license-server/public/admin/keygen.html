@@ -48,6 +48,7 @@
             <a class="nav-item" data-tab="create">🔑 <span>Lisans Üret</span></a>
             <a class="nav-item" data-tab="manage">⚙️ <span>Lisans Yönet</span></a>
             <a class="nav-item" data-tab="audit">📜 <span>Audit Log</span></a>
+            <a class="nav-item" data-tab="transfers">🔁 <span>Transferler</span></a>
         </aside>
 
         <main class="main" role="main" aria-label="Yönetim Paneli İçeriği">
@@ -351,6 +352,33 @@
                     <tbody id="auditBody"><tr><td colspan="5" class="loading">Yükleniyor...</td></tr></tbody>
                 </table>
             </div>
+        </section>
+
+        <!-- ===== TAB: TRANSFER TALEPLERİ (Admin) ===== -->
+        <section class="tab-content" data-tab="transfers">
+            <h2>🔁 Cihaz Transfer Talepleri</h2>
+            <p class="muted" style="margin-bottom:14px">Tüm bayilerden gelen lisans cihaz transfer talepleri.</p>
+            <div class="filters" style="gap:8px;margin-bottom:12px">
+                <select id="adminTransferStatus" style="padding:6px 10px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--text)">
+                    <option value="pending">Bekleyen</option>
+                    <option value="approved">Onaylanan</option>
+                    <option value="rejected">Reddedilen</option>
+                    <option value="all">Tümü</option>
+                </select>
+                <button id="adminTransfersRefresh">↻ Yenile</button>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Müşteri</th><th>Bayi</th><th>Lisans</th><th>Plan/Tier</th>
+                            <th>Eski Hash</th><th>Yeni Hash</th><th>Tarih</th><th>Durum</th><th>İşlem</th></tr>
+                    </thead>
+                    <tbody id="adminTransfersBody">
+                        <tr><td colspan="9" class="loading">Yükleniyor...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="adminTransferResult" style="margin-top:10px"></div>
         </section>
 
         </main>

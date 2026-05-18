@@ -160,6 +160,53 @@ router.post('/license/activate', asyncH(async (req, res) => {
     if (license.status !== 'active') return res.status(403).json({ error: `lisans durumu: ${license.status}` });
     if (license.expires_at && license.expires_at < Date.now()) return res.status(403).json({ error: 'lisans süresi dolmuş' });
 
+    // ── Fingerprint / cihaz transfer kontrolü ────────────────────────────────
+    // Eğer hostnameHash varsa ve bu license_id altında zaten farklı bir
+    // hostnameHash ile kaydedilmiş bir aktivasyon bulunuyorsa → transfer talebi.
+    // Aynı instance_id yeniden aktive ediyorsa (donanım değişikliği) → izin ver.
+    if (hostnameHash) {
+        const existingActs = await all(
+            'SELECT instance_id, hostname_hash FROM activations WHERE license_id=?',
+            [license.id]
+        );
+        const thisInstanceExists = existingActs.some(a => a.instance_id === instanceId);
+        if (!thisInstanceExists && existingActs.length > 0) {
+            const mismatch = existingActs.some(a => a.hostname_hash && a.hostname_hash !== hostnameHash);
+            if (mismatch) {
+                // Zaten bekleyen bir transfer talebi var mı?
+                const existingTr = await get(
+                    'SELECT id FROM transfer_requests WHERE license_id=? AND new_hostname_hash=? AND status=?',
+                    [license.id, hostnameHash, 'pending']
+                );
+                if (!existingTr) {
+                    const trId = uuid();
+                    const oldHash = existingActs.find(a => a.hostname_hash)?.hostname_hash || null;
+                    await run(
+                        'INSERT INTO transfer_requests(id,license_id,old_hostname_hash,new_hostname_hash,new_instance_id,status,requested_at) VALUES(?,?,?,?,?,?,?)',
+                        [trId, license.id, oldHash, hostnameHash, instanceId, 'pending', Date.now()]
+                    );
+                    await audit(license.customer_id, 'license.transfer.requested', license.id, { instanceId, hostnameHash });
+                    return res.status(409).json({
+                        error: 'transfer_required',
+                        message: 'Bu lisans farklı bir cihaza kayıtlıdır. Bayi veya admin onayı bekleniyor.',
+                        transferRequestId: trId,
+                        customerId: license.customer_id,
+                        dealerId: license.dealer_id
+                    });
+                } else {
+                    return res.status(409).json({
+                        error: 'transfer_pending',
+                        message: 'Transfer talebi oluşturulmuş, bayi veya admin onayı bekleniyor.',
+                        transferRequestId: existingTr.id,
+                        customerId: license.customer_id,
+                        dealerId: license.dealer_id
+                    });
+                }
+            }
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // maxActivations limiti.
     const limits = safeJSON(license.limits_json, {});
     const maxAct = Number(limits.maxActivations) > 0 ? Number(limits.maxActivations) : DEFAULT_MAX_ACTIVATIONS;
@@ -323,6 +370,95 @@ router.get('/license/customer/:id', asyncH(async (req, res) => {
         [req.params.id, dealerId]
     );
     res.json({ customerId: req.params.id, dealerId, licenses: rows });
+}));
+
+// ============================================================
+// Transfer Talepleri — Bayi (Bearer) veya Admin (adminAuth) erişir.
+// ============================================================
+
+router.get('/license/transfers', asyncH(async (req, res) => {
+    const dealerId = req.query.dealerId;
+    const status   = req.query.status || 'pending'; // pending | approved | rejected | all
+    const limitN   = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+
+    const statusFilter = status === 'all' ? null : status;
+    let rows;
+    if (dealerId) {
+        rows = await all(
+            `SELECT tr.*, l.customer_id, l.dealer_id, l.plan, l.tier, l.license_key_masked,
+                    c.company_name
+             FROM transfer_requests tr
+             JOIN licenses l ON l.id = tr.license_id
+             LEFT JOIN customers c ON c.id = l.customer_id
+             WHERE l.dealer_id = ? ${statusFilter ? 'AND tr.status = ?' : ''}
+             ORDER BY tr.requested_at DESC LIMIT ?`,
+            statusFilter ? [dealerId, statusFilter, limitN] : [dealerId, limitN]
+        );
+    } else {
+        rows = await all(
+            `SELECT tr.*, l.customer_id, l.dealer_id, l.plan, l.tier, l.license_key_masked,
+                    c.company_name
+             FROM transfer_requests tr
+             JOIN licenses l ON l.id = tr.license_id
+             LEFT JOIN customers c ON c.id = l.customer_id
+             ${statusFilter ? 'WHERE tr.status = ?' : ''}
+             ORDER BY tr.requested_at DESC LIMIT ?`,
+            statusFilter ? [statusFilter, limitN] : [limitN]
+        );
+    }
+    res.json({ transfers: rows || [] });
+}));
+
+router.post('/license/transfers/:id/approve', asyncH(async (req, res) => {
+    const { dealerId } = req.body || {};
+    const tr = await get('SELECT * FROM transfer_requests WHERE id=?', [req.params.id]);
+    if (!tr) return res.status(404).json({ error: 'transfer talebi bulunamadı' });
+    if (tr.status !== 'pending') return res.status(409).json({ error: `talep zaten işlendi: ${tr.status}` });
+
+    const license = await get('SELECT * FROM licenses WHERE id=?', [tr.license_id]);
+    if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
+
+    // Dealer yalnızca kendi lisansını onaylayabilir.
+    if (dealerId && license.dealer_id && license.dealer_id !== dealerId) {
+        return res.status(403).json({ error: 'bu lisans size ait değil' });
+    }
+
+    // Eski instance'ın aktivasyonunu kaldır (fingerprint değişti → yeni cihaz).
+    if (tr.old_hostname_hash) {
+        await run('DELETE FROM activations WHERE license_id=? AND hostname_hash=? AND instance_id != ?',
+            [tr.license_id, tr.old_hostname_hash, tr.new_instance_id || '']);
+    }
+    // Transfer talebini kapat.
+    await run(
+        'UPDATE transfer_requests SET status=?, resolved_at=?, resolved_by=? WHERE id=?',
+        ['approved', Date.now(), dealerId || 'admin', tr.id]
+    );
+    // Aynı lisans için diğer bekleyen talepleri de reddet.
+    await run(
+        'UPDATE transfer_requests SET status=?, resolved_at=?, resolved_by=?, reject_reason=? WHERE license_id=? AND status=? AND id!=?',
+        ['rejected', Date.now(), dealerId || 'admin', 'Başka transfer onaylandı', tr.license_id, 'pending', tr.id]
+    );
+    await audit(dealerId || 'admin', 'license.transfer.approved', tr.license_id, { transferId: tr.id, newHash: tr.new_hostname_hash });
+    res.json({ ok: true, message: 'Transfer onaylandı. Müşteri lisansı yeniden aktive edebilir.' });
+}));
+
+router.post('/license/transfers/:id/reject', asyncH(async (req, res) => {
+    const { dealerId, reason } = req.body || {};
+    const tr = await get('SELECT * FROM transfer_requests WHERE id=?', [req.params.id]);
+    if (!tr) return res.status(404).json({ error: 'transfer talebi bulunamadı' });
+    if (tr.status !== 'pending') return res.status(409).json({ error: `talep zaten işlendi: ${tr.status}` });
+
+    const license = await get('SELECT dealer_id FROM licenses WHERE id=?', [tr.license_id]);
+    if (dealerId && license?.dealer_id && license.dealer_id !== dealerId) {
+        return res.status(403).json({ error: 'bu lisans size ait değil' });
+    }
+
+    await run(
+        'UPDATE transfer_requests SET status=?, resolved_at=?, resolved_by=?, reject_reason=? WHERE id=?',
+        ['rejected', Date.now(), dealerId || 'admin', reason || null, tr.id]
+    );
+    await audit(dealerId || 'admin', 'license.transfer.rejected', tr.license_id, { transferId: tr.id, reason });
+    res.json({ ok: true, message: 'Transfer reddedildi.' });
 }));
 
 router.get('/license/audit', asyncH(async (req, res) => {

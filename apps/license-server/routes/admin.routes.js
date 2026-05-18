@@ -645,4 +645,55 @@ router.get('/admin/stats', adminAuth, asyncH(async (req, res) => {
     });
 }));
 
+// ============================================================
+// Transfer Talepleri — Admin tam erişim
+// ============================================================
+router.get('/admin/transfers', adminAuth, asyncH(async (req, res) => {
+    const status = req.query.status || 'pending';
+    const limitN = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+    const statusFilter = status === 'all' ? null : status;
+    const rows = await all(
+        `SELECT tr.*, l.customer_id, l.dealer_id, l.plan, l.tier, l.license_key_masked,
+                c.company_name
+         FROM transfer_requests tr
+         JOIN licenses l ON l.id = tr.license_id
+         LEFT JOIN customers c ON c.id = l.customer_id
+         ${statusFilter ? 'WHERE tr.status = ?' : ''}
+         ORDER BY tr.requested_at DESC LIMIT ?`,
+        statusFilter ? [statusFilter, limitN] : [limitN]
+    );
+    res.json({ transfers: rows || [] });
+}));
+
+router.post('/admin/transfers/:id/approve', adminAuth, asyncH(async (req, res) => {
+    const tr = await get('SELECT * FROM transfer_requests WHERE id=?', [req.params.id]);
+    if (!tr) return res.status(404).json({ error: 'transfer talebi bulunamadı' });
+    if (tr.status !== 'pending') return res.status(409).json({ error: `talep zaten işlendi: ${tr.status}` });
+
+    if (tr.old_hostname_hash) {
+        await run('DELETE FROM activations WHERE license_id=? AND hostname_hash=? AND instance_id != ?',
+            [tr.license_id, tr.old_hostname_hash, tr.new_instance_id || '']);
+    }
+    await run('UPDATE transfer_requests SET status=?,resolved_at=?,resolved_by=? WHERE id=?',
+        ['approved', Date.now(), 'admin', tr.id]);
+    await run(
+        'UPDATE transfer_requests SET status=?,resolved_at=?,resolved_by=?,reject_reason=? WHERE license_id=? AND status=? AND id!=?',
+        ['rejected', Date.now(), 'admin', 'Başka transfer onaylandı', tr.license_id, 'pending', tr.id]
+    );
+    await audit('admin', 'license.transfer.approved', tr.license_id, { transferId: tr.id });
+    res.json({ ok: true, message: 'Transfer onaylandı.' });
+}));
+
+router.post('/admin/transfers/:id/reject', adminAuth, asyncH(async (req, res) => {
+    const { reason } = req.body || {};
+    const tr = await get('SELECT * FROM transfer_requests WHERE id=?', [req.params.id]);
+    if (!tr) return res.status(404).json({ error: 'transfer talebi bulunamadı' });
+    if (tr.status !== 'pending') return res.status(409).json({ error: `talep zaten işlendi: ${tr.status}` });
+
+    await run('UPDATE transfer_requests SET status=?,resolved_at=?,resolved_by=?,reject_reason=? WHERE id=?',
+        ['rejected', Date.now(), 'admin', reason || null, tr.id]);
+    await audit('admin', 'license.transfer.rejected', tr.license_id, { transferId: tr.id, reason });
+    res.json({ ok: true, message: 'Transfer reddedildi.' });
+}));
+
 module.exports = router;

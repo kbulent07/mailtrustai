@@ -133,8 +133,45 @@ app.post('/api/customer/license/activate', asyncH(async (req, res) => {
     if (!licenseKey) return res.status(400).json({ error: 'licenseKey gerekli' });
     const remoteUrl = env('MSA_LICENSE_REMOTE_URL');
     if (!remoteUrl) return res.status(503).json({ error: 'MSA_LICENSE_REMOTE_URL tanımlı değil' });
-    const r = await licenseClient.activate({ remoteUrl, licenseKey });
-    res.json({ ok: true, snapshot: r });
+    try {
+        const r = await licenseClient.activate({ remoteUrl, licenseKey });
+        res.json({ ok: true, snapshot: r });
+    } catch (e) {
+        // 409 → fingerprint transfer talebi — UI'ya geçirilir.
+        if (e.status === 409 && e.body) {
+            return res.status(409).json(e.body);
+        }
+        throw e;
+    }
+}));
+
+// Aylık/günlük tarama kullanım sayacı — lisans snapshot'ından limit alır.
+app.get('/api/customer/license/usage', asyncH(async (req, res) => {
+    const snap = licenseClient.getSnapshot();
+    const limits = snap?.limits || {};
+    const monthlyLimit = limits.monthlyScanCount ?? null;
+    const unlimited = monthlyLimit === null;
+
+    const { getMonthlyCount, getCurrentMonthKey } = require(path.join(REPO_ROOT, 'src/storage/monthlyCounter'));
+    const { getDailyCount } = require(path.join(REPO_ROOT, 'src/storage/dailyScansStore'));
+    const today = new Date().toISOString().slice(0, 10);
+    const monthlyCount = getMonthlyCount();
+    const dailyCount = getDailyCount(today);
+    const remaining = unlimited ? null : Math.max(0, monthlyLimit - monthlyCount);
+    res.json({
+        monthlyCount,
+        monthlyLimit: unlimited ? null : monthlyLimit,
+        remaining,
+        unlimited,
+        dailyCount,
+        monthKey: getCurrentMonthKey()
+    });
+}));
+
+// Cihaz parmak izi — aktivasyon sırasında fingerprint kontrolü için.
+app.get('/api/customer/license/fingerprint', asyncH(async (req, res) => {
+    const instanceId = licenseClient.instanceFingerprint();
+    res.json({ instanceId });
 }));
 
 app.post('/api/customer/license/validate', asyncH(async (req, res) => {
