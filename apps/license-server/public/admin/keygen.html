@@ -34,14 +34,14 @@
             <span class="brand-mini">🛡️ MailTrustAI · <strong>Merkezi Yönetim</strong></span>
         </div>
         <div class="topbar-right">
-            <button id="refreshBtn" title="Yenile">↻</button>
+            <button id="refreshBtn" title="Yenile" aria-label="Paneli yenile">↻</button>
             <button id="logoutBtn">Çıkış</button>
         </div>
     </header>
 
     <div class="app-layout">
         <!-- =========== SIDEBAR =========== -->
-        <aside class="sidebar">
+        <aside class="sidebar" role="navigation" aria-label="Ana Menü">
             <a class="nav-item active" data-tab="overview">📊 <span>Özet</span></a>
             <a class="nav-item" data-tab="customers">👤 <span>Müşteriler</span></a>
             <a class="nav-item" data-tab="dealers">👥 <span>Bayiler</span></a>
@@ -50,7 +50,7 @@
             <a class="nav-item" data-tab="audit">📜 <span>Audit Log</span></a>
         </aside>
 
-        <main class="main">
+        <main class="main" role="main" aria-label="Yönetim Paneli İçeriği">
 
         <!-- =========== TAB: ÖZET =========== -->
         <section class="tab-content active" data-tab="overview">
@@ -72,11 +72,11 @@
                 </p>
                 <div class="bulk-form">
                     <div class="field">
-                        <label>Bayi (opsiyonel)</label>
+                        <label for="bulkDealer">Bayi (opsiyonel)</label>
                         <select id="bulkDealer"><option value="">— Tümü —</option></select>
                     </div>
                     <div class="field">
-                        <label>Plan (opsiyonel)</label>
+                        <label for="bulkPlan">Plan (opsiyonel)</label>
                         <select id="bulkPlan">
                             <option value="">— Tümü —</option>
                             <option value="demo">demo</option>
@@ -85,15 +85,15 @@
                         </select>
                     </div>
                     <div class="field">
-                        <label>Durum</label>
+                        <label for="bulkStatus">Durum</label>
                         <select id="bulkStatus">
                             <option value="active">aktif</option>
                             <option value="">tümü</option>
                         </select>
                     </div>
                     <div class="field">
-                        <label>Offline süre (gün)</label>
-                        <input type="number" id="bulkDays" min="0" max="36500" placeholder="örn: 30">
+                        <label for="bulkDays">Offline süre (gün)</label>
+                        <input type="number" id="bulkDays" min="0" max="36500" placeholder="örn: 30" autocomplete="off">
                     </div>
                     <div class="field btns">
                         <button id="bulkApplyBtn" class="primary">Uygula</button>
@@ -106,14 +106,14 @@
 
         <!-- =========== TAB: MÜŞTERİLER =========== -->
         <section class="tab-content" data-tab="customers">
-            <section class="filters">
-                <input type="text" id="filterQ" placeholder="🔍 Müşteri adı, ID, e-posta veya lisans etiketi...">
-                <select id="filterDealer"><option value="">Bayi: tümü</option></select>
-                <select id="filterPlan">
+            <section class="filters" role="search" aria-label="Müşteri Filtrele">
+                <input type="text" id="filterQ" placeholder="🔍 Müşteri adı, ID, e-posta veya lisans etiketi..." aria-label="Müşteri ara">
+                <select id="filterDealer" aria-label="Bayi filtresi"><option value="">Bayi: tümü</option></select>
+                <select id="filterPlan" aria-label="Plan filtresi">
                     <option value="">Plan: tümü</option>
                     <option value="demo">demo</option><option value="pro">pro</option><option value="enterprise">enterprise</option>
                 </select>
-                <select id="filterStatus">
+                <select id="filterStatus" aria-label="Durum filtresi">
                     <option value="">Durum: tümü</option>
                     <option value="active">active</option><option value="revoked">revoked</option>
                 </select>
@@ -160,13 +160,13 @@
                 <div class="col">
                     <h2>➕ Yeni Bayi</h2>
                     <form id="dealerCreateForm" class="form-card">
-                        <label>Bayi ID (örn: bayi-01)</label>
+                        <label for="newDealerId">Bayi ID (örn: bayi-01)</label>
                         <input type="text" id="newDealerId" required maxlength="64" placeholder="bayi-istanbul" autocomplete="off">
-                        <label>Adı</label>
+                        <label for="newDealerName">Adı</label>
                         <input type="text" id="newDealerName" maxlength="128" placeholder="İstanbul Bayisi" autocomplete="name">
-                        <label>E-posta</label>
+                        <label for="newDealerEmail">E-posta</label>
                         <input type="email" id="newDealerEmail" placeholder="bayi@example.com" autocomplete="email">
-                        <label>Parola (opsiyonel — sonra da set edilebilir)</label>
+                        <label for="newDealerPassword">Parola (opsiyonel — sonra da set edilebilir)</label>
                         <input type="password" id="newDealerPassword" minlength="8" placeholder="≥ 8 karakter" autocomplete="new-password">
                         <button type="submit" class="primary">Oluştur</button>
                         <div id="dealerCreateResult" class="result"></div>
@@ -181,23 +181,23 @@
             <p class="muted">Admin olarak doğrudan lisans üretirsiniz. Lisans hem yeni hem mevcut bir müşteriye atanabilir (UPSERT).</p>
             <form id="licenseCreateForm" class="form-card form-grid">
                 <div>
-                    <label>Müşteri ID *</label>
+                    <label for="newLicCustomerId">Müşteri ID *</label>
                     <input type="text" id="newLicCustomerId" required maxlength="64" placeholder="acme-corp" autocomplete="off">
                 </div>
                 <div>
-                    <label>Bayi (opsiyonel)</label>
+                    <label for="newLicDealer">Bayi (opsiyonel)</label>
                     <select id="newLicDealer"><option value="">— Atanmamış —</option></select>
                 </div>
                 <div>
-                    <label>Şirket Adı</label>
+                    <label for="newLicCompany">Şirket Adı</label>
                     <input type="text" id="newLicCompany" maxlength="128" placeholder="ACME Corp" autocomplete="organization">
                 </div>
                 <div>
-                    <label>E-posta</label>
+                    <label for="newLicEmail">E-posta</label>
                     <input type="email" id="newLicEmail" placeholder="it@acme.com" autocomplete="email">
                 </div>
                 <div>
-                    <label>Plan *</label>
+                    <label for="newLicPlan">Plan *</label>
                     <select id="newLicPlan" required>
                         <option value="demo">demo — Temel özellikler</option>
                         <option value="pro" selected>pro — Gelişmiş özellikler</option>
@@ -205,7 +205,7 @@
                     </select>
                 </div>
                 <div>
-                    <label>Tarama Tieri *</label>
+                    <label for="newLicTier">Tarama Tieri *</label>
                     <select id="newLicTier" required>
                         <option value="T1">T1 — 50/ay</option>
                         <option value="T2">T2 — 100/ay</option>
@@ -219,12 +219,12 @@
                     </select>
                 </div>
                 <div>
-                    <label>Geçerlilik (gün) *</label>
-                    <input type="number" id="newLicDays" min="1" max="36500" value="365" required>
+                    <label for="newLicDays">Geçerlilik (gün) *</label>
+                    <input type="number" id="newLicDays" min="1" max="36500" value="365" required autocomplete="off">
                 </div>
                 <div class="full">
-                    <label>Etiket (opsiyonel)</label>
-                    <input type="text" id="newLicLabel" maxlength="128" placeholder="Üretim / Test / Şube-Ankara">
+                    <label for="newLicLabel">Etiket (opsiyonel)</label>
+                    <input type="text" id="newLicLabel" maxlength="128" placeholder="Üretim / Test / Şube-Ankara" autocomplete="off">
                 </div>
                 <div class="full">
                     <button type="submit" class="primary big">🔑 Lisans Üret</button>
@@ -238,7 +238,7 @@
                 <p class="muted">Bu anahtarı müşteriye iletin. Bu pencereyi kapatınca yeniden görüntülenmez (DB'de hash'i tutulur).</p>
                 <div class="key-display">
                     <code id="generatedKeyValue">—</code>
-                    <button id="copyKeyBtn" title="Kopyala">📋</button>
+                    <button id="copyKeyBtn" title="Kopyala" aria-label="Lisans anahtarını kopyala">📋</button>
                 </div>
                 <div class="key-meta" id="generatedKeyMeta"></div>
             </div>
@@ -249,9 +249,9 @@
             <h2>⚙️ Lisans Yönetimi</h2>
             <p class="muted">Lisansı seçip iptal / yeniden etkinleştir / süre uzat işlemini yapın.</p>
 
-            <div class="filters">
-                <input type="text" id="manageQ" placeholder="🔍 Müşteri / lisans key / etiket...">
-                <select id="manageStatus">
+            <div class="filters" role="search" aria-label="Lisans Filtrele">
+                <input type="text" id="manageQ" placeholder="🔍 Müşteri / lisans key / etiket..." aria-label="Lisans ara">
+                <select id="manageStatus" aria-label="Lisans durum filtresi">
                     <option value="">Durum: tümü</option>
                     <option value="active">active</option>
                     <option value="revoked">revoked</option>
@@ -272,11 +272,11 @@
         <!-- =========== TAB: AUDIT LOG =========== -->
         <section class="tab-content" data-tab="audit">
             <h2>📜 Audit Log</h2>
-            <div class="filters">
-                <input type="text" id="auditActor" placeholder="actor (örn: admin, bayi-01, customer-id)">
-                <input type="text" id="auditAction" placeholder="action (örn: license.create)">
-                <input type="text" id="auditTarget" placeholder="target (örn: license id)">
-                <input type="number" id="auditLimit" min="10" max="1000" value="200" title="limit">
+            <div class="filters" role="search" aria-label="Audit Log Filtrele">
+                <input type="text" id="auditActor" placeholder="actor (örn: admin, bayi-01, customer-id)" aria-label="Actor filtresi">
+                <input type="text" id="auditAction" placeholder="action (örn: license.create)" aria-label="Action filtresi">
+                <input type="text" id="auditTarget" placeholder="target (örn: license id)" aria-label="Target filtresi">
+                <input type="number" id="auditLimit" min="10" max="1000" value="200" title="limit" aria-label="Kayıt limiti">
                 <button id="auditReloadBtn">Filtrele</button>
             </div>
             <div class="table-wrap">
@@ -292,61 +292,61 @@
 </div>
 
 <!-- ============== MODALS ============== -->
-<div id="labelModal" class="modal hidden">
+<div id="labelModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="labelModalTitle">
     <div class="modal-card">
-        <h3>Lisans Etiketi</h3>
+        <h3 id="labelModalTitle">Lisans Etiketi</h3>
         <p class="muted">Müşteri: <strong id="labelModalCustomer"></strong></p>
         <p class="muted">Lisans: <code id="labelModalLicense"></code></p>
-        <label>Etiket (boş = sil)</label>
-        <input type="text" id="labelModalValue" maxlength="128">
+        <label for="labelModalValue">Etiket (boş = sil)</label>
+        <input type="text" id="labelModalValue" maxlength="128" autocomplete="off">
         <div class="modal-btns">
             <button id="labelModalCancel">İptal</button>
             <button id="labelModalApply" class="primary">Kaydet</button>
         </div>
-        <div id="labelModalResult" class="result"></div>
+        <div id="labelModalResult" class="result" role="status" aria-live="polite"></div>
     </div>
 </div>
 
-<div id="graceModal" class="modal hidden">
+<div id="graceModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="graceModalTitle">
     <div class="modal-card">
-        <h3>Offline Çalışma İzni</h3>
+        <h3 id="graceModalTitle">Offline Çalışma İzni</h3>
         <p class="muted">Müşteri: <strong id="graceModalCustomer"></strong></p>
         <p class="muted">Lisans: <code id="graceModalLicense"></code></p>
-        <label>Offline süre (gün) — <em>boş bırak veya 0: plan default'a dön</em></label>
-        <input type="number" id="graceModalDays" min="0" max="36500">
+        <label for="graceModalDays">Offline süre (gün) — <em>boş bırak veya 0: plan default'a dön</em></label>
+        <input type="number" id="graceModalDays" min="0" max="36500" autocomplete="off">
         <div class="modal-btns">
             <button id="graceModalCancel">İptal</button>
             <button id="graceModalApply" class="primary">Kaydet</button>
         </div>
-        <div id="graceModalResult" class="result"></div>
+        <div id="graceModalResult" class="result" role="status" aria-live="polite"></div>
     </div>
 </div>
 
-<div id="renewModal" class="modal hidden">
+<div id="renewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="renewModalTitle">
     <div class="modal-card">
-        <h3>Lisans Süresi Uzat</h3>
+        <h3 id="renewModalTitle">Lisans Süresi Uzat</h3>
         <p class="muted">Müşteri: <strong id="renewModalCustomer"></strong></p>
-        <label>Eklenecek gün</label>
-        <input type="number" id="renewModalDays" min="1" max="36500" value="365">
+        <label for="renewModalDays">Eklenecek gün</label>
+        <input type="number" id="renewModalDays" min="1" max="36500" value="365" autocomplete="off">
         <div class="modal-btns">
             <button id="renewModalCancel">İptal</button>
             <button id="renewModalApply" class="primary">Uzat</button>
         </div>
-        <div id="renewModalResult" class="result"></div>
+        <div id="renewModalResult" class="result" role="status" aria-live="polite"></div>
     </div>
 </div>
 
-<div id="dealerPwModal" class="modal hidden">
+<div id="dealerPwModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dealerPwModalTitle">
     <div class="modal-card">
-        <h3>Bayi Parolası</h3>
+        <h3 id="dealerPwModalTitle">Bayi Parolası</h3>
         <p class="muted">Bayi: <strong id="dealerPwId"></strong></p>
-        <label>Yeni parola (≥ 8 karakter)</label>
-        <input type="password" id="dealerPwValue" minlength="8">
+        <label for="dealerPwValue">Yeni parola (≥ 8 karakter)</label>
+        <input type="password" id="dealerPwValue" minlength="8" autocomplete="new-password">
         <div class="modal-btns">
             <button id="dealerPwCancel">İptal</button>
             <button id="dealerPwApply" class="primary">Kaydet</button>
         </div>
-        <div id="dealerPwResult" class="result"></div>
+        <div id="dealerPwResult" class="result" role="status" aria-live="polite"></div>
     </div>
 </div>
 
