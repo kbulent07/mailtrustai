@@ -393,9 +393,21 @@ switch ($Action) {
     'restart' { Invoke-Expression "$dc restart" }
     'status'  { Invoke-Expression "$dc ps" }
     'logs'    { Invoke-Expression "$dc logs -f --tail=200" }
-    'update'  {
-        Invoke-Expression "$dc pull"
-        Invoke-Expression "$dc up -d --remove-orphans"
+    'update'  -
+    'upgrade' {
+        # Tam ozellikli upgrade scriptini cagir
+        $repoPath = $null
+        $repoFile = Join-Path $dir '.repo_path'
+        if (Test-Path $repoFile) { $repoPath = (Get-Content $repoFile -Raw).Trim() }
+        $upgradeScript = if ($repoPath) { Join-Path $repoPath 'install\client\upgrade_windows.ps1' } else { $null }
+        if ($upgradeScript -and (Test-Path $upgradeScript)) {
+            & powershell -ExecutionPolicy Bypass -File $upgradeScript
+        } else {
+            Write-Host "Upgrade scripti bulunamadi: $upgradeScript" -ForegroundColor Red
+            Write-Host "Manuel: docker compose pull; docker compose up -d --remove-orphans" -ForegroundColor Yellow
+            Invoke-Expression "$dc pull"
+            Invoke-Expression "$dc up -d --remove-orphans"
+        }
     }
     'backup'  {
         $ts   = Get-Date -Format 'yyyyMMdd_HHmmss'
@@ -410,7 +422,15 @@ switch ($Action) {
         Write-Host "Veri yedeği: $bdir\customer-data-$ts.tar.gz" -ForegroundColor Green
     }
     default   {
-        Write-Host "Kullanim: mailtrustai-ctl.ps1 {start|stop|restart|status|logs|update|backup}"
+        Write-Host "Kullanim: mailtrustai-ctl.ps1 {start|stop|restart|status|logs|upgrade|backup}"
+        Write-Host ""
+        Write-Host "  start    - Servisi baslat"
+        Write-Host "  stop     - Servisi durdur"
+        Write-Host "  restart  - Servisi yeniden baslat"
+        Write-Host "  status   - Container durumu"
+        Write-Host "  logs     - Loglari takip et"
+        Write-Host "  upgrade  - Yeni surume yukselt (git pull + rebuild)"
+        Write-Host "  backup   - .env + customer-data yedekle"
     }
 }
 '@
