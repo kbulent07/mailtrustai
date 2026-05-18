@@ -44,6 +44,7 @@ const listsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/lis
 const statsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/stats.routes'));
 const customerAuthRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/customer.routes'));
 const customerUsersRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/customerUsers.routes'));
+const fpSuggestionsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/fpSuggestions.routes'));
 
 const app = express();
 const server = http.createServer(app);
@@ -194,6 +195,16 @@ customerApi.use(listsRoutes);
 customerApi.use(statsRoutes);
 customerApi.use(customerAuthRoutes);
 customerApi.use(customerUsersRoutes);
+
+// FP (Yanlış Pozitif) önerileri — yeni lisans sistemiyle uyumlu.
+// req._licenseOverride = true inject edilerek eski HMAC lisans kontrolü bypass edilir.
+customerApi.use((req, res, next) => {
+    if (!req._licenseOverride) {
+        req._licenseOverride = licenseClient.graceCheck().ok;
+    }
+    next();
+}, fpSuggestionsRoutes);
+
 app.use('/api', customerApi);
 
 setupWebSocket(wss);

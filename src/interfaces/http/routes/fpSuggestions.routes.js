@@ -17,6 +17,15 @@ const {
 
 const router = express.Router();
 
+// Lisans yardımcısı: eski HMAC sistemi VEYA yeni lisans sistemi (req._licenseOverride).
+// Customer uygulaması yeni lisans sistemini kullandığı için req._licenseOverride=true
+// inject eder; böylece bu routes hem eski hem yeni sistemle çalışır.
+function _hasValidLicense(req) {
+    if (req._licenseOverride) return true;
+    const lic = checkLicense(req);
+    return !!(lic && lic.valid);
+}
+
 // Kullanıcı tarafı: lisanslı her kullanıcı kendi taramasından FP raporlayabilir
 // Admin Bearer token ile de çağrılabilir (istatistikler panelinden)
 router.post('/fp-suggestions', (req, res) => {
@@ -24,10 +33,11 @@ router.post('/fp-suggestions', (req, res) => {
     const auth = req.headers['authorization'] || '';
     const isAdmin = auth.startsWith('Bearer ') && !!verifyAdminToken(auth.slice(7).trim());
 
-    const license = checkLicense(req);
-    if (!isAdmin && (!license || !license.valid)) {
+    if (!isAdmin && !_hasValidLicense(req)) {
         return res.status(401).json({ error: 'Lisans gerekli' });
     }
+
+    const license = isAdmin ? { valid: true, licenseKey: 'admin' } : (checkLicense(req) || {});
 
     const { domain, scanId, category, severity, message } = req.body || {};
     if (!domain) return res.status(400).json({ error: 'domain zorunludur' });
@@ -49,16 +59,14 @@ router.post('/fp-suggestions', (req, res) => {
 
 // Kullanıcı tarafı: bekleyen FP önerilerini görür ve kendi panelinden onaylayabilir.
 router.get('/fp-suggestions', (req, res) => {
-    const license = checkLicense(req);
-    if (!license || !license.valid) {
+    if (!_hasValidLicense(req)) {
         return res.status(401).json({ error: 'Lisans gerekli' });
     }
     res.json(listPending());
 });
 
 router.post('/fp-suggestions/:domain/approve', (req, res) => {
-    const license = checkLicense(req);
-    if (!license || !license.valid) {
+    if (!_hasValidLicense(req)) {
         return res.status(401).json({ error: 'Lisans gerekli' });
     }
     const { category, note } = req.body || {};
@@ -71,8 +79,7 @@ router.post('/fp-suggestions/:domain/approve', (req, res) => {
 });
 
 router.post('/fp-suggestions/:domain/reject', (req, res) => {
-    const license = checkLicense(req);
-    if (!license || !license.valid) {
+    if (!_hasValidLicense(req)) {
         return res.status(401).json({ error: 'Lisans gerekli' });
     }
     res.json(reject(decodeURIComponent(req.params.domain)));
