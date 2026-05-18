@@ -56,12 +56,12 @@ node apps/license-server/bin/bootstrap.js list-dealers
 node apps/license-server/bin/bootstrap.js list-licenses
 ```
 
-Dealer artik `http://<dealer-host>:3100/` adresindeki paneline `dealerId` + `password` ile login olabilir.
+Bayi artik `http://<dealer-host>:3100/` adresindeki paneline `dealerId` + `password` ile login olabilir.
 
-## Dealer auth akisi
+## Bayi auth akisi
 
 ```text
-Dealer Portal /api/dealer/login (username, password)
+Bayi Portal /api/dealer/login (username, password)
   -> license-server /api/dealer/auth/verify (dealerId, password)
   -> bcrypt.compare(password, dealers.api_token_hash)
   -> ok -> dealer panel HMAC-imzali session cookie alir

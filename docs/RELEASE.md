@@ -37,7 +37,7 @@ Hizli calistirma (onerilen):
 
 5. Runtime health kontrolu
 - Customer: `GET /api/health` -> `ok`
-- Dealer: `GET /api/health` -> `ok`
+- Bayi (dealer): `GET /api/health` -> `ok`
 - License-server: `GET /api/health` -> `ok`
 
 ## Security kontrol noktasi

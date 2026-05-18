@@ -31,10 +31,10 @@ Sadece operasyonel telemetri:
 - Local cache (lisans, central policy, lists, api-policy): AES-256-GCM (`packages/security.encryptJSON`)
 - Anahtar: `MSA_LOCAL_ENCRYPTION_KEY` env veya `data/.local-enc.key` (0600)
 - Lisans imzalama: HMAC-SHA256 (`LICENSE_SIGNING_SECRET`)
-- Dealer sifreleri: bcrypt hash olarak saklanir
+- Bayi sifreleri: bcrypt hash olarak saklanir
 
 ## Kimlik dogrulama
 
 - Customer -> license-server: lisans aktivasyon/dogrulama/heartbeat endpointleri
-- Dealer -> license-server: `Bearer DEALER_API_TOKEN`
+- Bayi -> license-server: `Bearer DEALER_API_TOKEN`
 - Admin endpointleri: `DEALER_API_SECRET` / `TOKEN_SECRET`

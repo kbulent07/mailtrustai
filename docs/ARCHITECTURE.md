@@ -29,7 +29,7 @@ Customer -> License Server:
 - `GET /api/customer-sync/pull`
 - `POST /api/customer-sync/ack`
 
-Dealer -> License Server:
+Bayi -> License Server:
 
 - `POST /api/license/create`
 - `POST /api/license/renew`
@@ -41,7 +41,7 @@ Musteri mail icerigi, attachment icerigi, credentials ve API key degerleri merke
 ## Paket bagimlilik prensibi
 
 - Customer app: `analyzer`, `mail`, `license-client`, `central-sync`, `policy-client`, `storage`, `security`, `shared`
-- Dealer app: `shared`, `security` (+ license-server HTTP API)
+- Bayi (dealer) app: `shared`, `security` (+ license-server HTTP API)
 - License-server app: `license-core`, `shared`, `security`, `storage`
 
 `license-core` customer image icine fiziksel olarak alinmaz. Dockerfile seviyesinde silinir ve
