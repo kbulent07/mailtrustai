@@ -11,10 +11,14 @@
 # İlk kurulum : Secret'lar otomatik üretilir ve .env dosyasına yazılır.
 # Güncelleme  : Mevcut .env korunur, yalnızca image yeniden derlenir.
 # ============================================================
-set -euo pipefail
+set -Euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# ─── Log dosyasi (her calistirma kaydedilir) ────────────────
+INSTALL_LOG="/tmp/mailtrustai-install-$(date +%Y%m%d-%H%M%S).log"
+exec > >(tee -a "$INSTALL_LOG") 2>&1
 
 # ─── Renkler ────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -24,8 +28,32 @@ info()    { echo -e "${CYAN}[INFO]${NC}  $*"; }
 ok()      { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 fatal()   { echo -e "${RED}[HATA]${NC}  $*" >&2; exit 1; }
-step()    { echo -e "\n${BOLD}▶ $*${NC}"; }
-hr()      { echo -e "${CYAN}$(printf '─%.0s' {1..54})${NC}"; }
+step()    { echo -e "\n${BOLD}>>> $*${NC}"; }
+hr()      { echo -e "${CYAN}------------------------------------------------------${NC}"; }
+
+# ─── ERR trap: hangi satirda patladigini goster ─────────────
+on_error() {
+    local exit_code=$?
+    local line=$1
+    echo "" >&2
+    echo -e "${RED}${BOLD}===== KURULUM BASARISIZ =====${NC}" >&2
+    echo -e "${RED}Cikis kodu : ${exit_code}${NC}" >&2
+    echo -e "${RED}Satir no   : ${line}${NC}" >&2
+    echo -e "${RED}Komut      : ${BASH_COMMAND}${NC}" >&2
+    echo -e "${YELLOW}Tam log    : ${INSTALL_LOG}${NC}" >&2
+    echo "" >&2
+    exit "$exit_code"
+}
+trap 'on_error $LINENO' ERR
+
+# ─── Interaktif/non-interactive tespiti ─────────────────────
+# stdin TTY degilse (curl|bash, ssh -T vs.) read calismaz.
+# Bu durumda kullanicidan sessizce default'lara dusmek yerine
+# ortam degiskenlerini bekleriz.
+IS_INTERACTIVE=true
+if [[ ! -t 0 ]]; then
+    IS_INTERACTIVE=false
+fi
 
 # openssl rand ile güvenli rastgele değer üretir.
 # pipefail ile pipe içinde head kullanmak SIGPIPE riski taşır;
@@ -118,20 +146,63 @@ step "Kurulum yapilandirmasi..."
 hr
 
 DEFAULT_INSTALL_DIR="/opt/mailtrustai"
-read -rp "  Kurulum dizini [${DEFAULT_INSTALL_DIR}]: " INPUT_DIR
-INSTALL_DIR="${INPUT_DIR:-$DEFAULT_INSTALL_DIR}"
 
-read -rp "  Sunucu domain veya IP (or: license.firma.com ya da 1.2.3.4): " SERVER_HOST
-[[ -n "${SERVER_HOST:-}" ]] || fatal "Sunucu adresi zorunludur."
+# Tum read'lerden once stdin durumunu bildir.
+if [[ "$IS_INTERACTIVE" == "false" ]]; then
+    warn "Stdin TTY degil (non-interactive mod). Ortam degiskenleri kullanilacak:"
+    warn "  INSTALL_DIR, SERVER_HOST, LS_PORT, DEALER_PORT_VAR, DB_PORT"
+fi
 
-read -rp "  License-server port [3200]: " LS_PORT
-LS_PORT="${LS_PORT:-3200}"
+# read komutu non-interactive modda hata vermeden EOF doner.
+# `|| true` ile set -e'nin script'i sessizce oldurmesini engelliyoruz.
+if [[ "$IS_INTERACTIVE" == "true" ]]; then
+    read -rp "  Kurulum dizini [${DEFAULT_INSTALL_DIR}]: " INPUT_DIR || INPUT_DIR=""
+else
+    INPUT_DIR="${INSTALL_DIR:-}"
+fi
+INSTALL_DIR="${INPUT_DIR:-${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}}"
 
-read -rp "  Dealer panel port   [3100]: " DEALER_PORT_VAR
-DEALER_PORT_VAR="${DEALER_PORT_VAR:-3100}"
+if [[ "$IS_INTERACTIVE" == "true" ]]; then
+    read -rp "  Sunucu domain veya IP (or: license.firma.com ya da 1.2.3.4): " SERVER_HOST_INPUT || SERVER_HOST_INPUT=""
+    SERVER_HOST="${SERVER_HOST_INPUT:-${SERVER_HOST:-}}"
+else
+    SERVER_HOST="${SERVER_HOST:-}"
+fi
+if [[ -z "${SERVER_HOST:-}" ]]; then
+    fatal "Sunucu adresi zorunludur. (Non-interactive modda SERVER_HOST=... olarak gecin.)"
+fi
 
-read -rp "  MariaDB dis portu (0 = sadece ic ag) [0]: " DB_PORT
-DB_PORT="${DB_PORT:-0}"
+if [[ "$IS_INTERACTIVE" == "true" ]]; then
+    read -rp "  License-server port [3200]: " LS_PORT_INPUT || LS_PORT_INPUT=""
+    LS_PORT="${LS_PORT_INPUT:-${LS_PORT:-3200}}"
+else
+    LS_PORT="${LS_PORT:-3200}"
+fi
+
+if [[ "$IS_INTERACTIVE" == "true" ]]; then
+    read -rp "  Dealer panel port   [3100]: " DEALER_PORT_INPUT || DEALER_PORT_INPUT=""
+    DEALER_PORT_VAR="${DEALER_PORT_INPUT:-${DEALER_PORT_VAR:-3100}}"
+else
+    DEALER_PORT_VAR="${DEALER_PORT_VAR:-3100}"
+fi
+
+if [[ "$IS_INTERACTIVE" == "true" ]]; then
+    read -rp "  MariaDB dis portu (0 = sadece ic ag) [0]: " DB_PORT_INPUT || DB_PORT_INPUT=""
+    DB_PORT="${DB_PORT_INPUT:-${DB_PORT:-0}}"
+else
+    DB_PORT="${DB_PORT:-0}"
+fi
+
+# Secilen ayarlari ekrana yaz (debug + log).
+hr
+info "Secilen yapilandirma:"
+info "  INSTALL_DIR  = $INSTALL_DIR"
+info "  SERVER_HOST  = $SERVER_HOST"
+info "  LS_PORT      = $LS_PORT"
+info "  DEALER_PORT  = $DEALER_PORT_VAR"
+info "  DB_PORT      = $DB_PORT (0 = disa kapali)"
+info "  Log dosyasi  = $INSTALL_LOG"
+hr
 
 ENV_FILE="$INSTALL_DIR/.env"
 
@@ -142,50 +213,83 @@ chmod 750 "$INSTALL_DIR"
 ok "Dizin hazir: $INSTALL_DIR"
 
 # ─── 5. İlk kurulum mu, güncelleme mi? ──────────────────────
-# .env geçerliyse (LICENSE_SIGNING_SECRET içeriyorsa) → güncelleme.
-# Yoksa veya bos/kirik ise → ilk kurulum.
+# Gercek "valid .env" kriteri: tum zorunlu degiskenler dolu olmali.
+# Sadece LICENSE_SIGNING_SECRET= anahtarinin varligi yeterli degil
+# (= bos satir da grep -q ile gecerdi); deger bos olmamali.
 SKIP_ENV=false
-if [[ -f "$ENV_FILE" ]] && [[ -s "$ENV_FILE" ]] && grep -q "LICENSE_SIGNING_SECRET=" "$ENV_FILE" 2>/dev/null; then
-    SKIP_ENV=true
-    echo ""
-    ok "Mevcut yapilandirma korunuyor (guncelleme modu): $ENV_FILE"
-    info "Secret'lar degistirilmeyecek — yalnizca image yeniden derlenecek."
-else
-    if [[ -f "$ENV_FILE" ]]; then
-        warn ".env mevcut ama gecersiz/eksik — yeniden olusturuluyor."
+env_var_filled() {
+    # $1 = degisken adi, $2 = dosya
+    # 'VAR=...' formatinda, esitin sagi en az 8 karakter olmali.
+    grep -E "^${1}=.{8,}$" "$2" >/dev/null 2>&1
+}
+
+if [[ -f "$ENV_FILE" ]] && [[ -s "$ENV_FILE" ]]; then
+    if env_var_filled "LICENSE_SIGNING_SECRET" "$ENV_FILE" \
+        && env_var_filled "DEALER_API_SECRET" "$ENV_FILE" \
+        && env_var_filled "DEALER_SESSION_SECRET" "$ENV_FILE" \
+        && env_var_filled "MARIADB_PASSWORD" "$ENV_FILE" \
+        && env_var_filled "MARIADB_ROOT_PASSWORD" "$ENV_FILE"; then
+        SKIP_ENV=true
+        echo ""
+        ok "Mevcut yapilandirma korunuyor (guncelleme modu): $ENV_FILE"
+        info "Secret'lar degistirilmeyecek — yalnizca image yeniden derlenecek."
+    else
+        warn ".env mevcut ama icinde EKSIK/BOS zorunlu degisken var — yeniden olusturuluyor."
         cp "$ENV_FILE" "${ENV_FILE}.bak.$(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
+        info "Yedek: ${ENV_FILE}.bak.*"
     fi
+else
     info "Ilk kurulum: Secret'lar otomatik uretilecek."
 fi
+info "Mod: SKIP_ENV=$SKIP_ENV (false = yeniden yazilacak)"
 
 # ─── 6. Secret üretimi ve .env yazımı ───────────────────────
 if [[ "$SKIP_ENV" == "false" ]]; then
     step "Guvenli secret'lar uretiliyor..."
 
-    LICENSE_SIGNING_SECRET=$(gen32)
-    DEALER_API_SECRET=$(gen32)
-    DEALER_SESSION_SECRET=$(gen32)
-    ADMIN_PANEL_TOKEN=$(gen32)
-    MARIADB_PASSWORD=$(genpass)
-    MARIADB_ROOT_PASSWORD=$(genpass)
-
-    # Değerlerin üretildiğini doğrula
-    [[ -n "$LICENSE_SIGNING_SECRET" ]] || fatal "LICENSE_SIGNING_SECRET uretilemedi (openssl hatasi?)"
-    [[ -n "$DEALER_API_SECRET" ]]      || fatal "DEALER_API_SECRET uretilemedi"
-    [[ -n "$MARIADB_PASSWORD" ]]       || fatal "MARIADB_PASSWORD uretilemedi"
-
-    # MariaDB port satırı
-    if [[ "$DB_PORT" == "0" ]]; then
-        DB_PORT_LINE="# MariaDB disariya acik degil (guvenli mod)"
-    else
-        DB_PORT_LINE="MARIADB_EXPOSE_PORT=${DB_PORT}"
+    # openssl kontrolu — yoksa sessiz cikis yerine net hata.
+    if ! command -v openssl &>/dev/null; then
+        fatal "openssl bulunamadi. Kurun: apt-get install -y openssl"
     fi
 
-    # .env yaz — printf kullan (heredoc locale sorunlari olmaz)
+    # Secret uretimi — set -e'nin sessiz cikisini engellemek icin
+    # her birinde acik dogrulama yapilir.
+    LICENSE_SIGNING_SECRET=$(gen32) || fatal "LICENSE_SIGNING_SECRET uretiminde openssl hatasi"
+    DEALER_API_SECRET=$(gen32) || fatal "DEALER_API_SECRET uretiminde openssl hatasi"
+    DEALER_SESSION_SECRET=$(gen32) || fatal "DEALER_SESSION_SECRET uretiminde openssl hatasi"
+    ADMIN_PANEL_TOKEN=$(gen32) || fatal "ADMIN_PANEL_TOKEN uretiminde openssl hatasi"
+    MARIADB_PASSWORD=$(genpass) || fatal "MARIADB_PASSWORD uretiminde openssl hatasi"
+    MARIADB_ROOT_PASSWORD=$(genpass) || fatal "MARIADB_ROOT_PASSWORD uretiminde openssl hatasi"
+
+    # Uzunluk dogrulamasi (gen32=64hex, genpass=28chr)
+    [[ ${#LICENSE_SIGNING_SECRET} -ge 32 ]] || fatal "LICENSE_SIGNING_SECRET cok kisa: ${#LICENSE_SIGNING_SECRET}"
+    [[ ${#DEALER_API_SECRET} -ge 32 ]]      || fatal "DEALER_API_SECRET cok kisa: ${#DEALER_API_SECRET}"
+    [[ ${#DEALER_SESSION_SECRET} -ge 32 ]]  || fatal "DEALER_SESSION_SECRET cok kisa"
+    [[ ${#ADMIN_PANEL_TOKEN} -ge 32 ]]      || fatal "ADMIN_PANEL_TOKEN cok kisa"
+    [[ ${#MARIADB_PASSWORD} -ge 16 ]]       || fatal "MARIADB_PASSWORD cok kisa: ${#MARIADB_PASSWORD}"
+    [[ ${#MARIADB_ROOT_PASSWORD} -ge 16 ]]  || fatal "MARIADB_ROOT_PASSWORD cok kisa"
+    ok "Secret'lar uretildi (toplam 6 deger, uzunluklar dogrulandi)."
+
+    # MariaDB dis port satiri — compose dosyasi MARIADB_EXPOSE_PORT'u
+    # kullanmadigi icin yorum olarak yazilir (kafa karistirmasin).
+    if [[ "$DB_PORT" == "0" ]]; then
+        DB_PORT_LINE="# MariaDB disariya acik degil (guvenli mod). Dis port icin compose dosyasinda ports: ekleyin."
+    else
+        DB_PORT_LINE="# MARIADB_EXPOSE_PORT=${DB_PORT}  (su an compose tarafindan kullanilmiyor)"
+    fi
+
+    step ".env dosyasi yaziliyor: $ENV_FILE"
+
+    # Atomik yazim: once tmp dosyaya yaz, sonra mv. Yarim yazim olursa
+    # eski dosya bozulmaz, validasyon basarisiz olursa tmp temizlenir.
+    TMP_ENV="${ENV_FILE}.tmp.$$"
+    info "  -> Tmp dosya: $TMP_ENV"
+
     {
         printf '# ============================================================\n'
         printf '# MailTrustAI Sunucu Yapilandirmasi\n'
         printf '# Olusturulma: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+        printf '# Kurulum log: %s\n' "$INSTALL_LOG"
         printf '#\n'
         printf '# BU DOSYAYI GUVENLI YERDE YEDEKLEYIN!\n'
         printf '# SECRET LARI DEGISTIRMEYIN - Mevcut lisanslar gecersiz olur.\n'
@@ -217,24 +321,41 @@ if [[ "$SKIP_ENV" == "false" ]]; then
         printf 'CUSTOMER_SYNC_MAX_PAYLOAD_BYTES=16384\n'
         printf 'DEALER_SESSION_TTL_MINUTES=480\n'
         printf 'TRUST_PROXY=1\n'
-    } > "$ENV_FILE"
+    } > "$TMP_ENV" || fatal ".env tmp dosyasi yazilamadi: $TMP_ENV (disk dolu? izin?)"
 
-    chmod 600 "$ENV_FILE"
+    chmod 600 "$TMP_ENV" || fatal "chmod 600 basarisiz: $TMP_ENV"
 
-    # Dogrulama: Dosya gercekten yazildi mi?
+    # Tmp dogrulama — kritik degiskenler dolu olarak yazildi mi?
+    info "  -> Tmp dosya dogrulanyor..."
+    for var in LICENSE_SIGNING_SECRET DEALER_API_SECRET DEALER_SESSION_SECRET \
+               MARIADB_PASSWORD MARIADB_ROOT_PASSWORD LICENSE_SERVER_PORT DEALER_PORT; do
+        if ! grep -E "^${var}=.+" "$TMP_ENV" >/dev/null; then
+            cat "$TMP_ENV" >&2
+            rm -f "$TMP_ENV"
+            fatal "Tmp .env icinde EKSIK/BOS degisken: $var"
+        fi
+    done
+    TMP_LINES=$(wc -l < "$TMP_ENV")
+    info "  -> Tmp dosya OK ($TMP_LINES satir)."
+
+    # Atomik tasima
+    mv -f "$TMP_ENV" "$ENV_FILE" || fatal "mv basarisiz: $TMP_ENV -> $ENV_FILE"
+
+    # Son dogrulama
     if [[ ! -f "$ENV_FILE" ]] || [[ ! -s "$ENV_FILE" ]]; then
-        fatal ".env dosyasi olusturulamadi: $ENV_FILE — disk dolu mu? Izinleri kontrol edin."
+        fatal ".env tasima sonrasi bulunamadi: $ENV_FILE"
     fi
-    if ! grep -q "LICENSE_SIGNING_SECRET=" "$ENV_FILE"; then
-        fatal ".env yazildi ama icerik dogrulanamadi: $ENV_FILE"
-    fi
+    chmod 600 "$ENV_FILE" || true
+    ENV_SIZE=$(stat -c%s "$ENV_FILE" 2>/dev/null || echo "?")
 
     echo ""
-    echo -e "${GREEN}${BOLD}  ╔══════════════════════════════════════════════════════╗"
-    echo -e "  ║   .env DOSYASI OLUSTURULDU — HEMEN YEDEKLEYIN!      ║"
-    echo -e "  ╚══════════════════════════════════════════════════════╝${NC}"
-    echo -e "  Konum : ${YELLOW}${ENV_FILE}${NC}"
-    echo -e "  Icerigi gormek icin: ${CYAN}cat ${ENV_FILE}${NC}"
+    echo -e "${GREEN}${BOLD}  ======================================================"
+    echo -e "  ===   .env DOSYASI OLUSTURULDU — HEMEN YEDEKLEYIN!  ==="
+    echo -e "  ======================================================${NC}"
+    echo -e "  Konum  : ${YELLOW}${ENV_FILE}${NC}"
+    echo -e "  Boyut  : ${ENV_SIZE} byte"
+    echo -e "  Sahibi : $(stat -c '%U:%G  %a' "$ENV_FILE" 2>/dev/null || echo '?')"
+    echo -e "  Goster : ${CYAN}cat ${ENV_FILE}${NC}"
     echo ""
 else
     ok ".env mevcut ve gecerli: $ENV_FILE"
