@@ -282,11 +282,11 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
         <div class="table-wrap">
           <table>
             <thead><tr>
-              <th>Şirket / ID</th><th>Plan</th><th>Tier</th><th>Lisans Durumu</th>
+              <th>Şirket / ID</th><th>Lisans Anahtarı</th><th>Plan</th><th>Tier</th><th>Lisans Durumu</th>
               <th>Bitiş</th><th>Sürüm</th><th>Online</th><th>Son Bağlantı</th>
               <th>Tarama</th><th>Aksiyonlar</th>
             </tr></thead>
-            <tbody id="custBody"><tr><td colspan="10" class="loading">Yükleniyor...</td></tr></tbody>
+            <tbody id="custBody"><tr><td colspan="11" class="loading">Yükleniyor...</td></tr></tbody>
           </table>
         </div>
         <p class="muted" style="margin-top:8px">⚠️ Müşteri mail içerikleri, scan detayları veya credential bilgileri bu panelde gösterilmez. Yalnızca lisans ve operasyonel durum/metrik bilgileri görüntülenir.</p>
@@ -725,7 +725,7 @@ function renderCustomersTable() {
 
   const tbody = $('custBody');
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="loading">Kayıt bulunamadı.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="loading">Kayıt bulunamadı.</td></tr>';
     return;
   }
   tbody.innerHTML = filtered.map(c => {
@@ -739,6 +739,7 @@ function renderCustomersTable() {
     return `<tr>
       <td><strong>${escapeHtml(c.companyName || c.customerId)}</strong><br>
           <small class="muted">${escapeHtml(c.customerId)}</small></td>
+      <td><code style="font-size:.82em">${escapeHtml(c.keyMasked || '—')}</code></td>
       <td>${escapeHtml(c.plan || '—')}</td>
       <td>${escapeHtml(c.tier || '—')}</td>
       <td><span class="tag tag-${ls}">${ls}</span></td>
