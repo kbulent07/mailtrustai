@@ -233,17 +233,41 @@ td .action-btn.ok:hover { background: var(--ok); border-color: var(--ok); color:
 .modal-btns button.primary { background: var(--primary); border-color: var(--primary); color: white; }
 .modal-btns button.primary:hover { background: var(--primary-hover); }
 
-/* Mobil */
-@media (max-width: 768px) {
+/* Tablet */
+@media (max-width: 1024px) {
     .sidebar { width: 64px; }
     .nav-item span { display: none; }
     .nav-item { padding: 14px 0; text-align: center; }
+    .form-grid { grid-template-columns: 1fr 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+}
+
+/* Mobil */
+@media (max-width: 768px) {
+    .app-layout { flex-direction: column; }
+    .sidebar { width: 100%; flex-direction: row; display: flex; overflow-x: auto;
+               padding: 0; gap: 0; border-right: none; border-bottom: 1px solid var(--border); }
+    .nav-item { flex: 1; padding: 10px 4px; text-align: center;
+                font-size: 0.75em; white-space: nowrap; }
+    .nav-item span { display: inline; font-size: 0.78em; }
     .stats { grid-template-columns: repeat(2, 1fr); }
     .bulk-form { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
+    .filters { flex-wrap: wrap; }
     .filters input, .filters select { min-width: 0; width: 100%; }
-    th, td { padding: 8px; font-size: 0.82em; }
-    .main { padding: 16px; }
+    th, td { padding: 6px; font-size: 0.78em; }
+    .main { padding: 12px; }
+    .topbar { flex-wrap: wrap; gap: 6px; }
+    .topbar-left, .topbar-right { width: 100%; }
+    .modal-card { width: 95vw; max-height: 90vh; overflow-y: auto; }
+}
+
+/* Küçük mobil */
+@media (max-width: 480px) {
+    .nav-item span { display: none; }
+    .nav-item { font-size: 1.1em; padding: 10px 0; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    th, td { font-size: 0.72em; padding: 5px; }
 }
 
 /* ============== Toast (alert yerine) ============== */
