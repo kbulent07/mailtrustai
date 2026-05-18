@@ -3479,17 +3479,26 @@ function closeLicenseModal() {
 
 async function activateLicense() {
     const key = document.getElementById('licenseKeyInput').value.trim();
-    // Activate endpoint hem doğrulama hem de sunucuya kalıcı kayıt yapar.
-    // Bu sayede yeni cihaz/restart/versiyon geçişlerinde lisans korunur.
-    const res = await fetch('/api/license/activate', {
+    // Activate endpoint license-server'a remote activation yapar + sonuc cache'lenir.
+    const res = await fetch('/api/customer/license/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key })
+        body: JSON.stringify({ licenseKey: key })
     });
     const payload = await res.json();
-    const data = payload.validation || payload; // hata durumunda direkt cevap
+    // Yeni endpoint cevabi: { ok, snapshot:{ plan, tier, features, limits, expiresAt, customerId, dealerId } }
+    const snap = payload.snapshot || payload;
+    const data = snap ? {
+        valid: !!payload.ok,
+        plan: snap.plan,
+        tier: snap.tier,
+        features: snap.features || {},
+        monthlyLimit: snap.limits?.monthlyScans ?? snap.limits?.monthly ?? null,
+        expiryDate: snap.expiresAt,
+        tierInfo: snap.tierInfo || {}
+    } : {};
 
-    if (res.ok && payload.success && data.valid) {
+    if (res.ok && payload.ok && data.valid) {
         const previousPlan = licenseInfo?.plan;
         licenseKey = key;
         licenseInfo = data;
@@ -3530,19 +3539,28 @@ async function activateLicense() {
 }
 
 async function validateStoredLicense() {
-    let res, data;
+    let res, raw, data;
     try {
-        res  = await fetch('/api/license/validate', {
+        res = await fetch('/api/customer/license/validate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: licenseKey })
+            body: JSON.stringify({ licenseKey })
         });
-        data = await res.json();
+        raw = await res.json();
     } catch (e) {
         // Sunucu henüz hazır değil (yeniden başlatılıyor) — sessizce atla
         console.warn('[License] validateStoredLicense network error:', e.message);
         return;
     }
+    // license-client.validate() cevabi: { ok, snapshot, expiresAt, ... } veya { error }
+    data = raw.ok ? {
+        valid: true,
+        plan: raw.snapshot?.plan,
+        tier: raw.snapshot?.tier,
+        features: raw.snapshot?.features || {},
+        monthlyLimit: raw.snapshot?.limits?.monthlyScans ?? raw.snapshot?.limits?.monthly ?? null,
+        expiryDate: raw.snapshot?.expiresAt
+    } : { valid: false, error: raw.error };
 
     if (data.valid) {
         licenseInfo = data;
