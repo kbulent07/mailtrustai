@@ -52,7 +52,12 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+// Trust proxy: Docker/nginx arkasında req.ip'nin doğru çalışması için.
+// TRUST_PROXY=1 → tek hop (default). TRUST_PROXY=false → devre dışı.
+const _trustProxyEnv = env('TRUST_PROXY', '1');
+if (_trustProxyEnv && _trustProxyEnv !== 'false' && _trustProxyEnv !== '0') {
+    app.set('trust proxy', isNaN(Number(_trustProxyEnv)) ? _trustProxyEnv : Number(_trustProxyEnv));
+}
 
 // =====================================================================
 // HARD GATE: customer image'de bu yollar 404 döner. apps/customer/Dockerfile

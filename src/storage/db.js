@@ -17,6 +17,8 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.pragma('synchronous = NORMAL'); // WAL ile güvenli, tam sync'den daha hızlı
+// Eş zamanlı erişimde "database is locked" hatasını önlemek için 5 sn bekleme.
+db.pragma('busy_timeout = 5000');
 
 // ─── ŞEMA ───────────────────────────────────────────────
 db.exec(`

@@ -41,6 +41,9 @@ function _initSqlite() {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
+    // WAL modunda eş zamanlı yazma çakışmalarını önlemek için busy_timeout.
+    // SQLite varsayılanı 0ms (hemen hata) — 5 saniye bekleme toleransı ekle.
+    db.pragma('busy_timeout = 5000');
     db.exec(`CREATE TABLE IF NOT EXISTS _migrations (
         id TEXT PRIMARY KEY,
         applied_at INTEGER NOT NULL

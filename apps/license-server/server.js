@@ -34,6 +34,15 @@ const { createRateLimiters } = require('./middleware/rateLimit');
 const path = require('path');
 
 const app = express();
+
+// Trust proxy: Docker/nginx arkasında req.ip'nin doğru çalışması için.
+// TRUST_PROXY=1 → tek hop (default). TRUST_PROXY=false → devre dışı.
+// Rate limiter ve X-Forwarded-For doğruluğu bu ayara bağlıdır.
+const _trustProxyEnv = env('TRUST_PROXY', '1');
+if (_trustProxyEnv && _trustProxyEnv !== 'false' && _trustProxyEnv !== '0') {
+    app.set('trust proxy', isNaN(Number(_trustProxyEnv)) ? _trustProxyEnv : Number(_trustProxyEnv));
+}
+
 app.use(helmet({ contentSecurityPolicy: false }));
 // reviver: `__proto__`/`prototype`/`constructor` anahtarlarını body'den temizler.
 app.use(express.json({ limit: envInt('LICENSE_SERVER_JSON_LIMIT_KB', 256) * 1024, reviver: safeJSONReviver }));

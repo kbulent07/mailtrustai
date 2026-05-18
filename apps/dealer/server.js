@@ -12,6 +12,13 @@ const { sanitizeCustomerStatusList } = require('./customerVisibility');
 hardenPrototypes();
 
 const app = express();
+
+// Trust proxy: Docker/nginx arkasında req.ip'nin doğru çalışması için.
+const _trustProxyEnv = env('TRUST_PROXY', '1');
+if (_trustProxyEnv && _trustProxyEnv !== 'false' && _trustProxyEnv !== '0') {
+    app.set('trust proxy', isNaN(Number(_trustProxyEnv)) ? _trustProxyEnv : Number(_trustProxyEnv));
+}
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: envInt('DEALER_JSON_LIMIT_KB', 128) * 1024, reviver: safeJSONReviver }));
 

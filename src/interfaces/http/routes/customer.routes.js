@@ -75,6 +75,16 @@ router.post('/customer/setup', async (req, res) => {
             return res.status(409).json({ error: 'Müşteri admin zaten ayarlanmış. Sıfırlamak için kurtarma akışını kullanın.' });
         }
 
+        // Setup token brute-force koruması — login ile aynı rate limiter kullanılır.
+        const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+        const rate = customerAuth.checkLoginRate(ip);
+        if (!rate.allowed) {
+            return res.status(429).json({
+                error: `Çok fazla deneme. ${Math.ceil(rate.retryAfter / 60)} dakika sonra deneyin.`,
+                retryAfter: rate.retryAfter
+            });
+        }
+
         // İlk kurulum hijack koruması: localhost VEYA MSA_SETUP_TOKEN
         const ipRaw = String(req.ip || req.connection?.remoteAddress || '');
         const isLocal = /^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1|localhost)$/i.test(ipRaw);
@@ -115,6 +125,7 @@ router.post('/customer/setup', async (req, res) => {
             email, password, role: 'admin', imapEmail: null, active: true
         });
         customerUserStore.touchLogin(admin.email);
+        customerAuth.clearLoginRate(ip); // başarılı kurulumda rate limiter'ı sıfırla
 
         const token = customerAuth.createCustomerToken({
             email: admin.email, role: 'admin', imapEmail: null

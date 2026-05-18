@@ -396,6 +396,15 @@ router.post('/admin/licenses/:id/offline-grace', adminAuth, asyncH(async (req, r
 router.post('/admin/offline-grace/bulk', adminAuth, asyncH(async (req, res) => {
     const { days, dealerId, plan, status } = req.body || {};
 
+    // Kazara tüm lisansları etkilememek için en az bir filtre zorunlu.
+    // Tüm aktif lisansları güncellemek istiyorsanız: { status: 'active', days: N }
+    if (!dealerId && !plan && status === undefined) {
+        return res.status(400).json({
+            error: 'Toplu güncelleme için en az bir filtre gereklidir (dealerId, plan veya status). ' +
+                   'Tüm aktif lisansları güncellemek için { status: "active" } gönderin.'
+        });
+    }
+
     let override;
     if (days === null || days === undefined) {
         override = null;
