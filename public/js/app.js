@@ -3701,7 +3701,9 @@ function showSettings() {
 
 function showSettingsTab(tab) {
     document.querySelectorAll('[data-settings-tab]').forEach((panel) => {
-        panel.style.display = panel.dataset.settingsTab === tab ? '' : 'none';
+        // .hidden uses display:none !important — must toggle class, not inline style
+        panel.classList.toggle('hidden', panel.dataset.settingsTab !== tab);
+        panel.style.display = '';
     });
     document.querySelectorAll('[data-settings-tab-btn]').forEach((button) => {
         const active = button.dataset.settingsTabBtn === tab;
@@ -7645,9 +7647,14 @@ async function loadWebhookSettings() {
 }
 
 // ─── SİSTEM SMTP ─────────────────────────────────────────────
+function _customerAuthHeader() {
+    const tok = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('msa_customer_token')) || '';
+    return tok ? { 'Authorization': 'Bearer ' + tok } : {};
+}
+
 async function loadSystemSmtp() {
     try {
-        const res  = await fetch('/api/settings/system-smtp');
+        const res  = await fetch('/api/settings/system-smtp', { headers: _customerAuthHeader() });
         if (!res.ok) return;
         const data = await res.json();
         const f = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
@@ -7678,7 +7685,7 @@ async function saveSystemSmtp() {
         };
         const res  = await fetch('/api/settings/system-smtp', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ..._customerAuthHeader() },
             body: JSON.stringify(body)
         });
         const data = await res.json();
@@ -7695,7 +7702,7 @@ async function testSystemSmtp() {
     const statusEl = document.getElementById('sysSmtpStatus');
     if (statusEl) statusEl.textContent = '⏳ Test ediliyor…';
     try {
-        const res  = await fetch('/api/settings/system-smtp/test', { method: 'POST' });
+        const res  = await fetch('/api/settings/system-smtp/test', { method: 'POST', headers: _customerAuthHeader() });
         const data = await res.json();
         if (statusEl) {
             statusEl.innerHTML = data.success
