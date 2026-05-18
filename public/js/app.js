@@ -810,7 +810,7 @@ async function requestDeepAiAnalysis(buttonEl) {
         const json = await res.json();
         if (!res.ok || !json.success) {
             const msg = json.error || `Hata: HTTP ${res.status}`;
-            if (status) status.innerHTML = `<span style="color:#f87171">❌ ${esc(msg)}</span>`;
+            if (status) status.innerHTML = `<span class="u-err">❌ ${esc(msg)}</span>`;
             if (btn) { btn.disabled = false; btn.innerHTML = '🚀 Derinlemesine Analiz Et'; btn.style.opacity = ''; btn.style.cursor = ''; }
             return;
         }
@@ -835,7 +835,7 @@ async function requestDeepAiAnalysis(buttonEl) {
         const newStatus = host?.querySelector('.deep-ai-status');
         if (newStatus) newStatus.textContent = `✅ Tamamlandı. Aylık limit: ${json.monthlyUsed}/${json.monthlyLimit === Infinity ? '∞' : json.monthlyLimit} (kalan: ${remaining}).`;
     } catch (e) {
-        if (status) status.innerHTML = `<span style="color:#f87171">❌ Bağlantı hatası: ${esc(e.message)}</span>`;
+        if (status) status.innerHTML = `<span class="u-err">❌ Bağlantı hatası: ${esc(e.message)}</span>`;
         if (btn) { btn.disabled = false; btn.innerHTML = '🚀 Derinlemesine Analiz Et'; btn.style.opacity = ''; btn.style.cursor = ''; }
     }
 }
@@ -865,7 +865,7 @@ function renderDeepAiResult(a, cached) {
         ].filter(([_, list]) => list.length > 0);
         if (!groups.length) return '<div style="color:var(--text-secondary);font-size:13px;padding:6px 0">İndikatör bulunamadı</div>';
         return groups.map(([label, list]) => `
-            <div style="margin-bottom:8px">
+            <div class="u-mb8">
                 <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:4px">${esc(label)} (${list.length})</div>
                 <div style="background:#0b1220;border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px;color:#e5e7eb;word-break:break-all">${list.map(esc).join('<br>')}</div>
             </div>
@@ -905,21 +905,21 @@ function renderDeepAiResult(a, cached) {
         ${brandHtml}
 
         <!-- Threat narrative -->
-        <div style="margin-bottom:14px">
+        <div class="u-mb14">
             <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:6px">🎯 SALDIRI/AMAÇ ANLATIMI</div>
             <div style="font-size:13px;color:#e5e7eb;line-height:1.65">${esc(a.threat_narrative_tr || '—')}</div>
         </div>
 
         <!-- Sosyal mühendislik kalıpları -->
         ${tactics ? `
-        <div style="margin-bottom:14px">
+        <div class="u-mb14">
             <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:6px">🧠 SOSYAL MÜHENDİSLİK KALIPLARI</div>
             <div>${tactics}</div>
         </div>` : ''}
 
         <!-- Kill chain -->
         ${killChain ? `
-        <div style="margin-bottom:14px">
+        <div class="u-mb14">
             <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:6px">⛓️ SALDIRI ZİNCİRİ (KILL CHAIN)</div>
             <ol style="margin:0;padding-left:20px">${killChain}</ol>
         </div>` : ''}
@@ -941,7 +941,7 @@ function renderDeepAiResult(a, cached) {
         </div>
 
         <!-- IoCs -->
-        <div style="margin-bottom:14px">
+        <div class="u-mb14">
             <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:1px;margin-bottom:6px">🔍 GÖSTERGELER (IoCs)</div>
             ${iocSection}
         </div>
@@ -994,7 +994,7 @@ function renderStructuredReport(data) {
         <div style="position:relative;margin-bottom:14px;border-radius:10px;overflow:hidden;border:2px solid ${verdictColor};background:linear-gradient(90deg,${verdictColor}28,${verdictColor}10)">
             <div style="display:flex;align-items:center;gap:12px;padding:12px 16px">
                 <div style="font-size:28px;line-height:1">${levelIcon}</div>
-                <div style="flex:1;min-width:0">
+                <div class="u-flex1-0">
                     <div style="font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:1px">📩 BU E-POSTA İÇİN TARAMA SONUCU</div>
                     <div style="font-size:18px;font-weight:800;color:${verdictColor};margin-top:2px">${esc(levelText)} <span style="font-size:13px;color:var(--text-secondary);font-weight:600;margin-left:6px">· Skor ${data.score ?? '-'}/100</span></div>
                 </div>
@@ -1135,9 +1135,9 @@ function renderFindings(findings, filter = 'all') {
     list.innerHTML = filtered.map((finding, idx) => {
         const fpBtn = renderFindingFpButton(finding, idx);
         return `
-        <div class="finding-item" data-finding-idx="${idx}" style="display:flex;align-items:flex-start;gap:10px">
+        <div class="finding-item" data-finding-idx="${idx}" class="u-row-10">
             <div class="finding-icon ${finding.severity}">${findingIcon(finding.severity)}</div>
-            <div style="flex:1">
+            <div class="u-flex1">
                 <div class="finding-text">${esc(finding.message)}</div>
                 <div class="finding-category">${esc(formatCategory(finding.category))}</div>
             </div>
@@ -1256,7 +1256,7 @@ function renderVirusTotal(entries, vtStatus, data) {
                 <div>
                     <div class="finding-text"><strong>${esc(row.filename)}</strong> mail guvenlik gecidi tarafindan karantinaya alindi</div>
                     <div class="finding-category">${esc(row.quarantineDetection || 'Malware tespiti')} ${row.quarantineAction ? `| ${esc(row.quarantineAction)}` : ''}</div>
-                    <div class="text-red" style="margin-top:8px;">Bu nedenle ek, posta kutusuna orijinal hâliyle ulaşmadı ve virüs taramasına gönderilemedi.</div>
+                    <div class="text-red" class="u-mt8">Bu nedenle ek, posta kutusuna orijinal hâliyle ulaşmadı ve virüs taramasına gönderilemedi.</div>
                 </div>
             </div>
         `).join('')
@@ -1273,7 +1273,7 @@ function renderVirusTotal(entries, vtStatus, data) {
                 ${renderVirusTotalDetails(entry)}
                 ${renderArchiveWarningForEntry(entry, data)}
                 ${entry.link
-                    ? `<a href="${entry.link}" target="_blank" class="text-accent" style="font-size:12px">AntiVirüs Tarama Raporunu Görüntüle →</a>`
+                    ? `<a href="${entry.link}" target="_blank" class="text-accent" class="u-sm">AntiVirüs Tarama Raporunu Görüntüle →</a>`
                     : ''}
             </div>
         </div>
@@ -1303,7 +1303,7 @@ function renderVirusTotalDetails(entry) {
 
     const summaryLine = isClean
         ? `<span style="color:#4ade80">✅ Temiz</span> — <strong>${total}</strong> motor taradı, tehdit tespit edilmedi`
-        : `<span style="color:#f87171">⚠️ Zararlı: <strong>${malicious}</strong></span> / Şüpheli: <strong>${suspicious}</strong> / Toplam: <strong>${total}</strong> motor`;
+        : `<span class="u-err">⚠️ Zararlı: <strong>${malicious}</strong></span> / Şüpheli: <strong>${suspicious}</strong> / Toplam: <strong>${total}</strong> motor`;
 
     return `
         <div class="finding-text">${summaryLine}</div>
@@ -1313,11 +1313,11 @@ function renderVirusTotalDetails(entry) {
         ${entry.typeDescription ? `<div class="finding-text">Tür: ${esc(entry.typeDescription)}</div>` : ''}
         ${typeof entry.reputation === 'number' ? `<div class="finding-text">İtibar skoru: ${esc(String(entry.reputation))}</div>` : ''}
         ${entry.maliciousEngines?.length ? `
-            <div class="finding-category" style="margin-top:8px;">Zararlı bulan motorlar</div>
+            <div class="finding-category" class="u-mt8">Zararlı bulan motorlar</div>
             <div class="finding-text">${entry.maliciousEngines.map((engine) => `${esc(engine.engine)} (${esc(engine.result)})`).join(', ')}</div>
         ` : ''}
         ${entry.suspiciousEngines?.length ? `
-            <div class="finding-category" style="margin-top:8px;">Şüpheli bulan motorlar</div>
+            <div class="finding-category" class="u-mt8">Şüpheli bulan motorlar</div>
             <div class="finding-text">${entry.suspiciousEngines.map((engine) => `${esc(engine.engine)} (${esc(engine.result)})`).join(', ')}</div>
         ` : ''}
     `;
@@ -1356,34 +1356,34 @@ function renderAttachmentDetails(data) {
 function renderAttachmentVirusTotal(vt, vtStatus) {
     if (!vt) {
         if (vtStatus?.reason === 'quarantined-upstream') {
-            return '<div class="text-red" style="margin-top:8px;">Bu ek, kurum mail güvenlik geçidi tarafından karantinaya alındığı için virüs taramasına gönderilemedi.</div>';
+            return '<div class="text-red" class="u-mt8">Bu ek, kurum mail güvenlik geçidi tarafından karantinaya alındığı için virüs taramasına gönderilemedi.</div>';
         }
 
         if (vtStatus?.reason === 'image-local-scan') {
-            return '<div class="text-muted" style="margin-top:8px;">Virüs taraması yerine yerel görüntü bütünlüğü kontrolü kullanıldı.</div>';
+            return '<div class="text-muted" class="u-mt8">Virüs taraması yerine yerel görüntü bütünlüğü kontrolü kullanıldı.</div>';
         }
 
         if (vtStatus?.reason === 'imap-part-unavailable') {
-            return '<div class="text-orange" style="margin-top:8px;">IMAP sunucusu bu ekin dosya içeriğini indirmeye izin vermedi veya boş döndürdü. Dosya adı görünüyor, ancak içerik alınamadığı için virüs taramasına yüklenemedi.</div>';
+            return '<div class="text-orange" class="u-mt8">IMAP sunucusu bu ekin dosya içeriğini indirmeye izin vermedi veya boş döndürdü. Dosya adı görünüyor, ancak içerik alınamadığı için virüs taramasına yüklenemedi.</div>';
         }
 
         if (vtStatus?.available && !vtStatus?.configured) {
-            return '<div class="text-orange" style="margin-top:8px;">Virüs tarama API anahtarı tanımlı değil. Bu dosya için yalnızca yerel ek kontrolleri çalıştırıldı.</div>';
+            return '<div class="text-orange" class="u-mt8">Virüs tarama API anahtarı tanımlı değil. Bu dosya için yalnızca yerel ek kontrolleri çalıştırıldı.</div>';
         }
 
-        return '<div class="text-muted" style="margin-top:8px;">Virüs tarama sonucu yok.</div>';
+        return '<div class="text-muted" class="u-mt8">Virüs tarama sonucu yok.</div>';
     }
 
     if (vt.error) {
-        return `<div class="text-orange" style="margin-top:8px;">Virüs tarama hatası: ${esc(vt.error)}</div>`;
+        return `<div class="text-orange" class="u-mt8">Virüs tarama hatası: ${esc(vt.error)}</div>`;
     }
 
     if (!vt.checked) {
-        return '<div class="text-orange" style="margin-top:8px;">Virüs tarama sorgusu tamamlanamadı.</div>';
+        return '<div class="text-orange" class="u-mt8">Virüs tarama sorgusu tamamlanamadı.</div>';
     }
 
     if (!vt.found) {
-        return '<div class="text-muted" style="margin-top:8px;">Virüs tarama veritabanında kayıt bulunamadı.</div>';
+        return '<div class="text-muted" class="u-mt8">Virüs tarama veritabanında kayıt bulunamadı.</div>';
     }
 
     const malicious = vt.stats?.malicious || 0;
@@ -1400,10 +1400,10 @@ function renderAttachmentVirusTotal(vt, vtStatus) {
 
     const summaryLine = isClean
         ? `<span style="color:#4ade80">✅ Temiz</span> — <strong>${total}</strong> motor taradı, tehdit tespit edilmedi`
-        : `<span style="color:#f87171">⚠️ Zararlı: <strong>${malicious}</strong></span> / Şüpheli: <strong>${suspicious}</strong> / Toplam: <strong>${total}</strong> motor`;
+        : `<span class="u-err">⚠️ Zararlı: <strong>${malicious}</strong></span> / Şüpheli: <strong>${suspicious}</strong> / Toplam: <strong>${total}</strong> motor`;
 
     return `
-        <div class="finding-text" style="margin-top:8px;">${summaryLine}</div>
+        <div class="finding-text" class="u-mt8">${summaryLine}</div>
         ${vt.typeDescription ? `<div class="finding-category">Tür: ${esc(vt.typeDescription)}</div>` : ''}
         ${typeof vt.reputation === 'number' ? `<div class="finding-category">İtibar skoru: ${esc(String(vt.reputation))}</div>` : ''}
         ${engines.length ? `<div class="finding-text">Tetikleyen motorlar: ${engines.map((item) => esc(item)).join(', ')}</div>` : ''}
@@ -1432,7 +1432,7 @@ function renderArchiveEntries(row) {
         return `${esc(entry.name)} (${severity})`;
     });
 
-    return `<div class="finding-text" style="margin-top:8px;">Archive contents: ${items.join(', ')}</div>`;
+    return `<div class="finding-text" class="u-mt8">Archive contents: ${items.join(', ')}</div>`;
 }
 
 function renderLocalScannerSummary(row) {
@@ -1483,7 +1483,7 @@ function renderClaudeAnalysis(analysis) {
         <div style="font-size:15px;line-height:1.6;margin-bottom:16px;">
             <strong>Ozet:</strong> ${esc(_tLit(analysis.summaryTR, analysis.summaryEN))}
         </div>
-        <div class="grid-2" style="margin-bottom:16px;">
+        <div class="grid-2" class="u-mb16">
             <div class="finding-item">
                 <div class="finding-icon">${levelIcon[threatLevel] || 'i'}</div>
                 <div>
@@ -1503,7 +1503,7 @@ function renderClaudeAnalysis(analysis) {
 
     if (analysis.suspiciousElements?.length) {
         html += `
-            <div class="finding-category" style="margin-bottom:8px;">SUSPICIOUS ELEMENTS IDENTIFIED:</div>
+            <div class="finding-category" class="u-mb8">SUSPICIOUS ELEMENTS IDENTIFIED:</div>
             <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:8px;">
                 ${analysis.suspiciousElements.map((item) => `
                     <li style="background:var(--bg-glass);padding:8px 12px;border-radius:6px;border-left:3px solid var(--orange);font-size:14px;">
@@ -1681,7 +1681,7 @@ function renderArchiveWarningForEntry(entry, data) {
     const dangerousEntries = row?.archiveEntries?.filter((item) => item.severity === 'critical') || [];
     if (!dangerousEntries.length) return '';
 
-    return `<div class="text-red" style="margin-top:8px;">Archive inspection warning: embedded dangerous file(s) detected -> ${dangerousEntries.map((item) => esc(item.name)).join(', ')}</div>`;
+    return `<div class="text-red" class="u-mt8">Archive inspection warning: embedded dangerous file(s) detected -> ${dangerousEntries.map((item) => esc(item.name)).join(', ')}</div>`;
 }
 
 function virusTotalDisplaySeverity(entry, data) {
@@ -1788,8 +1788,8 @@ function toggleOpenaiCard() { switchAiTab('openai'); }
 function renderAnalysisList(title, items) {
     if (!items || !items.length) return '';
     return `
-        <div style="margin-bottom:16px;">
-            <div class="finding-category" style="margin-bottom:8px;">${esc(title)}</div>
+        <div class="u-mb16">
+            <div class="finding-category" class="u-mb8">${esc(title)}</div>
             <div class="findings-list">
                 ${items.map((item) => `
                     <div class="finding-item compact">
@@ -1869,7 +1869,7 @@ function updateAlertDefaultRecipientHint() {
     const hint = document.getElementById('imapAlertDefaultHint');
     if (hint) {
         if (!editingImapAlertAccountEmail) {
-            hint.innerHTML = '<span style="color:#f87171">⚠️ Tarama posta kutusu tanımlanmamış</span>';
+            hint.innerHTML = '<span class="u-err">⚠️ Tarama posta kutusu tanımlanmamış</span>';
         } else {
             hint.innerHTML = `Birden fazla alıcı ekleyebilirsiniz. Boş bırakılırsa: <span style="opacity:0.45">${editingImapAlertAccountEmail}</span>`;
         }
@@ -2168,12 +2168,12 @@ async function loadImapAccounts() {
                         ` : ''}
                     </div>`;
                 return `
-                <div class="connection-bar imap-account-row ${isMonitoring ? 'monitoring' : ''}" data-account-email="${esc(account.email)}" style="margin-bottom:8px">
+                <div class="connection-bar imap-account-row ${isMonitoring ? 'monitoring' : ''}" data-account-email="${esc(account.email)}" class="u-mb8">
                     <span class="status-dot ${isMonitoring ? 'monitoring' : 'connected'}"></span>
                     <strong>${esc(account.email)}</strong>
                     <span class="text-muted">${esc(account.host)}:${account.port}</span>
                     ${account.moveHighRiskToQuarantine ? '<span class="email-monitor-badge">Quarantine</span>' : ''}
-                    <span style="flex:1"></span>
+                    <span class="u-flex1"></span>
                     ${adminControls}
                     <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick='refreshInbox(${JSON.stringify(account.email)})'>Listele</button>
                 </div>
@@ -2454,7 +2454,7 @@ function renderImapMessageList() {
             <input type="checkbox" id="imapSelectAll" ${allSelected ? 'checked' : ''}
                 onchange="toggleSelectAllImap(this.checked)"
                 style="width:15px;height:15px;cursor:pointer;accent-color:var(--blue,#60a5fa);flex-shrink:0">
-            <span class="text-muted" style="font-size:11px">${_tLit('Tümünü seç', 'Select all')} (${currentImapMessages.length})</span>
+            <span class="text-muted" class="u-xs">${_tLit('Tümünü seç', 'Select all')} (${currentImapMessages.length})</span>
         </div>`;
 
     list.innerHTML = selectAllHtml + currentImapMessages.map((message) => {
@@ -2473,7 +2473,7 @@ function renderImapMessageList() {
                 <button
                     type="button"
                     class="email-item email-row ${isActive} ${isMonitoringCurrentMailbox ? 'monitoring' : ''}"
-                    style="flex:1;min-width:0"
+                    class="u-flex1-0"
                     onclick='openImapMail(${message.uid}, ${JSON.stringify(currentImapEmail)})'
                 >
                     <span class="email-bullet"></span>
@@ -2760,9 +2760,9 @@ function renderImapReport(data, message = null) {
                         ${group.items.map((finding, findingIdx) => {
                             const fpButtonId = `imap-fp-${group.category}-${findingIdx}`;
                             return `
-                            <div class="finding-item compact" style="display:flex;align-items:flex-start;gap:10px">
+                            <div class="finding-item compact" class="u-row-10">
                                 <div class="finding-icon ${finding.severity}">${findingIcon(finding.severity)}</div>
-                                <div style="flex:1;min-width:0">
+                                <div class="u-flex1-0">
                                     <div class="finding-text">${esc(finding.message)}</div>
                                     <div class="finding-category">${esc(formatCategory(finding.category))}</div>
                                 </div>
@@ -2873,7 +2873,7 @@ function renderImapAbuseSection(data) {
     // X / Y sayacı (sorun varsa kırmızı, yoksa yeşil/gri)
     let counterBadge;
     if (totalLinks === 0) {
-        counterBadge = `<span class="text-muted" style="font-size:11px">0 link</span>`;
+        counterBadge = `<span class="text-muted" class="u-xs">0 link</span>`;
     } else if (threatCount === 0 && status.available) {
         counterBadge = `<span style="font-size:11px;color:#34d399;font-weight:600">0/${totalLinks} ✅</span>`;
     } else if (threatCount === 0 && !status.available) {
@@ -2902,9 +2902,9 @@ function renderImapAbuseSection(data) {
             const val = String(m.value || '');
             const display = val.length > 90 ? val.slice(0, 87) + '…' : val;
             return `
-              <div class="finding-item compact" style="display:flex;align-items:flex-start;gap:10px">
+              <div class="finding-item compact" class="u-row-10">
                 <div class="finding-icon critical">!!</div>
-                <div style="flex:1;min-width:0">
+                <div class="u-flex1-0">
                     <div class="finding-text"><strong>${esc(typeLabel)}:</strong> <code style="word-break:break-all;color:#f87171">${esc(display)}</code></div>
                     <div class="finding-category">${esc(m.source || source)}</div>
                 </div>
@@ -2921,7 +2921,7 @@ function renderImapAbuseSection(data) {
     };
 
     return `
-        <div class="imap-finding-group" style="margin-bottom:16px;">
+        <div class="imap-finding-group" class="u-mb16">
             <div class="imap-group-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <span style="flex:1;min-width:160px">🔗 Link Tarama Motoru Sonuçları</span>
                 ${counterBadge}
@@ -2987,8 +2987,8 @@ function openLinkListModal() {
                     <div style="font-size:16px;font-weight:700;color:#f1f5f9">🔗 Maildeki Bağlantılar</div>
                     <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">
                         ${threatCount > 0
-                            ? `<span style="color:#f87171;font-weight:600">${threatCount}/${all.length} tehdit tespit edildi</span>`
-                            : `<span style="color:#34d399">${all.length} bağlantı, hepsi temiz</span>`}
+                            ? `<span class="u-err-b">${threatCount}/${all.length} tehdit tespit edildi</span>`
+                            : `<span class="u-ok2">${all.length} bağlantı, hepsi temiz</span>`}
                         · Feed: ${esc(payload.source || 'URLhaus + OpenPhish')}
                     </div>
                 </div>
@@ -3061,9 +3061,9 @@ function renderImapThreatTypesSection(data) {
     const findingsHtml = findings.length === 0
         ? ''
         : findings.map(f => `
-            <div class="finding-item compact" style="display:flex;align-items:flex-start;gap:10px">
+            <div class="finding-item compact" class="u-row-10">
                 <div class="finding-icon ${esc(f.severity)}">${findingIcon(f.severity)}</div>
-                <div style="flex:1;min-width:0">
+                <div class="u-flex1-0">
                     <div class="finding-text">${esc(f.message)}</div>
                 </div>
             </div>
@@ -3079,12 +3079,12 @@ function renderImapThreatTypesSection(data) {
             const tot = stats.total || (mal + sus + (stats.harmless || 0) + (stats.undetected || 0));
             const isClean = mal === 0 && sus === 0;
             const summary = isClean
-                ? `<span style="color:#34d399">✅ Temiz</span> — ${tot} motor taradı`
-                : `<span style="color:#f87171;font-weight:600">⚠️ ${mal} zararlı</span> · ${sus} şüpheli · toplam ${tot} motor`;
+                ? `<span class="u-ok2">✅ Temiz</span> — ${tot} motor taradı`
+                : `<span class="u-err-b">⚠️ ${mal} zararlı</span> · ${sus} şüpheli · toplam ${tot} motor`;
             return `
-                <div class="finding-item compact" style="display:flex;align-items:flex-start;gap:10px">
+                <div class="finding-item compact" class="u-row-10">
                     <div class="finding-icon ${isClean ? 'safe' : 'critical'}">${isClean ? 'OK' : '!!'}</div>
-                    <div style="flex:1;min-width:0">
+                    <div class="u-flex1-0">
                         <div class="finding-text"><strong>${esc(e.filename || 'ek')}</strong></div>
                         <div class="finding-text">${summary}</div>
                         ${e.maliciousEngines?.length
@@ -3102,7 +3102,7 @@ function renderImapThreatTypesSection(data) {
            </div>`;
 
     return `
-        <div class="imap-finding-group" style="margin-bottom:16px;">
+        <div class="imap-finding-group" class="u-mb16">
             <div class="imap-group-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <span style="flex:1;min-width:160px">🔍 Tespit Edilen Tehdit Tipleri</span>
                 ${badge}
@@ -3119,7 +3119,7 @@ function renderImapAttachmentSection(data) {
     if (!rows.length) return '';
 
     return `
-        <div class="imap-finding-group" style="margin-bottom:16px;">
+        <div class="imap-finding-group" class="u-mb16">
             <div class="imap-group-title">
                 <span>Ek Dosya Tarama Detayları</span>
                 <span class="text-muted">${rows.length}</span>
@@ -3224,19 +3224,19 @@ function renderImapClaudeSection(analysis) {
     if (Array.isArray(analysis) || (!analysis.summaryTR && !analysis.summaryEN)) return '';
     const sum = _tLit(analysis.summaryTR || analysis.summaryEN || '', analysis.summaryEN || analysis.summaryTR || '');
     return `
-        <div class="imap-finding-group" style="margin-bottom:16px;">
+        <div class="imap-finding-group" class="u-mb16">
             <div class="imap-group-title">
                 <span>🤖 Claude AI (Anthropic)</span>
                 <span class="text-muted">${esc(analysis.threatLevel || '')}</span>
             </div>
-            <div class="finding-item compact" style="margin-bottom:8px;">
+            <div class="finding-item compact" class="u-mb8">
                 <div>
                     <div class="finding-category">ÖZET</div>
                     <div class="finding-text">${esc(sum)}</div>
                 </div>
             </div>
             ${analysis.category ? `
-            <div class="finding-item compact" style="margin-bottom:8px;">
+            <div class="finding-item compact" class="u-mb8">
                 <div>
                     <div class="finding-category">KATEGORİ / TEHDİT SEVİYESİ</div>
                     <div class="finding-text">${esc(analysis.category)} / ${esc(analysis.threatLevel || '-')}</div>
@@ -3432,7 +3432,7 @@ function showNotification(result) {
         <div class="risk-score" style="color:${result.color};width:48px;height:48px;font-size:18px">${result.score}</div>
         <div>
             <strong>${esc(result.emailMeta?.subject || 'New Email')}</strong><br>
-            <span class="text-muted" style="font-size:12px">${esc(result.emailMeta?.from?.[0]?.address || '')}</span>
+            <span class="text-muted" class="u-sm">${esc(result.emailMeta?.from?.[0]?.address || '')}</span>
         </div>
     `;
     notification.onclick = () => {
@@ -3451,7 +3451,7 @@ function showImapBackgroundScanNotification(result, message) {
         <div class="risk-score" style="color:${result.color};width:48px;height:48px;font-size:18px">${result.score}</div>
         <div>
             <strong>${_tLit('Arka plan taramasi tamamlandi', 'Background scan completed')}</strong><br>
-            <span class="text-muted" style="font-size:12px">${esc(message?.subject || result.emailMeta?.subject || 'Mail')}</span>
+            <span class="text-muted" class="u-sm">${esc(message?.subject || result.emailMeta?.subject || 'Mail')}</span>
         </div>
     `;
     notification.onclick = () => {
@@ -3689,7 +3689,7 @@ async function loadDiskUsage() {
         const r = await fetch('/api/stats/disk-usage');
         if (!r.ok) {
             const err = await r.json().catch(() => ({}));
-            box.innerHTML = `<span style="color:#f87171">Yüklenemedi: ${esc(err.error || r.status)}</span>`;
+            box.innerHTML = `<span class="u-err">Yüklenemedi: ${esc(err.error || r.status)}</span>`;
             return;
         }
         const d = await r.json();
@@ -3697,7 +3697,7 @@ async function loadDiskUsage() {
         // Disk doluluk yüzdesi varsa görsel bar
         const usedPct = d.usedPercent;
         const barHtml = usedPct != null
-            ? `<div style="margin-top:8px">
+            ? `<div class="u-mt8">
                   <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">
                       Disk Doluluk: <strong style="color:${usedPct > 85 ? '#f87171' : usedPct > 70 ? '#fbbf24' : '#34d399'}">${usedPct}%</strong>
                       <span style="opacity:.7;margin-left:6px">(${_fmtBytes(d.totalBytes - (d.freeBytes||0))} / ${_fmtBytes(d.totalBytes)})</span>
@@ -3711,22 +3711,22 @@ async function loadDiskUsage() {
         box.innerHTML = `
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
                 <div>
-                    <div style="font-size:11px;color:var(--text-secondary)">📦 Uygulama Verisi</div>
+                    <div class="u-xs-m">📦 Uygulama Verisi</div>
                     <div style="font-size:16px;font-weight:700;color:#cbd5e1">${esc(_fmtBytes(d.dataDir))}</div>
                 </div>
                 <div>
-                    <div style="font-size:11px;color:var(--text-secondary)">🗄️ Local Data Store</div>
+                    <div class="u-xs-m">🗄️ Local Data Store</div>
                     <div style="font-size:16px;font-weight:700;color:#cbd5e1">${esc(_fmtBytes(d.dbFile))}</div>
                 </div>
                 <div>
-                    <div style="font-size:11px;color:var(--text-secondary)">📋 Tarama Kaydı</div>
+                    <div class="u-xs-m">📋 Tarama Kaydı</div>
                     <div style="font-size:16px;font-weight:700;color:#cbd5e1">${(d.historyCount || 0).toLocaleString('tr-TR')}</div>
                 </div>
             </div>
             ${barHtml}
         `;
     } catch (e) {
-        box.innerHTML = `<span style="color:#f87171">Hata: ${esc(e.message)}</span>`;
+        box.innerHTML = `<span class="u-err">Hata: ${esc(e.message)}</span>`;
     }
 }
 window.loadDiskUsage = loadDiskUsage;
@@ -3741,11 +3741,11 @@ async function deleteScanHistoryByRange() {
     status.textContent = '';
 
     if (!from || !to) {
-        status.innerHTML = '<span style="color:#f87171">Başlangıç ve bitiş tarihi seçin</span>';
+        status.innerHTML = '<span class="u-err">Başlangıç ve bitiş tarihi seçin</span>';
         return;
     }
     if (from > to) {
-        status.innerHTML = '<span style="color:#f87171">Başlangıç bitişten büyük olamaz</span>';
+        status.innerHTML = '<span class="u-err">Başlangıç bitişten büyük olamaz</span>';
         return;
     }
     const ok = await showConfirm({
@@ -3762,14 +3762,14 @@ async function deleteScanHistoryByRange() {
         });
         const data = await r.json();
         if (!r.ok) {
-            status.innerHTML = `<span style="color:#f87171">${esc(data.error || 'Hata')}</span>`;
+            status.innerHTML = `<span class="u-err">${esc(data.error || 'Hata')}</span>`;
             return;
         }
-        status.innerHTML = `<span style="color:#34d399">✅ ${data.deleted} kayıt silindi (kalan: ${data.after.toLocaleString('tr-TR')})</span>`;
+        status.innerHTML = `<span class="u-ok2">✅ ${data.deleted} kayıt silindi (kalan: ${data.after.toLocaleString('tr-TR')})</span>`;
         loadDiskUsage();           // disk bilgisini yenile
         if (typeof loadHistory === 'function') loadHistory();
     } catch (e) {
-        status.innerHTML = `<span style="color:#f87171">Bağlantı hatası: ${esc(e.message)}</span>`;
+        status.innerHTML = `<span class="u-err">Bağlantı hatası: ${esc(e.message)}</span>`;
     }
 }
 window.deleteScanHistoryByRange = deleteScanHistoryByRange;
@@ -3795,7 +3795,7 @@ async function readApiJsonOrThrow(res, fallbackMessage) {
     if (!res.ok || data.success === false) {
         const message = data.error || fallbackMessage || 'Kayit basarisiz';
         const statusEl = document.getElementById('settingsStatus');
-        if (statusEl) statusEl.innerHTML = `<span style="color:#f87171;font-weight:600">Kaydedilemedi: ${esc(message)}</span>`;
+        if (statusEl) statusEl.innerHTML = `<span class="u-err-b">Kaydedilemedi: ${esc(message)}</span>`;
         throw new Error(message);
     }
     return data;
@@ -3853,7 +3853,7 @@ async function saveSettings() {
     if (!keysRes.ok) {
         const statusEl = document.getElementById('settingsStatus');
         if (statusEl) {
-            statusEl.innerHTML = '<span style="color:#f87171;font-weight:600">⛔ Yetki reddedildi. Lütfen tekrar giriş yapın.</span>';
+            statusEl.innerHTML = '<span class="u-err-b">⛔ Yetki reddedildi. Lütfen tekrar giriş yapın.</span>';
             setTimeout(() => { statusEl.textContent = ''; }, 3000);
         }
         return;
@@ -4002,12 +4002,12 @@ async function testOtxConnection() {
         });
         const data = await res.json();
         if (res.ok) {
-            statusEl.innerHTML = `<span style="color:var(--green,#00e676)">✅ ${esc(data.message)}</span>`;
+            statusEl.innerHTML = `<span class="u-ok">✅ ${esc(data.message)}</span>`;
         } else {
-            statusEl.innerHTML = `<span style="color:#f87171">❌ ${esc(data.error)}</span>`;
+            statusEl.innerHTML = `<span class="u-err">❌ ${esc(data.error)}</span>`;
         }
     } catch (e) {
-        statusEl.innerHTML = `<span style="color:#f87171">❌ Bağlantı hatası: ${esc(e.message)}</span>`;
+        statusEl.innerHTML = `<span class="u-err">❌ Bağlantı hatası: ${esc(e.message)}</span>`;
     }
 }
 
@@ -5297,9 +5297,9 @@ async function loadScanMailboxes() {
                     : '<div style="font-size:11px;margin-top:3px;opacity:0.55">🌐 Tüm domain\'lere açık</div>';
                 return `
                 <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface2);border-radius:8px;margin-bottom:8px">
-                    <div style="flex:1">
+                    <div class="u-flex1">
                         <div style="font-weight:500">${esc(smb.imapEmail)}${centralBadge}</div>
-                        <div class="text-muted" style="font-size:11px">
+                        <div class="text-muted" class="u-xs">
                             ${smb.enabled ? '<span style="color:var(--green)">● Aktif</span>' : '<span style="color:#94a3b8">● Pasif</span>'}
                             &nbsp;·&nbsp; ${esc(scanMailboxReportModeLabel(smb.reportMode))}
                             &nbsp;·&nbsp; ${(smb.reportLang || 'tr').toUpperCase()}
@@ -5331,11 +5331,11 @@ async function loadScanMailboxes() {
                             : (smbEntry?.reportTo || m.email);
                         return `
                         <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface2);border-radius:8px;margin-bottom:8px">
-                            <div style="flex:1">
+                            <div class="u-flex1">
                                 <div style="font-weight:500">${esc(m.email)}</div>
-                                <div class="text-muted" style="font-size:12px">📡 IMAP otomatik izleme &nbsp;·&nbsp; ${isActive ? '<span style="color:var(--green)">● Aktif</span>' : '<span style="color:#f59e0b">● Bekliyor</span>'}</div>
+                                <div class="text-muted" class="u-sm">📡 IMAP otomatik izleme &nbsp;·&nbsp; ${isActive ? '<span style="color:var(--green)">● Aktif</span>' : '<span style="color:#f59e0b">● Bekliyor</span>'}</div>
                                 <div style="font-size:11px;margin-top:3px;color:var(--blue,#60a5fa)">Rapor: ${esc(recipientLabel)}</div>
-                                <div class="text-muted" style="font-size:11px">Eklendi: ${esc(updated)}</div>
+                                <div class="text-muted" class="u-xs">Eklendi: ${esc(updated)}</div>
                             </div>
                             <button class="btn btn-ghost btn-sm" onclick="stopAutoMonitorFromList('${esc(m.email)}')">⏹️ Durdur</button>
                         </div>
@@ -5791,16 +5791,16 @@ async function serviceAction(action) {
             if (statusEl) statusEl.textContent = `Hata: ${data.error || res.status}`;
             return;
         }
-        if (statusEl) statusEl.innerHTML = `<span style="color:var(--green,#00e676)">${esc(data.message || 'İşlem gönderildi.')}</span>`;
+        if (statusEl) statusEl.innerHTML = `<span class="u-ok">${esc(data.message || 'İşlem gönderildi.')}</span>`;
         if (action === 'restart') {
             // 7 sn sonra sayfayı yenile (parent kapanma 0.5s + child wait 2s + node startup ~3-4s)
-            if (statusEl) statusEl.innerHTML += '<br><span class="text-muted" style="font-size:11px">Sayfa 7 saniye içinde yeniden yüklenecek...</span>';
+            if (statusEl) statusEl.innerHTML += '<br><span class="text-muted" class="u-xs">Sayfa 7 saniye içinde yeniden yüklenecek...</span>';
             setTimeout(() => location.reload(), 7000);
         }
     } catch (e) {
         // Ağ hatası (sunucu kapalı) bile olsa restart başarılı sayılabilir
         if (action === 'restart') {
-            if (statusEl) statusEl.innerHTML = '<span style="color:var(--green,#00e676)">🔄 Servis yeniden başlatılıyor...</span><br><span class="text-muted" style="font-size:11px">Sayfa 7 saniye içinde yeniden yüklenecek...</span>';
+            if (statusEl) statusEl.innerHTML = '<span class="u-ok">🔄 Servis yeniden başlatılıyor...</span><br><span class="text-muted" class="u-xs">Sayfa 7 saniye içinde yeniden yüklenecek...</span>';
             setTimeout(() => location.reload(), 7000);
         } else {
             if (statusEl) statusEl.textContent = `Bağlantı hatası: ${e.message}`;
@@ -5986,7 +5986,7 @@ async function loadLlmUsage(days = 30) {
             </div>
 
             ${trend.length ? `
-            <div style="margin-bottom:14px">
+            <div class="u-mb14">
                 <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Günlük çağrı trendi (son ${days} gün)</div>
                 <div style="background:#0b1220;border:1px solid var(--border);border-radius:6px;padding:10px;line-height:0">${trendBars}</div>
             </div>
@@ -6244,7 +6244,7 @@ function _cuRenderIntegrations(d) {
     const otxPct = total > 0 ? (d.otxHits / total * 100).toFixed(1) : '0.0';
     const abusePct = total > 0 ? (d.abuseHits / total * 100).toFixed(1) : '0.0';
     document.getElementById('cuStatsIntegrations').innerHTML = `
-        <div style="margin-bottom:14px">
+        <div class="u-mb14">
             <div style="cursor:pointer;user-select:none" onclick="showVtDetections()" title="Tespit edilen dosya ve antivirüsleri görüntüle">
                 ${_cuBar('🔍 Tespit Edilen Tehdit Tipleri  ↗', d.vtHits || 0, total || 1, '#f87171')}
             </div>
@@ -6302,11 +6302,11 @@ async function showVtDetections() {
     try {
         const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
         const res = await fetch('/api/stats/vt-detections', { headers });
-        if (!res.ok) { body.innerHTML = '<p style="color:#f87171">Veriler yüklenemedi.</p>'; return; }
+        if (!res.ok) { body.innerHTML = '<p class="u-err">Veriler yüklenemedi.</p>'; return; }
         const list = await res.json();
         _cuRenderVtDetections(body, list);
     } catch (e) {
-        body.innerHTML = `<p style="color:#f87171">Hata: ${esc(e.message)}</p>`;
+        body.innerHTML = `<p class="u-err">Hata: ${esc(e.message)}</p>`;
     }
 }
 
@@ -6349,7 +6349,7 @@ function _cuRenderVtDetections(panel, list) {
             <!-- Dosya başlığı -->
             <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
                 <div style="font-size:22px;line-height:1">📎</div>
-                <div style="flex:1;min-width:0">
+                <div class="u-flex1-0">
                     <div style="font-weight:700;font-size:13px;color:#f8fafc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(item.filename)}">${esc(item.filename)}</div>
                     <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${esc(item.fileType || '—')}</div>
                 </div>
@@ -6400,11 +6400,11 @@ async function showOtxDomainList() {
     try {
         const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
         const res = await fetch('/api/stats/otx-domains', { headers });
-        if (!res.ok) { body.innerHTML = '<p style="color:#f87171">Veriler yüklenemedi.</p>'; return; }
+        if (!res.ok) { body.innerHTML = '<p class="u-err">Veriler yüklenemedi.</p>'; return; }
         const list = await res.json();
         _cuRenderOtxDomainList(body, list);
     } catch (e) {
-        body.innerHTML = `<p style="color:#f87171">Hata: ${esc(e.message)}</p>`;
+        body.innerHTML = `<p class="u-err">Hata: ${esc(e.message)}</p>`;
     }
 }
 
@@ -6425,7 +6425,7 @@ function _cuRenderOtxDomainList(panel, list) {
         return `
         <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:8px;background:var(--surface2);margin-bottom:6px;font-size:12px">
             <span style="font-size:15px;padding-top:1px">${icon}</span>
-            <div style="flex:1;min-width:0">
+            <div class="u-flex1-0">
                 <div style="font-weight:700;color:${color};margin-bottom:2px">
                     ${esc(item.domain)}${countBadge}
                 </div>
@@ -6531,7 +6531,7 @@ function renderUserFpSuggestions(items) {
         return `
             <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:1px solid rgba(255,255,255,0.08);background:var(--surface2);border-radius:8px;margin-bottom:10px">
                 <div class="finding-icon ${esc(severity)}" style="flex-shrink:0">${findingIcon(severity)}</div>
-                <div style="flex:1;min-width:0">
+                <div class="u-flex1-0">
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
                         <strong style="color:${severityColor};word-break:break-all">${esc(item.domain)}</strong>
                         <span style="font-size:10px;background:rgba(251,146,60,0.15);color:#fb923c;border-radius:4px;padding:2px 6px">${count} bildirim</span>
@@ -6873,7 +6873,7 @@ function _cuRenderDetailedSummary(d) {
     el.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
             <div class="stat-card"><div class="stat-value">${d.totalScans}</div><div class="stat-label">Toplam (${d.days}g)</div></div>
-            <div class="stat-card"><div class="stat-value" style="color:#f87171">${d.riskyTotal}</div><div class="stat-label">Riskli</div></div>
+            <div class="stat-card"><div class="stat-value" class="u-err">${d.riskyTotal}</div><div class="stat-label">Riskli</div></div>
             <div class="stat-card"><div class="stat-value">${d.avgScore || 0}</div><div class="stat-label">Ortalama Skor</div></div>
             <div class="stat-card"><div class="stat-value">%${riskyPct}</div><div class="stat-label">Risk Oranı</div></div>
         </div>
@@ -6906,11 +6906,11 @@ function _cuRenderDetailedByUser(d) {
         <thead><tr style="color:var(--text-secondary);font-size:12px;background:var(--surface2)">
             <th style="text-align:left;padding:10px">Kullanıcı / Kaynak</th>
             <th style="text-align:right;padding:10px">Tarama</th>
-            <th style="text-align:center;padding:10px" title="Yüksek Risk">🔴</th>
-            <th style="text-align:center;padding:10px" title="Orta Risk">🟠</th>
-            <th style="text-align:center;padding:10px" title="Düşük Risk">🟡</th>
-            <th style="text-align:center;padding:10px" title="Güvenli">🟢</th>
-            <th style="text-align:center;padding:10px">Riskli</th>
+            <th class="u-center u-p10" title="Yüksek Risk">🔴</th>
+            <th class="u-center u-p10" title="Orta Risk">🟠</th>
+            <th class="u-center u-p10" title="Düşük Risk">🟡</th>
+            <th class="u-center u-p10" title="Güvenli">🟢</th>
+            <th class="u-center u-p10">Riskli</th>
             <th style="text-align:right;padding:10px">Ort. Skor</th>
             <th style="text-align:left;padding:10px">Son Tarama</th>
         </tr></thead><tbody>${rows}</tbody></table>`;
@@ -6955,7 +6955,7 @@ function _cuRenderDetailedTopSenders(senders) {
     const max = senders[0].count || 1;
     el.innerHTML = senders.map(s => {
         const pct = Math.round(s.count / max * 100);
-        return `<div style="margin-bottom:8px">
+        return `<div class="u-mb8">
             <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${esc(s.email)}</span>
                 <span style="font-weight:600;margin-left:8px">${s.count}</span>
@@ -7309,9 +7309,9 @@ async function loadHomeRecentScans() {
         container.innerHTML = recent.map(item => `
             <div class="home-recent-item" onclick='openHistoryResult(${JSON.stringify(item.id)});showPage("scan")'>
                 <div class="home-recent-score" style="background:${(item.color || '#666')}20;color:${item.color || '#666'}">${item.score}</div>
-                <div style="flex:1;min-width:0">
+                <div class="u-flex1-0">
                     <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.emailMeta?.subject || 'Konu yok')}</div>
-                    <div style="font-size:11px;color:var(--text-secondary)">${esc(item.emailMeta?.from?.[0]?.address || '')} &nbsp;·&nbsp; ${timeAgo(item.timestamp)}</div>
+                    <div class="u-xs-m">${esc(item.emailMeta?.from?.[0]?.address || '')} &nbsp;·&nbsp; ${timeAgo(item.timestamp)}</div>
                 </div>
                 <span style="font-size:11px;font-weight:600;color:${levelColor[item.level] || '#888'}">${esc(item.labelTR || item.level || '')}</span>
             </div>
@@ -7335,11 +7335,11 @@ async function loadHomeThreatIntel() {
         el.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center">
                 <span style="color:var(--green)">● Aktif</span>
-                <span style="font-size:11px;color:var(--text-secondary)">${updated}</span>
+                <span class="u-xs-m">${updated}</span>
             </div>
             <div style="display:flex;gap:16px;margin-top:4px">
-                <div><span style="font-size:20px;font-weight:700;color:var(--red)">${(data.domainCount||0).toLocaleString()}</span><div style="font-size:11px;color:var(--text-secondary)">Tehdit Domain</div></div>
-                <div><span style="font-size:20px;font-weight:700;color:var(--orange)">${(data.urlCount||0).toLocaleString()}</span><div style="font-size:11px;color:var(--text-secondary)">Tehdit URL</div></div>
+                <div><span style="font-size:20px;font-weight:700;color:var(--red)">${(data.domainCount||0).toLocaleString()}</span><div class="u-xs-m">Tehdit Domain</div></div>
+                <div><span style="font-size:20px;font-weight:700;color:var(--orange)">${(data.urlCount||0).toLocaleString()}</span><div class="u-xs-m">Tehdit URL</div></div>
             </div>
             <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">Kaynak: URLhaus + OpenPhish — 24 saatte bir güncellenir</div>
         `;
@@ -7397,7 +7397,7 @@ function renderListItems(type, items) {
     const container = document.getElementById(containerId);
     if (!container) return;
     if (!items.length) {
-        container.innerHTML = '<span class="text-muted" style="font-size:12px">Henüz kayıt yok.</span>';
+        container.innerHTML = '<span class="text-muted" class="u-sm">Henüz kayıt yok.</span>';
         return;
     }
     container.innerHTML = items.map(domain => `
@@ -7424,17 +7424,17 @@ async function addListEntry(type) {
         });
         const data = await res.json();
         if (!res.ok) {
-            if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">${esc(data.error || 'Hata')}</span>`;
+            if (statusEl) statusEl.innerHTML = `<span class="u-err">${esc(data.error || 'Hata')}</span>`;
             return;
         }
         if (input) input.value = '';
         if (statusEl) {
-            statusEl.innerHTML = `<span style="color:var(--green,#00e676)">✅ Eklendi</span>`;
+            statusEl.innerHTML = `<span class="u-ok">✅ Eklendi</span>`;
             setTimeout(() => { statusEl.textContent = ''; }, 2000);
         }
         loadListsPanel();
     } catch (e) {
-        if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">${esc(e.message)}</span>`;
+        if (statusEl) statusEl.innerHTML = `<span class="u-err">${esc(e.message)}</span>`;
     }
 }
 
@@ -7636,11 +7636,11 @@ async function saveSystemSmtp() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Hata');
-        if (statusEl) statusEl.innerHTML = '<span style="color:#34d399">✅ Kaydedildi.</span>';
+        if (statusEl) statusEl.innerHTML = '<span class="u-ok2">✅ Kaydedildi.</span>';
         const pwdEl = document.getElementById('sysSmtpPassword');
         if (pwdEl) { pwdEl.value = ''; pwdEl.placeholder = '••••••••  (boş bırakılırsa mevcut şifre korunur)'; }
     } catch(e) {
-        if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">❌ ${e.message}</span>`;
+        if (statusEl) statusEl.innerHTML = `<span class="u-err">❌ ${e.message}</span>`;
     }
 }
 
@@ -7652,11 +7652,11 @@ async function testSystemSmtp() {
         const data = await res.json();
         if (statusEl) {
             statusEl.innerHTML = data.success
-                ? '<span style="color:#34d399">✅ Bağlantı başarılı.</span>'
-                : `<span style="color:#f87171">❌ ${esc(data.message || 'Bağlantı hatası')}</span>`;
+                ? '<span class="u-ok2">✅ Bağlantı başarılı.</span>'
+                : `<span class="u-err">❌ ${esc(data.message || 'Bağlantı hatası')}</span>`;
         }
     } catch(e) {
-        if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">❌ ${esc(e.message)}</span>`;
+        if (statusEl) statusEl.innerHTML = `<span class="u-err">❌ ${esc(e.message)}</span>`;
     }
 }
 
@@ -7682,20 +7682,20 @@ async function saveWebhookSettings(options = {}) {
         });
         const data = await res.json();
         if (!res.ok) {
-            if (statusEl && !silent) statusEl.innerHTML = `<span style="color:#f87171">${esc(data.error || 'Hata')}</span>`;
+            if (statusEl && !silent) statusEl.innerHTML = `<span class="u-err">${esc(data.error || 'Hata')}</span>`;
             if (throwOnError) throw new Error(data.error || 'Webhook ayarlari kaydedilemedi');
             return data;
         }
         if (statusEl && !silent) {
-            statusEl.innerHTML = '<span style="color:var(--green,#00e676)">Webhook ayarlari kaydedildi.</span>';
+            statusEl.innerHTML = '<span class="u-ok">Webhook ayarlari kaydedildi.</span>';
             setTimeout(() => { statusEl.textContent = ''; }, 2500);
         }
         return data;
     } catch (e) {
-        if (statusEl && !silent) statusEl.innerHTML = `<span style="color:#f87171">${esc(e.message)}</span>`;
+        if (statusEl && !silent) statusEl.innerHTML = `<span class="u-err">${esc(e.message)}</span>`;
         if (throwOnError) {
             const settingsStatus = document.getElementById('settingsStatus');
-            if (settingsStatus) settingsStatus.innerHTML = `<span style="color:#f87171;font-weight:600">Kaydedilemedi: ${esc(e.message)}</span>`;
+            if (settingsStatus) settingsStatus.innerHTML = `<span class="u-err-b">Kaydedilemedi: ${esc(e.message)}</span>`;
             throw e;
         }
         return null;
@@ -7709,15 +7709,15 @@ async function saveWebhookSettings(options = {}) {
         });
         const data = await res.json();
         if (!res.ok) {
-            if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">${esc(data.error || 'Hata')}</span>`;
+            if (statusEl) statusEl.innerHTML = `<span class="u-err">${esc(data.error || 'Hata')}</span>`;
             return;
         }
         if (statusEl) {
-            statusEl.innerHTML = '<span style="color:var(--green,#00e676)">✅ Webhook ayarları kaydedildi.</span>';
+            statusEl.innerHTML = '<span class="u-ok">✅ Webhook ayarları kaydedildi.</span>';
             setTimeout(() => { statusEl.textContent = ''; }, 2500);
         }
     } catch (e) {
-        if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">${esc(e.message)}</span>`;
+        if (statusEl) statusEl.innerHTML = `<span class="u-err">${esc(e.message)}</span>`;
     }
 }
 
@@ -7727,7 +7727,7 @@ async function testWebhookConnection() {
     const url = (urlEl?.value || '').trim();
 
     if (!url) {
-        if (statusEl) statusEl.innerHTML = '<span style="color:#f87171">Webhook URL giriniz.</span>';
+        if (statusEl) statusEl.innerHTML = '<span class="u-err">Webhook URL giriniz.</span>';
         return;
     }
 
@@ -7741,12 +7741,12 @@ async function testWebhookConnection() {
         });
         const data = await res.json();
         if (data.success) {
-            if (statusEl) statusEl.innerHTML = `<span style="color:var(--green,#00e676)">✅ Bağlantı başarılı (HTTP ${data.status})</span>`;
+            if (statusEl) statusEl.innerHTML = `<span class="u-ok">✅ Bağlantı başarılı (HTTP ${data.status})</span>`;
         } else {
-            if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">❌ Bağlantı başarısız: ${esc(data.error || String(data.status || ''))}</span>`;
+            if (statusEl) statusEl.innerHTML = `<span class="u-err">❌ Bağlantı başarısız: ${esc(data.error || String(data.status || ''))}</span>`;
         }
     } catch (e) {
-        if (statusEl) statusEl.innerHTML = `<span style="color:#f87171">Bağlantı hatası: ${esc(e.message)}</span>`;
+        if (statusEl) statusEl.innerHTML = `<span class="u-err">Bağlantı hatası: ${esc(e.message)}</span>`;
     }
 }
 
@@ -7907,17 +7907,17 @@ async function createCustomerUser() {
     const statusEl  = document.getElementById('cuCreateStatus');
     statusEl.textContent = '';
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { statusEl.innerHTML = '<span style="color:#f87171">Geçerli bir e-posta gerekli</span>'; return; }
-    if (!password || password.length < 6) { statusEl.innerHTML = '<span style="color:#f87171">Şifre en az 6 karakter</span>'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { statusEl.innerHTML = '<span class="u-err">Geçerli bir e-posta gerekli</span>'; return; }
+    if (!password || password.length < 6) { statusEl.innerHTML = '<span class="u-err">Şifre en az 6 karakter</span>'; return; }
     if (role === 'user' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(imapEmail)) {
-        statusEl.innerHTML = '<span style="color:#f87171">user rolü için IMAP e-postası zorunlu</span>'; return;
+        statusEl.innerHTML = '<span class="u-err">user rolü için IMAP e-postası zorunlu</span>'; return;
     }
 
     const r = await _cuFetch('/api/customer-users', {
         method: 'POST',
         body: JSON.stringify({ email, password, role, imapEmail: role === 'user' ? imapEmail : null })
     });
-    if (!r.ok) { statusEl.innerHTML = `<span style="color:#f87171">${esc(r.data.error || 'Hata')}</span>`; return; }
+    if (!r.ok) { statusEl.innerHTML = `<span class="u-err">${esc(r.data.error || 'Hata')}</span>`; return; }
 
     statusEl.innerHTML = '<span style="color:#86efac">✓ Kullanıcı oluşturuldu</span>';
     document.getElementById('cuEmail').value = '';

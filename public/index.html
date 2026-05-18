@@ -24,7 +24,7 @@
         </div>
 
         <!-- Giriş Formu -->
-        <div id="customerAuthLoginForm" style="display:none">
+        <div id="customerAuthLoginForm" class="hidden">
             <div style="margin-bottom:12px">
                 <label for="customerAuthEmail" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">E-posta</label>
                 <input id="customerAuthEmail" type="email" placeholder="ornek@sirket.com" autocomplete="username" required
@@ -48,7 +48,7 @@
         </div>
 
         <!-- Şifremi Unuttum Formu -->
-        <div id="customerAuthForgotForm" style="display:none">
+        <div id="customerAuthForgotForm" class="hidden">
             <p style="font-size:13px;color:#94a3b8;margin:0 0 16px">Kayıtlı e-posta adresinizi girin. Şifre sıfırlama bağlantısı gönderilecek.</p>
             <div style="margin-bottom:14px">
                 <label for="customerAuthForgotEmail" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">E-posta</label>
@@ -68,7 +68,7 @@
         </div>
 
         <!-- Şifre Sıfırlama Formu (magic link) -->
-        <div id="customerAuthResetForm" style="display:none">
+        <div id="customerAuthResetForm" class="hidden">
             <p style="font-size:13px;color:#94a3b8;margin:0 0 16px">Yeni şifrenizi belirleyin.</p>
             <div style="margin-bottom:12px">
                 <label for="customerAuthResetPwd" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yeni Şifre <span style="color:#94a3b8;font-size:11px">(en az 6 karakter)</span></label>
@@ -88,7 +88,7 @@
         </div>
 
         <!-- İlk Kurulum Formu (yalnız ilk admin oluşturulurken) -->
-        <div id="customerAuthSetupForm" style="display:none">
+        <div id="customerAuthSetupForm" class="hidden">
             <div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#c7d2fe">
                 ℹ️ <strong>İlk Kurulum — Müşteri Admin oluştur.</strong> Bu hesap müşteri panelindeki her şeyi yönetir (API ayarları, IMAP hesapları, müşteri kullanıcıları). E-posta ve şifrenizi not edin.
             </div>
@@ -489,7 +489,7 @@
         <span class="text-muted hidden" id="usageCounter" title="Aylık tarama kullanımı" style="font-size:12px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.05)">0 / ∞</span>
         <span id="roleBadge" title="Oturum açık kullanıcı" style="font-size:11px;padding:3px 8px;border-radius:4px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);color:#c7d2fe;display:none;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0">👤</span>
         <button class="btn btn-ghost btn-sm" id="btnLang" onclick="toggleLang()">🌐 EN</button>
-        <button class="btn btn-ghost btn-sm admin-only" id="btnCustomerUsers" onclick="showCustomerUsersModal()" title="Müşteri Kullanıcıları (admin)" style="display:none">👥</button>
+        <button class="btn btn-ghost btn-sm admin-only" id="btnCustomerUsers" onclick="showCustomerUsersModal()" title="Müşteri Kullanıcıları (admin)" class="hidden">👥</button>
         <button class="btn btn-ghost btn-sm admin-only" id="btnSettings" onclick="showSettings()">⚙️</button>
         <button class="btn btn-ghost btn-sm admin-only" id="btnLicense" onclick="showLicenseModal()">🔑</button>
         <button class="btn btn-ghost btn-sm" id="btnLogout" onclick="customerAuthLogout()" title="Oturumu Kapat">🚪</button>
@@ -522,7 +522,7 @@
     <!-- ═══════════════════════════════════════════════════════
          ANA SAYFA PANELİ
     ═══════════════════════════════════════════════════════ -->
-    <div id="homePanel" style="display:none">
+    <div id="homePanel" class="hidden">
 
         <!-- Karşılama başlığı -->
         <div class="home-hero">
@@ -538,7 +538,7 @@
         </div>
 
         <!-- Onboarding Checklist (ilk kurulum yardımcısı) -->
-        <div class="onboarding-card" id="onboardingCard" style="display:none">
+        <div class="onboarding-card" id="onboardingCard" class="hidden">
             <button class="onboarding-dismiss" onclick="dismissOnboarding()" title="Kapat">✕</button>
             <div class="onboarding-header">
                 <div class="onboarding-title">🚀 Hızlı Başlangıç Rehberi</div>
@@ -663,7 +663,7 @@
     <!-- ═══════════════════════════════════════════════════════
          İSTATİSTİK PANELİ
          ═══════════════════════════════════════════════════════ -->
-    <div id="statsPanel" style="display:none">
+    <div id="statsPanel" class="hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
             <h2 style="margin:0">📊 Sistem İstatistikleri</h2>
             <div class="stats-range-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -802,7 +802,7 @@
     <!-- ═══════════════════════════════════════════════════════
          TARAMA GEÇMİŞİ PANELİ
     ══════════════════════════════════════════════════════════ -->
-    <div id="scanListPanel" style="display:none">
+    <div id="scanListPanel" class="hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
             <h2 style="margin:0">📋 Tarama Geçmişi</h2>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -885,7 +885,7 @@
         <div id="scanListPager" style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;flex-wrap:wrap"></div>
     </div>
 
-    <div id="otxApprovalPanel" style="display:none">
+    <div id="otxApprovalPanel" class="hidden">
         <div class="card">
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
                 <span class="card-title">🛡️ OTX Yanlış Pozitif Onayları</span>
@@ -1065,8 +1065,8 @@
                 <button class="tab"        data-ai-tab="claude" onclick="switchAiTab('claude')">🧠 Claude</button>
             </div>
             <div id="aiTab-deep"   class="ai-tab-body"></div>
-            <div id="aiTab-openai" class="ai-tab-body" style="display:none"></div>
-            <div id="aiTab-claude" class="ai-tab-body" style="display:none"></div>
+            <div id="aiTab-openai" class="ai-tab-body hidden"></div>
+            <div id="aiTab-claude" class="ai-tab-body hidden"></div>
         </div>
 
         <!-- Structured Report -->
@@ -1114,14 +1114,14 @@
     </div>
 
     <!-- ALLOWLIST / BLOCKLIST PANELİ -->
-    <div class="card mt-24" id="listsPanel" style="display:none">
+    <div class="card mt-24" id="listsPanel" class="hidden">
         <div class="card-header">
             <span class="card-title">🛡️ Allowlist / Blocklist Yönetimi</span>
             <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
                 <button class="btn btn-ghost btn-sm" onclick="exportLists()" title="Listeyi JSON olarak dışa aktar">📤 Dışa Aktar</button>
                 <label class="btn btn-ghost btn-sm" title="JSON dosyasından içe aktar" style="cursor:pointer;margin:0">
                     📥 İçe Aktar
-                    <input type="file" id="listsImportFile" accept=".json" onchange="importListsFile(this)" style="display:none">
+                    <input type="file" id="listsImportFile" accept=".json" onchange="importListsFile(this)" class="hidden">
                 </label>
                 <button class="btn btn-ghost btn-sm" onclick="document.getElementById('listsPanel').style.display='none'">✕</button>
             </div>
@@ -1132,7 +1132,7 @@
                 <input type="checkbox" id="listsResetCheck" style="accent-color:#ff5c7a">
                 <span style="color:#ff5c7a">Mevcut listeyi sıfırla (içe aktarmadan önce temizle)</span>
             </label>
-            <button id="btnListsRestore" onclick="listsRestoreBackup()" style="display:none" class="btn btn-ghost btn-sm">↩ Son yedekten geri dön</button>
+            <button id="btnListsRestore" onclick="listsRestoreBackup()" class="hidden" class="btn btn-ghost btn-sm">↩ Son yedekten geri dön</button>
         </div>
         <div class="grid-2" style="gap:20px">
             <div>
@@ -1239,7 +1239,7 @@
                 </div>
 
                 <!-- İleri ayarlar — varsayılan kapalı -->
-                <div id="imapAlertAdvanced" style="display:none">
+                <div id="imapAlertAdvanced" class="hidden">
                     <div class="form-group">
                         <label class="form-label">Rapor Politikası</label>
                         <select class="form-input" id="imapAlertMode" onchange="onImapAlertModeChange(this)">
@@ -1431,7 +1431,7 @@
             <div class="text-muted" style="font-size:12px;line-height:1.55">Bu kontrol API anahtarı gerektirmez. Sistem URLhaus ve OpenPhish tehdit feed'lerini kullanarak e-postadaki bağlantıları otomatik eşleştirir.</div>
         </div>
         </div>
-        <div data-settings-tab="general" style="display:none">
+        <div data-settings-tab="general" class="hidden">
         <!-- ─── RİSK HESAPLAMA MODU ───────────────────── -->
         <div class="form-group" style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.25);border-radius:10px;padding:14px">
             <label class="form-label" style="color:#a5b4fc">⚖️ Risk Hesaplama Modu</label>
@@ -1464,7 +1464,7 @@
             Otomatik rapor alacak mail adresleri IMAP Gelen Kutusu ekranindaki hesap satirlarindan isaretlenir.
         </div>
         </div>
-        <div data-settings-tab="reports" style="display:none">
+        <div data-settings-tab="reports" class="hidden">
         <div class="grid-3" style="gap:10px;margin-bottom:12px;">
             <label class="report-toggle"><input type="checkbox" id="periodicDaily"> Gunluk</label>
             <label class="report-toggle"><input type="checkbox" id="periodicWeekly"> Haftalik</label>
@@ -1520,7 +1520,7 @@
             <button class="btn btn-ghost" onclick="closeSettings()">❌</button>
         </div>
 
-        <div data-settings-tab="system" style="display:none">
+        <div data-settings-tab="system" class="hidden">
         <!-- DİSK KULLANIMI + TARAMA GEÇMİŞİ TEMİZLİĞİ (admin-only) -->
         <div class="admin-only" style="border:1px solid rgba(56,189,248,0.2);border-radius:10px;padding:14px;margin-bottom:16px">
             <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:#7dd3fc">💾 Disk Kullanımı &amp; Tarama Geçmişi</div>
@@ -1599,7 +1599,7 @@
                             title="JSON dosyası seç — seçimden sonra import otomatik başlar">
                         📂 Dosya Seç ve İçe Aktar
                     </button>
-                    <input type="file" accept=".json" id="userTdImportFile" style="display:none">
+                    <input type="file" accept=".json" id="userTdImportFile" class="hidden">
                 </div>
 
                 <div id="userTdImportResult" style="display:none;margin-top:10px;padding:8px 12px;border-radius:6px;font-size:13px"></div>
@@ -1609,7 +1609,7 @@
         </div>
 
         <!-- ─── SİSTEM SMTP TAB ──────────────────────────────── -->
-        <div data-settings-tab="system-smtp" style="display:none">
+        <div data-settings-tab="system-smtp" class="hidden">
             <p class="text-muted" style="font-size:13px;margin-bottom:18px;line-height:1.6">
                 Şifre sıfırlama e-postaları bu SMTP sunucusu üzerinden gönderilir.<br>
                 Tarama posta kutusundan bağımsız, sadece sistem bildirimleri için kullanılır.

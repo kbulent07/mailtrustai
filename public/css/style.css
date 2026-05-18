@@ -1479,3 +1479,40 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     padding: 14px;
     min-height: 60px;
 }
+
+/* ============================================================
+   UTILITY CLASSES — inline style azaltma (H3 fix)
+   ============================================================ */
+/* Renkler */
+.u-err    { color: #f87171; }
+.u-err-b  { color: #f87171; font-weight: 600; }
+.u-ok     { color: var(--green, #00e676); }
+.u-ok2    { color: #34d399; }
+.u-warn   { color: var(--warn, #f59e0b); }
+.u-muted  { color: var(--text-secondary); }
+.u-accent { color: var(--accent); }
+/* Tipografi */
+.u-xs     { font-size: 11px; }
+.u-sm     { font-size: 12px; }
+.u-xs-m   { font-size: 11px; color: var(--text-secondary); }
+.u-label  { display: block; font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+.u-group-title { font-size: 11px; color: #a5b4fc; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px; }
+/* Boşluklar */
+.u-mt4    { margin-top: 4px; }
+.u-mt8    { margin-top: 8px; }
+.u-mt16   { margin-top: 16px; }
+.u-mb4    { margin-bottom: 4px; }
+.u-mb8    { margin-bottom: 8px; }
+.u-mb12   { margin-bottom: 12px; }
+.u-mb14   { margin-bottom: 14px; }
+.u-mb16   { margin-bottom: 16px; }
+.u-mb20   { margin-bottom: 20px; }
+/* Flex */
+.u-flex1  { flex: 1; }
+.u-flex1-0 { flex: 1; min-width: 0; }
+.u-row    { display: flex; align-items: center; gap: 8px; }
+.u-row-10 { display: flex; align-items: flex-start; gap: 10px; }
+/* Diğer */
+.u-center { text-align: center; }
+.u-p8     { padding: 8px; }
+.u-p10    { padding: 10px; }
