@@ -243,6 +243,69 @@ else
 fi
 info "Mod: SKIP_ENV=$SKIP_ENV (false = yeniden yazilacak)"
 
+# ─── 5b. ESKI MARIADB VOLUME KALINTISI KONTROLU ─────────────
+# KRITIK: Yeni .env uretiliyorsa (SKIP_ENV=false), eski MariaDB
+# volume'unun var olmasi parola uyumsuzluguna yol acar. MariaDB
+# volume zaten init edilmisse MARIADB_PASSWORD env var'i YOK SAYAR
+# ve eski parolayi kullanmaya devam eder -> Access denied.
+if [[ "$SKIP_ENV" == "false" ]] && command -v docker &>/dev/null; then
+    MARIA_VOLUME="mailtrustai-server_mariadb-data"
+    LS_VOLUME="mailtrustai-server_license-server-data"
+    HAS_MARIA_VOL=false
+    HAS_LS_VOL=false
+    docker volume ls --format '{{.Name}}' 2>/dev/null | grep -q "^${MARIA_VOLUME}$" && HAS_MARIA_VOL=true
+    docker volume ls --format '{{.Name}}' 2>/dev/null | grep -q "^${LS_VOLUME}$" && HAS_LS_VOL=true
+
+    if [[ "$HAS_MARIA_VOL" == "true" || "$HAS_LS_VOL" == "true" ]]; then
+        echo ""
+        warn "============================================================"
+        warn "  ESKI VOLUME KALINTISI TESPIT EDILDI"
+        warn "============================================================"
+        [[ "$HAS_MARIA_VOL" == "true" ]] && warn "  - $MARIA_VOLUME (MariaDB verileri, eski parolayla)"
+        [[ "$HAS_LS_VOL" == "true" ]]    && warn "  - $LS_VOLUME (license-server data)"
+        warn ""
+        warn "  Yeni .env ile uretilen parolalar eski volume icindeki"
+        warn "  MariaDB user'i ile uyumsuz olacak -> Access denied hatasi."
+        warn ""
+        warn "  Devam etmek icin bu volume'lar silinmeli (icindeki lisans"
+        warn "  verileri kaybolacak)."
+        echo ""
+
+        DEL_VOLS="H"
+        if [[ "$IS_INTERACTIVE" == "true" ]]; then
+            read -rp "  Eski volume'lari silelim mi? [e/H]: " DEL_VOLS || DEL_VOLS="H"
+        else
+            # Non-interactive: PURGE_OLD_VOLUMES=true ile override
+            DEL_VOLS="${PURGE_OLD_VOLUMES:-H}"
+            warn "  Non-interactive mod: PURGE_OLD_VOLUMES=$DEL_VOLS"
+        fi
+
+        if [[ "${DEL_VOLS,,}" == "e" || "${DEL_VOLS,,}" == "y" || "${DEL_VOLS,,}" == "evet" || "${DEL_VOLS,,}" == "yes" || "${DEL_VOLS,,}" == "true" ]]; then
+            # Once container'lari durdur (volume kullaniyor olabilirler)
+            info "Calisan eski container'lar durduruluyor..."
+            for c in mailtrustai-mariadb mailtrustai-license-server mailtrustai-dealer; do
+                docker rm -f "$c" 2>/dev/null || true
+            done
+            # Volume'lari sil
+            [[ "$HAS_MARIA_VOL" == "true" ]] && {
+                docker volume rm "$MARIA_VOLUME" 2>/dev/null && ok "Silindi: $MARIA_VOLUME" \
+                    || warn "Silinemedi: $MARIA_VOLUME (kullaniliyor olabilir)"
+            }
+            [[ "$HAS_LS_VOL" == "true" ]] && {
+                docker volume rm "$LS_VOLUME" 2>/dev/null && ok "Silindi: $LS_VOLUME" \
+                    || warn "Silinemedi: $LS_VOLUME (kullaniliyor olabilir)"
+            }
+        else
+            fatal "Volume silme reddedildi. Kuruluma devam edilemez. Cozumler:
+            1) Bu betigi yeniden calistirip 'e' deyin
+            2) Manuel sil: sudo docker volume rm $MARIA_VOLUME $LS_VOLUME
+            3) Eski .env'i bulup geri yukleyin (parolalar eslesir): ls $INSTALL_DIR/.env.bak.*"
+        fi
+    else
+        info "Volume kalintisi yok — temiz kurulum."
+    fi
+fi
+
 # ─── 6. Secret üretimi ve .env yazımı ───────────────────────
 if [[ "$SKIP_ENV" == "false" ]]; then
     step "Guvenli secret'lar uretiliyor..."
