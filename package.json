@@ -28,6 +28,7 @@
     "up:customer": "docker compose --env-file .env.docker -f docker-compose.customer.yml up -d --build",
     "down:customer": "docker compose -f docker-compose.customer.yml down",
     "logs:customer": "docker compose -f docker-compose.customer.yml logs -f --tail=200",
+    "connect:customer": "docker network connect mailtrustai-server_msa-internal mailtrustai-customer",
     "check:customer-package": "node scripts/check-customer-package.js",
     "check:customer-package:image": "node scripts/check-customer-package.js --scope=image",
     "smoke:central-flow": "node scripts/smoke-central-flow.js",

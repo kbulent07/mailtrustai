@@ -12,12 +12,11 @@
 
 name: mailtrustai-customer
 
-networks:
-  # Server tarafı ile ortak ağ — license-server hostname'i çözülebilir olur.
-  # docker-compose.server.yml önce ayağa kalkmalı (up:server).
-  msa-internal:
-    external: true
-    name: mailtrustai-server_msa-internal
+# NOT: Yerel geliştirmede (aynı makinede up:server + up:customer) license-server'a
+# ulaşmak için şu komutu çalıştırın:
+#   npm run connect:customer
+# Bu komut customer container'ını msa-internal ağına bağlar.
+# Üretimde (farklı makineler) bu adım gerekmez; MSA_LICENSE_REMOTE_URL public URL olur.
 
 services:
   customer:
@@ -29,7 +28,6 @@ services:
     restart: unless-stopped
     # hostname sabit — settingsStore şifreleme anahtarı türevi.
     hostname: mailtrustai
-    networks: [msa-internal]
     environment:
       NODE_ENV: production
       PORT: 3000
