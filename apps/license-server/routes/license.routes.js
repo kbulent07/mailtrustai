@@ -423,22 +423,32 @@ router.post('/license/transfers/:id/approve', asyncH(async (req, res) => {
         return res.status(403).json({ error: 'bu lisans size ait değil' });
     }
 
+    // Atomik UPDATE: yalnızca hâlâ 'pending' olan satırı güncelle.
+    // Eş zamanlı iki onay isteğinde sadece biri etkilenen satır alır.
+    const resolvedAt = Date.now();
+    const resolver = dealerId || 'admin';
+    const updateResult = await run(
+        'UPDATE transfer_requests SET status=?, resolved_at=?, resolved_by=? WHERE id=? AND status=?',
+        ['approved', resolvedAt, resolver, tr.id, 'pending']
+    );
+    const affected = updateResult?.affectedRows ?? updateResult?.changes ?? 0;
+    if (affected === 0) {
+        // Yarış koşulu: başka bir istek önce onayladı/reddetti.
+        const current = await get('SELECT status FROM transfer_requests WHERE id=?', [tr.id]);
+        return res.status(409).json({ error: `talep zaten işlendi: ${current?.status ?? 'unknown'}` });
+    }
+
     // Eski instance'ın aktivasyonunu kaldır (fingerprint değişti → yeni cihaz).
     if (tr.old_hostname_hash) {
         await run('DELETE FROM activations WHERE license_id=? AND hostname_hash=? AND instance_id != ?',
             [tr.license_id, tr.old_hostname_hash, tr.new_instance_id || '']);
     }
-    // Transfer talebini kapat.
-    await run(
-        'UPDATE transfer_requests SET status=?, resolved_at=?, resolved_by=? WHERE id=?',
-        ['approved', Date.now(), dealerId || 'admin', tr.id]
-    );
     // Aynı lisans için diğer bekleyen talepleri de reddet.
     await run(
         'UPDATE transfer_requests SET status=?, resolved_at=?, resolved_by=?, reject_reason=? WHERE license_id=? AND status=? AND id!=?',
-        ['rejected', Date.now(), dealerId || 'admin', 'Başka transfer onaylandı', tr.license_id, 'pending', tr.id]
+        ['rejected', resolvedAt, resolver, 'Başka transfer onaylandı', tr.license_id, 'pending', tr.id]
     );
-    await audit(dealerId || 'admin', 'license.transfer.approved', tr.license_id, { transferId: tr.id, newHash: tr.new_hostname_hash });
+    await audit(resolver, 'license.transfer.approved', tr.license_id, { transferId: tr.id, newHash: tr.new_hostname_hash });
     res.json({ ok: true, message: 'Transfer onaylandı. Müşteri lisansı yeniden aktive edebilir.' });
 }));
 
@@ -453,10 +463,16 @@ router.post('/license/transfers/:id/reject', asyncH(async (req, res) => {
         return res.status(403).json({ error: 'bu lisans size ait değil' });
     }
 
-    await run(
-        'UPDATE transfer_requests SET status=?, resolved_at=?, resolved_by=?, reject_reason=? WHERE id=?',
-        ['rejected', Date.now(), dealerId || 'admin', reason || null, tr.id]
+    // Atomik UPDATE — race condition koruması.
+    const updateResult = await run(
+        'UPDATE transfer_requests SET status=?, resolved_at=?, resolved_by=?, reject_reason=? WHERE id=? AND status=?',
+        ['rejected', Date.now(), dealerId || 'admin', reason || null, tr.id, 'pending']
     );
+    const affected = updateResult?.affectedRows ?? updateResult?.changes ?? 0;
+    if (affected === 0) {
+        const current = await get('SELECT status FROM transfer_requests WHERE id=?', [tr.id]);
+        return res.status(409).json({ error: `talep zaten işlendi: ${current?.status ?? 'unknown'}` });
+    }
     await audit(dealerId || 'admin', 'license.transfer.rejected', tr.license_id, { transferId: tr.id, reason });
     res.json({ ok: true, message: 'Transfer reddedildi.' });
 }));

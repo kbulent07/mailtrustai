@@ -13,6 +13,17 @@ try {
 
 function fallbackLimiter({ windowMs, max, label }) {
     const buckets = new Map(); // ip → { count, resetAt }
+
+    // Süresi dolmuş bucket'ları periyodik temizle — Map sınırsız büyümesini önler.
+    // Cleanup aralığı: windowMs veya en fazla 5 dakika.
+    const cleanupInterval = setInterval(() => {
+        const now = Date.now();
+        for (const [key, b] of buckets.entries()) {
+            if (b.resetAt <= now) buckets.delete(key);
+        }
+    }, Math.min(windowMs, 5 * 60_000));
+    if (cleanupInterval.unref) cleanupInterval.unref();
+
     return (req, res, next) => {
         const key = (req.ip || req.headers['x-forwarded-for'] || 'unknown').toString();
         const now = Date.now();

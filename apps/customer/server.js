@@ -43,6 +43,7 @@ const reportsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/r
 const listsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/lists.routes'));
 const statsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/stats.routes'));
 const customerAuthRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/customer.routes'));
+const { requireCustomerAdmin } = require(path.join(REPO_ROOT, 'src/middleware/customerAuth'));
 const customerUsersRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/customerUsers.routes'));
 const fpSuggestionsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/fpSuggestions.routes'));
 const settingsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/settings.routes'));
@@ -169,7 +170,8 @@ app.get('/api/customer/license/usage', asyncH(async (req, res) => {
 }));
 
 // Cihaz parmak izi — aktivasyon sırasında fingerprint kontrolü için.
-app.get('/api/customer/license/fingerprint', asyncH(async (req, res) => {
+// Admin yetkisi zorunlu: instanceId donanım parmak izi olup hassas bilgidir.
+app.get('/api/customer/license/fingerprint', requireCustomerAdmin, asyncH(async (req, res) => {
     const instanceId = licenseClient.instanceFingerprint();
     res.json({ instanceId });
 }));

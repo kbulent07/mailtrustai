@@ -159,7 +159,9 @@ router.get('/admin/customers', adminAuth, asyncH(async (req, res) => {
     }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
-    // Lisans + customer + en son aktivasyon (1 lisansa 1 row — instance bilgisi dışarıya)
+    // Lisans + customer + en son aktivasyon — TÜM veriler tek sorguda JOIN ile çekilir.
+    // Correlated subquery: her lisans için MAX(COALESCE(last_heartbeat_at,0)) döner.
+    // Bu yaklaşım SQLite ve MariaDB'de N+1 loop'u ortadan kaldırır.
     const sql = `
         SELECT
             c.id           AS customer_id,
@@ -177,81 +179,71 @@ router.get('/admin/customers', adminAuth, asyncH(async (req, res) => {
             l.issued_at    AS issued_at,
             l.expires_at   AS expires_at,
             l.grace_days   AS grace_days,
-            l.offline_grace_days_override AS offline_override
+            l.offline_grace_days_override AS offline_override,
+            (SELECT COUNT(*) FROM licenses lc WHERE lc.customer_id = c.id) AS license_count,
+            a.instance_id        AS act_instance_id,
+            a.app_version        AS act_app_version,
+            a.environment        AS act_environment,
+            a.last_heartbeat_at  AS act_last_heartbeat_at,
+            a.last_payload_json  AS act_last_payload_json
         FROM customers c
         LEFT JOIN licenses l ON l.customer_id = c.id
         LEFT JOIN dealers  d ON d.id = c.dealer_id
+        LEFT JOIN activations a ON a.license_id = l.id
+            AND COALESCE(a.last_heartbeat_at, 0) = (
+                SELECT MAX(COALESCE(a2.last_heartbeat_at, 0))
+                FROM activations a2
+                WHERE a2.license_id = l.id
+            )
         ${whereSql}
         ORDER BY c.created_at DESC, l.issued_at DESC
     `;
     const rows = await all(sql, params);
 
-    // licenseCount: aynı customer'a kaç lisans (filtreden bağımsız, toplam)
-    const countRows = await all(
-        'SELECT customer_id, COUNT(*) AS c FROM licenses GROUP BY customer_id'
-    );
-    const countByCustomer = new Map(countRows.map(r => [r.customer_id, r.c]));
+    const onlineThreshold = envInt('HEARTBEAT_ONLINE_THRESHOLD_SECONDS', 300) * 1000;
+    const staleThreshold  = envInt('HEARTBEAT_STALE_THRESHOLD_SECONDS', 1800) * 1000;
 
-    // Her lisans için son aktivasyon (en güncel heartbeat)
-    const items = [];
-    for (const r of rows) {
-        let latestAct = null;
-        if (r.license_id) {
-            latestAct = await get(
-                `SELECT instance_id, app_version, environment, last_heartbeat_at, last_payload_json
-                 FROM activations
-                 WHERE license_id = ?
-                 ORDER BY last_heartbeat_at DESC NULLS LAST
-                 LIMIT 1`,
-                [r.license_id]
-            ).catch(async () => {
-                // SQLite NULLS LAST'i 3.30+'da destekler; yoksa fallback
-                return get(
-                    `SELECT instance_id, app_version, environment, last_heartbeat_at, last_payload_json
-                     FROM activations WHERE license_id = ?
-                     ORDER BY COALESCE(last_heartbeat_at, 0) DESC LIMIT 1`,
-                    [r.license_id]
-                );
-            });
-        }
-        const payload = safeJSON(latestAct?.last_payload_json, {});
-        const onlineThreshold = envInt('HEARTBEAT_ONLINE_THRESHOLD_SECONDS', 300) * 1000;
-        const staleThreshold = envInt('HEARTBEAT_STALE_THRESHOLD_SECONDS', 1800) * 1000;
-        const age = latestAct?.last_heartbeat_at ? Date.now() - latestAct.last_heartbeat_at : null;
-        const onlineStatus = !age ? 'never' : age <= onlineThreshold ? 'online' : age <= staleThreshold ? 'stale' : 'offline';
+    const items = rows.map(r => {
+        const hasAct = r.act_instance_id != null;
+        const payload = safeJSON(r.act_last_payload_json, {});
+        const age = r.act_last_heartbeat_at ? Date.now() - r.act_last_heartbeat_at : null;
+        const onlineStatus = !age ? 'never'
+            : age <= onlineThreshold ? 'online'
+            : age <= staleThreshold  ? 'stale'
+            : 'offline';
 
-        items.push({
-            customerId: r.customer_id,
-            companyName: r.company_name,
-            email: r.customer_email,
-            dealerId: r.dealer_id,
-            dealerName: r.dealer_name,
+        return {
+            customerId:       r.customer_id,
+            companyName:      r.company_name,
+            email:            r.customer_email,
+            dealerId:         r.dealer_id,
+            dealerName:       r.dealer_name,
             customerCreatedAt: r.customer_created_at,
-            licenseCount: countByCustomer.get(r.customer_id) || 0,
+            licenseCount:     Number(r.license_count) || 0,
             license: r.license_id ? {
-                id: r.license_id,
-                plan: r.plan,
-                tier: r.tier,
-                status: r.license_status,
-                keyMasked: r.license_key_masked,
-                label: r.license_label,
-                issuedAt: r.issued_at,
-                expiresAt: r.expires_at,
-                graceDays: r.grace_days,
+                id:                  r.license_id,
+                plan:                r.plan,
+                tier:                r.tier,
+                status:              r.license_status,
+                keyMasked:           r.license_key_masked,
+                label:               r.license_label,
+                issuedAt:            r.issued_at,
+                expiresAt:           r.expires_at,
+                graceDays:           r.grace_days,
                 offlineGraceOverride: r.offline_override
             } : null,
-            latest: latestAct ? {
-                instanceId: latestAct.instance_id,
-                appVersion: latestAct.app_version,
-                environment: latestAct.environment,
-                lastHeartbeatAt: latestAct.last_heartbeat_at,
+            latest: hasAct ? {
+                instanceId:      r.act_instance_id,
+                appVersion:      r.act_app_version,
+                environment:     r.act_environment,
+                lastHeartbeatAt: r.act_last_heartbeat_at,
                 onlineStatus,
                 monthlyScanCount: payload.monthlyScanCount ?? null,
-                enabledFeatures: payload.enabledFeatures || null,
-                healthStatus: payload.healthStatus || null
+                enabledFeatures:  payload.enabledFeatures  || null,
+                healthStatus:     payload.healthStatus     || null
             } : null
-        });
-    }
+        };
+    });
 
     res.json({ count: items.length, items });
 }));
@@ -678,15 +670,24 @@ router.post('/admin/transfers/:id/approve', adminAuth, asyncH(async (req, res) =
     if (!tr) return res.status(404).json({ error: 'transfer talebi bulunamadı' });
     if (tr.status !== 'pending') return res.status(409).json({ error: `talep zaten işlendi: ${tr.status}` });
 
+    const resolvedAt = Date.now();
+    // Atomik UPDATE — race condition koruması.
+    const upd = await run(
+        'UPDATE transfer_requests SET status=?,resolved_at=?,resolved_by=? WHERE id=? AND status=?',
+        ['approved', resolvedAt, 'admin', tr.id, 'pending']
+    );
+    if ((upd?.affectedRows ?? upd?.changes ?? 0) === 0) {
+        const cur = await get('SELECT status FROM transfer_requests WHERE id=?', [tr.id]);
+        return res.status(409).json({ error: `talep zaten işlendi: ${cur?.status ?? 'unknown'}` });
+    }
+
     if (tr.old_hostname_hash) {
         await run('DELETE FROM activations WHERE license_id=? AND hostname_hash=? AND instance_id != ?',
             [tr.license_id, tr.old_hostname_hash, tr.new_instance_id || '']);
     }
-    await run('UPDATE transfer_requests SET status=?,resolved_at=?,resolved_by=? WHERE id=?',
-        ['approved', Date.now(), 'admin', tr.id]);
     await run(
         'UPDATE transfer_requests SET status=?,resolved_at=?,resolved_by=?,reject_reason=? WHERE license_id=? AND status=? AND id!=?',
-        ['rejected', Date.now(), 'admin', 'Başka transfer onaylandı', tr.license_id, 'pending', tr.id]
+        ['rejected', resolvedAt, 'admin', 'Başka transfer onaylandı', tr.license_id, 'pending', tr.id]
     );
     await audit('admin', 'license.transfer.approved', tr.license_id, { transferId: tr.id });
     res.json({ ok: true, message: 'Transfer onaylandı.' });
@@ -698,8 +699,15 @@ router.post('/admin/transfers/:id/reject', adminAuth, asyncH(async (req, res) =>
     if (!tr) return res.status(404).json({ error: 'transfer talebi bulunamadı' });
     if (tr.status !== 'pending') return res.status(409).json({ error: `talep zaten işlendi: ${tr.status}` });
 
-    await run('UPDATE transfer_requests SET status=?,resolved_at=?,resolved_by=?,reject_reason=? WHERE id=?',
-        ['rejected', Date.now(), 'admin', reason || null, tr.id]);
+    // Atomik UPDATE — race condition koruması.
+    const upd = await run(
+        'UPDATE transfer_requests SET status=?,resolved_at=?,resolved_by=?,reject_reason=? WHERE id=? AND status=?',
+        ['rejected', Date.now(), 'admin', reason || null, tr.id, 'pending']
+    );
+    if ((upd?.affectedRows ?? upd?.changes ?? 0) === 0) {
+        const cur = await get('SELECT status FROM transfer_requests WHERE id=?', [tr.id]);
+        return res.status(409).json({ error: `talep zaten işlendi: ${cur?.status ?? 'unknown'}` });
+    }
     await audit('admin', 'license.transfer.rejected', tr.license_id, { transferId: tr.id, reason });
     res.json({ ok: true, message: 'Transfer reddedildi.' });
 }));
