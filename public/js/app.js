@@ -5864,41 +5864,42 @@ function showPage(page) {
     const tabOtx      = document.getElementById('navTabOtxApproval');
     const tabScanList = document.getElementById('navTabScanList');
 
-    // Önce her şeyi gizle
-    if (homePanel)     homePanel.style.display     = 'none';
-    if (statsPanel)    statsPanel.style.display    = 'none';
-    if (otxPanel)      otxPanel.style.display      = 'none';
-    if (scanListPanel) scanListPanel.style.display = 'none';
+    // Önce her şeyi gizle — classList.add('hidden') kullan (.hidden { display:none !important })
+    if (homePanel)     homePanel.classList.add('hidden');
+    if (statsPanel)    statsPanel.classList.add('hidden');
+    if (otxPanel)      otxPanel.classList.add('hidden');
+    if (scanListPanel) scanListPanel.classList.add('hidden');
     [tabHome, tabScan, tabStats, tabOtx, tabScanList].forEach(t => t && t.classList.remove('active'));
     ['mNavTabHome','mNavTabScan','mNavTabStats','mNavTabOtx','mNavTabScanList'].forEach(id => {
         const el = document.getElementById(id); if (el) el.classList.remove('active');
     });
 
     if (page === 'home') {
-        if (homePanel) homePanel.style.display = '';
+        if (homePanel) homePanel.classList.remove('hidden');
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
         if (tabHome) tabHome.classList.add('active');
         const mh = document.getElementById('mNavTabHome'); if (mh) mh.classList.add('active');
         loadHomePage();
     } else if (page === 'stats') {
-        if (statsPanel) statsPanel.style.display = '';
+        if (statsPanel) statsPanel.classList.remove('hidden');
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
         if (tabStats) tabStats.classList.add('active');
         const ms = document.getElementById('mNavTabStats'); if (ms) ms.classList.add('active');
         loadStatsPage();
     } else if (page === 'scan-list') {
-        if (scanListPanel) scanListPanel.style.display = '';
+        if (scanListPanel) scanListPanel.classList.remove('hidden');
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
         if (tabScanList) tabScanList.classList.add('active');
         const msl = document.getElementById('mNavTabScanList'); if (msl) msl.classList.add('active');
         scanListInit();
     } else if (page === 'otx-approval') {
-        if (otxPanel) otxPanel.style.display = '';
+        if (otxPanel) otxPanel.classList.remove('hidden');
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
         if (tabOtx) tabOtx.classList.add('active');
         const mo = document.getElementById('mNavTabOtx'); if (mo) mo.classList.add('active');
         loadUserFpSuggestions();
     } else {
+        // 'scan' modu: inline style sıfırla — CSS class durumuna göre görünürlük döner
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
         if (tabScan) tabScan.classList.add('active');
         const ms2 = document.getElementById('mNavTabScan'); if (ms2) ms2.classList.add('active');
