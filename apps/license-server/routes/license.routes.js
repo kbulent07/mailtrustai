@@ -88,7 +88,8 @@ router.post('/license/customers', asyncH(async (req, res) => {
 
 router.post('/license/create', asyncH(async (req, res) => {
     const { customerId, dealerId, plan = 'pro', tier, companyName, email, label } = req.body || {};
-    const validDays = Number(req.body?.validDays ?? 365);
+    const isTrial   = req.body?.trial === true || req.body?.trial === 'true';
+    const validDays = Number(req.body?.validDays ?? (isTrial ? 14 : 365));
     if (!customerId) return badRequest(res, 'customerId gerekli');
     if (!Number.isFinite(validDays) || validDays <= 0 || validDays > 36500) {
         return badRequest(res, 'validDays geçersiz (1..36500)');
@@ -96,14 +97,17 @@ router.post('/license/create', asyncH(async (req, res) => {
     if (!PLAN_MATRIX[plan]) {
         return badRequest(res, `plan geçersiz: ${plan}. Geçerli: ${Object.keys(PLAN_MATRIX).join(', ')}`);
     }
-    if (plan === 'trial' && validDays > 14) {
-        return badRequest(res, 'Trial lisans en fazla 14 gün olabilir.');
+    if (isTrial && validDays > 14) {
+        return badRequest(res, 'Deneme lisansı en fazla 14 gün olabilir.');
     }
     if (tier && !TIER_MATRIX[tier]) {
         return badRequest(res, `tier geçersiz: ${tier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`);
     }
-    // Label opsiyonel — boş string null'a dönüşür.
-    const licenseLabel = (typeof label === 'string' && label.trim()) ? label.trim().slice(0, 128) : null;
+    // Label opsiyonel; trial ise otomatik "[Trial]" prefix eklenir.
+    const rawLabel = (typeof label === 'string' && label.trim()) ? label.trim() : '';
+    const licenseLabel = isTrial
+        ? ('[Trial] ' + (rawLabel || `${plan.charAt(0).toUpperCase() + plan.slice(1)} Deneme`)).slice(0, 128)
+        : (rawLabel.slice(0, 128) || null);
 
     // UPSERT: dealer transferi/şirket adı güncellemesi mümkün.
     const upsertSql = isMaria

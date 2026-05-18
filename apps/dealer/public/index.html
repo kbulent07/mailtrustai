@@ -335,7 +335,6 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
           <div>
             <label for="newPlan">Plan *</label>
             <select id="newPlan" required>
-              <option value="trial">trial — Deneme (14 gün, T1)</option>
               <option value="pro" selected>pro — Gelişmiş özellikler</option>
               <option value="enterprise">enterprise — Tüm özellikler</option>
             </select>
@@ -353,6 +352,13 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
               <option value="T8">T8 — 10.000/ay</option>
               <option value="T9">T9 — Sınırsız</option>
             </select>
+          </div>
+          <div class="full" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);border-radius:7px">
+            <input type="checkbox" id="newTrial" style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer">
+            <label for="newTrial" style="margin:0;cursor:pointer;font-size:.9em;color:var(--text)">
+              🧪 <strong>Deneme Lisansı</strong>
+              <span style="color:var(--muted);font-size:.82em;margin-left:6px">— Maksimum 14 gün, planın tüm özellikleriyle</span>
+            </label>
           </div>
           <div class="full">
             <label for="newDays">Geçerlilik (gün) *</label>
@@ -450,7 +456,6 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
     <p class="muted">Müşteri: <strong id="quickLicCustName"></strong></p>
     <label for="quickLicPlan">Plan</label>
     <select id="quickLicPlan">
-      <option value="trial">trial — Deneme (14 gün, T1)</option>
       <option value="pro" selected>pro — Gelişmiş özellikler</option>
       <option value="enterprise">enterprise — Tüm özellikler</option>
     </select>
@@ -466,6 +471,10 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
       <option value="T8">T8 — 10.000/ay</option>
       <option value="T9">T9 — Sınırsız</option>
     </select>
+    <div style="display:flex;align-items:center;gap:9px;margin:10px 0 4px;padding:8px 12px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);border-radius:7px">
+      <input type="checkbox" id="quickLicTrial" style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer">
+      <label for="quickLicTrial" style="margin:0;cursor:pointer;font-size:.88em">🧪 <strong>Deneme Lisansı</strong> <span style="color:var(--muted);font-size:.8em">— max 14 gün</span></label>
+    </div>
     <label for="quickLicDays">Geçerlilik (gün)</label>
     <input type="number" id="quickLicDays" min="1" max="36500" value="365" autocomplete="off">
     <div id="quickLicKeyBox" class="generated-key hidden" style="margin-top:14px">
@@ -1007,18 +1016,20 @@ $('createForm').addEventListener('submit', async e => {
   resEl.textContent = ''; resEl.className = 'result';
   boxEl.classList.add('hidden');
 
+  const isTrial = $('newTrial')?.checked || false;
   const body = {
     customerId : $('newCustId').value.trim(),
     companyName: $('newCompany').value.trim() || undefined,
     email      : $('newEmail').value.trim()   || undefined,
     plan       : $('newPlan').value,
     tier       : $('newTier').value,
-    validDays  : Number($('newDays').value)
+    validDays  : Number($('newDays').value),
+    trial      : isTrial
   };
   if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
   if (!body.validDays || body.validDays < 1) { resEl.textContent = 'Geçerli bir gün sayısı girin.'; resEl.className = 'result err'; return; }
-  if (body.plan === 'trial' && body.validDays > 14) {
-    resEl.textContent = 'Demo lisans en fazla 14 gün olabilir.'; resEl.className = 'result err'; return;
+  if (isTrial && body.validDays > 14) {
+    resEl.textContent = 'Deneme lisansı en fazla 14 gün olabilir.'; resEl.className = 'result err'; return;
   }
 
   try {
@@ -1030,13 +1041,14 @@ $('createForm').addEventListener('submit', async e => {
     $('generatedKeyValue').textContent = key;
     $('generatedKeyMeta').innerHTML =
       `<span>Müşteri: <code>${escapeHtml(body.customerId)}</code></span> &nbsp;|&nbsp; ` +
-      `<span>Plan: <strong>${escapeHtml(body.plan)}</strong></span> &nbsp;|&nbsp; ` +
+      `<span>Plan: <strong>${escapeHtml(body.plan)}${isTrial ? ' <em style="color:var(--warn)">[Trial]</em>' : ''}</strong></span> &nbsp;|&nbsp; ` +
       `<span>Tier: <strong>${escapeHtml(body.tier)}</strong></span> &nbsp;|&nbsp; ` +
       `<span>Tarama: <strong>${escapeHtml(String(r.monthlyScanCount ?? '—'))}/ay</strong></span> &nbsp;|&nbsp; ` +
       `<span>Bitiş: <strong>${fmtDate(r.expiresAt || r.license?.expiresAt)}</strong></span>`;
     boxEl.classList.remove('hidden');
 
     $('createForm').reset(); $('newPlan').value = 'pro'; $('newTier').value = 'T5'; $('newDays').value = '365';
+    if ($('newTrial')) $('newTrial').checked = false;
     await loadCustomers();
   } catch (err) {
     resEl.textContent = 'Hata: ' + err.message; resEl.className = 'result err';
@@ -1164,6 +1176,7 @@ function openQuickLicModal(custId, name, company) {
   $('quickLicPlan').value = 'pro';
   $('quickLicTier').value = 'T5';
   $('quickLicDays').value = '365';
+  if ($('quickLicTrial')) { $('quickLicTrial').checked = false; $('quickLicDays').max = '36500'; }
   $('quickLicResult').textContent = ''; $('quickLicResult').className = 'result';
   $('quickLicKeyBox').classList.add('hidden');
   $('quickLicApply').disabled = false;
@@ -1173,22 +1186,22 @@ function openQuickLicModal(custId, name, company) {
 $('quickLicCancel').addEventListener('click', () => $('quickLicModal').classList.add('hidden'));
 $('quickLicModal').addEventListener('click', e => { if (e.target === $('quickLicModal')) $('quickLicModal').classList.add('hidden'); });
 
-// Demo plan → max 14 gün. Plan değişimine reaktif clamp (her iki form için).
-function _wirePlanDaysClamp(planId, daysId) {
-  const plan = $(planId), days = $(daysId);
-  if (!plan || !days) return;
-  plan.addEventListener('change', () => {
-    if (plan.value === 'trial') {
+// Deneme checkbox → validDays'i otomatik 14'e klampla
+function _wireTrialCheckbox(checkId, daysId) {
+  const chk = $(checkId), days = $(daysId);
+  if (!chk || !days) return;
+  chk.addEventListener('change', () => {
+    if (chk.checked) {
       days.max = '14';
-      if (Number(days.value) > 14 || Number(days.value) === 365) days.value = '14';
+      if (!days.value || Number(days.value) > 14) days.value = '14';
     } else {
       days.max = '36500';
       if (Number(days.value) === 14) days.value = '365';
     }
   });
 }
-_wirePlanDaysClamp('newPlan', 'newDays');
-_wirePlanDaysClamp('quickLicPlan', 'quickLicDays');
+_wireTrialCheckbox('newTrial', 'newDays');
+_wireTrialCheckbox('quickLicTrial', 'quickLicDays');
 
 $('quickLicApply').addEventListener('click', async () => {
   const validDays = Number($('quickLicDays').value);
@@ -1197,15 +1210,16 @@ $('quickLicApply').addEventListener('click', async () => {
   if (!validDays || validDays < 1) {
     $('quickLicResult').textContent = 'En az 1 gün girin.'; $('quickLicResult').className = 'result err'; return;
   }
-  if (plan === 'trial' && validDays > 14) {
-    $('quickLicResult').textContent = 'Demo lisans en fazla 14 gün olabilir.'; $('quickLicResult').className = 'result err'; return;
+  const isTrialQ = $('quickLicTrial')?.checked || false;
+  if (isTrialQ && validDays > 14) {
+    $('quickLicResult').textContent = 'Deneme lisansı en fazla 14 gün olabilir.'; $('quickLicResult').className = 'result err'; return;
   }
   $('quickLicApply').disabled = true;
   $('quickLicResult').textContent = '⏳ Üretiliyor...'; $('quickLicResult').className = 'result';
   try {
     const r = await api('/api/dealer/customers', {
       method: 'POST',
-      body: { customerId: quickLicTarget.custId, companyName: quickLicTarget.company || undefined, plan, tier, validDays }
+      body: { customerId: quickLicTarget.custId, companyName: quickLicTarget.company || undefined, plan, tier, validDays, trial: isTrialQ }
     });
     $('quickLicResult').textContent = '✓ Lisans üretildi!'; $('quickLicResult').className = 'result ok';
     const key = r.licenseKey || r.key || '—';

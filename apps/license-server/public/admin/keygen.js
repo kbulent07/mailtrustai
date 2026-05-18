@@ -590,13 +590,13 @@ async function confirmDeleteDealer(id, name) {
 // ================================================================
 // LİSANS ÜRETME SEKMESİ
 // ================================================================
-// Trial plan → max 14 gün. Plan değişince validDays otomatik clamp.
-$('newLicPlan')?.addEventListener('change', () => {
+// Deneme checkbox → validDays'i otomatik 14'e klampla.
+$('newLicTrial')?.addEventListener('change', () => {
     const days = $('newLicDays');
     if (!days) return;
-    if ($('newLicPlan').value === 'trial') {
+    if ($('newLicTrial').checked) {
         days.max = '14';
-        if (Number(days.value) > 14 || Number(days.value) === 365) days.value = '14';
+        if (!days.value || Number(days.value) > 14) days.value = '14';
     } else {
         days.max = '36500';
         if (Number(days.value) === 14) days.value = '365';
@@ -619,13 +619,14 @@ $('licenseCreateForm').addEventListener('submit', async (e) => {
         plan       : $('newLicPlan').value,
         tier       : $('newLicTier').value,
         validDays  : Number($('newLicDays').value),
-        label      : $('newLicLabel').value.trim()      || undefined
+        label      : $('newLicLabel').value.trim()      || undefined,
+        trial      : $('newLicTrial')?.checked || false
     };
 
     if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
     if (!body.validDays || body.validDays < 1) { resEl.textContent = 'Geçerli bir gün sayısı girin.'; resEl.className = 'result err'; return; }
-    if (body.plan === 'trial' && body.validDays > 14) {
-        resEl.textContent = 'Trial lisans en fazla 14 gün olabilir.'; resEl.className = 'result err'; return;
+    if (body.trial && body.validDays > 14) {
+        resEl.textContent = 'Deneme lisansı en fazla 14 gün olabilir.'; resEl.className = 'result err'; return;
     }
 
     try {

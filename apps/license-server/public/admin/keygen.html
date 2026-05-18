@@ -259,10 +259,16 @@
                 <div>
                     <label for="newLicPlan">Plan *</label>
                     <select id="newLicPlan" required>
-                        <option value="trial">trial — Deneme (14 gün, T1)</option>
                         <option value="pro" selected>pro — Gelişmiş özellikler</option>
                         <option value="enterprise">enterprise — Tüm özellikler</option>
                     </select>
+                </div>
+                <div class="full" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.3);border-radius:7px">
+                    <input type="checkbox" id="newLicTrial" style="width:15px;height:15px;accent-color:#6366f1;cursor:pointer">
+                    <label for="newLicTrial" style="margin:0;cursor:pointer;font-size:.88em">
+                        🧪 <strong>Deneme Lisansı (Trial)</strong>
+                        <span style="opacity:.65;font-size:.8em;margin-left:6px">— Planın tüm özellikleriyle, maksimum 14 gün</span>
+                    </label>
                 </div>
                 <div>
                     <label for="newLicTier">Tarama Tieri *</label>

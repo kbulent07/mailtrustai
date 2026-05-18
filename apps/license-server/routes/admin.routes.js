@@ -501,22 +501,26 @@ const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX } = require('@mail
 
 // POST /api/admin/licenses — admin'in direkt lisans uretmesi
 router.post('/admin/licenses', adminAuth, asyncH(async (req, res) => {
-    const { customerId, dealerId, plan = 'pro', tier, companyName, email, validDays = 365, label } = req.body || {};
+    const { customerId, dealerId, plan = 'pro', tier, companyName, email, label } = req.body || {};
+    const isTrial    = req.body?.trial === true || req.body?.trial === 'true';
+    const validDaysNum = Number(req.body?.validDays ?? (isTrial ? 14 : 365));
     if (!customerId) return res.status(400).json({ error: 'customerId gerekli' });
-    const validDaysNum = Number(validDays);
     if (!Number.isFinite(validDaysNum) || validDaysNum <= 0 || validDaysNum > 36500) {
         return res.status(400).json({ error: 'validDays 1..36500 olmalı' });
     }
     if (!PLAN_MATRIX[plan]) {
         return res.status(400).json({ error: `plan geçersiz: ${plan}` });
     }
-    if (plan === 'trial' && validDaysNum > 14) {
-        return res.status(400).json({ error: 'Trial lisans en fazla 14 gün olabilir.' });
+    if (isTrial && validDaysNum > 14) {
+        return res.status(400).json({ error: 'Deneme lisansı en fazla 14 gün olabilir.' });
     }
     if (tier && !TIER_MATRIX[tier]) {
         return res.status(400).json({ error: `tier geçersiz: ${tier}. Geçerli: T1..T9` });
     }
-    const labelClean = (typeof label === 'string' && label.trim()) ? label.trim().slice(0, 128) : null;
+    const rawLabel = (typeof label === 'string' && label.trim()) ? label.trim() : '';
+    const labelClean = isTrial
+        ? ('[Trial] ' + (rawLabel || `${plan.charAt(0).toUpperCase() + plan.slice(1)} Deneme`)).slice(0, 128)
+        : (rawLabel.slice(0, 128) || null);
 
     if (dealerId) {
         const dlr = await get('SELECT id FROM dealers WHERE id = ?', [dealerId]);

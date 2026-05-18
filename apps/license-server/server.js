@@ -14,7 +14,7 @@ hardenPrototypes();
 try {
     const licCore = require('@mailtrustai/license-core');
     // Dummy call — SECRET() invoke eder; eksikse exception fırlatır.
-    licCore.generateLicenseKey({ customerId: '__boot_probe__', plan: 'trial' });
+    licCore.generateLicenseKey({ customerId: '__boot_probe__', plan: 'pro' });
 } catch (e) {
     logger.error('[license-server] FATAL: license-core SECRET probe başarısız:', e.message);
     process.exit(1);

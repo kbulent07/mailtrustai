@@ -38,16 +38,6 @@ const TIER_MATRIX = {
 // buradaki tier varsayılan/fallback değerdir.
 // ============================================================
 const PLAN_MATRIX = {
-    trial: {
-        tier: 'T1',
-        graceDays: 1,
-        features: {
-            imapMonitor: true, deepAi: false, pdfReport: false, quarantine: false,
-            siemWebhook: false, multiMailbox: false, localAi: false,
-            centralApiProxy: false, centralListSync: true, centralPolicySync: true
-        },
-        limits: { monthlyScanCount: 50, mailboxCount: 1, userCount: 1 }
-    },
     pro: {
         tier: 'T5',
         graceDays: 3,
@@ -72,11 +62,11 @@ const PLAN_MATRIX = {
 
 /**
  * Plan + tier birleşimi için final tanımı döner.
- * @param {string} plan  - 'trial' | 'pro' | 'enterprise'
+ * @param {string} plan  - 'pro' | 'enterprise'
  * @param {string} [tier] - 'T1'…'T9' (yoksa plan varsayılanı)
  */
 function getPlan(plan, tier) {
-    const base = PLAN_MATRIX[plan] || PLAN_MATRIX.trial;
+    const base = PLAN_MATRIX[plan] || PLAN_MATRIX.pro;
     const t    = (tier && TIER_MATRIX[tier]) ? tier : base.tier;
     const scanCount = TIER_MATRIX[t]?.monthlyScanCount ?? base.limits.monthlyScanCount;
     return {
@@ -88,7 +78,7 @@ function getPlan(plan, tier) {
 
 function getTier(tier) { return TIER_MATRIX[tier] || null; }
 
-function generateLicenseKey({ customerId, dealerId, plan = 'trial' }) {
+function generateLicenseKey({ customerId, dealerId, plan = 'pro' }) {
     const raw = `${customerId}|${dealerId || ''}|${plan}|${Date.now()}|${crypto.randomBytes(8).toString('hex')}`;
     const sig = crypto.createHmac('sha256', SECRET()).update(raw).digest('hex').slice(0, 16);
     const key = `MTAI-${plan.toUpperCase().slice(0, 4)}-${crypto.randomBytes(6).toString('hex').toUpperCase()}-${sig.toUpperCase()}`;
