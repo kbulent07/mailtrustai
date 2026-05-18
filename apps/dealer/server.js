@@ -201,8 +201,20 @@ app.get('/api/dealer/me', requireDealer, (req, res) => {
     res.json({ dealerId: req.dealer.dealerId });
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+// HTML dosyaları cache'lenmemeli; JS/CSS production'da kısa TTL
+app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders(res, filePath) {
+        if (filePath.endsWith('.html')) {
+            res.set('Cache-Control', 'no-store');
+        } else {
+            res.set('Cache-Control', 'public, max-age=60');
+        }
+    }
+}));
+app.get('*', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 app.use((err, req, res, next) => {
     const status = err.status || 500;

@@ -776,13 +776,19 @@ function renderCustomersTable() {
       groups.set(c.customerId, { meta: c, licenses: [] });
     }
     const g = groups.get(c.customerId);
-    // Her kaydı ekle (aynı müşterinin farklı lisansları / instance'ları)
-    if (c.licenseId && !g.licenses.find(l => l.licenseId === c.licenseId)) {
-      g.licenses.push(c);
-    } else if (!c.licenseId && !g.licenses.length) {
-      g.licenses.push(c); // lisanssız müşteri
+    // Lisansları licenseId bazlı tekilleştir (aynı lisansın birden fazla activation satırı olabilir).
+    // licenseId yoksa müşteriyi "lisanssız" olarak bir kez ekle.
+    if (c.licenseId) {
+      if (!g.licenses.find(l => l.licenseId === c.licenseId)) g.licenses.push(c);
+      else {
+        // Aynı lisansın farklı aktivasyonu → en güncel versiyonu koru
+        const idx = g.licenses.findIndex(l => l.licenseId === c.licenseId);
+        if ((c.lastHeartbeatAt || 0) > (g.licenses[idx].lastHeartbeatAt || 0)) g.licenses[idx] = c;
+      }
+    } else if (!g.licenses.length) {
+      g.licenses.push(c); // lisanssız müşteri — yalnızca bir kez
     }
-    // En güncel meta bilgisini tut (son heartbeat'e göre)
+    // En güncel heartbeat'e sahip kaydı meta olarak tut
     if ((c.lastHeartbeatAt || 0) > (g.meta.lastHeartbeatAt || 0)) g.meta = c;
   });
 
