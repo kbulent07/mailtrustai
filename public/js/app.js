@@ -313,6 +313,31 @@ document.addEventListener('DOMContentLoaded', () => {
 // Versiyon geçişi / yeni cihaz / sekmeler arası tutarlılığı sağlar.
 async function syncLicenseFromServer() {
     try {
+        // Öncelikli yol: customer servisinin önbellek durumu.
+        // localStorage temizlenmiş olsa bile sayfa yenilemede badge Enterprise kalır.
+        const statusRes = await fetch('/api/customer/license/status');
+        if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            const snap = statusData.snapshot;
+            if (statusData.grace?.ok && snap?.plan) {
+                const info = {
+                    valid: true,
+                    plan: snap.plan,
+                    tier: snap.tier,
+                    features: snap.features || {},
+                    monthlyLimit: snap.limits?.monthlyScans ?? snap.limits?.monthly ?? null,
+                    expiryDate: snap.expiresAt
+                };
+                licenseInfo = info;
+                updateLicenseBadge(info);
+                loadLicenseUsage();
+                return; // Badge güncellendi; validateStoredLicense ayrıca remote doğrulama yapar.
+            }
+        }
+    } catch (_) { /* sessizce devam */ }
+
+    try {
+        // Eski yol: /api/license (legacy / standart sunucu).
         const res = await fetch('/api/license');
         if (!res.ok) return;
         const data = await res.json();
@@ -3563,6 +3588,9 @@ async function validateStoredLicense() {
     } : { valid: false, error: raw.error };
 
     if (data.valid) {
+        // snapshot plan yoksa (örn. önbellek geçici olarak okunamadı) badge'i bozma;
+        // syncLicenseFromServer zaten önbelleği badge'e yansıttı.
+        if (!data.plan) return;
         licenseInfo = data;
         updateLicenseBadge(data);
         loadLicenseUsage();
@@ -3602,7 +3630,7 @@ function updateLicenseBadge(info) {
     badge.removeAttribute('title');
     badge.style.removeProperty('border-color');
 
-    const labels = { free: 'Free', pro: 'Pro', enterprise: 'Enterprise' };
+    const labels = { free: 'Free', demo: 'Demo', pro: 'Pro', enterprise: 'Enterprise' };
     const tier = info.tier || '';
     let label = tier ? `${labels[info.plan] || 'Free'}-${tier}` : (labels[info.plan] || 'Free');
 
