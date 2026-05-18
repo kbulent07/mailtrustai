@@ -206,6 +206,50 @@ hr
 
 ENV_FILE="$INSTALL_DIR/.env"
 
+# ─── 3b. RESET MOD — her seye sifirdan baslama ──────────────
+# Kullanim: sudo RESET=true bash install_server_ubuntu.sh
+# Tum container'lar + volume'lar + $INSTALL_DIR icerigi (yedekler haric) silinir.
+# Access denied / volume mismatch sorunlarini tek komutla cozer.
+if [[ "${RESET:-false}" == "true" ]]; then
+    step "RESET=true: kurulum tamamen sifirlaniyor..."
+    warn "Tum MailTrustAI container'lari, volume'lari ve $INSTALL_DIR icerigi silinecek."
+    warn "Sadece $INSTALL_DIR/backups dizini korunacak."
+
+    if command -v docker &>/dev/null && docker info &>/dev/null; then
+        # Compose ile down (varsa)
+        if [[ -f "$INSTALL_DIR/docker-compose.server.yml" && -f "$ENV_FILE" ]]; then
+            docker compose --env-file "$ENV_FILE" \
+                -f "$INSTALL_DIR/docker-compose.server.yml" \
+                down -v --remove-orphans 2>/dev/null || true
+        fi
+        # Container'lari zorla sil
+        for c in mailtrustai-mariadb mailtrustai-license-server mailtrustai-dealer; do
+            docker rm -f "$c" &>/dev/null || true
+        done
+        # Tum mailtrustai-server_* volume'larini kaldir
+        docker volume ls --filter name=mailtrustai-server -q 2>/dev/null \
+            | xargs -r docker volume rm 2>/dev/null || true
+        ok "Docker container'lari ve volume'lari temizlendi."
+    else
+        warn "Docker calismadigi icin container/volume temizligi atlandi."
+    fi
+
+    # Yedekleri kaydet, sonra dizini sifirla
+    if [[ -d "$INSTALL_DIR" ]]; then
+        if [[ -d "$INSTALL_DIR/backups" ]]; then
+            TEMP_BAK="/tmp/mailtrustai-backups-preserve.$$"
+            mv "$INSTALL_DIR/backups" "$TEMP_BAK"
+            rm -rf "$INSTALL_DIR"
+            mkdir -p "$INSTALL_DIR"
+            mv "$TEMP_BAK" "$INSTALL_DIR/backups"
+            ok "Kurulum dizini sifirlandi (backups korundu): $INSTALL_DIR"
+        else
+            rm -rf "$INSTALL_DIR"
+            ok "Kurulum dizini tamamen silindi: $INSTALL_DIR"
+        fi
+    fi
+fi
+
 # ─── 4. Dizin yapısı (ENV kontrolünden önce oluştur) ────────
 step "Dizin yapisi olusturuluyor: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/logs" "$INSTALL_DIR/backups"
@@ -244,11 +288,29 @@ fi
 info "Mod: SKIP_ENV=$SKIP_ENV (false = yeniden yazilacak)"
 
 # ─── 5b. ESKI MARIADB VOLUME KALINTISI KONTROLU ─────────────
-# KRITIK: Yeni .env uretiliyorsa (SKIP_ENV=false), eski MariaDB
-# volume'unun var olmasi parola uyumsuzluguna yol acar. MariaDB
-# volume zaten init edilmisse MARIADB_PASSWORD env var'i YOK SAYAR
-# ve eski parolayi kullanmaya devam eder -> Access denied.
-if [[ "$SKIP_ENV" == "false" ]] && command -v docker &>/dev/null; then
+# KRITIK: MariaDB volume zaten init edilmisse MARIADB_PASSWORD env var'i
+# YOK SAYAR ve eski parolayi kullanmaya devam eder -> Access denied.
+#
+# Iki senaryoda kontrol calisir:
+#   1) SKIP_ENV=false: yeni .env -> eski volume KESIN uyumsuz
+#   2) SKIP_ENV=true + mariadb container CALISMIYOR ama volume VAR:
+#      onceki kurulum yarida kalmis olabilir; volume tutarli mi belli
+#      degil -> kullaniciya sor
+CHECK_VOLUMES=false
+if command -v docker &>/dev/null; then
+    if [[ "$SKIP_ENV" == "false" ]]; then
+        CHECK_VOLUMES=true
+        VOLUME_REASON="Yeni .env uretildi - eski volume parolasiyla uyumsuz"
+    elif ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^mailtrustai-mariadb$'; then
+        # mariadb container calismiyor ama volume mevcut olabilir -> tutarsizlik riski
+        if docker volume ls --format '{{.Name}}' 2>/dev/null | grep -q '^mailtrustai-server_mariadb-data$'; then
+            CHECK_VOLUMES=true
+            VOLUME_REASON="MariaDB container durmus ama volume var - tutarsizlik riski"
+        fi
+    fi
+fi
+
+if [[ "$CHECK_VOLUMES" == "true" ]]; then
     MARIA_VOLUME="mailtrustai-server_mariadb-data"
     LS_VOLUME="mailtrustai-server_license-server-data"
     HAS_MARIA_VOL=false
@@ -260,12 +322,13 @@ if [[ "$SKIP_ENV" == "false" ]] && command -v docker &>/dev/null; then
         echo ""
         warn "============================================================"
         warn "  ESKI VOLUME KALINTISI TESPIT EDILDI"
+        warn "  Neden: $VOLUME_REASON"
         warn "============================================================"
-        [[ "$HAS_MARIA_VOL" == "true" ]] && warn "  - $MARIA_VOLUME (MariaDB verileri, eski parolayla)"
+        [[ "$HAS_MARIA_VOL" == "true" ]] && warn "  - $MARIA_VOLUME (MariaDB verileri)"
         [[ "$HAS_LS_VOL" == "true" ]]    && warn "  - $LS_VOLUME (license-server data)"
         warn ""
-        warn "  Yeni .env ile uretilen parolalar eski volume icindeki"
-        warn "  MariaDB user'i ile uyumsuz olacak -> Access denied hatasi."
+        warn "  Mevcut .env'deki parolalar volume icindeki MariaDB user'iyla"
+        warn "  uyumsuz olabilir -> Access denied hatasi."
         warn ""
         warn "  Devam etmek icin bu volume'lar silinmeli (icindeki lisans"
         warn "  verileri kaybolacak)."
