@@ -161,13 +161,13 @@
                     <h2>➕ Yeni Bayi</h2>
                     <form id="dealerCreateForm" class="form-card">
                         <label>Bayi ID (örn: bayi-01)</label>
-                        <input type="text" id="newDealerId" required maxlength="64" placeholder="bayi-istanbul">
+                        <input type="text" id="newDealerId" required maxlength="64" placeholder="bayi-istanbul" autocomplete="off">
                         <label>Adı</label>
-                        <input type="text" id="newDealerName" maxlength="128" placeholder="İstanbul Bayisi">
+                        <input type="text" id="newDealerName" maxlength="128" placeholder="İstanbul Bayisi" autocomplete="name">
                         <label>E-posta</label>
-                        <input type="email" id="newDealerEmail" placeholder="bayi@example.com">
+                        <input type="email" id="newDealerEmail" placeholder="bayi@example.com" autocomplete="email">
                         <label>Parola (opsiyonel — sonra da set edilebilir)</label>
-                        <input type="password" id="newDealerPassword" minlength="8" placeholder="≥ 8 karakter">
+                        <input type="password" id="newDealerPassword" minlength="8" placeholder="≥ 8 karakter" autocomplete="new-password">
                         <button type="submit" class="primary">Oluştur</button>
                         <div id="dealerCreateResult" class="result"></div>
                     </form>
@@ -182,7 +182,7 @@
             <form id="licenseCreateForm" class="form-card form-grid">
                 <div>
                     <label>Müşteri ID *</label>
-                    <input type="text" id="newLicCustomerId" required maxlength="64" placeholder="acme-corp">
+                    <input type="text" id="newLicCustomerId" required maxlength="64" placeholder="acme-corp" autocomplete="off">
                 </div>
                 <div>
                     <label>Bayi (opsiyonel)</label>
@@ -190,11 +190,11 @@
                 </div>
                 <div>
                     <label>Şirket Adı</label>
-                    <input type="text" id="newLicCompany" maxlength="128" placeholder="ACME Corp">
+                    <input type="text" id="newLicCompany" maxlength="128" placeholder="ACME Corp" autocomplete="organization">
                 </div>
                 <div>
                     <label>E-posta</label>
-                    <input type="email" id="newLicEmail" placeholder="it@acme.com">
+                    <input type="email" id="newLicEmail" placeholder="it@acme.com" autocomplete="email">
                 </div>
                 <div>
                     <label>Plan *</label>
@@ -351,5 +351,6 @@
 </div>
 
 <script src="/admin/keygen.js"></script>
+<footer style="text-align:center;padding:10px 0 14px;font-size:.75em;color:#8b95b3">MailTrustAI Merkezi Yönetim — v2.0</footer>
 </body>
 </html>

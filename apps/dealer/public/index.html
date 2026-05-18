@@ -277,15 +277,15 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
         <form id="createForm" class="form-card form-grid">
           <div>
             <label>Müşteri ID *</label>
-            <input type="text" id="newCustId" required maxlength="64" placeholder="acme-corp">
+            <input type="text" id="newCustId" required maxlength="64" placeholder="acme-corp" autocomplete="off">
           </div>
           <div>
             <label>Şirket Adı</label>
-            <input type="text" id="newCompany" maxlength="128" placeholder="ACME Corp">
+            <input type="text" id="newCompany" maxlength="128" placeholder="ACME Corp" autocomplete="organization">
           </div>
           <div>
             <label>E-posta</label>
-            <input type="email" id="newEmail" placeholder="it@acme.com">
+            <input type="email" id="newEmail" placeholder="it@acme.com" autocomplete="email">
           </div>
           <div>
             <label>Plan *</label>
@@ -445,11 +445,11 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
     <h3>➕ Yeni Müşteri Ekle</h3>
     <p class="muted" style="margin-bottom:14px">Müşteri kaydı oluşturulur. Lisansı daha sonra müşteri listesinden üretebilirsiniz.</p>
     <label>Müşteri ID *</label>
-    <input type="text" id="addCustId" maxlength="64" placeholder="acme-corp">
+    <input type="text" id="addCustId" maxlength="64" placeholder="acme-corp" autocomplete="off">
     <label>Şirket Adı</label>
-    <input type="text" id="addCustCompany" maxlength="128" placeholder="ACME Corp">
+    <input type="text" id="addCustCompany" maxlength="128" placeholder="ACME Corp" autocomplete="organization">
     <label>E-posta</label>
-    <input type="email" id="addCustEmail" placeholder="it@acme.com">
+    <input type="email" id="addCustEmail" placeholder="it@acme.com" autocomplete="email">
     <div id="addCustResult" class="result"></div>
     <div class="modal-btns">
       <button id="addCustCancel">İptal</button>
@@ -1049,5 +1049,6 @@ $('addCustApply').addEventListener('click', async () => {
   }
 })();
 </script>
+<footer style="text-align:center;padding:10px 0 14px;font-size:.75em;color:var(--muted)">MailTrustAI Bayi Paneli — v2.0</footer>
 </body>
 </html>
