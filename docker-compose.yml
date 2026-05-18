@@ -86,6 +86,7 @@ services:
       TOKEN_SECRET: ${DEALER_API_SECRET}
       ADMIN_PANEL_TOKEN: ${ADMIN_PANEL_TOKEN:-dev-admin-panel-token-2026}
       DEFAULT_GRACE_DAYS: ${DEFAULT_GRACE_DAYS:-7}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
     ports:
       - "${LICENSE_SERVER_PORT:-3200}:3200"
     volumes:
@@ -114,6 +115,7 @@ services:
       LICENSE_SERVER_URL: http://license-server:3200
       DEALER_API_TOKEN: ${DEALER_API_SECRET:?}
       DEALER_SESSION_SECRET: ${DEALER_SESSION_SECRET:?DEALER_SESSION_SECRET zorunlu}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
     ports:
       - "${DEALER_PORT:-3100}:3100"
     depends_on:

@@ -63,16 +63,25 @@ RUN MSA_CUSTOMER_BUILD=1 node scripts/check-customer-package.js --scope=image
 # ---------- Runtime image ----------
 FROM node:22-bookworm-slim
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# tini: PID 1 signal handling + zombie reaping
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tini \
+    && rm -rf /var/lib/apt/lists/*
 
 # Sadece temizlenmiş ağacı kopyala
 COPY --from=builder /build /app
+
+# Workspace paket symlink'leri + non-root kullanıcı oluştur
 RUN mkdir -p /app/node_modules/@mailtrustai \
   && for p in analyzer central-sync license-client mail policy-client security shared storage; do \
         if [ -d "/app/packages/$p" ]; then \
             ln -sfn "/app/packages/$p" "/app/node_modules/@mailtrustai/$p"; \
         fi; \
-     done
+     done \
+  && groupadd -r mailtrustai \
+  && useradd -r -g mailtrustai -s /bin/false mailtrustai \
+  && mkdir -p /app/data /app/logs \
+  && chown mailtrustai:mailtrustai /app/data /app/logs
 
 ENV NODE_ENV=production
 ENV MSA_CUSTOMER_ONLY=true
@@ -82,4 +91,6 @@ ENV LOG_DIR=/app/logs
 EXPOSE 3000
 VOLUME ["/app/data", "/app/logs"]
 
+USER mailtrustai
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "--use-system-ca", "apps/customer/server.js"]

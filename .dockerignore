@@ -54,6 +54,9 @@ ecosystem.config.js
 docker-compose*.yml
 Dockerfile.test
 
+# Kurulum betikleri (image'a ihtiyaç yok)
+install/
+
 # Docs (image'a ihtiyaç yok)
 docs/
 *.md

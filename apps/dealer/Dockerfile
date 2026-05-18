@@ -30,10 +30,13 @@ RUN mkdir -p /app/node_modules/@mailtrustai \
         if [ -d "/app/packages/$p" ]; then \
             ln -sfn "/app/packages/$p" "/app/node_modules/@mailtrustai/$p"; \
         fi; \
-     done
+     done \
+  && groupadd -r mailtrustai \
+  && useradd -r -g mailtrustai -s /bin/false mailtrustai
 
 ENV NODE_ENV=production
 EXPOSE 3100
 
+USER mailtrustai
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "--use-system-ca", "apps/dealer/server.js"]

@@ -37,7 +37,11 @@ COPY --from=builder /build /app
 RUN mkdir -p /app/node_modules/@mailtrustai \
   && for p in analyzer central-sync license-client license-core mail policy-client security shared storage; do \
         ln -sfn "/app/packages/$p" "/app/node_modules/@mailtrustai/$p"; \
-     done
+     done \
+  && groupadd -r mailtrustai \
+  && useradd -r -g mailtrustai -s /bin/false mailtrustai \
+  && mkdir -p /app/data \
+  && chown mailtrustai:mailtrustai /app/data
 
 ENV NODE_ENV=production
 ENV DATA_DIR=/app/data
@@ -45,6 +49,7 @@ ENV DATA_DIR=/app/data
 EXPOSE 3200
 VOLUME ["/app/data"]
 
+USER mailtrustai
 # tini ile signal handling (graceful shutdown)
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "--use-system-ca", "apps/license-server/server.js"]
