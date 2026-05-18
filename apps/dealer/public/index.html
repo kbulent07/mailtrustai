@@ -207,6 +207,22 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
   .nav-item{font-size:1.1em;padding:10px 0}
   th,td{font-size:.72em;padding:5px}
 }
+
+/* ===== Müşteri Accordion ===== */
+.cust-row{cursor:pointer;transition:background .12s}
+.cust-row:hover{background:var(--surface-2)!important}
+.cust-row td:first-child{padding-left:10px}
+.expand-icon{display:inline-block;transition:transform .2s;margin-right:7px;font-style:normal;color:var(--muted);font-size:.9em}
+.cust-row.open .expand-icon{transform:rotate(90deg)}
+.lic-detail-row td{padding:0!important}
+.lic-detail-inner{background:#0e1428;border-left:3px solid var(--primary);
+  margin:0 0 2px 0;padding:10px 16px;animation:slideDown .15s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.lic-card{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:.84em}
+.lic-card .lic-field{display:flex;flex-direction:column;gap:2px;min-width:80px}
+.lic-card .lic-field label{font-size:.72em;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.lic-card .lic-field span{color:var(--text)}
+.lic-card .lic-actions{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -289,13 +305,11 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
           <button onclick="openAddCustomerModal()" style="background:var(--ok);border:none;color:#fff;padding:7px 15px;border-radius:6px;cursor:pointer;font-size:.88em" aria-label="Yeni müşteri ekle">➕ Müşteri Ekle</button>
         </div>
         <div class="table-wrap">
-          <table>
+          <table id="custTable">
             <thead><tr>
-              <th>Şirket / ID</th><th>Lisans Anahtarı</th><th>Plan</th><th>Tier</th><th>Lisans Durumu</th>
-              <th>Bitiş</th><th>Sürüm</th><th>Online</th><th>Son Bağlantı</th>
-              <th>Tarama</th><th>Aksiyonlar</th>
+              <th>Müşteri</th><th>Lisanslar</th><th>Durum</th><th>Online</th><th>Son Bağlantı</th><th>Aksiyonlar</th>
             </tr></thead>
-            <tbody id="custBody"><tr><td colspan="11" class="loading">Yükleniyor...</td></tr></tbody>
+            <tbody id="custBody"><tr><td colspan="6" class="loading">Yükleniyor...</td></tr></tbody>
           </table>
         </div>
         <p class="muted" style="margin-top:8px">⚠️ Müşteri mail içerikleri, scan detayları veya credential bilgileri bu panelde gösterilmez. Yalnızca lisans ve operasyonel durum/metrik bilgileri görüntülenir.</p>
@@ -729,59 +743,133 @@ function renderOverview() {
   el.addEventListener('change', renderCustomersTable);
 });
 
+// Açık müşteri ID'lerini takip et
+const _openCustomers = new Set();
+
 function renderCustomersTable() {
   const q  = ($('custQ')?.value || '').trim().toLowerCase();
   const fs = $('custStatus')?.value || '';
   const now = Date.now();
 
-  const filtered = customers.filter(c => {
-    if (fs && c.licenseStatus !== fs) return false;
-    if (q) {
-      const hay = [c.customerId, c.companyName || '', c.email || ''].join(' ').toLowerCase();
-      if (!hay.includes(q)) return false;
+  // Flat listeyi customerId'ye göre grupla
+  const groups = new Map();
+  customers.forEach(c => {
+    if (fs) {
+      const dead = c.expiresAt && c.expiresAt < now;
+      const ls = dead ? 'expired' : (c.licenseStatus || '');
+      if (ls !== fs) return;
     }
-    return true;
+    if (q) {
+      const hay = [c.customerId, c.companyName || '', c.customerEmail || ''].join(' ').toLowerCase();
+      if (!hay.includes(q)) return;
+    }
+    if (!groups.has(c.customerId)) {
+      groups.set(c.customerId, { meta: c, licenses: [] });
+    }
+    const g = groups.get(c.customerId);
+    // Her kaydı ekle (aynı müşterinin farklı lisansları / instance'ları)
+    if (c.licenseId && !g.licenses.find(l => l.licenseId === c.licenseId)) {
+      g.licenses.push(c);
+    } else if (!c.licenseId && !g.licenses.length) {
+      g.licenses.push(c); // lisanssız müşteri
+    }
+    // En güncel meta bilgisini tut (son heartbeat'e göre)
+    if ((c.lastHeartbeatAt || 0) > (g.meta.lastHeartbeatAt || 0)) g.meta = c;
   });
 
   const tbody = $('custBody');
-  if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="11" class="loading">Kayıt bulunamadı.</td></tr>';
+  if (!groups.size) {
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Kayıt bulunamadı.</td></tr>';
     return;
   }
-  tbody.innerHTML = filtered.map(c => {
-    const st   = c.onlineStatus || 'never';
-    const exp  = fmtDate(c.expiresAt);
-    const dead = c.expiresAt && c.expiresAt < now;
-    const ls   = dead ? 'expired' : (c.licenseStatus || '—');
-    const da   = encodeURIComponent(c.companyName || c.customerId);
-    const dlid = encodeURIComponent(c.licenseId  || '');
 
-    return `<tr>
-      <td><strong>${escapeHtml(c.companyName || c.customerId)}</strong><br>
-          <small class="muted">${escapeHtml(c.customerId)}</small></td>
-      <td><code style="font-size:.82em">${escapeHtml(c.keyMasked || '—')}</code></td>
-      <td>${escapeHtml(c.plan || '—')}</td>
-      <td>${escapeHtml(c.tier || '—')}</td>
-      <td><span class="tag tag-${ls}">${ls}</span></td>
-      <td>${exp}</td>
-      <td>${escapeHtml(c.appVersion || '—')}</td>
+  let html = '';
+  groups.forEach(({ meta: c, licenses }, custId) => {
+    const isOpen  = _openCustomers.has(custId);
+    const st      = c.onlineStatus || 'never';
+    const da      = encodeURIComponent(c.companyName || c.customerId);
+
+    // Müşteri özet durumu: active > expired > revoked > —
+    const allStatuses = licenses.map(l => {
+      const dead = l.expiresAt && l.expiresAt < now;
+      return dead ? 'expired' : (l.licenseStatus || 'unknown');
+    });
+    const summaryStatus = allStatuses.includes('active') ? 'active'
+      : allStatuses.includes('expired') ? 'expired'
+      : allStatuses.includes('revoked') ? 'revoked'
+      : (allStatuses[0] || '—');
+
+    const licCount = licenses.length;
+
+    // ── Müşteri özet satırı ──
+    html += `<tr class="cust-row${isOpen ? ' open' : ''}" data-cust-id="${escapeHtml(custId)}">
+      <td>
+        <em class="expand-icon">▶</em>
+        <strong>${escapeHtml(c.companyName || custId)}</strong><br>
+        <small class="muted" style="padding-left:22px">${escapeHtml(custId)}</small>
+      </td>
+      <td>${licCount} lisans</td>
+      <td><span class="tag tag-${summaryStatus}">${summaryStatus}</span></td>
       <td><span class="tag tag-${st}">${st}</span></td>
       <td><small class="muted">${timeAgo(c.lastHeartbeatAt)}</small></td>
-      <td>${c.monthlyScanCount ?? '—'}</td>
-      <td class="btn-group">
-        <button class="action-btn" data-action="detay" data-id="${escapeHtml(c.customerId)}">📋 Detay</button>
+      <td class="btn-group" onclick="event.stopPropagation()">
+        <button class="action-btn" data-action="detay" data-id="${escapeHtml(custId)}">📋 Detay</button>
         <button class="action-btn ok" data-action="quicklic"
-          data-id="${escapeHtml(c.customerId)}"
+          data-id="${escapeHtml(custId)}"
           data-name="${da}"
           data-company="${escapeHtml(c.companyName || '')}">🔑 Lisans Üret</button>
-        ${dlid ? `<button class="action-btn" data-action="renew" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-lid="${dlid}">⏳ Uzat</button>` : ''}
-        ${dlid && ls !== 'revoked'
-          ? `<button class="action-btn danger" data-action="revoke" data-id="${escapeHtml(c.customerId)}" data-name="${da}" data-lid="${dlid}">🚫 İptal</button>`
-          : ''}
       </td>
     </tr>`;
-  }).join('');
 
+    // ── Lisans detay satırı (accordion — tek <tr> içinde div container) ──
+    const licsHtml = licenses.map(l => {
+      const dead = l.expiresAt && l.expiresAt < now;
+      const ls   = dead ? 'expired' : (l.licenseStatus || '—');
+      const dlid = encodeURIComponent(l.licenseId || '');
+      const dlan = encodeURIComponent(l.companyName || l.customerId);
+      return `<div class="lic-detail-inner">
+        <div class="lic-card">
+          <div class="lic-field"><label>Plan</label><span>${escapeHtml(l.plan || '—')}</span></div>
+          <div class="lic-field"><label>Tier</label><span>${escapeHtml(l.tier || '—')}</span></div>
+          <div class="lic-field"><label>Lisans Anahtarı</label><span><code>${escapeHtml(l.keyMasked || '—')}</code></span></div>
+          <div class="lic-field"><label>Durum</label><span><span class="tag tag-${ls}">${ls}</span></span></div>
+          <div class="lic-field"><label>Bitiş</label><span>${fmtDate(l.expiresAt)}</span></div>
+          <div class="lic-field"><label>Versiyon</label><span>${escapeHtml(l.appVersion || '—')}</span></div>
+          <div class="lic-field"><label>Tarama</label><span>${l.monthlyScanCount ?? '—'}</span></div>
+          <div class="lic-actions">
+            ${dlid ? `<button class="action-btn" data-action="renew" data-id="${escapeHtml(custId)}" data-name="${dlan}" data-lid="${dlid}">⏳ Uzat</button>` : ''}
+            ${dlid && ls !== 'revoked'
+              ? `<button class="action-btn danger" data-action="revoke" data-id="${escapeHtml(custId)}" data-name="${dlan}" data-lid="${dlid}">🚫 İptal</button>`
+              : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    html += `<tr class="lic-detail-row" id="lic-rows-${escapeHtml(custId)}"
+               style="display:${isOpen ? 'table-row' : 'none'}">
+      <td colspan="6" style="padding:0;border-bottom:2px solid var(--primary)">
+        ${licsHtml}
+      </td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = html;
+
+  // Accordion toggle — müşteri satırına tıklama
+  tbody.querySelectorAll('.cust-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const cid = row.dataset.custId;
+      const licRow = document.getElementById('lic-rows-' + cid);
+      if (!licRow) return;
+      const opening = licRow.style.display === 'none' || !licRow.style.display;
+      if (opening) { _openCustomers.add(cid); licRow.style.display = 'table-row'; }
+      else          { _openCustomers.delete(cid); licRow.style.display = 'none'; }
+      row.classList.toggle('open', opening);
+    });
+  });
+
+  // Aksiyon butonları için delegate (tbody içindeki tüm .action-btn)
   bindTableActions(tbody);
 }
 
