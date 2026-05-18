@@ -156,6 +156,16 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
 .audit-detail{font-family:ui-monospace,monospace;font-size:.8em;background:var(--bg);
               padding:5px 9px;border-radius:4px;max-width:380px;word-break:break-all;white-space:pre-wrap}
 
+/* ===== Toast ===== */
+#toastContainer{position:fixed;top:18px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:.88em;
+  color:var(--text);box-shadow:0 4px 16px #0008;opacity:0;transform:translateX(40px);
+  transition:opacity .25s,transform .25s;pointer-events:auto;max-width:320px;word-break:break-word}
+.toast.show{opacity:1;transform:none}
+.toast.t-ok{border-left:3px solid var(--ok)}
+.toast.t-err{border-left:3px solid var(--err)}
+.toast.t-warn{border-left:3px solid var(--warn)}
+
 /* ===== Mobil ===== */
 @media(max-width:768px){
   .sidebar{width:58px}
@@ -169,6 +179,8 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
 </style>
 </head>
 <body>
+
+<div id="toastContainer"></div>
 
 <!-- ===== LOGIN ===== -->
 <div id="loginScreen" class="login-wrap" role="dialog" aria-labelledby="loginTitle" aria-modal="true">
@@ -454,6 +466,18 @@ let myDealerId = '';
 
 const $ = id => document.getElementById(id);
 
+function showToast(msg, type = 'ok', duration = 3500) {
+  const el = document.createElement('div');
+  el.className = `toast t-${type}`;
+  el.textContent = msg;
+  $('toastContainer').appendChild(el);
+  requestAnimationFrame(() => { requestAnimationFrame(() => { el.classList.add('show'); }); });
+  setTimeout(() => {
+    el.classList.remove('show');
+    el.addEventListener('transitionend', () => el.remove(), { once: true });
+  }, duration);
+}
+
 // ================================================================
 // HTTP yardımcısı
 // ================================================================
@@ -588,7 +612,7 @@ async function loadCustomers() {
 
 function logout401() {
   sessionStorage.removeItem(SESSION_KEY);
-  alert('Oturum süresi doldu. Yeniden giriş yapın.');
+  showToast('Oturum süresi doldu. Yeniden giriş yapın.', 'warn', 3000);
   location.reload();
 }
 
