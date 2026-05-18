@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     MailTrustAI — Windows Müşteri Kurulum Betiği
@@ -79,11 +79,23 @@ function New-RandomBase64([int]$bytes = 24) {
 }
 
 function Read-Input($prompt, $default = '') {
+    # `return if (...) { ... }` PowerShell 5.1'de parse hatasi verir.
+    # Klasik if/else ile yazilmali.
     if ($default) {
         $result = Read-Host "  $prompt [$default]"
-        return if ($result) { $result } else { $default }
+        if ([string]::IsNullOrWhiteSpace($result)) { return $default }
+        return $result
     }
     return Read-Host "  $prompt"
+}
+
+# Native exe exit kodunu zorla kontrol et. PowerShell try/catch
+# native exe'ler icin exception firlatmaz ($ErrorActionPreference=Stop
+# yalnizca cmdlet'leri etkiler). LASTEXITCODE 0 degilse Fatal cagir.
+function Assert-NativeOk($cmdLabel) {
+    if ($LASTEXITCODE -ne 0) {
+        Fatal "$cmdLabel basarisiz (exit code: $LASTEXITCODE)"
+    }
 }
 
 # ─── Banner ─────────────────────────────────────────────────────────────────
@@ -107,28 +119,29 @@ Ok "Yönetici yetkisi mevcut."
 # ─── 2. Docker Desktop kontrolü ─────────────────────────────────────────────
 Step "Docker Desktop kontrol ediliyor..."
 
-try {
-    $dockerVersion = docker --version 2>&1
-    Ok "Docker bulundu: $dockerVersion"
-} catch {
-    Fatal "Docker bulunamadı. Docker Desktop'ı kurun: https://www.docker.com/products/docker-desktop"
+# Komut bulunabilir mi? (try/catch native exe icin guvenilmez,
+# Get-Command kullanmak daha dogru.)
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    Fatal "Docker bulunamadi. Docker Desktop'i kurun: https://www.docker.com/products/docker-desktop"
 }
 
-try {
-    docker info 2>&1 | Out-Null
-    Ok "Docker daemon çalışıyor."
-} catch {
-    Fatal "Docker daemon çalışmıyor. Docker Desktop'ı başlatın ve tekrar deneyin."
+$dockerVersion = docker --version 2>&1
+Assert-NativeOk "docker --version"
+Ok "Docker bulundu: $dockerVersion"
+
+docker info 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Fatal "Docker daemon calismiyor. Docker Desktop'i baslatin ve tekrar deneyin."
 }
+Ok "Docker daemon calisiyor."
 
 # Compose
 $composeCmd = 'docker compose'
-try {
-    docker compose version 2>&1 | Out-Null
-    Ok "Docker Compose hazır."
-} catch {
-    Fatal "docker compose plugin bulunamadı. Docker Desktop'ı güncelleyin (4.x+)."
+docker compose version 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Fatal "docker compose plugin bulunamadi. Docker Desktop'i guncelleyin (4.x+)."
 }
+Ok "Docker Compose hazir."
 
 # ─── 3. Yapılandırma parametreleri ──────────────────────────────────────────
 Step "Kurulum yapılandırması..."
@@ -145,9 +158,10 @@ if (-not $LicenseServerUrl) {
 }
 $LicenseServerUrl = $LicenseServerUrl.TrimEnd('/')
 
-$InstallDir    = Read-Input "Kurulum dizini" $InstallDir
-$Port          = [int](Read-Input "Uygulama port numarası" $Port)
-$Hostname      = Read-Input "Container hostname (şifreleme anahtarı türevinde kullanılır)" "mailtrustai"
+$InstallDir       = Read-Input "Kurulum dizini" $InstallDir
+$Port             = [int](Read-Input "Uygulama port numarasi" $Port)
+# Not: $Hostname PowerShell 7+'da automatic variable, $ContainerHostname kullaniyoruz.
+$ContainerHostname = Read-Input "Container hostname (sifreleme anahtari turevinde kullanilir)" "mailtrustai"
 
 # ─── 4. Mevcut kurulum kontrolü ─────────────────────────────────────────────
 $EnvFile      = Join-Path $InstallDir '.env'
@@ -253,9 +267,10 @@ if ($ImageFile) {
     # Tar'dan yükle — compose'da build yok
     if (-not (Test-Path $ImageFile)) { Fatal "Image dosyası bulunamadı: $ImageFile" }
 
-    Step "Docker image yükleniyor: $ImageFile"
+    Step "Docker image yukleniyor: $ImageFile"
     docker load -i $ImageFile
-    Ok "Image yüklendi."
+    Assert-NativeOk "docker load"
+    Ok "Image yuklendi."
 
     # Build context olmayan minimal compose yaz
     $composeContent = @"
@@ -267,7 +282,7 @@ services:
     image: $ImageName
     container_name: mailtrustai-customer
     restart: unless-stopped
-    hostname: $Hostname
+    hostname: $ContainerHostname
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -317,9 +332,10 @@ volumes:
     Ok "Compose dosyası kopyalandı: $ComposeFile"
 
     if (-not $SkipBuild) {
-        Step "Docker image derleniyor (bu 5-15 dakika sürebilir)..."
+        Step "Docker image derleniyor (bu 5-15 dakika surebilir)..."
         Set-Location $RepoRoot
         docker compose --env-file $EnvFile -f docker-compose.customer.yml build --pull
+        Assert-NativeOk "docker compose build"
         Ok "Image derlendi: $ImageName"
     }
 } else {
@@ -330,9 +346,12 @@ volumes:
 Step "Konteyner başlatılıyor..."
 Set-Location $InstallDir
 
-# Compose'u çalıştır
+# Compose'u calistir
 Invoke-Expression "docker compose --env-file `"$EnvFile`" -f `"$ComposeFile`" up -d --remove-orphans"
-Ok "Konteyner başlatıldı."
+if ($LASTEXITCODE -ne 0) {
+    Fatal "docker compose up basarisiz oldu (exit: $LASTEXITCODE). Detay: docker compose -f `"$ComposeFile`" logs"
+}
+Ok "Konteyner baslatildi."
 
 # ─── 9. Sağlık kontrolü ─────────────────────────────────────────────────────
 Step "Sağlık kontrolü (30 saniye bekleniyor)..."

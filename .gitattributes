@@ -1,2 +1,6 @@
 *.sh text eol=lf
-*.ps1 text eol=crlf
+# .ps1 dosyalari ikili (binary) gibi davranir: BOM ve CRLF korunur.
+# Windows PowerShell 5.1 BOM'suz UTF-8 dosyalarini Windows-1252 olarak
+# parse eder ve Turkce karakterleri bozar. Bu yuzden eol=crlf yerine
+# `-text` ile satir sonu donusturmesini kapatip BOM'u koruyoruz.
+*.ps1 -text

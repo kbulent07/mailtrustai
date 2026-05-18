@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     MailTrustAI — Windows Müşteri Kaldırma Betiği
@@ -102,11 +102,15 @@ if ($Purge) {
 
 # ─── Docker kontrolü ─────────────────────────────────────────────────────────
 $dockerOk = $false
-try {
+if (Get-Command docker -ErrorAction SilentlyContinue) {
     docker info 2>&1 | Out-Null
-    $dockerOk = $true
-} catch {
-    Warn "Docker daemon çalışmıyor. Konteynerler zaten durmuş olabilir."
+    if ($LASTEXITCODE -eq 0) {
+        $dockerOk = $true
+    } else {
+        Warn "Docker daemon calismiyor. Konteynerler zaten durmus olabilir."
+    }
+} else {
+    Warn "Docker komutu bulunamadi. Dosya temizligine geciliyor."
 }
 
 # ─── Konteyneri durdur ve kaldır ─────────────────────────────────────────────
@@ -140,12 +144,14 @@ if ($RemoveImage -and $dockerOk) {
 
 # ─── Purge: dizin ve dosyalar ────────────────────────────────────────────────
 if ($Purge) {
-    # Yedek klasörü kontrolü
+    # Yedek klasoru kontrolu
     $backupDir = Join-Path $InstallDir 'backups'
     if (Test-Path $backupDir) {
-        $backups = Get-ChildItem $backupDir -ErrorAction SilentlyContinue
+        # @() ile array'e zorlanir; null veya tek item durumunda
+        # strict mode .Count hatasi olmaz.
+        $backups = @(Get-ChildItem $backupDir -ErrorAction SilentlyContinue)
         if ($backups.Count -gt 0) {
-            Warn "Yedek dosyaları mevcut ($($backups.Count) adet): $backupDir"
+            Warn "Yedek dosyalari mevcut ($($backups.Count) adet): $backupDir"
             $keepBkp = Read-Host "  Yedekleri koru (sadece kurulum dizinini sil)? [E/h]"
             if ($keepBkp -eq '' -or $keepBkp -match '^[EeYy]') {
                 # Yedekler dışındakileri sil

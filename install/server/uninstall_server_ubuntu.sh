@@ -74,6 +74,14 @@ if ! docker compose version &>/dev/null 2>&1; then
     command -v docker-compose &>/dev/null && DOCKER_COMPOSE_CMD="docker-compose"
 fi
 
+# ─── Docker daemon kontrolü ─────────────────────────────────
+# Daemon kapaliysa down komutu uzun timeout'a girer; bunu erken yakala.
+DOCKER_OK=true
+if ! docker info &>/dev/null; then
+    DOCKER_OK=false
+    warn "Docker daemon calismiyor. Konteyner down asamasi atlanacak; sadece dosyalar temizlenir."
+fi
+
 # ─── .env belirle ───────────────────────────────────────────
 ENV_ARGS=""
 [[ -f "$ENV_FILE" ]] && ENV_ARGS="--env-file $ENV_FILE"
@@ -82,27 +90,35 @@ ENV_ARGS=""
 hr
 info "Servisler durduruluyor ve kaldırılıyor..."
 
-if [[ "$DELETE_DATA" == "true" ]]; then
-    $DOCKER_COMPOSE_CMD $ENV_ARGS -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
-    ok "Konteynerler ve Docker volume'ları kaldırıldı."
+if [[ "$DOCKER_OK" == "true" ]]; then
+    if [[ "$DELETE_DATA" == "true" ]]; then
+        $DOCKER_COMPOSE_CMD $ENV_ARGS -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
+        ok "Konteynerler ve Docker volume'ları kaldırıldı."
+    else
+        $DOCKER_COMPOSE_CMD $ENV_ARGS -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+        ok "Konteynerler kaldırıldı. MariaDB verileri korundu."
+    fi
 else
-    $DOCKER_COMPOSE_CMD $ENV_ARGS -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
-    ok "Konteynerler kaldırıldı. MariaDB verileri korundu."
+    warn "Docker daemon offline — konteyner kaldirma atlandi."
 fi
 
 # ─── Tam temizlik (veri silme onaylandıysa) ─────────────────
 if [[ "$DELETE_DATA" == "true" ]]; then
 
-    info "Docker image'lar siliniyor..."
-    docker rmi mailtrustai-license-server:latest 2>/dev/null || true
-    docker rmi mailtrustai-dealer:latest 2>/dev/null || true
-    ok "Image'lar silindi."
+    if [[ "$DOCKER_OK" == "true" ]]; then
+        info "Docker image'lar siliniyor..."
+        docker rmi mailtrustai-license-server:latest 2>/dev/null || true
+        docker rmi mailtrustai-dealer:latest 2>/dev/null || true
+        ok "Image'lar silindi."
 
-    info "Kullanılmayan Docker ağları temizleniyor..."
-    docker network prune -f 2>/dev/null || true
+        info "Kullanilmayan Docker aglari temizleniyor..."
+        docker network prune -f 2>/dev/null || true
 
-    info "Kullanılmayan Docker volume'ları temizleniyor..."
-    docker volume prune -f 2>/dev/null || true
+        info "Kullanilmayan Docker volume'lari temizleniyor..."
+        docker volume prune -f 2>/dev/null || true
+    else
+        warn "Docker offline — image/network/volume temizligi atlandi."
+    fi
 
     if [[ -d "$INSTALL_DIR" ]]; then
         if [[ -d "$INSTALL_DIR/backups" ]] && compgen -G "$INSTALL_DIR/backups/*" > /dev/null 2>&1; then
