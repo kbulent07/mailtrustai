@@ -371,17 +371,17 @@ function selectMode(mode, updateState = true) {
         mode = 'imap';
     }
     // Lisans gate'leri — yetersizse güvenli mode'a düş, kullanıcı tetiklediyse uyar
-    if (mode === 'imap' && !licenseInfo?.features?.imapConnection) {
+    if (mode === 'imap' && !licenseInfo?.features?.imapMonitor) {
         if (updateState) {
             showToast(
-                _tLit('IMAP Tarama yalnızca Enterprise lisansında kullanılabilir.', 'IMAP Scan is available only with an Enterprise license.'),
+                _tLit('IMAP Tarama Pro veya Enterprise lisansı gerektirir.', 'IMAP Scan requires a Pro or Enterprise license.'),
                 'warning',
                 { title: '🔒 Lisans Gerekli' }
             );
         }
         mode = 'upload';
     }
-    if (mode === 'scan-mailbox' && !licenseInfo?.features?.scanMailbox) {
+    if (mode === 'scan-mailbox' && !licenseInfo?.features?.multiMailbox) {
         if (updateState) {
             showToast(
                 _tLit('Tarama Posta Kutusu Pro veya Enterprise lisansı gerektirir.', 'Scan Mailbox requires a Pro or Enterprise license.'),
