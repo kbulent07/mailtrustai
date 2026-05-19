@@ -2052,6 +2052,11 @@ async function loadAlertSenderOptions(selectedEmail) {
 function onImapAlertModeChange(select) {
     const warning = document.getElementById('imapAlertModeWarning');
     if (warning) warning.style.display = (select.value === 'all' && licenseInfo?.plan !== 'enterprise') ? 'block' : 'none';
+    // Özet kutusundaki politika etiketini güncelle
+    const policyEl = document.getElementById('imapAlertSummaryPolicy');
+    if (policyEl) {
+        policyEl.textContent = select.value === 'all' ? 'Tüm mailler' : 'Sadece riskli mailler';
+    }
 }
 
 function getImapAlertFormData() {
@@ -2349,7 +2354,11 @@ async function editImapAccount(email) {
             const enabled = smb.enabled !== false;
             document.getElementById('imapRealTimeAlert').checked = enabled;
             toggleImapRealTimeAlertSection(enabled);
-            document.getElementById('imapAlertMode').value = smb.reportMode || 'risky';
+            const alertMode = smb.reportMode || 'risky';
+            document.getElementById('imapAlertMode').value = alertMode;
+            // Özet kutusunu mevcut ayara göre güncelle
+            const policyEl = document.getElementById('imapAlertSummaryPolicy');
+            if (policyEl) policyEl.textContent = alertMode === 'all' ? 'Tüm mailler' : 'Sadece riskli mailler';
             setAlertEmails(smb.reportTo || '');
             document.getElementById('imapAlertLang').value = smb.reportLang || 'tr';
             await loadAlertSenderOptions(smb.senderSmtpEmail || '');
