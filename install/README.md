@@ -257,19 +257,31 @@ Admin e-postanızı ve şifrenizi oluşturun.
 
 Mevcut `.env` ve `customer-data` volume'u korunarak yükseltme yapılır.
 
-```powershell
-# YOL 1 — ctl ile (en kolay):
-& 'C:\MailTrustAI\mailtrustai-ctl.ps1' upgrade
+### YOL A — Çift-tıkla bat dosyası (en kolay)
 
-# YOL 2 — doğrudan script (repo'dan):
-cd C:\path\to\mailtrustai
+```
+C:\mailtrustai\install\client\upgrade_windows_musteri.bat
+```
+
+dosyasına çift tıklayın. UAC istemi → varsa tar dosyası yolu sorar (yoksa Enter geçin) → git pull + build + restart.
+
+### YOL B — ctl ile
+
+```powershell
+& 'C:\MailTrustAI\mailtrustai-ctl.ps1' upgrade
+```
+
+### YOL C — doğrudan script
+
+```powershell
+cd C:\mailtrustai
 powershell -ExecutionPolicy Bypass -File install\client\upgrade_windows.ps1
 
-# YOL 3 — bayi tar dosyası gönderdiyse:
+# Bayi tar dosyası gönderdiyse:
 powershell -ExecutionPolicy Bypass -File install\client\upgrade_windows.ps1 `
     -ImageFile "C:\Downloads\mailtrustai-customer-v2.tar"
 
-# YOL 4 — Task Scheduler için sessiz mod:
+# Task Scheduler için sessiz mod:
 powershell -ExecutionPolicy Bypass -File install\client\upgrade_windows.ps1 -Unattended
 ```
 
@@ -299,6 +311,18 @@ Register-ScheduledTask -TaskName 'MailTrustAI-Upgrade' -Action $action -Trigger 
 
 ## 6. Müşteri Kaldırma (Windows)
 
+### YOL A — Çift-tıkla bat dosyası (en kolay)
+
+```
+C:\mailtrustai\install\client\uninstall_windows_musteri.bat
+```
+
+dosyasına çift tıklayın. UAC istemi → menüden seçim:
+- **1** = Sadece container kapat (veriler korunur)
+- **2** = HER ŞEYİ SİL (volume + .env + kurulum dizini) — "EVET SIL" onayı gerekir
+
+### YOL B — Doğrudan script
+
 ```powershell
 # PowerShell'i "Yönetici olarak çalıştır" ile açın
 
@@ -307,6 +331,10 @@ powershell -ExecutionPolicy Bypass -File install\client\uninstall_windows.ps1
 
 # Tüm verileri SİL + image'ı da kaldır:
 powershell -ExecutionPolicy Bypass -File install\client\uninstall_windows.ps1 -Purge -RemoveImage
+
+# Sessiz mod (otomasyon — Task Scheduler):
+powershell -ExecutionPolicy Bypass -File install\client\uninstall_windows.ps1 `
+    -Purge -RemoveImage -Unattended -DeleteBackups
 ```
 
 ---
