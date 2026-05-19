@@ -2,6 +2,7 @@
 // WEBSOCKET HANDLER — Real-time notifications
 // ============================================================
 const { ImapMonitor } = require('../imap/monitor');
+const { listEmails, fetchAndParseEmail } = require('../imap/scanner');
 const { analyzeHeaders } = require('../analysis/headerAnalyzer');
 const { analyzeContent } = require('../analysis/contentAnalyzer');
 const { analyzeLinks } = require('../analysis/linkAnalyzer');
@@ -36,6 +37,10 @@ const { stopAutoMonitor }  = require('../application/monitor/StopAutoMonitorServ
 
 const monitors = new Map();
 const clients = new Set();
+
+// Hesap başına son işlenen IMAP UID (bellekte; reconnect catch-up için kullanılır).
+// Sunucu yeniden başladığında sıfırlanır; ilk bağlantıda değil, sadece reconnect'te tetiklenir.
+const _wsMonitorLastUid = new Map();
 
 // WebSocket monitör supervisor backoff (ms): 10s, 30s, 60s, 2dk, 5dk
 const WS_MONITOR_BACKOFF = [10_000, 30_000, 60_000, 120_000, 300_000];
@@ -245,66 +250,126 @@ function _scheduleWsMonitorRetry(account, license, entry, attempt = 0) {
     _wsMonitorRetryTimers.set(account.email, timer);
 }
 
+/**
+ * Tek bir maili analiz edip sonucu kaydeder ve WebSocket üzerinden yayınlar.
+ * Hem gerçek zamanlı `onNewEmail` hem de reconnect catch-up tarafından kullanılır.
+ *
+ * @param {object} account  - IMAP hesap nesnesi
+ * @param {object} license  - Çözülmüş lisans nesnesi
+ * @param {number} uid      - IMAP UID
+ * @param {object} email    - Ayrıştırılmış e-posta nesnesi
+ * @param {string} [source] - Log etiketi ('realtime' | 'catchup')
+ */
+async function _analyzeAndBroadcast(account, license, uid, email, source = 'realtime') {
+    // Self-loop koruması
+    const subject = String(email?.subject || '');
+    if (subject.includes('[MailTrustAI Güvenlik Raporu]') ||
+        subject.includes('[MailTrustAI Security Report]')) {
+        console.log(`[WS-Monitor][${source}] Self-loop atlandı: "${subject.slice(0, 80)}"`);
+        return;
+    }
+    const skipInfo = getImapSenderSkipInfo({ account, from: email?.from });
+    if (skipInfo.skip) {
+        console.log(`[WS-Monitor][${source}] Gönderen tarama dışı (${skipInfo.reason}): ${skipInfo.fromEmail}`);
+        return;
+    }
+
+    const h = analyzeHeaders(email);
+    const c = analyzeContent(email, 'advanced');
+    const l = analyzeLinks(email);
+    const a = license.features?.attachmentScan
+        ? analyzeAttachments(email.attachments || [])
+        : { findings: [], score: 0, results: [] };
+    const result = calculateScore(h, c, l, a);
+    result.emailMeta = {
+        from: email.from,
+        to: email.to,
+        subject: email.subject,
+        date: email.date,
+        attachmentCount: email.attachmentCount || 0
+    };
+    result.attachmentDetails = a.results || [];
+    result.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    result.timestamp = new Date().toISOString();
+    result.account = account.email;
+    if (source === 'catchup') result.catchup = true;   // UI'a göstermek için işaret
+
+    // AI & VT analizi
+    try {
+        await enrichWithAI(result, email);
+    } catch (e) {
+        console.error(`[WS-Monitor][${source}] enrichWithAI error:`, e.message);
+    }
+
+    result.quarantineMove = await maybeMoveMessageToQuarantine({ account, uid, result });
+
+    // Otomatik mail raporu burada DEĞİL — scanMailboxMonitor (purpose='realtime')
+    // akışında yapılıyor. Kullanıcı IMAP hesabı eklerken "anlık güvenlik raporu"
+    // checkbox'ını işaretlerse otomatik olarak bir scanMailbox kaydı oluşur ve
+    // o monitör mail gönderimini üstlenir.
+
+    recordScan(result);
+    broadcast({ type: 'new-email-scanned', result });
+
+    // UID baseline'ı güncelle
+    const numUid = Number(uid);
+    if (!Number.isNaN(numUid) && numUid > (_wsMonitorLastUid.get(account.email) || 0)) {
+        _wsMonitorLastUid.set(account.email, numUid);
+    }
+}
+
+/**
+ * Bağlantı yeniden kurulduğunda çağrılır.
+ * Son `CATCHUP_LIMIT` maili sorgular; son işlenen UID'den büyük olanları
+ * eski→yeni sırasıyla tarayıp raporlarını WebSocket üzerinden iletir.
+ */
+const CATCHUP_LIMIT = 10;
+
+async function _catchUpMissedEmails(account, license) {
+    console.log(`[AutoMonitor] ${account.email} — bağlantı kopukken gelen mailler taranıyor (max ${CATCHUP_LIMIT})...`);
+    try {
+        const listed = await listEmails(account, 'INBOX', CATCHUP_LIMIT);
+        if (!listed.success || !listed.messages?.length) return;
+
+        const lastUid = _wsMonitorLastUid.get(account.email) || 0;
+        // lastUid'den sonraki mailler; eskiden yeniye sırala
+        const pending = listed.messages
+            .filter(m => Number(m.uid) > lastUid)
+            .sort((a, b) => Number(a.uid) - Number(b.uid));
+
+        if (!pending.length) {
+            console.log(`[AutoMonitor] ${account.email} — kaçırılan mail yok.`);
+            return;
+        }
+
+        console.log(`[AutoMonitor] ${account.email} — ${pending.length} mail catch-up taranıyor...`);
+        for (const msg of pending) {
+            const parsed = await fetchAndParseEmail(account, msg.uid, 'INBOX');
+            if (!parsed.success) {
+                console.error(`[AutoMonitor] fetchAndParse hatası uid=${msg.uid}:`, parsed.error);
+                continue;
+            }
+            await _analyzeAndBroadcast(account, license, msg.uid, parsed.data, 'catchup');
+        }
+        console.log(`[AutoMonitor] ${account.email} — catch-up taraması tamamlandı.`);
+    } catch (e) {
+        console.error(`[AutoMonitor] ${account.email} catch-up hatası:`, e.message);
+    }
+}
+
 async function startMonitorForAccount(account, license) {
     const existing = monitors.get(account.email);
     if (existing?.isRunning?.()) return existing;
 
-    const monitor = new ImapMonitor(account, async (emailEvent) => {
-        // Self-loop koruması: kendi gönderdiğimiz güvenlik raporları veya
-        // merkezi tarama kutusu kaynaklı mailler analiz edilmemeli/karantinaya
-        // alınmamalı — aksi halde rapor mailinin kendisi karantinaya taşınır.
-        const subject = String(emailEvent.email?.subject || '');
-        if (subject.includes('[MailTrustAI Güvenlik Raporu]') ||
-            subject.includes('[MailTrustAI Security Report]')) {
-            console.log(`[WS-Monitor] Self-loop atlandı (rapor konusu): "${subject.slice(0, 80)}"`);
-            return;
-        }
-        const skipInfo = getImapSenderSkipInfo({ account, from: emailEvent.email?.from });
-        if (skipInfo.skip) {
-            console.log(`[WS-Monitor] Gönderen tarama dışı atlandı (${skipInfo.reason}): ${skipInfo.fromEmail}`);
-            return;
-        }
-
-        const h = analyzeHeaders(emailEvent.email);
-        const c = analyzeContent(emailEvent.email, 'advanced');
-        const l = analyzeLinks(emailEvent.email);
-        const a = license.features?.attachmentScan
-            ? analyzeAttachments(emailEvent.email.attachments || [])
-            : { findings: [], score: 0, results: [] };
-        const result = calculateScore(h, c, l, a);
-        result.emailMeta = {
-            from: emailEvent.email.from,
-            to: emailEvent.email.to,
-            subject: emailEvent.email.subject,
-            date: emailEvent.email.date,
-            attachmentCount: emailEvent.email.attachmentCount || 0
-        };
-        result.attachmentDetails = a.results || [];
-        result.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-        result.timestamp = new Date().toISOString();
-        result.account = emailEvent.account;
-
-        // AI & VT analizi (arka planda)
-        try {
-            await enrichWithAI(result, emailEvent.email);
-        } catch (e) {
-            console.error('[WS-Monitor] enrichWithAI error:', e.message);
-        }
-
-        result.quarantineMove = await maybeMoveMessageToQuarantine({
-            account,
-            uid: emailEvent.uid,
-            result
-        });
-
-        // Otomatik mail raporu burada DEĞİL — scanMailboxMonitor (purpose='realtime')
-        // akışında yapılıyor. Kullanıcı IMAP hesabı eklerken "anlık güvenlik raporu"
-        // checkbox'ını işaretlerse otomatik olarak bir scanMailbox kaydı oluşur ve
-        // o monitör mail gönderimini üstlenir.
-
-        recordScan(result);
-        broadcast({ type: 'new-email-scanned', result });
-    });
+    const monitor = new ImapMonitor(
+        account,
+        // ─── onNewEmail: gerçek zamanlı IDLE event'i ───────────
+        async (emailEvent) => {
+            await _analyzeAndBroadcast(account, license, emailEvent.uid, emailEvent.email, 'realtime');
+        },
+        // ─── onReconnected: bağlantı kopukken kaçırılan mailler ─
+        () => _catchUpMissedEmails(account, license)
+    );
 
     await monitor.start();
     monitors.set(account.email, monitor);

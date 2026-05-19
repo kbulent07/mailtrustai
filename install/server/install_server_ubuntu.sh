@@ -63,12 +63,11 @@ gen32() {
 }
 
 genpass() {
-    # Önce tüm base64'ü üret, ardından filtrele — pipefail güvenli
-    local raw
+    # Pipe yok — tamamen bash string operasyonuyla, SIGPIPE riski sıfır
+    local raw filtered
     raw=$(openssl rand -base64 36)
-    # Özel karakterleri kaldır ve 28 karakter al
-    printf '%s' "${raw//[\/+=]/}" | head -c 28
-    echo ""
+    filtered="${raw//[\/+=]/}"   # /, + ve = karakterlerini sil
+    printf '%s\n' "${filtered:0:28}"  # ilk 28 karakteri al (pipe yok)
 }
 
 # ─── Root kontrolü ──────────────────────────────────────────
