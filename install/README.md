@@ -194,7 +194,7 @@ Bootstrap sırayla şunları yapar:
 4. **Docker Desktop** kontrolü/kurulumu (`winget install Docker.DockerDesktop`)
    - İlk Docker kurulumunda **Windows yeniden başlatma isteyebilir** (WSL2 için)
    - Yeniden başlattıktan sonra `.bat`'a tekrar çift tıklayın
-5. **Repo klonu** → `C:\mailtrustai`
+5. **Repo klonu** → `C:\mailtrustai-source` (kurulum dizini `C:\MailTrustAI` ile çakışmasın diye farklı yer)
 6. `install_windows_user.ps1`'i çağırır (lisans anahtarınızı + URL'i sorar)
 7. Image build + container başlat + sağlık kontrolü
 
@@ -207,8 +207,8 @@ Bootstrap sırayla şunları yapar:
 ```powershell
 # PowerShell'i "Yönetici olarak çalıştır" ile açın
 cd C:\
-git clone -b mainpaketler https://github.com/kbulent07/mailtrustai.git
-cd mailtrustai
+git clone -b mainpaketler https://github.com/kbulent07/mailtrustai.git mailtrustai-source
+cd mailtrustai-source
 
 # Etkileşimli
 powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1
@@ -260,7 +260,7 @@ Mevcut `.env` ve `customer-data` volume'u korunarak yükseltme yapılır.
 ### YOL A — Çift-tıkla bat dosyası (en kolay)
 
 ```
-C:\mailtrustai\install\client\upgrade_windows_musteri.bat
+C:\mailtrustai-source\install\client\upgrade_windows_musteri.bat
 ```
 
 dosyasına çift tıklayın. UAC istemi → varsa tar dosyası yolu sorar (yoksa Enter geçin) → git pull + build + restart.
@@ -274,7 +274,7 @@ dosyasına çift tıklayın. UAC istemi → varsa tar dosyası yolu sorar (yoksa
 ### YOL C — doğrudan script
 
 ```powershell
-cd C:\mailtrustai
+cd C:\mailtrustai-source
 powershell -ExecutionPolicy Bypass -File install\client\upgrade_windows.ps1
 
 # Bayi tar dosyası gönderdiyse:
@@ -314,7 +314,7 @@ Register-ScheduledTask -TaskName 'MailTrustAI-Upgrade' -Action $action -Trigger 
 ### YOL A — Çift-tıkla bat dosyası (en kolay)
 
 ```
-C:\mailtrustai\install\client\uninstall_windows_musteri.bat
+C:\mailtrustai-source\install\client\uninstall_windows_musteri.bat
 ```
 
 dosyasına çift tıklayın. UAC istemi → menüden seçim:

@@ -12,7 +12,8 @@
       5) install_windows_user.ps1 ile asil musteri kurulumunu baslatir
 
 .PARAMETER InstallRoot
-    Repo'nun klonlanacagi kok dizin. Varsayilan: C:\mailtrustai
+    Repo'nun klonlanacagi kok dizin. Varsayilan: C:\mailtrustai-source
+    (Kurulum dizini C:\MailTrustAI ile case-insensitive cakismayi onlemek icin.)
 
 .PARAMETER LicenseKey
     Bayinizden aldiginiz lisans anahtari (interaktif olarak da sorulur).
@@ -35,7 +36,10 @@
 
 [CmdletBinding()]
 param(
-    [string]$InstallRoot       = 'C:\mailtrustai',
+    # Repo'nun klonlanacagi kok. Default 'C:\mailtrustai-source' — kurulum
+    # dizini olan 'C:\MailTrustAI' ile case-insensitive cakismayi onlemek icin
+    # farkli isimde tutuluyor (Windows: MailTrustAI == mailtrustai).
+    [string]$InstallRoot       = 'C:\mailtrustai-source',
     [string]$LicenseKey        = '',
     [string]$LicenseServerUrl  = '',
     [switch]$SkipDockerInstall

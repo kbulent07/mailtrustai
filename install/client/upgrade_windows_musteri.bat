@@ -11,7 +11,7 @@ REM       - git pull --ff-only ile yeni surume gecer
 REM       - docker compose build + restart
 REM       - /healthz polling ile saglik kontrolu yapar
 REM
-REM  Onkosul: Repo C:\mailtrustai altinda kurulu olmali
+REM  Onkosul: Repo C:\mailtrustai-source altinda kurulu olmali
 REM           (install_windows_musteri.bat ile kuruldu mu?)
 REM ============================================================
 
@@ -27,11 +27,11 @@ if %errorlevel% neq 0 (
 
 REM --- Repo'yu bul ---
 REM upgrade_windows.ps1 git pull yapacagi icin REPO'DAKI .ps1'i kullanmali
-set "PS1_REPO=C:\mailtrustai\install\client\upgrade_windows.ps1"
+set "PS1_REPO=C:\mailtrustai-source\install\client\upgrade_windows.ps1"
 
 if not exist "%PS1_REPO%" (
     echo.
-    echo HATA: Repo bulunamadi: C:\mailtrustai\install\client\upgrade_windows.ps1
+    echo HATA: Repo bulunamadi: C:\mailtrustai-source\install\client\upgrade_windows.ps1
     echo.
     echo Bu kurulum 'install_windows_musteri.bat' ile yapilmamis olabilir.
     echo Guncelleme icin once asagidakilerden birini yapin:
@@ -40,7 +40,7 @@ if not exist "%PS1_REPO%" (
     echo      install_windows_musteri.bat'a cift tiklayin
     echo.
     echo   2) Repo'yu manuel klonla:
-    echo      git clone -b mainpaketler https://github.com/kbulent07/mailtrustai.git C:\mailtrustai
+    echo      git clone -b mainpaketler https://github.com/kbulent07/mailtrustai.git C:\mailtrustai-source
     echo.
     pause
     exit /b 1

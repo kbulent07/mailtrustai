@@ -351,9 +351,19 @@ volumes:
     Ok "Compose dosyası oluşturuldu (pre-built image modu)."
 
 } elseif (Test-Path $SourceCompose) {
-    # Repo'dan kopyala
-    Copy-Item -Path $SourceCompose -Destination $ComposeFile -Force
-    Ok "Compose dosyası kopyalandı: $ComposeFile"
+    # Repo'dan kopyala — KAYNAK ve HEDEF ayni dizinse atla (Windows case-insensitive).
+    # Bu durum bootstrap'in repo'yu kurulum diziniyle ayni yere klonladiginda olur
+    # (C:\mailtrustai vs C:\MailTrustAI gibi).
+    $srcFull = (Resolve-Path $SourceCompose).Path
+    $dstFull = $ComposeFile
+    if (Test-Path $dstFull) { $dstFull = (Resolve-Path $dstFull).Path }
+    if ([string]::Equals($srcFull, $dstFull, [StringComparison]::OrdinalIgnoreCase)) {
+        Info "Compose dosyasi zaten kurulum diziniyle ayni yerde: $srcFull"
+        Info "(Repo klonu ile kurulum dizini ayni yol — kopyalama atlandi.)"
+    } else {
+        Copy-Item -Path $SourceCompose -Destination $ComposeFile -Force
+        Ok "Compose dosyasi kopyalandi: $ComposeFile"
+    }
 
     if (-not $SkipBuild) {
         Step "Docker image derleniyor (bu 5-15 dakika surebilir)..."
