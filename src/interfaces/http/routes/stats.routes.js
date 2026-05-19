@@ -9,9 +9,7 @@ const { loadScanHistory, getDetailedStats, deleteScanHistoryRange, countScanHist
 const { loadCredentials } = require('../../../imap/connection');
 const { getMonthlyCount } = require('../../../storage/monthlyCounter');
 const { getDailyCount } = require('../../../storage/dailyScansStore');
-const { state } = require('../../../services/appState');
-const { loadSettings } = require('../../../storage/settingsStore');
-const { validateLicenseKey } = require('../../../license/license');
+const { state, checkLicense } = require('../../../services/appState');
 const { buildRiskDashboard } = require('../../../services/riskDashboardService');
 const { getUsageSummary: getLlmUsageSummary } = require('../../../storage/llmUsageStore');
 const { requireCustomerAdmin, requireCustomerUser, loadCustomerUser } = require('../../../middleware/customerAuth');
@@ -20,11 +18,8 @@ const { recordAudit } = require('../../../storage/auditLog');
 const router = express.Router();
 
 function resolveCurrentLicense(req) {
-    const settings = loadSettings();
-    const key = String(req.headers['x-license-key'] || req.body?.licenseKey || settings.activeLicenseKey || '').trim();
-    if (!key) return null;
-    const validation = validateLicenseKey(key);
-    return validation.valid ? { ...validation, maskedKey: `${key.slice(0, 8)}...${key.slice(-4)}` } : null;
+    const license = checkLicense(req);
+    return license.valid ? license : null;
 }
 
 function buildCommercialAlerts(dashboard, license) {

@@ -9,6 +9,10 @@ const { analyzeAttachments } = require('../analysis/attachmentAnalyzer');
 const { calculateScore, resolveLevel, levelMeta } = require('../analysis/scorer');
 const { validateLicenseKey, UNLICENSED_FEATURES } = require('../license/license');
 const { getCachedStatus } = require('../license/remoteValidator');
+const { loadLicenseFile } = require('../license/licenseFile');
+
+let _wsLicenseClient = null;
+try { _wsLicenseClient = require('@mailtrustai/license-client'); } catch (_) {}
 const { loadCredentials } = require('../imap/connection');
 const { recordScan } = require('../storage/scanHistory');
 const { removeAutoMonitor, listAutoMonitors } = require('../storage/autoMonitorState');
@@ -37,12 +41,37 @@ const clients = new Set();
 const WS_MONITOR_BACKOFF = [10_000, 30_000, 60_000, 120_000, 300_000];
 const _wsMonitorRetryTimers = new Map();
 
+// checkLicense(req) ile aynı 3 katmanlı öncelik: cloud cache → .lic → HMAC key
 function resolveLicense(licenseKey) {
-    if (!licenseKey) return { valid: false, features: { ...UNLICENSED_FEATURES } };
+    const fallback = { valid: false, features: { ...UNLICENSED_FEATURES } };
+
+    // Öncelik 1: license-client cloud activation cache
+    if (_wsLicenseClient) {
+        try {
+            const snap = _wsLicenseClient.getSnapshot();
+            const grace = _wsLicenseClient.graceCheck();
+            if (snap && grace && grace.ok) {
+                const features = { ...(snap.features || {}) };
+                if (snap.plan === 'pro' || snap.plan === 'enterprise') features.scanMailbox = true;
+                if (snap.plan === 'enterprise') {
+                    features.autoMonitor = true;
+                    features.realtimeAlert = true;
+                }
+                return { valid: true, plan: snap.plan || 'pro', tier: snap.tier || null, features };
+            }
+        } catch (_) {}
+    }
+
+    // Öncelik 2: .lic dosyası
+    const licFile = loadLicenseFile();
+    if (licFile && licFile.valid) return licFile;
+
+    // Öncelik 3: eski HMAC key
+    if (!licenseKey) return fallback;
     const result = validateLicenseKey(licenseKey);
-    if (!result.valid) return { valid: false, features: { ...UNLICENSED_FEATURES } };
+    if (!result.valid) return fallback;
     const remote = getCachedStatus(licenseKey);
-    if (remote && !remote.allowed) return { valid: false, features: { ...UNLICENSED_FEATURES } };
+    if (remote && !remote.allowed) return fallback;
     return result;
 }
 
