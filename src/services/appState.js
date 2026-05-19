@@ -47,13 +47,18 @@ function checkLicense(req) {
             // grace.ok true ise (online dogrulama OK ya da grace icinde) lisans gecerli
             if (snap && grace && grace.ok) {
                 const features = { ...(snap.features || {}) };
-                // Pro/Enterprise'da scanMailbox her zaman aktif;
-                // eski cache'lerde PLAN_MATRIX'te eksik olabileceğinden türet.
+                // Eski cache'lerde PLAN_MATRIX'te eksik olabilen özellikleri plan bazlı türet.
                 if (snap.plan === 'pro' || snap.plan === 'enterprise') {
                     features.scanMailbox = true;
                 }
                 if (snap.plan === 'enterprise') {
-                    features.realtimeAlert = true;
+                    features.imapConnection  = true;
+                    features.inboxScan       = true;
+                    features.autoMonitor     = true;
+                    features.realtimeAlert   = true;
+                    features.batchScan       = true;
+                    features.apiAccess       = true;
+                    features.jsonReport      = true;
                 }
                 // Plan'a göre monthlyLimit cikar
                 const monthlyLimit = (snap.limits && typeof snap.limits.monthlyScanCount === 'number')

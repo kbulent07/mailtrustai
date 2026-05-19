@@ -54,8 +54,13 @@ function resolveLicense(licenseKey) {
                 const features = { ...(snap.features || {}) };
                 if (snap.plan === 'pro' || snap.plan === 'enterprise') features.scanMailbox = true;
                 if (snap.plan === 'enterprise') {
-                    features.autoMonitor = true;
-                    features.realtimeAlert = true;
+                    features.imapConnection = true;
+                    features.inboxScan      = true;
+                    features.autoMonitor    = true;
+                    features.realtimeAlert  = true;
+                    features.batchScan      = true;
+                    features.apiAccess      = true;
+                    features.jsonReport     = true;
                 }
                 return { valid: true, plan: snap.plan || 'pro', tier: snap.tier || null, features };
             }
