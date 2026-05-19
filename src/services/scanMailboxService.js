@@ -119,7 +119,17 @@ function scheduleScanMailboxRetry(smb, attempt = 0) {
             await startScanMailboxMonitor(smb);
             console.log(`[ScanMailbox] ${smb.imapEmail} yeniden başlatıldı.`);
         } catch (e) {
-            console.error(`[ScanMailbox] ${smb.imapEmail} yeniden başlatma başarısız:`, e.message);
+            // ImapFlow ham hataları detaysız basıyor — kullanıcı log'a bakınca
+            // "şifre yanlış mı, sertifika mı" anlasın diye zenginleştiriyoruz.
+            const detail = [
+                e.code     ? `code=${e.code}` : null,
+                e.authenticationFailed ? 'AUTH FAILED (şifre yanlış olabilir)' : null,
+                e.responseText ? `imap="${e.responseText}"` : null
+            ].filter(Boolean).join(' · ');
+            console.error(
+                `[ScanMailbox] ${smb.imapEmail} yeniden başlatma başarısız: ${e.message}` +
+                (detail ? `  [${detail}]` : '')
+            );
             scheduleScanMailboxRetry(smb, attempt + 1);
         }
     }, delay);

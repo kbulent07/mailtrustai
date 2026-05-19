@@ -88,7 +88,15 @@ class ImapMonitor {
             });
 
             this.client.on('error', (err) => {
-                console.error(`[Monitor] ${this.account.email} IMAP error:`, err.message);
+                const detail = [
+                    err.code     ? `code=${err.code}` : null,
+                    err.authenticationFailed ? 'AUTH FAILED (şifre yanlış olabilir)' : null,
+                    err.responseText ? `imap="${err.responseText}"` : null
+                ].filter(Boolean).join(' · ');
+                console.error(
+                    `[Monitor] ${this.account.email} IMAP error: ${err.message}` +
+                    (detail ? `  [${detail}]` : '')
+                );
             });
 
             if (wasReconnect) {
@@ -128,7 +136,19 @@ class ImapMonitor {
             try {
                 await this._connect();
             } catch (err) {
-                console.error(`[Monitor] ${this.account.email} yeniden bağlantı başarısız:`, err.message);
+                // Hata mesajı zenginleştirilir — ImapFlow ham "Command failed"
+                // gönderir, gerçek neden (auth fail, cert hata, vs.) err.code ve
+                // err.responseText alanlarında saklıdır. Bunları da basıyoruz ki
+                // kullanıcı log'a bakınca "şifre yanlış mı, sertifika mı" anlasın.
+                const detail = [
+                    err.code     ? `code=${err.code}` : null,
+                    err.authenticationFailed ? 'AUTH FAILED (şifre yanlış olabilir)' : null,
+                    err.responseText ? `imap="${err.responseText}"` : null
+                ].filter(Boolean).join(' · ');
+                console.error(
+                    `[Monitor] ${this.account.email} yeniden bağlantı başarısız: ${err.message}` +
+                    (detail ? `  [${detail}]` : '')
+                );
                 // _connect içinden _scheduleReconnect zaten çağrıldı
             }
         }, delay);
