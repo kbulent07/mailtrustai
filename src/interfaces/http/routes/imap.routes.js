@@ -12,6 +12,9 @@ const { runManualImapScan }       =
 const { checkLicense, checkDailyLimit, checkMonthlyLimit } =
     require('../../../services/appState');
 const { removeDecoration }        = require('../../../imap/subjectDecoratorService');
+const { ensureFolderForAccount,
+        DEFAULT_QUARANTINE_FOLDER,
+        DEFAULT_COLLECT_FOLDER }  = require('../../../imap/quarantineService');
 
 const router = express.Router();
 
@@ -100,23 +103,36 @@ router.patch('/imap/accounts/:email/report', (req, res) => {
 
 // PATCH /imap/accounts/:email/quarantine
 // Yüksek riskli mailleri otomatik Quarantine klasörüne taşıma ayarını günceller.
+// Ayar etkinleştirildiğinde Quarantine klasörü proaktif olarak oluşturulur
+// (kullanıcı email client'ında hemen görür). Klasör zaten varsa sorun değil.
 // Body: { enabled: true | false }
-router.patch('/imap/accounts/:email/quarantine', (req, res) => {
+router.patch('/imap/accounts/:email/quarantine', async (req, res) => {
     const email = decodeURIComponent(req.params.email);
-    // user rolü: admin değilse bu ayarı değiştiremez
     if (_isCustomerUser(req)) {
         return res.status(403).json({ error: 'Quarantine ayarı yalnız admin yetkisinde.' });
     }
     const enabled = req.body.enabled === true || req.body.enabled === 'true';
     const updated = updateAccount(email, { moveHighRiskToQuarantine: enabled });
     if (!updated) return res.status(404).json({ error: 'Account not found' });
-    res.json({ success: true, email, moveHighRiskToQuarantine: updated.moveHighRiskToQuarantine === true });
+
+    let folderResult = null;
+    if (enabled) {
+        folderResult = await ensureFolderForAccount(updated, DEFAULT_QUARANTINE_FOLDER);
+    }
+
+    res.json({
+        success: true,
+        email,
+        moveHighRiskToQuarantine: updated.moveHighRiskToQuarantine === true,
+        folder: folderResult
+    });
 });
 
 // PATCH /imap/accounts/:email/collect
 // Taranan mailler otomatik olarak mailscanresult klasörüne taşınsın mı?
+// Ayar etkinleştirildiğinde mailscanresult klasörü proaktif olarak oluşturulur.
 // Body: { enabled: true | false }
-router.patch('/imap/accounts/:email/collect', (req, res) => {
+router.patch('/imap/accounts/:email/collect', async (req, res) => {
     const email = decodeURIComponent(req.params.email);
     if (_isCustomerUser(req)) {
         return res.status(403).json({ error: 'Tarama toplama ayarı yalnız admin yetkisinde.' });
@@ -124,7 +140,18 @@ router.patch('/imap/accounts/:email/collect', (req, res) => {
     const enabled = req.body.enabled === true || req.body.enabled === 'true';
     const updated = updateAccount(email, { collectScannedMails: enabled });
     if (!updated) return res.status(404).json({ error: 'Account not found' });
-    res.json({ success: true, email, collectScannedMails: updated.collectScannedMails === true });
+
+    let folderResult = null;
+    if (enabled) {
+        folderResult = await ensureFolderForAccount(updated, DEFAULT_COLLECT_FOLDER);
+    }
+
+    res.json({
+        success: true,
+        email,
+        collectScannedMails: updated.collectScannedMails === true,
+        folder: folderResult
+    });
 });
 
 // PATCH /imap/accounts/:email/risk-marking

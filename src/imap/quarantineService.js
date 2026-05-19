@@ -72,13 +72,57 @@ async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', d
     }
 }
 
+/**
+ * Hedef klasörü oluşturur; zaten varsa sessizce geçer.
+ * Farklı IMAP sunucularının "zaten var" mesajları:
+ *   • Gmail/Dovecot   : "Folder already exists" / "Mailbox already exists"
+ *   • Outlook/Exchange: "ALREADYEXISTS" / "duplicate"
+ *   • Cyrus           : "Mailbox already exists" / "DUPLICATEEXCEPTION"
+ *   • Yahoo           : "Folder name already in use"
+ *
+ * imapflow ayrıca alreadyExists hatası fırlatabilir (responseCode 'ALREADYEXISTS').
+ */
 async function ensureMailbox(client, destinationFolder) {
     try {
         await client.mailboxCreate(destinationFolder);
+        console.log(`[IMAP] Klasör oluşturuldu: ${destinationFolder}`);
     } catch (error) {
-        if (!/exists|already/i.test(String(error?.message || ''))) {
+        const msg  = String(error?.message || '');
+        const code = String(error?.responseCode || error?.serverResponseCode || '');
+        const alreadyExists =
+            /exists|already|duplicate|in[- ]?use/i.test(msg) ||
+            /ALREADYEXISTS|DUPLICATE/i.test(code);
+        if (!alreadyExists) {
+            console.error(`[IMAP] Klasör oluşturulamadı (${destinationFolder}):`, msg);
             throw error;
         }
+        // Klasör zaten var — normal durum, log yok
+    }
+}
+
+/**
+ * Verilen hesap için klasörü proaktif olarak oluşturur (best-effort).
+ * Ayar etkinleştirildiğinde çağrılır → kullanıcı klasörü email client'ında hemen görür.
+ * Hata olursa atılır, lazy create yine çalışır (ensureMailbox via moveMessageToQuarantine).
+ *
+ * @param {object} account
+ * @param {string} folder
+ * @returns {Promise<{ok: boolean, folder: string, error?: string}>}
+ */
+async function ensureFolderForAccount(account, folder) {
+    if (!account?.email) return { ok: false, folder, error: 'no-account' };
+
+    let client = null;
+    try {
+        client = await createConnection(account);
+        await client.connect();
+        await ensureMailbox(client, folder);
+        return { ok: true, folder };
+    } catch (error) {
+        console.error(`[IMAP] ${account.email} için "${folder}" oluşturulamadı:`, error.message);
+        return { ok: false, folder, error: error.message };
+    } finally {
+        if (client) await client.logout().catch(() => {});
     }
 }
 
@@ -128,5 +172,6 @@ module.exports = {
     shouldMoveMessageToQuarantine,
     maybeMoveMessageToQuarantine,
     isCollectScannedEnabled,
-    maybeMoveScannedMailToCollection
+    maybeMoveScannedMailToCollection,
+    ensureFolderForAccount
 };
