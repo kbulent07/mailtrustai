@@ -33,7 +33,14 @@ param(
     # "EVET SIL" onayini ister, yedek silme sorusunu istemez.
     [switch]$Unattended,
     # -Purge -Unattended ile yedekleri de sil (varsayilan: koru)
-    [switch]$DeleteBackups
+    [switch]$DeleteBackups,
+    # FULL purge: Docker Desktop'i winget ile kaldir
+    # (bootstrap kurulumda winget ile kuruldugu icin uninstall ile temizleyebiliriz)
+    [switch]$RemoveDocker,
+    # FULL purge: Git'i winget ile kaldir
+    [switch]$RemoveGit,
+    # FULL purge'da silinecek repo klon dizini (bootstrap'in kullandigi yer)
+    [string]$RepoRoot = 'C:\mailtrustai-source'
 )
 
 Set-StrictMode -Version Latest
@@ -124,6 +131,16 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
     Warn "Docker komutu bulunamadi. Dosya temizligine geciliyor."
 }
 
+# ─── SOFT modda .env yedeği al (Purge=false) ─────────────────────────────
+if (-not $Purge -and (Test-Path $EnvFile)) {
+    $backupDir = Join-Path $InstallDir 'backups'
+    New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+    $ts = Get-Date -Format 'yyyyMMdd_HHmmss'
+    $envBackup = Join-Path $backupDir ".env.pre-uninstall.$ts"
+    Copy-Item $EnvFile $envBackup -Force
+    Ok "Env yedegi: $envBackup"
+}
+
 # ─── Konteyneri durdur ve kaldır ─────────────────────────────────────────────
 Hr
 Info "Konteyner durduruluyor ve kaldırılıyor..."
@@ -132,11 +149,15 @@ if ($dockerOk) {
     $envArg = if (Test-Path $EnvFile) { "--env-file `"$EnvFile`"" } else { "" }
     $downArgs = if ($Purge) { "down -v --remove-orphans" } else { "down --remove-orphans" }
 
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
         Invoke-Expression "docker compose $envArg -f `"$ComposeFile`" $downArgs" 2>&1 | Out-Null
         Ok "Konteyner ve ağ kaldırıldı."
     } catch {
         Warn "docker compose down başarısız (zaten silinmiş olabilir): $_"
+    } finally {
+        $ErrorActionPreference = $prev
     }
 } else {
     Warn "Docker çalışmıyor, konteyner durumu bilinmiyor — dosya temizliğine geçiliyor."
@@ -190,6 +211,74 @@ if ($Purge) {
     if (Test-Path $InstallDir) {
         Remove-Item -Path $InstallDir -Recurse -Force
         Ok "Kurulum dizini silindi: $InstallDir"
+    }
+
+    # Repo klonu (bootstrap C:\mailtrustai-source'a klonlamisti)
+    if ($RepoRoot -and (Test-Path $RepoRoot)) {
+        try {
+            Remove-Item -Path $RepoRoot -Recurse -Force
+            Ok "Repo klonu silindi: $RepoRoot"
+        } catch {
+            Warn "Repo klonu silinemedi: $RepoRoot ($($_.Exception.Message))"
+        }
+    }
+
+    # FULL purge: Docker Desktop'i kaldir
+    if ($RemoveDocker) {
+        Hr
+        Info "Docker Desktop kaldiriliyor (winget uninstall Docker.DockerDesktop)..."
+        Warn "DIKKAT: Sistemde Docker kullanan diger uygulamalar varsa onlar da etkilenecek!"
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            $prev = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try {
+                winget uninstall --id Docker.DockerDesktop -e --accept-source-agreements --silent 2>&1 | Out-Null
+            } finally {
+                $ErrorActionPreference = $prev
+            }
+            if ($LASTEXITCODE -eq 0) {
+                Ok "Docker Desktop kaldirildi."
+            } else {
+                Warn "Docker Desktop kaldirilamadi (exit: $LASTEXITCODE). Manuel: Apps & Features"
+            }
+            # Docker'a ait ek klasorler
+            $dockerPaths = @(
+                "$env:ProgramData\Docker",
+                "$env:ProgramData\DockerDesktop",
+                "$env:LOCALAPPDATA\Docker",
+                "$env:APPDATA\Docker",
+                "$env:APPDATA\Docker Desktop"
+            )
+            foreach ($p in $dockerPaths) {
+                if (Test-Path $p) {
+                    try { Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue; Info "Silindi: $p" } catch {}
+                }
+            }
+        } else {
+            Warn "winget yok — Docker manuel kaldirin: Control Panel -> Apps & Features"
+        }
+    }
+
+    # FULL purge: Git'i kaldir
+    if ($RemoveGit) {
+        Hr
+        Info "Git kaldiriliyor (winget uninstall Git.Git)..."
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            $prev = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try {
+                winget uninstall --id Git.Git -e --accept-source-agreements --silent 2>&1 | Out-Null
+            } finally {
+                $ErrorActionPreference = $prev
+            }
+            if ($LASTEXITCODE -eq 0) {
+                Ok "Git kaldirildi."
+            } else {
+                Warn "Git kaldirilamadi (exit: $LASTEXITCODE). Manuel: Apps & Features"
+            }
+        } else {
+            Warn "winget yok — Git manuel kaldirin: Control Panel -> Apps & Features"
+        }
     }
 }
 

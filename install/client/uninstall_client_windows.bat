@@ -51,8 +51,8 @@ echo ===============================================
 echo  MailTrustAI Musteri Kaldirma
 echo ===============================================
 echo.
-echo  1 = Sadece container kapat (veriler KORUNUR)
-echo  2 = HER SEYI SIL (volume + .env + kurulum dizini) -- GERI ALINAMAZ!
+echo  1 = SOFT  - Ayarlar korunsun (container durur, .env + volume kalir)
+echo  2 = FULL  - Hicbir iz kalmasin (Docker Desktop + Git + her sey silinir)
 echo.
 set /p MODE="Seciminiz [1/2, varsayilan 1]: "
 
@@ -62,14 +62,20 @@ set "PS_ARGS=-ExecutionPolicy Bypass -NoProfile -File ""%PS1_PATH%"""
 
 if "%MODE%"=="2" (
     echo.
-    echo DIKKAT: Tum veriler silinecek!
+    echo DIKKAT: FULL purge -- GERI ALINAMAZ!
+    echo   - Container ve volume silinecek
+    echo   - .env ve kurulum dizini silinecek
+    echo   - Docker Desktop kaldirilacak (winget ile)
+    echo   - Git kaldirilacak (winget ile)
+    echo   - C:\mailtrustai-source repo'su silinecek
+    echo.
     set /p CONFIRM="Onaylamak icin 'EVET SIL' yazin: "
     if /i not "!CONFIRM!"=="EVET SIL" (
         echo Iptal edildi.
         pause
         exit /b 0
     )
-    set "PS_ARGS=!PS_ARGS! -Purge -RemoveImage -Unattended"
+    set "PS_ARGS=!PS_ARGS! -Purge -RemoveImage -RemoveDocker -RemoveGit -Unattended"
 )
 
 REM --- PS1'i calistir ---
