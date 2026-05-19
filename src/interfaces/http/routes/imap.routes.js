@@ -55,7 +55,8 @@ router.post('/imap/accounts', async (req, res) => {
     const accounts = addAccount({
         ...req.body,
         password,
-        autoSummaryReport: req.body.autoSummaryReport === true || req.body.autoSummaryReport === 'true'
+        autoSummaryReport:        req.body.autoSummaryReport        === true || req.body.autoSummaryReport        === 'true',
+        moveHighRiskToQuarantine: req.body.moveHighRiskToQuarantine === true || req.body.moveHighRiskToQuarantine === 'true'
     });
     res.json({ success: true, count: accounts.length });
 });
@@ -90,6 +91,21 @@ router.patch('/imap/accounts/:email/report', (req, res) => {
     const updated = updateAccount(email, { autoSummaryReport: req.body.enabled === true || req.body.enabled === 'true' });
     if (!updated) return res.status(404).json({ error: 'Account not found' });
     res.json({ success: true, email, autoSummaryReport: updated.autoSummaryReport === true });
+});
+
+// PATCH /imap/accounts/:email/quarantine
+// Yüksek riskli mailleri otomatik Quarantine klasörüne taşıma ayarını günceller.
+// Body: { enabled: true | false }
+router.patch('/imap/accounts/:email/quarantine', (req, res) => {
+    const email = decodeURIComponent(req.params.email);
+    // user rolü: admin değilse bu ayarı değiştiremez
+    if (_isCustomerUser(req)) {
+        return res.status(403).json({ error: 'Quarantine ayarı yalnız admin yetkisinde.' });
+    }
+    const enabled = req.body.enabled === true || req.body.enabled === 'true';
+    const updated = updateAccount(email, { moveHighRiskToQuarantine: enabled });
+    if (!updated) return res.status(404).json({ error: 'Account not found' });
+    res.json({ success: true, email, moveHighRiskToQuarantine: updated.moveHighRiskToQuarantine === true });
 });
 
 router.post('/imap/list', async (req, res) => {
