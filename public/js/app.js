@@ -1994,9 +1994,16 @@ function closeImapModal() {
     document.getElementById('imapModal').classList.add('hidden');
     const quarantineCheck = document.getElementById('imapMoveHighRiskToQuarantine');
     if (quarantineCheck) quarantineCheck.checked = false;
+    const collectCheck = document.getElementById('imapCollectScannedMails');
+    if (collectCheck) collectCheck.checked = false;
+    const markCheck = document.getElementById('imapMarkRiskySubject');
+    if (markCheck) markCheck.checked = false;
     const alertCheck = document.getElementById('imapRealTimeAlert');
     if (alertCheck) { alertCheck.checked = false; toggleImapRealTimeAlertSection(false); }
     clearAlertEmails();
+    // Şifre alanı placeholder'ını yeni hesap için default'a döndür
+    const pwd = document.getElementById('imapPassword');
+    if (pwd) { pwd.value = ''; pwd.placeholder = '••••••••'; }
     const senderSel = document.getElementById('imapAlertSenderAccount');
     if (senderSel) senderSel.value = '';
     // Advanced bölümü kapalı duruma sıfırla
@@ -2086,7 +2093,8 @@ async function saveImapAccount() {
         return;
     }
 
-    if (!account.password && isEditMode) {
+    // Düzenleme modunda şifre boş VEYA sadece boşluk ise → mevcut şifre korunur
+    if (!String(account.password || '').trim() && isEditMode) {
         account.password = '__KEEP_EXISTING_PASSWORD__';
     }
 
@@ -2160,8 +2168,10 @@ function getImapFormData() {
         port: portVal,
         secure: portVal === 993,
         rejectUnauthorized: !document.getElementById('imapIgnoreSSL').checked,
-        autoSummaryReport: document.getElementById('imapAutoSummaryReport')?.checked === true,
-        moveHighRiskToQuarantine: document.getElementById('imapMoveHighRiskToQuarantine')?.checked === true
+        autoSummaryReport:        document.getElementById('imapAutoSummaryReport')?.checked === true,
+        moveHighRiskToQuarantine: document.getElementById('imapMoveHighRiskToQuarantine')?.checked === true,
+        collectScannedMails:      document.getElementById('imapCollectScannedMails')?.checked === true,
+        markRiskySubject:         document.getElementById('imapMarkRiskySubject')?.checked === true
     };
 }
 
@@ -2210,7 +2220,9 @@ async function loadImapAccounts() {
                     <span class="status-dot ${isMonitoring ? 'monitoring' : 'connected'}"></span>
                     <strong>${esc(account.email)}</strong>
                     <span class="text-muted">${esc(account.host)}:${account.port}</span>
-                    ${account.moveHighRiskToQuarantine ? '<span class="email-monitor-badge">Quarantine</span>' : ''}
+                    ${account.moveHighRiskToQuarantine ? '<span class="email-monitor-badge" title="Yüksek riskli mailler Quarantine klasörüne taşınır">Quarantine</span>' : ''}
+                    ${account.collectScannedMails ? '<span class="email-monitor-badge" title="Tüm taranan mailler mailscanresult klasörüne taşınır">📦 Toplama</span>' : ''}
+                    ${account.markRiskySubject ? '<span class="email-monitor-badge" title="Riskli mailin konusuna 🔴/🟣 etiketi eklenir">🔴🟣</span>' : ''}
                     <span class="u-flex1"></span>
                     ${adminControls}
                     <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick='refreshInbox(${JSON.stringify(account.email)})'>Listele</button>
@@ -2282,12 +2294,21 @@ async function editImapAccount(email) {
     editingImapAlertAccountEmail = account.email;
     document.getElementById('imapEmail').value = account.email;
     document.getElementById('imapPassword').value = '';
-    document.getElementById('imapPassword').placeholder = _tLit('Mevcut sifreyi tekrar girin', 'Re-enter current password');
+    // Düzenleme modunda şifre opsiyonel — boş bırakılırsa mevcut korunur
+    document.getElementById('imapPassword').placeholder = _tLit(
+        'Bos birakirsaniz mevcut sifre korunur',
+        'Leave empty to keep current password'
+    );
     document.getElementById('imapHost').value = account.host;
     document.getElementById('imapPort').value = account.port || 993;
     document.getElementById('imapIgnoreSSL').checked = account.rejectUnauthorized === false;
     document.getElementById('imapAutoSummaryReport').checked = account.autoSummaryReport === true;
     document.getElementById('imapMoveHighRiskToQuarantine').checked = account.moveHighRiskToQuarantine === true;
+    // Yeni eklenen ayarlar — eski hesaplarda alan yoksa false default
+    const cs = document.getElementById('imapCollectScannedMails');
+    if (cs) cs.checked = account.collectScannedMails === true;
+    const mr = document.getElementById('imapMarkRiskySubject');
+    if (mr) mr.checked = account.markRiskySubject === true;
 
     // Anlık rapor bölümünü temizle
     document.getElementById('imapRealTimeAlert').checked = false;
