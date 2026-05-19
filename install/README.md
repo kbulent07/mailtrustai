@@ -161,31 +161,67 @@ sudo bash install/server/uninstall_server_ubuntu.sh --purge
 ## 4. Müşteri Kurulumu (Windows)
 
 **Gereksinimler:**
-- Windows 10/11 (64-bit)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) 4.x+ kurulu ve çalışıyor
-- WSL2 etkin (`wsl --install` ile)
+- Windows 10/11 (64-bit, Windows 10 1809+ winget için)
 - 4 GB RAM (müşteri konteyneri için)
 - Açık port: `3000/tcp` (Güvenlik Duvarı → Yeni Kural)
+- İnternet bağlantısı
 - Bayiden alınan **lisans anahtarı** ve **license-server URL'i**
 
-**Adımlar:**
+> **Not:** Git, Docker Desktop ve WSL2 gerekli ama **bootstrap script bunları otomatik kurar**. Manuel kurmanıza gerek yok.
+
+---
+
+### YÖNTEM A — Çift tıkla, her şeyi otomatik kur (önerilen)
+
+Hiçbir ön-gereksinim yok. Sadece 2 dosya indirin:
+
+```powershell
+# PowerShell'i Yönetici olarak açın
+mkdir C:\mailtrustai-setup -Force | Out-Null
+cd C:\mailtrustai-setup
+
+# .bat ve .ps1'i GitHub'dan indir
+Invoke-WebRequest "https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/client/install_windows_musteri.bat" -OutFile "install_windows_musteri.bat"
+Invoke-WebRequest "https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/client/install_windows_musteri.ps1" -OutFile "install_windows_musteri.ps1"
+```
+
+Sonra `install_windows_musteri.bat` dosyasına **çift tıklayın**.
+
+Bootstrap sırayla şunları yapar:
+1. **UAC istemi** — Yönetici yetkisi ister
+2. **winget** kontrolü/kurulumu (Microsoft App Installer)
+3. **Git** kontrolü/kurulumu (`winget install Git.Git`)
+4. **Docker Desktop** kontrolü/kurulumu (`winget install Docker.DockerDesktop`)
+   - İlk Docker kurulumunda **Windows yeniden başlatma isteyebilir** (WSL2 için)
+   - Yeniden başlattıktan sonra `.bat`'a tekrar çift tıklayın
+5. **Repo klonu** → `C:\mailtrustai`
+6. `install_windows_user.ps1`'i çağırır (lisans anahtarınızı + URL'i sorar)
+7. Image build + container başlat + sağlık kontrolü
+
+⚠ **İlk çalıştırmadan sonra Docker Desktop'ı manuel başlatıp hoş geldin ekranını geçmeniz gerekir.**
+
+---
+
+### YÖNTEM B — Git + Docker zaten kuruluysa (orijinal yol)
 
 ```powershell
 # PowerShell'i "Yönetici olarak çalıştır" ile açın
+cd C:\
+git clone -b mainpaketler https://github.com/kbulent07/mailtrustai.git
+cd mailtrustai
 
-# Yöntem A: Etkileşimli (en kolay)
-cd C:\path\to\mailtrustai-repo
+# Etkileşimli
 powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1
 
-# Yöntem B: Parametreli
+# Veya parametreli (tek satır)
 powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1 `
-    -LicenseKey "MSA-XXXX-XXXX-XXXX" `
+    -LicenseKey "MTAI-PRO-XXXX-XXXX" `
     -LicenseServerUrl "https://license.firma.com" `
     -Port 3000
 
-# Yöntem C: Hazır image tar dosyasıyla (build gerekmez)
+# Veya hazır image tar dosyasıyla (build gerekmez, hızlı)
 powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1 `
-    -LicenseKey "MSA-XXXX-XXXX-XXXX" `
+    -LicenseKey "MTAI-PRO-XXXX-XXXX" `
     -LicenseServerUrl "https://license.firma.com" `
     -ImageFile "C:\Downloads\mailtrustai-customer.tar"
 ```
