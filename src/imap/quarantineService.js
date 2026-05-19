@@ -1,11 +1,37 @@
 const { createConnection, loadCredentials } = require('./connection');
 
-const DEFAULT_QUARANTINE_FOLDER = process.env.MSA_IMAP_QUARANTINE_FOLDER || 'Quarantine';
-// Rapor maillerinin toplandığı klasör. Eski varsayılan adı 'mailscanresult'tu;
-// daha anlaşılır olması için 'mailreports' olarak güncellendi. Eski isim
-// kullanmaya devam etmek isteyenler MSA_IMAP_COLLECT_FOLDER env ile override
-// edebilir.
-const DEFAULT_COLLECT_FOLDER    = process.env.MSA_IMAP_COLLECT_FOLDER    || 'mailreports';
+// ─── Klasör adı varsayılanları ──────────────────────────────────────────────
+// Her ikisi de INBOX altında (subfolder) — mail istemcilerinde INBOX dalı altında
+// "Quarantine" ve "mailreports" şeklinde gözükür; INBOX dışında dağınık root
+// klasörler oluşturmayı önler. Delimiter (`/` vs `.`) sunucuya göre runtime'da
+// resolveFolderPath() ile dönüştürülür.
+//   Eski adı korumak isteyenler:
+//     MSA_IMAP_QUARANTINE_FOLDER=Quarantine
+//     MSA_IMAP_COLLECT_FOLDER=mailscanresult
+const DEFAULT_QUARANTINE_FOLDER = process.env.MSA_IMAP_QUARANTINE_FOLDER || 'INBOX/Quarantine';
+const DEFAULT_COLLECT_FOLDER    = process.env.MSA_IMAP_COLLECT_FOLDER    || 'INBOX/mailreports';
+
+/**
+ * Klasör yolunu sunucunun namespace delimiter'ına göre normalize eder.
+ *   'INBOX/foo' → Cyrus/Dovecot (delim='.') → 'INBOX.foo'
+ *   'INBOX/foo' → Zimbra/Gmail (delim='/') → değişiklik yok
+ * Defansif: namespace okunamazsa olduğu gibi döner.
+ */
+function resolveFolderPath(client, requested) {
+    if (!requested) return requested;
+    let delim = '/';
+    try {
+        const ns = client?.namespace;
+        // imapflow versiyonuna göre iki olası şekil:
+        //   { delimiter: '/' }  veya  { personal: [{ delimiter: '.' }] }
+        delim = ns?.delimiter
+             || ns?.personal?.[0]?.delimiter
+             || '/';
+    } catch (_) { /* ignore */ }
+
+    if (delim === '/') return requested;
+    return requested.replace(/^INBOX\//, `INBOX${delim}`);
+}
 
 function isQuarantineMoveEnabled(account) {
     return account?.moveHighRiskToQuarantine === true || account?.moveHighRiskToQuarantine === 'true';
@@ -53,17 +79,19 @@ async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', d
     try {
         client = await createConnection(account);
         await client.connect();
+        // Sunucu delimiter'ine göre 'INBOX/foo' → 'INBOX.foo' gibi normalize et
+        const resolvedDest = resolveFolderPath(client, destinationFolder);
         lock = await client.getMailboxLock(sourceFolder);
 
-        if (destinationFolder !== sourceFolder) {
-            await ensureMailbox(client, destinationFolder);
-            console.log(`[FolderMove] ${account.email} uid=${uid}: ${sourceFolder} → ${destinationFolder}`);
-            const moveRes = await client.messageMove(uid, destinationFolder, { uid: true });
+        if (resolvedDest !== sourceFolder) {
+            await ensureMailbox(client, resolvedDest);
+            console.log(`[FolderMove] ${account.email} uid=${uid}: ${sourceFolder} → ${resolvedDest}`);
+            const moveRes = await client.messageMove(uid, resolvedDest, { uid: true });
             // moveRes: { path, uidMap } (UIDPLUS varsa). Mail başarıyla taşındı.
-            console.log(`[FolderMove] ✓ Başarılı: uid=${uid} → ${destinationFolder} (yeni uid=${moveRes?.uidMap?.get?.(uid) || '?'})`);
+            console.log(`[FolderMove] ✓ Başarılı: uid=${uid} → ${resolvedDest} (yeni uid=${moveRes?.uidMap?.get?.(uid) || '?'})`);
         }
 
-        return { attempted: true, moved: true, destinationFolder };
+        return { attempted: true, moved: true, destinationFolder: resolvedDest };
     } catch (error) {
         console.error(`[FolderMove] ✗ Başarısız: ${account.email} uid=${uid} → ${destinationFolder}: ${error.message}`);
         return {
@@ -131,8 +159,10 @@ async function ensureFolderForAccount(account, folder) {
     try {
         client = await createConnection(account);
         await client.connect();
-        await ensureMailbox(client, folder);
-        return { ok: true, folder };
+        // 'INBOX/foo' → sunucu delimiter'i `.` ise 'INBOX.foo' olarak normalize
+        const resolved = resolveFolderPath(client, folder);
+        await ensureMailbox(client, resolved);
+        return { ok: true, folder: resolved };
     } catch (error) {
         console.error(`[IMAP] ${account.email} için "${folder}" oluşturulamadı:`, error.message);
         return { ok: false, folder, error: error.message };

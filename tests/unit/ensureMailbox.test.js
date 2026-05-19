@@ -127,12 +127,93 @@ test('ensureMailbox: gerçek bir hata throw eder (yetki yok vb.)', async () => {
     assert.match(result.error || '', /Command failed/);
 });
 
-test('DEFAULT_COLLECT_FOLDER artık "mailreports"', () => {
+test('DEFAULT_COLLECT_FOLDER artık "INBOX/mailreports"', () => {
     clearModule('../../src/imap/quarantineService');
     mockModule('../../src/imap/connection', {
         createConnection: async () => ({}),
         loadCredentials:  () => []
     });
     const svc = require('../../src/imap/quarantineService');
-    assert.equal(svc.DEFAULT_COLLECT_FOLDER, 'mailreports');
+    assert.equal(svc.DEFAULT_COLLECT_FOLDER, 'INBOX/mailreports');
+    assert.equal(svc.DEFAULT_QUARANTINE_FOLDER, 'INBOX/Quarantine');
+});
+
+// ─── resolveFolderPath: delimiter normalization ──────────────────────────
+// 'INBOX/foo' istenirse:
+//   • Sunucu delim='/' (Zimbra/Gmail/Dovecot default) → değişiklik yok
+//   • Sunucu delim='.' (Cyrus, eski Courier)        → 'INBOX.foo'
+//
+// resolveFolderPath modülün privately'sında değil; ensureFolderForAccount
+// üzerinden gözlemleyelim — mailboxCreate'e geçirilen son ad ne?
+
+test('resolveFolderPath: Cyrus delim=. → INBOX/foo INBOX.foo olur', async () => {
+    let calledWith = null;
+    const fakeClient = {
+        connect: async () => {},
+        logout: async () => {},
+        namespace: { delimiter: '.' },
+        mailboxCreate: async (path) => { calledWith = path; }
+    };
+    mockModule('../../src/imap/connection', {
+        createConnection: async () => fakeClient,
+        loadCredentials:  () => []
+    });
+    clearModule('../../src/imap/quarantineService');
+    const svc = require('../../src/imap/quarantineService');
+
+    const result = await svc.ensureFolderForAccount(
+        { email: 'test@example.com' },
+        'INBOX/mailreports'
+    );
+    assert.equal(result.ok, true);
+    assert.equal(calledWith, 'INBOX.mailreports',
+        'Cyrus delim=. iken mailboxCreate INBOX.mailreports almalı');
+    assert.equal(result.folder, 'INBOX.mailreports');
+});
+
+test('resolveFolderPath: Zimbra delim=/ → INBOX/foo değişmez', async () => {
+    let calledWith = null;
+    const fakeClient = {
+        connect: async () => {},
+        logout: async () => {},
+        namespace: { delimiter: '/' },
+        mailboxCreate: async (path) => { calledWith = path; }
+    };
+    mockModule('../../src/imap/connection', {
+        createConnection: async () => fakeClient,
+        loadCredentials:  () => []
+    });
+    clearModule('../../src/imap/quarantineService');
+    const svc = require('../../src/imap/quarantineService');
+
+    const result = await svc.ensureFolderForAccount(
+        { email: 'test@example.com' },
+        'INBOX/Quarantine'
+    );
+    assert.equal(result.ok, true);
+    assert.equal(calledWith, 'INBOX/Quarantine',
+        'delim=/ iken yol değişmemeli');
+});
+
+test('resolveFolderPath: namespace okunamazsa varsayılan / olarak davranır', async () => {
+    let calledWith = null;
+    const fakeClient = {
+        connect: async () => {},
+        logout: async () => {},
+        // namespace yok / undefined
+        mailboxCreate: async (path) => { calledWith = path; }
+    };
+    mockModule('../../src/imap/connection', {
+        createConnection: async () => fakeClient,
+        loadCredentials:  () => []
+    });
+    clearModule('../../src/imap/quarantineService');
+    const svc = require('../../src/imap/quarantineService');
+
+    const result = await svc.ensureFolderForAccount(
+        { email: 'test@example.com' },
+        'INBOX/mailreports'
+    );
+    assert.equal(result.ok, true);
+    assert.equal(calledWith, 'INBOX/mailreports');
 });

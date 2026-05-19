@@ -2251,8 +2251,8 @@ async function loadImapAccounts() {
                     <span class="status-dot ${isMonitoring ? 'monitoring' : 'connected'}"></span>
                     <strong>${esc(account.email)}</strong>
                     <span class="text-muted">${esc(account.host)}:${account.port}</span>
-                    ${account.moveHighRiskToQuarantine ? '<span class="email-monitor-badge" title="Yüksek riskli mailler Quarantine klasörüne taşınır">Quarantine</span>' : ''}
-                    ${account.collectScannedMails ? '<span class="email-monitor-badge" title="Rapor mailleri mailreports klasörüne taşınır">📦 Raporlar</span>' : ''}
+                    ${account.moveHighRiskToQuarantine ? '<span class="email-monitor-badge" title="Yüksek riskli mailler INBOX/Quarantine klasörüne taşınır">Quarantine</span>' : ''}
+                    ${account.collectScannedMails ? '<span class="email-monitor-badge" title="Rapor mailleri INBOX/mailreports klasörüne taşınır">📦 Raporlar</span>' : ''}
                     ${account.markRiskySubject ? '<span class="email-monitor-badge" title="Riskli mailin konusuna 🔴/🟣 etiketi eklenir">🔴🟣</span>' : ''}
                     <span class="u-flex1"></span>
                     ${adminControls}
