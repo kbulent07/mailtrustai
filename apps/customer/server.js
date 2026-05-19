@@ -34,6 +34,7 @@ const customerApi = express.Router();
 const { setupWebSocket } = require(path.join(REPO_ROOT, 'src/routes/websocket'));
 const { resumeScanMailboxMonitors } = require(path.join(REPO_ROOT, 'src/services/scanMailboxService'));
 const { initThreatIntelFeed } = require(path.join(REPO_ROOT, 'src/integrations/threatIntel'));
+const { buildFingerprintJson } = require(path.join(REPO_ROOT, 'src/license/fingerprint'));
 const { loadSettings } = require(path.join(REPO_ROOT, 'src/storage/settingsStore'));
 const { checkAndSeedInitialPasswords } = require(path.join(REPO_ROOT, 'src/services/initialSetupService'));
 const customerUserStore = require(path.join(REPO_ROOT, 'src/storage/customerUserStore'));
@@ -188,10 +189,20 @@ app.get('/api/customer/license/usage', asyncH(async (req, res) => {
 
 // Cihaz parmak izi — aktivasyon sırasında fingerprint kontrolü için.
 // Admin yetkisi zorunlu: instanceId donanım parmak izi olup hassas bilgidir.
-app.get('/api/customer/license/fingerprint', requireCustomerAdmin, asyncH(async (req, res) => {
-    const instanceId = licenseClient.instanceFingerprint();
-    res.json({ instanceId });
-}));
+//
+// UI iki yolu da çağırabilir:
+//   /api/license/fingerprint           → tam fingerprint JSON (buildFingerprintJson)
+//   /api/customer/license/fingerprint  → backward-compat (eski instanceId formatı)
+async function _fingerprintHandler(req, res) {
+    try {
+        const fp = buildFingerprintJson();
+        res.json(fp);
+    } catch (e) {
+        res.status(500).json({ error: e.message || 'Fingerprint oluşturulamadı' });
+    }
+}
+app.get('/api/license/fingerprint',          requireCustomerAdmin, asyncH(_fingerprintHandler));
+app.get('/api/customer/license/fingerprint', requireCustomerAdmin, asyncH(_fingerprintHandler));
 
 // ============================================================
 // License-server iletişim log'lari — UI'da "Loglar" butonu cagirir.
