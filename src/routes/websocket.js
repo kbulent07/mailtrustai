@@ -312,6 +312,13 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
         console.error(`[WS-Monitor][${source}] enrichWithAI error:`, e.message);
     }
 
+    // ─── Mail akış özeti: log'larda mailin nereye gittiğini takip etmek için ───
+    console.log(
+        `[WS-Monitor][${source}] ${account.email} uid=${uid} ` +
+        `level=${result.level} score=${result.score} ` +
+        `subject="${String(email.subject || '').slice(0, 60)}"`
+    );
+
     result.quarantineMove = await maybeMoveMessageToQuarantine({ account, uid, result });
 
     // Quarantine'e taşınmadıysa (mail hâlâ INBOX'ta) tarama toplama klasörüne taşı.
@@ -338,6 +345,26 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
             reason: result.quarantineMove?.moved ? 'quarantined' : 'collected'
         };
     }
+
+    // ─── Mail akışının final durumu — mail nerede? ─────────────────────────────
+    let finalLocation;
+    if (result.quarantineMove?.moved) {
+        finalLocation = `Quarantine (${result.quarantineMove.destinationFolder})`;
+    } else if (result.collectMove?.moved) {
+        finalLocation = `Collect (${result.collectMove.destinationFolder})`;
+    } else if (result.subjectDecoration?.decorated) {
+        finalLocation = `INBOX (etiketli, yeni uid=${result.subjectDecoration.newUid})`;
+    } else {
+        finalLocation = 'INBOX (değişiklik yok)';
+        // Decoration başarısız oldu ama orijinal mail KORUNUYOR — log'la
+        if (result.subjectDecoration?.attempted && !result.subjectDecoration.decorated) {
+            console.warn(
+                `[WS-Monitor][${source}] uid=${uid} decoration BAŞARISIZ ` +
+                `(${result.subjectDecoration.reason || 'unknown'}) — mail INBOX'ta korundu`
+            );
+        }
+    }
+    console.log(`[WS-Monitor][${source}] uid=${uid} → ${finalLocation}`);
 
     // Otomatik mail raporu burada DEĞİL — scanMailboxMonitor (purpose='realtime')
     // akışında yapılıyor. Kullanıcı IMAP hesabı eklerken "anlık güvenlik raporu"

@@ -53,13 +53,15 @@ async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', d
 
         if (destinationFolder !== sourceFolder) {
             await ensureMailbox(client, destinationFolder);
-            await client.messageMove(uid, destinationFolder, { uid: true });
+            console.log(`[FolderMove] ${account.email} uid=${uid}: ${sourceFolder} → ${destinationFolder}`);
+            const moveRes = await client.messageMove(uid, destinationFolder, { uid: true });
+            // moveRes: { path, uidMap } (UIDPLUS varsa). Mail başarıyla taşındı.
+            console.log(`[FolderMove] ✓ Başarılı: uid=${uid} → ${destinationFolder} (yeni uid=${moveRes?.uidMap?.get?.(uid) || '?'})`);
         }
 
-        console.log(`[Quarantine] Taşıma başarılı: uid=${uid} → ${destinationFolder}`);
         return { attempted: true, moved: true, destinationFolder };
     } catch (error) {
-        console.error(`[Quarantine] Taşıma başarısız: uid=${uid} hata=${error.message}`);
+        console.error(`[FolderMove] ✗ Başarısız: ${account.email} uid=${uid} → ${destinationFolder}: ${error.message}`);
         return {
             attempted: true,
             moved: false,

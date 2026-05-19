@@ -291,16 +291,56 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
         const flags = Array.from(original.flags || []).filter(f => f !== '\\Recent');
 
         // APPEND — orijinal tarih ve flag'lerle yeni versiyonu yükle
+        console.log(`[SubjectDecorator] APPEND: ${account.email} uid=${uid} (${origSubject.slice(0, 40)}...)`);
         const appendRes = await client.append(folder, modifiedRaw, flags, original.internalDate);
 
         if (!appendRes || !appendRes.uid) {
+            console.warn(`[SubjectDecorator] APPEND başarısız (UID yok) — orijinal mail KORUNDU (uid=${uid})`);
             return { attempted: true, decorated: false, reason: 'append-failed' };
         }
 
-        // APPEND başarılı → orijinali sil
+        // ─── KRİTİK GÜVENLİK KONTROLÜ ────────────────────────────
+        // APPEND server "uid X verdim" diye yanıt verse bile, bazı sunucular
+        // (özellikle Gmail) Message-ID deduplikasyonu yüzünden maili SESSİZCE
+        // düşürebilir. Orijinali silmeden önce yeni UID'nin gerçekten mevcut
+        // olduğunu doğrulamalıyız — aksi halde mail kalıcı kaybolur.
+        let verified = false;
+        let verifyError = null;
+        try {
+            for await (const verifyMsg of client.fetch(appendRes.uid, {
+                uid: true, envelope: true
+            }, { uid: true })) {
+                if (verifyMsg && Number(verifyMsg.uid) === Number(appendRes.uid)) {
+                    verified = true;
+                    break;
+                }
+            }
+        } catch (e) {
+            verifyError = e.message;
+        }
+
+        if (!verified) {
+            // Yeni UID FETCH edilemedi → APPEND aslında başarısız (Gmail/Exchange dedup)
+            // Orijinali SİLME — mail korunur, kullanıcı INBOX'ta görmeye devam eder
+            console.error(
+                `[SubjectDecorator] DURDURULDU — APPEND başarılı raporlandı ama UID ${appendRes.uid} ` +
+                `INBOX'ta doğrulanamadı (muhtemelen Message-ID dedup). ` +
+                `Orijinal mail KORUNDU (uid=${uid}). Hata: ${verifyError || 'fetch-empty'}`
+            );
+            return {
+                attempted: true,
+                decorated: false,
+                reason: 'append-not-verified',
+                appendedUid: appendRes.uid,
+                verifyError
+            };
+        }
+
+        // Doğrulandı → orijinali sil
+        console.log(`[SubjectDecorator] Doğrulandı, orijinal siliniyor: ${account.email} uid=${uid} → yeni uid=${appendRes.uid}`);
         await client.messageDelete(uid, { uid: true });
 
-        console.log(`[SubjectDecorator] Başarılı: ${account.email} uid ${uid} → ${appendRes.uid}`);
+        console.log(`[SubjectDecorator] Başarılı: ${account.email} uid ${uid} → ${appendRes.uid} (${riskLevel})`);
         return {
             attempted: true,
             decorated: true,
@@ -378,7 +418,27 @@ async function removeDecoration({ account, uid, folder = 'INBOX' }) {
 
         const appendRes = await client.append(folder, cleanedRaw, flags, original.internalDate);
         if (!appendRes?.uid) {
+            console.warn(`[SubjectDecorator] removeDecoration: APPEND başarısız, orijinal mail (uid=${uid}) korundu`);
             return { attempted: true, restored: false, reason: 'append-failed' };
+        }
+
+        // Güvenlik kontrolü: yeni UID gerçekten erişilebilir mi?
+        let verified = false;
+        try {
+            for await (const verifyMsg of client.fetch(appendRes.uid, { uid: true }, { uid: true })) {
+                if (verifyMsg && Number(verifyMsg.uid) === Number(appendRes.uid)) {
+                    verified = true;
+                    break;
+                }
+            }
+        } catch (_) {}
+
+        if (!verified) {
+            console.error(
+                `[SubjectDecorator] removeDecoration DURDURULDU — yeni UID ${appendRes.uid} ` +
+                `doğrulanamadı. Etiketli mail (uid=${uid}) KORUNDU.`
+            );
+            return { attempted: true, restored: false, reason: 'append-not-verified', appendedUid: appendRes.uid };
         }
 
         await client.messageDelete(uid, { uid: true });
