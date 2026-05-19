@@ -84,7 +84,11 @@ async function upsertScanMailbox(input, license) {
         smtpPassword:      smtpPassword ? encrypt(smtpPassword) : encryptedImapPassword,
         reportLang:        reportLang || 'tr',
         reportMode:        reportMode === 'all' ? 'all' : 'risky',
-        reportTo:          reportToForwarder ? '' : (reportTo || ''),
+        // İki BAĞIMSIZ alıcı bayrağı:
+        //   reportToForwarder=true  → iletilen mailin göndericisine de gönder
+        //   reportTo (dolu)         → bu sabit adrese de gönder
+        // İkisi birlikte set ise rapor HER İKİ alıcıya da aynı anda yollanır.
+        reportTo:          (reportTo || '').trim(),
         reportToForwarder: reportToForwarder === true,
         allowedDomains:    normalizedAllowedDomains,
         purpose,

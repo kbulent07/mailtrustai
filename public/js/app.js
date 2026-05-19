@@ -5506,9 +5506,12 @@ async function loadScanMailboxes() {
 
         list.innerHTML = items.length
             ? items.map(smb => {
-                const recipientLabel = smb.reportToForwarder
-                    ? '📤 İletilen adrese'
-                    : `📨 ${esc(smb.reportTo || smb.imapEmail)}`;
+                // Iki bagimsiz hedef: forwarder + fixed address. Ikisi de aktif
+                // olabilir — etiket de bunu yansitsin.
+                const _labels = [];
+                if (smb.reportToForwarder) _labels.push('📤 İletilen adrese');
+                if (smb.reportTo)         _labels.push(`📨 ${esc(smb.reportTo)}`);
+                const recipientLabel = _labels.length ? _labels.join(' + ') : `📨 ${esc(smb.imapEmail)}`;
                 const centralBadge = '<span style="font-size:10px;background:rgba(56,189,248,0.15);color:#38bdf8;border:1px solid rgba(56,189,248,0.3);border-radius:4px;padding:1px 6px;margin-left:6px">Merkezi Raporlama</span>';
                 const domains = Array.isArray(smb.allowedDomains) ? smb.allowedDomains : [];
                 const domainBadge = domains.length
@@ -5545,9 +5548,10 @@ async function loadScanMailboxes() {
                         const isActive = activeMonitorEmails.has(m.email);
                         const updated = m.updatedAt ? new Date(m.updatedAt).toLocaleString(_tLit('tr-TR', 'en-US')) : '-';
                         const smbEntry = reportToMap.get(String(m.email || '').toLowerCase());
-                        const recipientLabel = smbEntry?.reportToForwarder
-                            ? '📤 İletilen adrese'
-                            : (smbEntry?.reportTo || m.email);
+                        const _rt = [];
+                        if (smbEntry?.reportToForwarder) _rt.push('📤 İletilen adrese');
+                        if (smbEntry?.reportTo)         _rt.push(`📨 ${smbEntry.reportTo}`);
+                        const recipientLabel = _rt.length ? _rt.join(' + ') : m.email;
                         return `
                         <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface2);border-radius:8px;margin-bottom:8px">
                             <div class="u-flex1">
@@ -5720,11 +5724,19 @@ async function editScanMailbox(imapEmail) {
         const domains = Array.isArray(smb.allowedDomains) ? smb.allowedDomains : [];
         document.getElementById('smAllowedDomains').value = domains.join(', ');
 
-        // Rapor hedefi
-        const isForwarder = smb.reportToForwarder === true;
-        document.getElementById('smReportTargetForwarder').checked = isForwarder;
-        document.getElementById('smReportTargetFixed').checked     = !isForwarder;
-        document.getElementById('smReportTo').value = isForwarder ? '' : (smb.reportTo || '');
+        // Rapor hedefi — iki bagimsiz checkbox.
+        // Geri uyumluluk: eski kayitlarda reportToForwarder=true ise sadece forwarder,
+        // reportToForwarder=false ise sadece fixed. Yeni kayitlarda her iki bayrak
+        // da ayri ayri tutulur ve hem forwarder hem fixed isaretlenebilir.
+        const hasForwarderFlag = (smb.reportToForwarder === true);
+        const hasFixedAddr     = !!(smb.reportTo && smb.reportTo.trim());
+        // smb.reportToFixed yeni alan; yoksa eski mantik: !forwarder => fixed
+        const isFixedChecked   = (typeof smb.reportToFixed === 'boolean')
+            ? smb.reportToFixed
+            : (!hasForwarderFlag || hasFixedAddr);
+        document.getElementById('smReportTargetForwarder').checked = hasForwarderFlag;
+        document.getElementById('smReportTargetFixed').checked     = isFixedChecked;
+        document.getElementById('smReportTo').value = smb.reportTo || '';
         onSmReportTargetChange();
 
         // Dil / Mod / Aktif
@@ -5741,9 +5753,14 @@ async function editScanMailbox(imapEmail) {
 }
 
 function onSmReportTargetChange() {
-    const isForwarder = document.getElementById('smReportTargetForwarder')?.checked;
+    // Bagimsiz iki checkbox: forwarder ve fixed address.
+    // - Forwarder isaretliyse: iletilen mailin gondericisine rapor
+    // - Fixed isaretliyse: asagidaki address input'una rapor
+    // - Ikisi de isaretliyse: HER IKISINE birden ayni anda gonderilir
+    // Fixed checked -> input gorunur. Forwarder durumundan bagimsiz.
+    const fixedChecked = document.getElementById('smReportTargetFixed')?.checked;
     const wrap = document.getElementById('smReportToWrap');
-    if (wrap) wrap.classList.toggle('hidden', !!isForwarder);
+    if (wrap) wrap.classList.toggle('hidden', !fixedChecked);
 }
 
 function closeScanMailboxModal() {
@@ -5828,7 +5845,11 @@ function parseAllowedDomains(raw) {
 }
 
 function getScanMailboxFormData() {
-    const reportToForwarder = document.getElementById('smReportTargetForwarder')?.checked ?? true;
+    // Iki bagimsiz checkbox: hem birlikte hem ayri ayri secilebilir.
+    const reportToForwarder = document.getElementById('smReportTargetForwarder')?.checked === true;
+    const reportToFixed     = document.getElementById('smReportTargetFixed')?.checked === true;
+    const reportToInput     = (document.getElementById('smReportTo')?.value || '').trim();
+
     const imapPassword      = document.getElementById('smImapPassword')?.value || '';
     const smtpSamePass      = document.getElementById('smSmtpSamePass')?.checked !== false;
     const smtpPassword      = smtpSamePass
@@ -5844,7 +5865,8 @@ function getScanMailboxFormData() {
         smtpPort:          Number(document.getElementById('smSmtpPort')?.value) || 587,
         smtpPassword,
         reportToForwarder,
-        reportTo:          reportToForwarder ? '' : (document.getElementById('smReportTo')?.value || '').trim(),
+        reportToFixed,     // YENI: fixed adres bayragi (forwarder'dan bagimsiz)
+        reportTo:          reportToFixed ? reportToInput : '',
         allowedDomains:    parseAllowedDomains(document.getElementById('smAllowedDomains')?.value || ''),
         reportLang:        document.getElementById('smReportLang')?.value || 'tr',
         reportMode:        document.getElementById('smReportMode')?.value === 'all' ? 'all' : 'risky',
@@ -5888,8 +5910,12 @@ async function saveScanMailbox() {
         showSmError('⚠️ SMTP sunucu adresi zorunludur.');
         return;
     }
-    if (!data.reportToForwarder && !data.reportTo) {
-        showSmError(_tLit('⚠️ "Belirli adrese gönder" seçildiğinde bir e-posta adresi girilmesi zorunludur.', '⚠️ Please enter a recipient email address.'));
+    if (!data.reportToForwarder && !data.reportToFixed) {
+        showSmError(_tLit('⚠️ En az bir rapor alıcısı seçmelisiniz (İletilen adres veya Belirli adres).', '⚠️ Select at least one report recipient (Forwarder or Fixed address).'));
+        return;
+    }
+    if (data.reportToFixed && !data.reportTo) {
+        showSmError(_tLit('⚠️ "Belirli adres" seçildiğinde bir e-posta adresi girilmesi zorunludur.', '⚠️ Please enter a recipient email address.'));
         return;
     }
     if (data.reportMode === 'all' && licenseInfo?.plan !== 'enterprise') {

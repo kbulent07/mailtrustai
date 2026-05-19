@@ -129,12 +129,24 @@ class ScanMailboxMonitor {
                 result
             });
 
-            // Rapor alıcısı:
-            //   reportToForwarder=true  → iletilen mail geldi, göndereni (fromAddr) kullan
-            //   reportToForwarder=false → ayarlardaki reportTo adresi veya kutu sahibi
-            const recipient = this.reportToForwarder
-                ? (fromAddr || this.smtpConfig.reportTo || this.account.email)
-                : (this.smtpConfig.reportTo || this.account.email);
+            // Rapor alıcısı — iki BAĞIMSIZ kaynak birleştirilir:
+            //   1) reportToForwarder=true ise → iletilen mailin göndericisi (fromAddr)
+            //   2) smtpConfig.reportTo (sabit adres) doluysa → o adres
+            // İkisi de aktifse rapor HER İKİ alıcıya birden gönderilir.
+            // İkisi de boşsa fallback: kutu sahibinin kendi adresi.
+            const _recList = [];
+            if (this.reportToForwarder && fromAddr) {
+                _recList.push(String(fromAddr).trim().toLowerCase());
+            }
+            if (this.smtpConfig.reportTo) {
+                _recList.push(String(this.smtpConfig.reportTo).trim().toLowerCase());
+            }
+            // Dedupe + boşları filtrele
+            const _uniq = [...new Set(_recList.filter(Boolean))];
+            const recipients = _uniq.length ? _uniq : [this.account.email];
+            // Nodemailer hem dizi hem comma-separated string kabul eder.
+            // Logging için tek string olarak da tutalım.
+            const recipient = recipients.join(', ');
             const shouldSend = this.reportMode === 'all' || isRisky(result);
 
             if (!shouldSend) {
