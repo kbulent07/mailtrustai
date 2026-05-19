@@ -44,13 +44,20 @@ function saveCache(domains, urls) {
 }
 
 async function refreshFeed() {
+    console.log('[ThreatIntel] Feed indirme başlıyor (URLhaus + OpenPhish)...');
     const domains = new Set();
     const urls = new Set();
+    let urlhausCount = 0;
+    let openphishCount = 0;
 
+    // URLhaus
     try {
         const controller = new AbortController();
-        const t1 = setTimeout(() => controller.abort(), 15000);
-        const r1 = await fetch(URLHAUS_URL, { signal: controller.signal });
+        const t1 = setTimeout(() => controller.abort(), 30000);
+        const r1 = await fetch(URLHAUS_URL, {
+            signal: controller.signal,
+            headers: { 'User-Agent': 'MailTrustAI/1.0 (security-research)' }
+        });
         clearTimeout(t1);
         if (r1.ok) {
             const text = await r1.text();
@@ -59,27 +66,48 @@ async function refreshFeed() {
                 urls.add(line.trim());
                 try { domains.add(new URL(line.trim()).hostname.toLowerCase()); } catch {}
             });
+            urlhausCount = urls.size;
+            console.log(`[ThreatIntel] URLhaus: ${urlhausCount} URL indirildi (status ${r1.status})`);
+        } else {
+            console.warn(`[ThreatIntel] URLhaus HTTP ${r1.status}: ${r1.statusText}`);
         }
-    } catch {}
+    } catch (e) {
+        console.error(`[ThreatIntel] URLhaus indirilemedi: ${e.message}`);
+    }
 
+    // OpenPhish
     try {
         const controller2 = new AbortController();
-        const t2 = setTimeout(() => controller2.abort(), 15000);
-        const r2 = await fetch(OPENPHISH_URL, { signal: controller2.signal });
+        const t2 = setTimeout(() => controller2.abort(), 30000);
+        const r2 = await fetch(OPENPHISH_URL, {
+            signal: controller2.signal,
+            headers: { 'User-Agent': 'MailTrustAI/1.0 (security-research)' }
+        });
         clearTimeout(t2);
         if (r2.ok) {
             const text = await r2.text();
+            const before = urls.size;
             text.split(/\r?\n/).forEach(line => {
                 if (line.startsWith('#') || !line.trim()) return;
                 urls.add(line.trim());
                 try { domains.add(new URL(line.trim()).hostname.toLowerCase()); } catch {}
             });
+            openphishCount = urls.size - before;
+            console.log(`[ThreatIntel] OpenPhish: ${openphishCount} yeni URL indirildi (status ${r2.status})`);
+        } else {
+            console.warn(`[ThreatIntel] OpenPhish HTTP ${r2.status}: ${r2.statusText}`);
         }
-    } catch {}
+    } catch (e) {
+        console.error(`[ThreatIntel] OpenPhish indirilemedi: ${e.message}`);
+    }
 
     if (domains.size > 0 || urls.size > 0) {
         saveCache([...domains], [...urls]);
-        console.log(`[ThreatIntel] Önbellek güncellendi: ${domains.size} domain, ${urls.size} URL`);
+        console.log(`[ThreatIntel] ✓ Önbellek güncellendi: ${domains.size} domain, ${urls.size} URL (URLhaus: ${urlhausCount}, OpenPhish: ${openphishCount})`);
+        return { ok: true, domains: domains.size, urls: urls.size };
+    } else {
+        console.error('[ThreatIntel] ✗ Hiç feed indirilemedi — cache boş kalacak. Ağ erişimi var mı? Proxy/firewall kontrolü gerekebilir.');
+        return { ok: false, domains: 0, urls: 0 };
     }
 }
 

@@ -33,6 +33,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const customerApi = express.Router();
 const { setupWebSocket } = require(path.join(REPO_ROOT, 'src/routes/websocket'));
 const { resumeScanMailboxMonitors } = require(path.join(REPO_ROOT, 'src/services/scanMailboxService'));
+const { initThreatIntelFeed } = require(path.join(REPO_ROOT, 'src/integrations/threatIntel'));
 const { loadSettings } = require(path.join(REPO_ROOT, 'src/storage/settingsStore'));
 const { checkAndSeedInitialPasswords } = require(path.join(REPO_ROOT, 'src/services/initialSetupService'));
 const customerUserStore = require(path.join(REPO_ROOT, 'src/storage/customerUserStore'));
@@ -309,6 +310,17 @@ customerApi.use((req, res, next) => {
 app.use('/api', customerApi);
 
 setupWebSocket(wss);
+
+// URLhaus + OpenPhish tehdit feed'ini başlat:
+// - Cache varsa hemen kullan
+// - Cache yoksa arka planda indir (24 saatlik TTL)
+// Hata atarsa sessizce geç (network erişimi olmayabilir)
+try {
+    initThreatIntelFeed();
+    logger.info('[ThreatIntel] Feed başlatıldı (URLhaus + OpenPhish)');
+} catch (e) {
+    logger.warn('[ThreatIntel] Feed başlatma hatası:', e.message);
+}
 
 // Sunucu hazır olduktan ~12s sonra scan mailbox monitörlerini yeniden başlat.
 // (WebSocket monitörleri 8s sonra resume ediyor; bu 4s gecikmeli çalışır.)
