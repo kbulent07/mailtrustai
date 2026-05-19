@@ -1912,9 +1912,20 @@ function toggleImapAlertAdvanced() {
     const adv = document.getElementById('imapAlertAdvanced');
     const btn = document.getElementById('imapAlertAdvancedBtn');
     if (!adv) return;
-    const open = adv.style.display !== 'none';
-    adv.style.display = open ? 'none' : 'block';
-    if (btn) btn.textContent = open ? '⚙️ Özelleştir' : '🙈 Gizle';
+    // BUG: Element baslangicta class="hidden" ile gizli ama eski kod
+    // adv.style.display'i kontrol ediyordu — bu degerse '' (bos) oldugu icin
+    // ilk tiklamada 'none' atayip hicbir gorsel degisiklik olmuyordu.
+    // Cozum: .hidden class'i + style.display birlikte kontrol et ve
+    // .hidden'i kaldirip style.display ile yonet.
+    const isHidden = adv.classList.contains('hidden') || adv.style.display === 'none';
+    if (isHidden) {
+        adv.classList.remove('hidden');
+        adv.style.display = 'block';
+        if (btn) btn.textContent = '🙈 Gizle';
+    } else {
+        adv.style.display = 'none';
+        if (btn) btn.textContent = '⚙️ Özelleştir';
+    }
 }
 
 function renderAlertEmailTags() {

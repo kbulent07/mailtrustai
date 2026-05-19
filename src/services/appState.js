@@ -10,6 +10,12 @@ const { getCachedStatus } = require('../license/remoteValidator');
 const { loadLicenseFile } = require('../license/licenseFile');
 const crypto = require('crypto');
 
+// Yeni musteri (3-tier) lisans sistemi: license-server'dan activation ile
+// gelen lisans license-client cache'inde tutulur. Eski HMAC key + .lic
+// dosyasi sistemini yedek olarak biraktik, ama oncelik cloud activation.
+let _licenseClient = null;
+try { _licenseClient = require('@mailtrustai/license-client'); } catch (_) { /* paket yok — eski mod */ }
+
 const persistedSettings = loadSettings();
 
 // Değiştirilebilir in-memory state — tüm modüller aynı referansı kullanır
@@ -32,13 +38,44 @@ function checkLicense(req) {
         usageScope: 'unlicensed'
     };
 
-    // Öncelik 1: imzalı + parmak izi bağlı .lic dosyası
+    // ÖNCELİK 1: license-client cache (yeni cloud activation sistemi)
+    // Musteri panelinden lisans aktivasyonu yapilinca buraya yazilir.
+    if (_licenseClient) {
+        try {
+            const snap = _licenseClient.getSnapshot();
+            const grace = _licenseClient.graceCheck();
+            // grace.ok true ise (online dogrulama OK ya da grace icinde) lisans gecerli
+            if (snap && grace && grace.ok) {
+                const features = snap.features || {};
+                // Plan'a göre monthlyLimit cikar
+                const monthlyLimit = (snap.limits && typeof snap.limits.monthlyScanCount === 'number')
+                    ? (snap.limits.monthlyScanCount >= 9999999 ? Infinity : snap.limits.monthlyScanCount)
+                    : UNLICENSED_MONTHLY_LIMIT;
+                return {
+                    valid: true,
+                    plan: snap.plan || 'pro',
+                    tier: snap.tier || null,
+                    features,
+                    monthlyLimit,
+                    expiresAt: snap.expiresAt,
+                    customerId: snap.customerId,
+                    activationId: snap.activationId,
+                    fromCache: !!grace.fromCache,
+                    usageScope: licenseUsageScope(snap.licenseKeyHash || snap.activationId || 'cloud')
+                };
+            }
+        } catch (e) {
+            console.warn('[License] license-client kontrol hatasi:', e.message);
+        }
+    }
+
+    // ÖNCELİK 2: imzalı + parmak izi bağlı .lic dosyası (eski sistem)
     const licFile = loadLicenseFile();
     if (licFile && licFile.valid) {
         return { ...licFile, usageScope: licenseUsageScope(licFile.serial || 'lic-file') };
     }
 
-    // Öncelik 2: eski HMAC anahtarı (header veya body)
+    // ÖNCELİK 3: eski HMAC anahtarı (header veya body)
     const key = req.headers['x-license-key'] || req.body?.licenseKey || '';
     if (!key) return fallback;
 
