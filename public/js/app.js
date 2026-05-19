@@ -2700,13 +2700,94 @@ async function scanSelected() {
 
 function updateScanSelectedButton() {
     const button = document.getElementById('btnScanSelected');
-    if (!button) return;
-    const count = selectedImapUids.size || (currentImapUid ? 1 : 0);
-    button.disabled = !currentImapEmail || count === 0;
-    if (selectedImapUids.size > 1) {
-        button.innerHTML = `✅ <span>${selectedImapUids.size} ${_tLit('Mail Tara', 'Mails Scan')}</span>`;
-    } else {
-        button.innerHTML = `✅ <span data-i18n="btn_scan_selected">${t('btn_scan_selected')}</span>`;
+    if (button) {
+        const count = selectedImapUids.size || (currentImapUid ? 1 : 0);
+        button.disabled = !currentImapEmail || count === 0;
+        if (selectedImapUids.size > 1) {
+            button.innerHTML = `✅ <span>${selectedImapUids.size} ${_tLit('Mail Tara', 'Mails Scan')}</span>`;
+        } else {
+            button.innerHTML = `✅ <span data-i18n="btn_scan_selected">${t('btn_scan_selected')}</span>`;
+        }
+    }
+    // Etiketi Kaldır butonu da seçim sayısına göre güncellenir
+    const unmarkBtn = document.getElementById('btnUnmarkSelected');
+    if (unmarkBtn) {
+        const count = selectedImapUids.size || (currentImapUid ? 1 : 0);
+        unmarkBtn.disabled = !currentImapEmail || count === 0;
+        if (selectedImapUids.size > 1) {
+            unmarkBtn.innerHTML = `🏷️ <span>${selectedImapUids.size} ${_tLit('Mailden Etiketi Kaldır', 'Unmark Mails')}</span>`;
+        } else {
+            unmarkBtn.innerHTML = `🏷️ <span>${_tLit('Etiketi Kaldır', 'Unmark')}</span>`;
+        }
+    }
+}
+
+/**
+ * Seçili mail(ler)den 🔴/🟣 risk etiketini kaldırır.
+ * Her UID için POST /api/imap/messages/unmark çağrılır.
+ * Sonuçlar toast olarak özetlenir, liste yenilenir.
+ */
+async function unmarkSelected() {
+    if (!currentImapEmail) return;
+    const uids = selectedImapUids.size > 0
+        ? [...selectedImapUids]
+        : (currentImapUid ? [currentImapUid] : []);
+    if (!uids.length) {
+        showToast(_tLit('Önce listeden mail seçin', 'Select email(s) from the list first'), 'warning');
+        return;
+    }
+
+    // Onay (1+ mail için)
+    const confirmMsg = uids.length === 1
+        ? _tLit('Bu mailden 🔴/🟣 etiketi kaldırılsın mı?', 'Remove 🔴/🟣 tag from this email?')
+        : _tLit(`${uids.length} mailden etiket kaldırılsın mı?`, `Remove tag from ${uids.length} emails?`);
+    if (!confirm(confirmMsg)) return;
+
+    const btn = document.getElementById('btnUnmarkSelected');
+    const originalHtml = btn?.innerHTML;
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ ' + _tLit('Kaldırılıyor...', 'Removing...'); }
+
+    let ok = 0, notDecorated = 0, failed = 0;
+    const errors = [];
+    for (const uid of uids) {
+        try {
+            const res = await fetch('/api/imap/messages/unmark', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: currentImapEmail, uid, folder: 'INBOX' })
+            });
+            let data = {};
+            try { data = await res.json(); } catch (_) {}
+
+            if (res.ok && data.restored) {
+                ok++;
+            } else if (data.reason === 'not-decorated') {
+                notDecorated++;
+            } else {
+                failed++;
+                errors.push(`uid=${uid}: ${data.error || data.reason || 'HTTP ' + res.status}`);
+            }
+        } catch (e) {
+            failed++;
+            errors.push(`uid=${uid}: ${e.message}`);
+        }
+    }
+
+    if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+
+    // Özet toast
+    const parts = [];
+    if (ok > 0) parts.push(`✓ ${ok} ${_tLit('etiket kaldırıldı', 'tag(s) removed')}`);
+    if (notDecorated > 0) parts.push(`⊘ ${notDecorated} ${_tLit('etiket yok', 'not tagged')}`);
+    if (failed > 0) parts.push(`✗ ${failed} ${_tLit('başarısız', 'failed')}`);
+    const summary = parts.join('  •  ') || _tLit('İşlem yapılmadı', 'No action');
+    showToast(summary, failed > 0 ? 'warning' : 'success');
+    if (errors.length) console.error('[unmarkSelected] hatalar:', errors);
+
+    // Listeyi yenile (UID'ler değiştiği için)
+    selectedImapUids.clear();
+    if (typeof refreshInbox === 'function' && currentImapEmail) {
+        await refreshInbox(currentImapEmail, { keepLimit: true });
     }
 }
 
