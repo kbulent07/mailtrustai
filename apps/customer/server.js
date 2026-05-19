@@ -190,6 +190,47 @@ app.get('/api/customer/license/fingerprint', requireCustomerAdmin, asyncH(async 
     res.json({ instanceId });
 }));
 
+// ============================================================
+// License-server iletişim log'lari — UI'da "Loglar" butonu cagirir.
+// In-memory ring buffer (license-client.getLogs). PII scrub'li.
+// ============================================================
+app.get('/api/customer/license/logs', asyncH((req, res) => {
+    const since = Number(req.query?.since) || 0;
+    const level = req.query?.level || null;
+    const logs = licenseClient.getLogs({ since, level });
+    res.json({
+        count: logs.length,
+        bufferSize: 200,
+        now: Date.now(),
+        remoteUrl: env('MSA_LICENSE_REMOTE_URL') || null,
+        remoteUrlSet: !!env('MSA_LICENSE_REMOTE_URL'),
+        logs
+    });
+}));
+
+app.delete('/api/customer/license/logs', asyncH((req, res) => {
+    const removed = licenseClient.clearLogs();
+    res.json({ ok: true, removed });
+}));
+
+// Tani aracı: license-server'a basit GET /healthz testi.
+// "License-server ulasilamiyor" diyorsa kullanici hangi hatayi aldigini gorsun.
+app.get('/api/customer/license/ping', asyncH(async (req, res) => {
+    const remoteUrl = env('MSA_LICENSE_REMOTE_URL');
+    if (!remoteUrl) return res.status(503).json({ error: 'MSA_LICENSE_REMOTE_URL tanimli degil' });
+    const url = `${remoteUrl.replace(/\/+$/, '')}/healthz`;
+    const t0 = Date.now();
+    try {
+        const r = await require('@mailtrustai/shared').fetchJSON(url, { method: 'GET', timeoutMs: 8000 });
+        res.json({ ok: true, url, elapsed: Date.now() - t0, response: r });
+    } catch (e) {
+        res.status(502).json({
+            ok: false, url, elapsed: Date.now() - t0,
+            error: e.message, code: e.code, httpStatus: e.status
+        });
+    }
+}));
+
 app.post('/api/customer/license/validate', asyncH(async (req, res) => {
     const remoteUrl = env('MSA_LICENSE_REMOTE_URL');
     if (!remoteUrl) return res.status(503).json({ error: 'MSA_LICENSE_REMOTE_URL tanımlı değil' });

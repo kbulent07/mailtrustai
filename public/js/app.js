@@ -3504,6 +3504,118 @@ function closeLicenseModal() {
     document.getElementById('licenseModal').classList.add('hidden');
 }
 
+// ============================================================
+// LICENSE SERVER İLETİŞİM LOGLARI
+// ============================================================
+async function showLicenseLogs() {
+    document.getElementById('licenseLogsModal').classList.remove('hidden');
+    await refreshLicenseLogs();
+}
+
+async function refreshLicenseLogs() {
+    const container = document.getElementById('licenseLogsContainer');
+    const meta = document.getElementById('licenseLogsMeta');
+    const levelFilter = document.getElementById('licenseLogsLevelFilter')?.value || '';
+    container.innerHTML = '<div style="color:var(--text-secondary)">Loglar yukleniyor...</div>';
+    try {
+        const url = levelFilter ? `/api/customer/license/logs?level=${encodeURIComponent(levelFilter)}` : '/api/customer/license/logs';
+        const res = await fetch(url);
+        const data = await res.json();
+
+        meta.innerHTML = `
+            <div><strong>Sunucu URL:</strong> ${esc(data.remoteUrl || '(tanimsiz)')}</div>
+            <div><strong>Buffer:</strong> ${data.count}/${data.bufferSize} kayit · <strong>Su an:</strong> ${new Date(data.now).toLocaleString()}</div>
+            ${!data.remoteUrlSet ? '<div style="color:#f59e0b;margin-top:4px">⚠ MSA_LICENSE_REMOTE_URL .env\'de tanimli degil — license-server iletisimi calismaz.</div>' : ''}
+        `;
+
+        if (!data.logs || data.logs.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-secondary)">Henüz log kaydı yok. Lisans etkinleştirme veya doğrulama deneyin.</div>';
+            return;
+        }
+
+        const colorMap = { info: '#60a5fa', warn: '#f59e0b', error: '#ef4444', debug: '#a78bfa' };
+        const html = data.logs.slice().reverse().map(e => {
+            const time = new Date(e.ts).toLocaleTimeString('tr-TR', { hour12: false, fractionalSecondDigits: 3 });
+            const color = colorMap[e.level] || '#94a3b8';
+            const levelTag = `<span style="color:${color};font-weight:700">${e.level.toUpperCase().padEnd(5)}</span>`;
+            const metaStr = e.meta ? `\n  ${esc(JSON.stringify(e.meta, null, 2)).replace(/\n/g, '\n  ')}` : '';
+            return `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed rgba(255,255,255,0.05);white-space:pre-wrap;word-break:break-word">
+                <span style="color:#64748b">${time}</span> ${levelTag} <span style="color:#e2e8f0">${esc(e.message)}</span>${metaStr ? `<div style="color:#94a3b8;font-size:11px;margin-top:4px">${metaStr}</div>` : ''}
+            </div>`;
+        }).join('');
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<div style="color:#ef4444">Loglar yuklenirken hata: ${esc(e.message)}</div>`;
+    }
+}
+
+async function clearLicenseLogs() {
+    if (!confirm('Tüm log kayıtları silinsin mi?')) return;
+    try {
+        const res = await fetch('/api/customer/license/logs', { method: 'DELETE' });
+        const data = await res.json();
+        alert(`${data.removed} kayit silindi.`);
+        await refreshLicenseLogs();
+    } catch (e) {
+        alert('Loglar silinemedi: ' + e.message);
+    }
+}
+
+function downloadLicenseLogs() {
+    fetch('/api/customer/license/logs').then(r => r.json()).then(data => {
+        const lines = [
+            `MailTrustAI Customer - License Server İletişim Logu`,
+            `Olusturulma: ${new Date(data.now).toISOString()}`,
+            `Remote URL: ${data.remoteUrl || '(tanimsiz)'}`,
+            `Buffer: ${data.count}/${data.bufferSize}`,
+            ''.padStart(80, '='),
+            ''
+        ];
+        for (const e of data.logs) {
+            lines.push(`[${new Date(e.ts).toISOString()}] ${e.level.toUpperCase()} ${e.message}`);
+            if (e.meta) lines.push('  ' + JSON.stringify(e.meta));
+            lines.push('');
+        }
+        const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `mailtrustai-license-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }).catch(e => alert('Log indirilemedi: ' + e.message));
+}
+
+async function pingLicenseServer() {
+    const out = document.getElementById('licenseResult');
+    if (out) out.innerHTML = '<div style="color:var(--text-secondary);margin-top:12px">🔌 License-server\'a ping atılıyor...</div>';
+    try {
+        const t0 = Date.now();
+        const res = await fetch('/api/customer/license/ping');
+        const data = await res.json();
+        const elapsed = Date.now() - t0;
+        const html = data.ok
+            ? `<div style="background:rgba(16,185,129,0.12);border:1px solid #10b981;border-radius:8px;padding:12px;margin-top:12px">
+                ✅ <strong>License-server cevap verdi</strong> (${data.elapsed}ms)<br>
+                <code style="font-size:11px">${esc(data.url)}</code>
+            </div>`
+            : `<div style="background:rgba(239,68,68,0.12);border:1px solid #ef4444;border-radius:8px;padding:12px;margin-top:12px">
+                ❌ <strong>License-server ulasilamiyor</strong><br>
+                <code style="font-size:11px">${esc(data.url || '(URL yok)')}</code><br>
+                <div style="margin-top:6px;font-size:12px">Hata: ${esc(data.error || 'unknown')}</div>
+                ${data.code ? `<div style="font-size:11px;color:var(--text-secondary)">Kod: ${esc(data.code)}</div>` : ''}
+                ${data.httpStatus ? `<div style="font-size:11px;color:var(--text-secondary)">HTTP: ${data.httpStatus}</div>` : ''}
+                <div style="margin-top:8px;font-size:12px;color:#f59e0b">💡 Daha detay icin "📋 Loglar" butonuna basin.</div>
+            </div>`;
+        if (out) out.innerHTML = html;
+        else alert(data.ok ? `License-server ulasilabilir (${data.elapsed}ms)` : `Ulasilamiyor: ${data.error}`);
+    } catch (e) {
+        const msg = `❌ Ping istegi gonderilemedi: ${e.message}`;
+        if (out) out.innerHTML = `<div style="color:#ef4444;margin-top:12px">${esc(msg)}</div>`;
+        else alert(msg);
+    }
+}
+
 async function activateLicense() {
     const key = document.getElementById('licenseKeyInput').value.trim();
     if (!key) {

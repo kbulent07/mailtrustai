@@ -1167,7 +1167,39 @@
         <div id="licenseResult" class="mb-16"></div>
         <div class="flex gap-16">
             <button class="btn btn-primary" data-fn="activateLicense">✅ <span data-i18n="btn_activate">Etkinleştir</span></button>
+            <button class="btn btn-ghost" data-fn="pingLicenseServer" title="License-server'a baglanti testi">🔌 Baglanti Testi</button>
+            <button class="btn btn-ghost" data-fn="showLicenseLogs" title="Lisans server ile iletisim loglarini goster">📋 Loglar</button>
             <button class="btn btn-ghost" data-fn="closeLicenseModal">❌ <span data-i18n="btn_close">Kapat</span></button>
+        </div>
+    </div>
+</div>
+
+<!-- LICENSE LOGS MODAL -->
+<div class="modal-overlay hidden" id="licenseLogsModal">
+    <div class="modal" style="max-width:900px;width:95%">
+        <h2>📋 License Server İletişim Logları</h2>
+        <div id="licenseLogsMeta" style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;padding:8px 12px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.2);border-radius:6px"></div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" data-fn="refreshLicenseLogs">🔄 Yenile</button>
+            <button class="btn btn-ghost btn-sm" data-fn="clearLicenseLogs">🗑️ Temizle</button>
+            <button class="btn btn-ghost btn-sm" data-fn="downloadLicenseLogs">⬇️ İndir (.txt)</button>
+            <button class="btn btn-ghost btn-sm" data-fn="pingLicenseServer">🔌 Baglanti Testi</button>
+            <label style="font-size:12px;color:var(--text-secondary);margin-left:auto;display:flex;align-items:center;gap:6px">
+                Filtre:
+                <select id="licenseLogsLevelFilter" onchange="refreshLicenseLogs()" class="form-input" style="padding:4px 8px;font-size:12px;width:auto">
+                    <option value="">Hepsi</option>
+                    <option value="info">info</option>
+                    <option value="warn">warn</option>
+                    <option value="error">error</option>
+                    <option value="debug">debug</option>
+                </select>
+            </label>
+        </div>
+        <div id="licenseLogsContainer" style="background:#0a0a14;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:12px;height:480px;overflow:auto;font-family:'SF Mono','Consolas',monospace;font-size:12px;line-height:1.5">
+            <div style="color:var(--text-secondary)">Loglar yukleniyor...</div>
+        </div>
+        <div class="flex gap-16" style="margin-top:14px">
+            <button class="btn btn-ghost" onclick="document.getElementById('licenseLogsModal').classList.add('hidden')">❌ Kapat</button>
         </div>
     </div>
 </div>
