@@ -10,11 +10,37 @@
 const { loadCredentials } = require('../../imap/connection');
 const { addAutoMonitor } = require('../../storage/autoMonitorState');
 const { validateLicenseKey, UNLICENSED_FEATURES } = require('../../license/license');
+const { loadLicenseFile } = require('../../license/licenseFile');
 
+let _licenseClient = null;
+try { _licenseClient = require('@mailtrustai/license-client'); } catch (_) {}
+
+// checkLicense(req) ile aynı öncelik sırası: cloud cache → .lic → HMAC key
 function _resolveLicense(licenseKey) {
-    if (!licenseKey) return { valid: false, features: { ...UNLICENSED_FEATURES } };
+    const fallback = { valid: false, features: { ...UNLICENSED_FEATURES } };
+
+    // Öncelik 1: license-client cloud activation cache
+    if (_licenseClient) {
+        try {
+            const snap = _licenseClient.getSnapshot();
+            const grace = _licenseClient.graceCheck();
+            if (snap && grace && grace.ok) {
+                const features = { ...(snap.features || {}) };
+                if (snap.plan === 'pro' || snap.plan === 'enterprise') features.scanMailbox = true;
+                if (snap.plan === 'enterprise') { features.autoMonitor = true; features.realtimeAlert = true; }
+                return { valid: true, plan: snap.plan || 'pro', tier: snap.tier || null, features };
+            }
+        } catch (_) {}
+    }
+
+    // Öncelik 2: .lic dosyası
+    const licFile = loadLicenseFile();
+    if (licFile && licFile.valid) return licFile;
+
+    // Öncelik 3: eski HMAC key
+    if (!licenseKey) return fallback;
     const result = validateLicenseKey(licenseKey);
-    if (!result.valid) return { valid: false, features: { ...UNLICENSED_FEATURES } };
+    if (!result.valid) return fallback;
     return result;
 }
 
