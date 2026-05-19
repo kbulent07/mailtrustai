@@ -77,7 +77,13 @@ async function startScanMailboxMonitor(smb) {
 
     await monitor.start();
     scanMailboxMonitors.set(smb.imapEmail, monitor);
-    console.log(`[ScanMailbox] Monitor başlatıldı: ${smb.imapEmail} (${smb.imapHost}:${smb.imapPort || 993})`);
+    console.log(`[ScanMailbox] ✓ Monitor başlatıldı: ${smb.imapEmail}`);
+    console.log(`[ScanMailbox]   IMAP: ${smb.imapHost}:${smb.imapPort || 993} (tls=${account.secure})`);
+    console.log(`[ScanMailbox]   SMTP: ${smtpConfig.smtpHost}:${smtpConfig.smtpPort} (secure=${smtpConfig.smtpSecure}) user=${smtpConfig.smtpUser}`);
+    console.log(`[ScanMailbox]   reportMode=${smb.reportMode || 'risky'} reportTo=${smb.reportTo || '(kutu sahibi)'} purpose=${smb.purpose || 'forwarder'}`);
+    if (!smtpConfig.smtpPassword) {
+        console.warn(`[ScanMailbox]   ⚠ SMTP şifresi YOK — rapor mailleri gönderilemeyecek!`);
+    }
 }
 
 /**

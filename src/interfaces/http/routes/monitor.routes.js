@@ -83,4 +83,19 @@ router.patch('/scan-mailboxes/:email', async (req, res) => {
     res.json(out.body);
 });
 
+// GET /scan-mailboxes/status — tüm anlık rapor monitörlerinin canlı durumu
+// (rapor sayısı, son gönderim, son hata, SMTP host vb.) — UI diagnostic için.
+router.get('/scan-mailboxes/status', (req, res) => {
+    const { scanMailboxMonitors } = require('../../../services/scanMailboxService');
+    const status = [];
+    for (const [email, monitor] of scanMailboxMonitors) {
+        try {
+            status.push(typeof monitor.getStatus === 'function' ? monitor.getStatus() : { email, running: !!monitor.isRunning?.() });
+        } catch (e) {
+            status.push({ email, error: e.message });
+        }
+    }
+    res.json({ count: status.length, monitors: status });
+});
+
 module.exports = router;

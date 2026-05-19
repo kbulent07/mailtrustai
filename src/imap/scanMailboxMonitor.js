@@ -90,13 +90,20 @@ class ScanMailboxMonitor {
 
     async _onNewEmail({ uid, email, account }) {
         try {
-            if (this.isProcessed(uid)) return;
+            const subjLog = String(email.subject || '').slice(0, 60);
+            const fromLog = email.from?.[0]?.address || email.from?.address || '?';
+            console.log(`[ScanMailbox] ▶ Mail geldi: ${this.account.email} uid=${uid} from=${fromLog} subj="${subjLog}"`);
+
+            if (this.isProcessed(uid)) {
+                console.log(`[ScanMailbox]   ⊘ Atlandı: uid=${uid} zaten işlenmiş (lastProcessedUid kontrolü)`);
+                return;
+            }
 
             // Loop koruması 1: gönderici SMTP hesabımız veya kendi izleme hesabımızsa atla.
             const skipInfo = getImapSenderSkipInfo({ account: this.account, from: email.from });
             const fromAddr = skipInfo.fromEmail;
             if (skipInfo.skip) {
-                console.log(`[ScanMailbox] Gonderen tarama disi atlandi (${skipInfo.reason}): ${fromAddr}`);
+                console.log(`[ScanMailbox]   ⊘ Atlandı: gönderen tarama dışı (${skipInfo.reason}): ${fromAddr}`);
                 this.markProcessed(uid);
                 return;
             }
@@ -148,8 +155,17 @@ class ScanMailboxMonitor {
             // Logging için tek string olarak da tutalım.
             const recipient = recipients.join(', ');
             const shouldSend = this.reportMode === 'all' || isRisky(result);
+            console.log(
+                `[ScanMailbox]   📊 Analiz: level=${result.level} score=${result.score} ` +
+                `reportMode=${this.reportMode} → shouldSend=${shouldSend}`
+            );
 
             if (!shouldSend) {
+                console.log(
+                    `[ScanMailbox]   ⊘ Rapor gönderilmedi: mail riskli değil ` +
+                    `(level=${result.level}) ve reportMode='risky'. ` +
+                    `Tüm maillere rapor için "Tüm mailler" modunu seçin (Enterprise).`
+                );
                 recordScan({
                     ...result,
                     autoReplySent: false,
@@ -166,6 +182,7 @@ class ScanMailboxMonitor {
             const fromName = this.smtpConfig.smtpFromName || 'MailTrustAI';
             const from = `"${fromName}" <${this.smtpConfig.smtpUser}>`;
 
+            console.log(`[ScanMailbox]   📤 SMTP gönderiliyor: ${this.smtpConfig.smtpHost}:${this.smtpConfig.smtpPort} → ${recipient}`);
             const sendResult = await sendReportEmail({
                 smtpConfig: this.smtpConfig,
                 to: recipient,
@@ -182,14 +199,46 @@ class ScanMailboxMonitor {
             });
             this.markProcessed(uid);
 
+            // Diagnostic için son durumu kaydet
+            this.lastReportAttempt = {
+                at: new Date().toISOString(),
+                uid,
+                recipient,
+                subject: email.subject,
+                level: result.level,
+                success: sendResult.success,
+                error: sendResult.error || null
+            };
+
             if (sendResult.success) {
-                console.log(`[ScanMailbox] Report sent to ${recipient} for "${email.subject}"`);
+                this.reportsSentCount = (this.reportsSentCount || 0) + 1;
+                console.log(`[ScanMailbox]   ✓ Rapor GÖNDERİLDİ → ${recipient} (msgId: ${sendResult.messageId || '?'})`);
             } else {
-                console.error(`[ScanMailbox] Failed to send report to ${recipient}: ${sendResult.error}`);
+                this.reportsFailedCount = (this.reportsFailedCount || 0) + 1;
+                console.error(`[ScanMailbox]   ✗ Rapor GÖNDERİLEMEDİ → ${recipient}: ${sendResult.error}`);
+                console.error(`[ScanMailbox]     SMTP debug: host=${this.smtpConfig.smtpHost} port=${this.smtpConfig.smtpPort} user=${this.smtpConfig.smtpUser} secure=${this.smtpConfig.smtpSecure}`);
             }
         } catch (e) {
             console.error('[ScanMailbox] onNewEmail error:', e.message);
+            this.lastReportAttempt = { at: new Date().toISOString(), uid, error: e.message };
         }
+    }
+
+    /**
+     * Diagnostic: monitör durumunu döndürür (UI/API için).
+     */
+    getStatus() {
+        return {
+            email:          this.account.email,
+            running:        this.isRunning(),
+            startedAt:      this.startedAt?.toISOString() || null,
+            reportMode:     this.reportMode,
+            reportsSent:    this.reportsSentCount   || 0,
+            reportsFailed:  this.reportsFailedCount || 0,
+            lastReport:     this.lastReportAttempt  || null,
+            smtpHost:       this.smtpConfig.smtpHost,
+            smtpPort:       this.smtpConfig.smtpPort
+        };
     }
 
     async processPendingRecent() {
