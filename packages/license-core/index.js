@@ -42,12 +42,15 @@ const PLAN_MATRIX = {
         tier: 'T5',
         graceDays: 3,
         features: {
-            imapMonitor: true, deepAi: true, pdfReport: true, quarantine: true,
+            manualUpload: true, headerAnalysis: true, attachmentScan: true,
+            contentAnalysis: 'advanced', virusTotal: true, pdfReport: true, jsonReport: false,
+            imapMonitor: true, deepAi: true, quarantine: true,
             siemWebhook: false, multiMailbox: true, localAi: false,
             centralApiProxy: false, centralListSync: true, centralPolicySync: true,
             scanMailbox: true, realtimeAlert: false,
             imapConnection: false, inboxScan: false, autoMonitor: false,
-            batchScan: false, apiAccess: false, jsonReport: false
+            batchScan: false, apiAccess: false
+            // dailyLimit ve linkLimit JSON-Infinity uyumsuz — appState.js türetir
         },
         limits: { monthlyScanCount: 1000, mailboxCount: 10, userCount: 10 }
     },
@@ -55,12 +58,15 @@ const PLAN_MATRIX = {
         tier: 'T9',
         graceDays: 7,
         features: {
-            imapMonitor: true, deepAi: true, pdfReport: true, quarantine: true,
+            manualUpload: true, headerAnalysis: true, attachmentScan: true,
+            contentAnalysis: 'advanced', virusTotal: true, pdfReport: true, jsonReport: true,
+            imapMonitor: true, deepAi: true, quarantine: true,
             siemWebhook: true, multiMailbox: true, localAi: true,
             centralApiProxy: true, centralListSync: true, centralPolicySync: true,
             scanMailbox: true, realtimeAlert: true,
             imapConnection: true, inboxScan: true, autoMonitor: true,
-            batchScan: true, apiAccess: true, jsonReport: true
+            batchScan: true, apiAccess: true
+            // dailyLimit ve linkLimit JSON-Infinity uyumsuz — appState.js türetir
         },
         limits: { monthlyScanCount: 9999999, mailboxCount: 1000, userCount: 1000 }
     }

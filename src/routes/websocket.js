@@ -52,7 +52,12 @@ function resolveLicense(licenseKey) {
             const grace = _wsLicenseClient.graceCheck();
             if (snap && grace && grace.ok) {
                 const features = { ...(snap.features || {}) };
-                if (snap.plan === 'pro' || snap.plan === 'enterprise') features.scanMailbox = true;
+                if (snap.plan === 'pro' || snap.plan === 'enterprise') {
+                    features.scanMailbox     = true;
+                    features.dailyLimit      = features.dailyLimit  ?? Infinity;
+                    features.linkLimit       = features.linkLimit   ?? Infinity;
+                    features.attachmentScan  = true;
+                }
                 if (snap.plan === 'enterprise') {
                     features.imapConnection = true;
                     features.inboxScan      = true;

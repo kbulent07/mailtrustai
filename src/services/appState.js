@@ -49,7 +49,15 @@ function checkLicense(req) {
                 const features = { ...(snap.features || {}) };
                 // Eski cache'lerde PLAN_MATRIX'te eksik olabilen özellikleri plan bazlı türet.
                 if (snap.plan === 'pro' || snap.plan === 'enterprise') {
-                    features.scanMailbox = true;
+                    features.scanMailbox      = true;
+                    features.dailyLimit       = features.dailyLimit       ?? Infinity;
+                    features.linkLimit        = features.linkLimit        ?? Infinity;
+                    features.contentAnalysis  = features.contentAnalysis  || 'advanced';
+                    features.manualUpload     = true;
+                    features.headerAnalysis   = true;
+                    features.attachmentScan   = true;
+                    features.virusTotal       = features.virusTotal       ?? true;
+                    features.pdfReport        = features.pdfReport        ?? true;
                 }
                 if (snap.plan === 'enterprise') {
                     features.imapConnection  = true;
