@@ -13,12 +13,71 @@
 //   - Image-link mismatch: <a href="X"><img src="Y"></a> X ≠ Y
 //     ve X bilinmedik/tehlikeli ise critical (clickable image trap)
 //   - Anchor text'te bilinen marka adı ama href farklı brand → critical
-//   - IP-tabanlı URL, @ içeren URL, data URI — kritik (eski mantık)
+//   - IP-tabanlı URL, GERÇEK @userinfo (RFC 3986), data URI — kritik
+//   - URL.parse ile path'teki @ (youtube.com/@channel) ile userinfo
+//     (https://fake@evil.com) ayırt edilir → false positive azaltıldı
 // ============================================================
 const fetch = require('node-fetch');
 
 const URL_SHORTENERS  = ['bit.ly','tinyurl.com','t.co','goo.gl','ow.ly','is.gd','buff.ly','rb.gy','cutt.ly','shorturl.at','tiny.cc','clck.ru','short.io','rebrand.ly'];
 const SUSPICIOUS_TLDS = ['.tk','.ml','.ga','.cf','.gq','.xyz','.top','.buzz','.click','.link','.zip','.review','.country','.cricket','.science','.work','.support','.party'];
+
+// PATH'te @ kullanılması NORMAL olan platformlar (kullanıcı adı/kanal handle'ı).
+// Bu domain'lerde `@` path'te → false positive değildir.
+// (Yine de URL.parse ile gerçek userinfo bulunursa critical sayılır.)
+const PATH_AT_TRUSTED_HOSTS = new Set([
+    'youtube.com', 'youtu.be',
+    'twitter.com', 'x.com',
+    'tiktok.com',
+    'medium.com',
+    'threads.net',
+    'instagram.com',
+    'mastodon.social',
+    'bsky.app',
+    'github.com'
+]);
+
+/**
+ * URL'de "tehlikeli @" var mı? — RFC 3986 doğru parse ile tespit.
+ * `https://fake@evil.com/` → tehlikeli (userinfo var)
+ * `https://youtube.com/@channel` → güvenli (path'te @, userinfo yok)
+ *
+ * @returns {object} { dangerous, reason }
+ */
+function detectDangerousAt(url) {
+    if (typeof url !== 'string' || !url.includes('@')) {
+        return { dangerous: false };
+    }
+    if (url.startsWith('mailto:')) {
+        return { dangerous: false, reason: 'mailto' };
+    }
+
+    let parsed;
+    try { parsed = new URL(url); }
+    catch (_) {
+        // URL parse edilemezse: ham regex ile authority'de @ varsa şüpheli
+        // Authority = scheme:// ile ilk / arasındaki kısım
+        const m = url.match(/^https?:\/\/([^/]*)/i);
+        const authority = m ? m[1] : '';
+        if (authority.includes('@')) {
+            return { dangerous: true, reason: 'parse-failed-authority-has-at' };
+        }
+        return { dangerous: false, reason: 'parse-failed-no-authority-at' };
+    }
+
+    // GERÇEK userinfo varsa → kritik (RFC 3986 ile parse edildi)
+    if (parsed.username || parsed.password) {
+        return {
+            dangerous: true,
+            reason: 'userinfo',
+            host: parsed.host,
+            spoofedAs: parsed.username || parsed.password
+        };
+    }
+
+    // userinfo yok → path/query/fragment'te @ var (YouTube/Twitter handle vb.)
+    return { dangerous: false, reason: 'path-or-query-at' };
+}
 
 // Allowlist erişimi opsiyonel — modülün tek başına test edilebilmesi için
 // require'ı try-catch ile sarıyoruz.
@@ -111,15 +170,37 @@ function analyzeLinks(emailData, linkLimit = Infinity) {
             continue;
         }
 
-        // @ in URL — credential phishing trick (her zaman critical)
+        // @ in URL — RFC 3986'ya göre DOĞRU userinfo tespiti
+        // (Eski url.includes('@') yöntemi YouTube/Twitter handle'larını yanlış işaretliyordu)
         if (url.includes('@') && !url.startsWith('mailto:')) {
-            const k = `at:${domain}`;
-            if (!domainSeen.has(k)) {
-                domainSeen.add(k);
-                findings.push({ severity: 'critical', category: 'link', message: `URL @ işareti içeriyor (olası kimlik avı): ${truncUrl(url)}` });
-                score += 12;
+            const atCheck = detectDangerousAt(url);
+            if (atCheck.dangerous) {
+                const k = `at:${domain}`;
+                if (!domainSeen.has(k)) {
+                    domainSeen.add(k);
+                    findings.push({
+                        severity: 'critical', category: 'link',
+                        message: `URL gerçek hedefi gizliyor (userinfo: "${atCheck.spoofedAs}" → ${atCheck.host}): ${truncUrl(url)}`
+                    });
+                    score += 12;
+                }
+                continue;
             }
-            continue;
+            // path/query'de @ — bilinen platform mu? (debug log)
+            if (PATH_AT_TRUSTED_HOSTS.has(domain)) {
+                // YouTube @channel, Twitter @user vb. — normal kullanım, sessiz geç
+            } else if (!_isAllowlisted(domain)) {
+                // Tanımsız domain'de path'te @ — info seviyesi bildirim (puan eklemez)
+                const k = `pathat:${domain}`;
+                if (!domainSeen.has(k)) {
+                    domainSeen.add(k);
+                    findings.push({
+                        severity: 'info', category: 'link',
+                        message: `URL path'inde @ karakteri (kullanıcı/kanal adı olabilir): ${truncUrl(url)}`
+                    });
+                }
+            }
+            // continue YOK — diğer kontroller de çalışsın (TLD, shortener vb.)
         }
 
         // Data URI
