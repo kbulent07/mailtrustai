@@ -427,9 +427,11 @@ switch ($Action) {
     'restart' { Invoke-Expression "$dc restart" }
     'status'  { Invoke-Expression "$dc ps" }
     'logs'    { Invoke-Expression "$dc logs -f --tail=200" }
-    'update'  -
-    'upgrade' {
-        # Tam ozellikli upgrade scriptini cagir
+    { $_ -in 'update','upgrade' } {
+        # Tam ozellikli upgrade scriptini cagir.
+        # NOT: PowerShell'de switch case fallthrough yoktur — 'update' -' / 'upgrade' { }
+        # syntax'i parse hatasi verir. Iki etiketi tek case'de yakalamak icin
+        # { $_ -in ... } sart bloku kullanilir.
         $repoPath = $null
         $repoFile = Join-Path $dir '.repo_path'
         if (Test-Path $repoFile) { $repoPath = (Get-Content $repoFile -Raw).Trim() }
