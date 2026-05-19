@@ -2162,7 +2162,14 @@ async function saveImapAccount() {
         }
 
         // ─── 3. BAŞARILI: Toast göster, modalı kapat, listeyi yenile ─────────
-        showToast(_tLit('IMAP hesabı kaydedildi ✓', 'IMAP account saved ✓'), 'success');
+        const alertActive = getImapAlertFormData()?.enabled;
+        const msg = alertActive
+            ? _tLit(
+                'IMAP hesabı kaydedildi ✓ — Anlık rapor monitörü arka planda başlatılıyor (5-30s)',
+                'IMAP account saved ✓ — Realtime monitor starting in background (5-30s)'
+              )
+            : _tLit('IMAP hesabı kaydedildi ✓', 'IMAP account saved ✓');
+        showToast(msg, 'success');
         closeImapModal();
         document.getElementById('imapTestResult').innerHTML = '';
         loadImapAccounts();

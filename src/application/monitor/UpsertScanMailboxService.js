@@ -98,12 +98,17 @@ async function upsertScanMailbox(input, license) {
     if (idx >= 0) mailboxes[idx] = entry; else mailboxes.push(entry);
     saveSettings({ ...current, scanMailboxes: mailboxes });
 
-    // Varsa önceki monitörü + supervisor'ını durdur
+    // Varsa önceki monitörü + supervisor'ını durdur (hızlı, await OK)
     stopScanMailboxMonitor(imapEmail);
 
     if (entry.enabled) {
-        // Supervisor korumasıyla başlat: ilk bağlantı başarısız olsa bile retry
-        await startScanMailboxMonitorSupervised(entry);
+        // ─── FIRE-AND-FORGET ─────────────────────────────────────────────
+        // Monitor.start() IMAP'a bağlanır + IDLE açar (5-30 saniye sürebilir
+        // ilk denemede başarısız olursa supervisor 3× retry'a kadar bekler).
+        // UI bunu beklemesin — arka planda başlatılır. Sonuç log'lara yazılır.
+        startScanMailboxMonitorSupervised(entry).catch((e) =>
+            console.error(`[ScanMailbox] Arka plan başlatma hatası (${imapEmail}):`, e.message)
+        );
     }
 
     return { ok: true, body: { success: true, count: mailboxes.length } };
@@ -128,11 +133,14 @@ async function patchScanMailbox(imapEmail, patch, license) {
     mailboxes[idx] = { ...mailboxes[idx], ...patch, imapEmail };
     saveSettings({ ...current, scanMailboxes: mailboxes });
 
-    // Varsa önceki monitörü + supervisor'ını durdur
+    // Varsa önceki monitörü + supervisor'ını durdur (hızlı)
     stopScanMailboxMonitor(imapEmail);
 
     if (mailboxes[idx].enabled) {
-        await startScanMailboxMonitorSupervised(mailboxes[idx]);
+        // Fire-and-forget — UI beklemesin (IMAP bağlantısı 5-30s sürebilir)
+        startScanMailboxMonitorSupervised(mailboxes[idx]).catch((e) =>
+            console.error(`[ScanMailbox] Arka plan başlatma hatası (${imapEmail}):`, e.message)
+        );
     }
 
     return { ok: true, body: { success: true } };

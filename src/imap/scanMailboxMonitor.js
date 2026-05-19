@@ -46,24 +46,22 @@ class ScanMailboxMonitor {
     }
 
     async start() {
-        let lastError = null;
-        for (let attempt = 1; attempt <= 3; attempt += 1) {
-            try {
-                const result = await this.imapMonitor.start();
-                this.startedAt = new Date();
-                setTimeout(() => {
-                    this.processPendingRecent().catch((error) => {
-                        console.error('[ScanMailbox] pending scan error:', error.message);
-                    });
-                }, 2500);
-                return result;
-            } catch (error) {
-                lastError = error;
-                if (!isRetryableImapError(error) || attempt === 3) break;
-                await new Promise((resolve) => setTimeout(resolve, 3000 * attempt));
-            }
+        // Tek bir hızlı deneme — başarısız olursa caller'daki supervisor backoff
+        // [10s, 30s, 60s, 120s, 300s] devreye girer. Burada uzun retry loop yok
+        // çünkü artık kaydetme fire-and-forget — UI'ı bloklamamalı.
+        try {
+            const result = await this.imapMonitor.start();
+            this.startedAt = new Date();
+            setTimeout(() => {
+                this.processPendingRecent().catch((error) => {
+                    console.error('[ScanMailbox] pending scan error:', error.message);
+                });
+            }, 2500);
+            return result;
+        } catch (error) {
+            // Supervisor üst seviyede retry yapacak — burada throw et
+            throw error;
         }
-        throw lastError;
     }
 
     /**
