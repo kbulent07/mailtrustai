@@ -5799,6 +5799,9 @@ async function showScanMailboxModal() {
         if (smtpPort) smtpPort.value = '587';
         const imapTls = document.getElementById('smImapTls');
         if (imapTls) imapTls.checked = true;
+        // "Sertifika hatalarini yoksay" — yeni hesap eklerken default kapali
+        const imapIgnoreSSL = document.getElementById('smImapIgnoreSSL');
+        if (imapIgnoreSSL) imapIgnoreSSL.checked = false;
         const smtpSamePass = document.getElementById('smSmtpSamePass');
         if (smtpSamePass) { smtpSamePass.checked = true; onSmSmtpSamePassChange(); }
         const reportMode = document.getElementById('smReportMode');
@@ -5858,6 +5861,9 @@ async function editScanMailbox(imapEmail) {
         document.getElementById('smImapPassword').value = '';   // boş = mevcut kullanılır
         document.getElementById('smImapPassword').placeholder = '•••••••• (değiştirmek için doldurun)';
         document.getElementById('smImapTls').checked    = smb.imapTls !== false;
+        // "Sertifika hatalarini yoksay" — mevcut rejectUnauthorized=false ise checked
+        const smIgnoreSSLEl = document.getElementById('smImapIgnoreSSL');
+        if (smIgnoreSSLEl) smIgnoreSSLEl.checked = smb.imapRejectUnauthorized === false;
 
         document.getElementById('smSmtpHost').value     = smb.smtpHost || smb.imapHost || '';
         document.getElementById('smSmtpPort').value     = smb.smtpPort || 587;
@@ -6009,6 +6015,9 @@ function getScanMailboxFormData() {
         imapEmail:         (document.getElementById('smImapEmail')?.value || '').trim(),
         imapPassword,
         imapTls:           document.getElementById('smImapTls')?.checked !== false,
+        // "Sertifika hatalarini yoksay" CHECKED ise rejectUnauthorized=false gonderiyoruz.
+        // Default UNCHECKED → rejectUnauthorized=true (guvenli) baseline.
+        imapRejectUnauthorized: !(document.getElementById('smImapIgnoreSSL')?.checked === true),
         smtpHost:          (document.getElementById('smSmtpHost')?.value || '').trim(),
         smtpPort:          Number(document.getElementById('smSmtpPort')?.value) || 587,
         smtpPassword,
