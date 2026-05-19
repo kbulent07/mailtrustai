@@ -56,7 +56,8 @@ router.post('/imap/accounts', async (req, res) => {
         ...req.body,
         password,
         autoSummaryReport:        req.body.autoSummaryReport        === true || req.body.autoSummaryReport        === 'true',
-        moveHighRiskToQuarantine: req.body.moveHighRiskToQuarantine === true || req.body.moveHighRiskToQuarantine === 'true'
+        moveHighRiskToQuarantine: req.body.moveHighRiskToQuarantine === true || req.body.moveHighRiskToQuarantine === 'true',
+        collectScannedMails:      req.body.collectScannedMails      === true || req.body.collectScannedMails      === 'true'
     });
     res.json({ success: true, count: accounts.length });
 });
@@ -77,9 +78,10 @@ router.get('/imap/accounts', (req, res) => {
     }
     res.json(list.map(a => ({
         email: a.email, host: a.host, port: a.port,
-        autoSummaryReport: a.autoSummaryReport === true,
-        rejectUnauthorized: a.rejectUnauthorized !== false,
-        moveHighRiskToQuarantine: a.moveHighRiskToQuarantine === true
+        autoSummaryReport:        a.autoSummaryReport        === true,
+        rejectUnauthorized:       a.rejectUnauthorized       !== false,
+        moveHighRiskToQuarantine: a.moveHighRiskToQuarantine === true,
+        collectScannedMails:      a.collectScannedMails      === true
     })));
 });
 
@@ -106,6 +108,20 @@ router.patch('/imap/accounts/:email/quarantine', (req, res) => {
     const updated = updateAccount(email, { moveHighRiskToQuarantine: enabled });
     if (!updated) return res.status(404).json({ error: 'Account not found' });
     res.json({ success: true, email, moveHighRiskToQuarantine: updated.moveHighRiskToQuarantine === true });
+});
+
+// PATCH /imap/accounts/:email/collect
+// Taranan mailler otomatik olarak mailscanresult klasörüne taşınsın mı?
+// Body: { enabled: true | false }
+router.patch('/imap/accounts/:email/collect', (req, res) => {
+    const email = decodeURIComponent(req.params.email);
+    if (_isCustomerUser(req)) {
+        return res.status(403).json({ error: 'Tarama toplama ayarı yalnız admin yetkisinde.' });
+    }
+    const enabled = req.body.enabled === true || req.body.enabled === 'true';
+    const updated = updateAccount(email, { collectScannedMails: enabled });
+    if (!updated) return res.status(404).json({ error: 'Account not found' });
+    res.json({ success: true, email, collectScannedMails: updated.collectScannedMails === true });
 });
 
 router.post('/imap/list', async (req, res) => {

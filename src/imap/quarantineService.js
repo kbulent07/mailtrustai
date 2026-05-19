@@ -1,6 +1,7 @@
 const { createConnection, loadCredentials } = require('./connection');
 
 const DEFAULT_QUARANTINE_FOLDER = process.env.MSA_IMAP_QUARANTINE_FOLDER || 'Quarantine';
+const DEFAULT_COLLECT_FOLDER    = process.env.MSA_IMAP_COLLECT_FOLDER    || 'mailscanresult';
 
 function isQuarantineMoveEnabled(account) {
     return account?.moveHighRiskToQuarantine === true || account?.moveHighRiskToQuarantine === 'true';
@@ -81,9 +82,51 @@ async function ensureMailbox(client, destinationFolder) {
     }
 }
 
+// ============================================================
+// TARAMA TOPLAMA: Taranan mailler tek klasörde topla
+// ============================================================
+
+function isCollectScannedEnabled(account) {
+    return account?.collectScannedMails === true || account?.collectScannedMails === 'true';
+}
+
+/**
+ * Tarama tamamlandıktan sonra maili `mailscanresult` klasörüne taşır.
+ * Yalnızca hesapta `collectScannedMails=true` ise ve mail zaten Quarantine'e
+ * taşınmamışsa (kaynak hâlâ INBOX'ta) çağrılmalıdır.
+ *
+ * @param {object} account      - IMAP hesap nesnesi
+ * @param {number} uid          - Taşınacak mailin IMAP UID'si
+ * @param {string} sourceFolder - Kaynak klasör (varsayılan: INBOX)
+ */
+async function maybeMoveScannedMailToCollection({ account, uid, sourceFolder = 'INBOX' }) {
+    const stored = account?.email
+        ? (loadCredentials().find(a => a.email === account.email) || account)
+        : account;
+
+    if (!isCollectScannedEnabled(stored)) {
+        return { attempted: false, moved: false, reason: 'disabled' };
+    }
+    if (!uid) {
+        return { attempted: false, moved: false, reason: 'missing-uid' };
+    }
+
+    console.log(`[Collect] Tarama klasörüne taşınıyor: ${account?.email} uid=${uid} → ${DEFAULT_COLLECT_FOLDER}`);
+    // moveMessageToQuarantine zaten genel bir IMAP taşıma fonksiyonu; destinationFolder ile yönlendiriyoruz
+    return moveMessageToQuarantine({
+        account,
+        uid,
+        sourceFolder,
+        destinationFolder: DEFAULT_COLLECT_FOLDER
+    });
+}
+
 module.exports = {
     DEFAULT_QUARANTINE_FOLDER,
+    DEFAULT_COLLECT_FOLDER,
     isQuarantineMoveEnabled,
     shouldMoveMessageToQuarantine,
-    maybeMoveMessageToQuarantine
+    maybeMoveMessageToQuarantine,
+    isCollectScannedEnabled,
+    maybeMoveScannedMailToCollection
 };

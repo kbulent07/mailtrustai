@@ -21,7 +21,7 @@ const { loadSettings } = require('../storage/settingsStore');
 const { analyzeWithClaude } = require('../integrations/claude');
 const { analyzeWithOpenAI } = require('../integrations/openai');
 const { scanAttachments: vtScan } = require('../integrations/virustotal');
-const { maybeMoveMessageToQuarantine } = require('../imap/quarantineService');
+const { maybeMoveMessageToQuarantine, maybeMoveScannedMailToCollection } = require('../imap/quarantineService');
 const { getImapSenderSkipInfo } = require('../imap/scanExclusions');
 const crypto = require('crypto');
 
@@ -302,6 +302,14 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     }
 
     result.quarantineMove = await maybeMoveMessageToQuarantine({ account, uid, result });
+
+    // Quarantine'e taşınmadıysa (mail hâlâ INBOX'ta) tarama toplama klasörüne taşı.
+    // İkisi aynı anda etkinse öncelik Quarantine'dedir; mail iki kez taşınmaz.
+    if (!result.quarantineMove?.moved) {
+        result.collectMove = await maybeMoveScannedMailToCollection({ account, uid });
+    } else {
+        result.collectMove = { attempted: false, moved: false, reason: 'quarantined' };
+    }
 
     // Otomatik mail raporu burada DEĞİL — scanMailboxMonitor (purpose='realtime')
     // akışında yapılıyor. Kullanıcı IMAP hesabı eklerken "anlık güvenlik raporu"
