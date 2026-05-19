@@ -2252,7 +2252,7 @@ async function loadImapAccounts() {
                     <strong>${esc(account.email)}</strong>
                     <span class="text-muted">${esc(account.host)}:${account.port}</span>
                     ${account.moveHighRiskToQuarantine ? '<span class="email-monitor-badge" title="Yüksek riskli mailler Quarantine klasörüne taşınır">Quarantine</span>' : ''}
-                    ${account.collectScannedMails ? '<span class="email-monitor-badge" title="Rapor mailleri mailscanresult klasörüne taşınır">📦 Raporlar</span>' : ''}
+                    ${account.collectScannedMails ? '<span class="email-monitor-badge" title="Rapor mailleri mailreports klasörüne taşınır">📦 Raporlar</span>' : ''}
                     ${account.markRiskySubject ? '<span class="email-monitor-badge" title="Riskli mailin konusuna 🔴/🟣 etiketi eklenir">🔴🟣</span>' : ''}
                     <span class="u-flex1"></span>
                     ${adminControls}

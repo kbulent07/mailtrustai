@@ -139,8 +139,8 @@ router.patch('/imap/accounts/:email/quarantine', async (req, res) => {
 });
 
 // PATCH /imap/accounts/:email/collect
-// Taranan mailler otomatik olarak mailscanresult klasörüne taşınsın mı?
-// Ayar etkinleştirildiğinde mailscanresult klasörü proaktif olarak oluşturulur.
+// Taranan mailler otomatik olarak mailreports klasörüne taşınsın mı?
+// Ayar etkinleştirildiğinde mailreports klasörü proaktif olarak oluşturulur.
 // Body: { enabled: true | false }
 router.patch('/imap/accounts/:email/collect', async (req, res) => {
     const email = decodeURIComponent(req.params.email);

@@ -1,7 +1,11 @@
 const { createConnection, loadCredentials } = require('./connection');
 
 const DEFAULT_QUARANTINE_FOLDER = process.env.MSA_IMAP_QUARANTINE_FOLDER || 'Quarantine';
-const DEFAULT_COLLECT_FOLDER    = process.env.MSA_IMAP_COLLECT_FOLDER    || 'mailscanresult';
+// Rapor maillerinin toplandığı klasör. Eski varsayılan adı 'mailscanresult'tu;
+// daha anlaşılır olması için 'mailreports' olarak güncellendi. Eski isim
+// kullanmaya devam etmek isteyenler MSA_IMAP_COLLECT_FOLDER env ile override
+// edebilir.
+const DEFAULT_COLLECT_FOLDER    = process.env.MSA_IMAP_COLLECT_FOLDER    || 'mailreports';
 
 function isQuarantineMoveEnabled(account) {
     return account?.moveHighRiskToQuarantine === true || account?.moveHighRiskToQuarantine === 'true';
@@ -89,13 +93,22 @@ async function ensureMailbox(client, destinationFolder) {
         await client.mailboxCreate(destinationFolder);
         console.log(`[IMAP] Klasör oluşturuldu: ${destinationFolder}`);
     } catch (error) {
-        const msg  = String(error?.message || '');
+        // ImapFlow error.message her zaman "Command failed" diye geliyor;
+        // gerçek IMAP yanıtı error.responseText'te.
+        // Zimbra örneği: responseText='CREATE failed: mailbox already exists'
+        // Bu yüzden message + responseText + responseCode/serverResponseCode
+        // hepsini kontrol etmek lazım.
+        const msg  = String(error?.message      || '');
+        const text = String(error?.responseText || '');
         const code = String(error?.responseCode || error?.serverResponseCode || '');
+        const existsPattern = /exists|already|duplicate|in[- ]?use/i;
         const alreadyExists =
-            /exists|already|duplicate|in[- ]?use/i.test(msg) ||
+            existsPattern.test(msg)  ||
+            existsPattern.test(text) ||
             /ALREADYEXISTS|DUPLICATE/i.test(code);
         if (!alreadyExists) {
-            console.error(`[IMAP] Klasör oluşturulamadı (${destinationFolder}):`, msg);
+            console.error(`[IMAP] Klasör oluşturulamadı (${destinationFolder}): ${msg}` +
+                (text ? `  [imap="${text}"]` : ''));
             throw error;
         }
         // Klasör zaten var — normal durum, log yok
@@ -137,7 +150,7 @@ function isCollectScannedEnabled(account) {
 }
 
 /**
- * Tarama tamamlandıktan sonra maili `mailscanresult` klasörüne taşır.
+ * Tarama tamamlandıktan sonra maili `mailreports` klasörüne taşır.
  * Yalnızca hesapta `collectScannedMails=true` ise ve mail zaten Quarantine'e
  * taşınmamışsa (kaynak hâlâ INBOX'ta) çağrılmalıdır.
  *

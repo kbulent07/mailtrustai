@@ -267,17 +267,17 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     // ─── Rapor maili tespiti ───────────────────────────────────────────────
     // MailTrustAI tarafından gönderilen güvenlik raporu mailleri:
     //   • Analiz yapmaz (self-loop koruması)
-    //   • collectScannedMails ayarı açıksa → mailscanresult klasörüne taşır
+    //   • collectScannedMails ayarı açıksa → mailreports klasörüne taşır
     const isReportMail =
         subject.includes('[MailTrustAI Güvenlik Raporu]') ||
         subject.includes('[MailTrustAI Security Report]');
 
     if (isReportMail) {
         console.log(`[WS-Monitor][${source}] Rapor maili tespit edildi: ${account.email} uid=${uid} "${subject.slice(0, 60)}"`);
-        // Ayar açıksa rapor mailini mailscanresult klasörüne taşı
+        // Ayar açıksa rapor mailini mailreports klasörüne taşı
         const moveRes = await maybeMoveScannedMailToCollection({ account, uid });
         if (moveRes?.moved) {
-            console.log(`[WS-Monitor][${source}] ✓ Rapor maili → mailscanresult (uid=${uid})`);
+            console.log(`[WS-Monitor][${source}] ✓ Rapor maili → mailreports (uid=${uid})`);
         } else if (moveRes?.reason && moveRes.reason !== 'disabled') {
             console.warn(`[WS-Monitor][${source}] Rapor maili taşınamadı (${moveRes.reason}): uid=${uid}`);
         }
@@ -335,7 +335,7 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
 
     result.quarantineMove = await maybeMoveMessageToQuarantine({ account, uid, result });
 
-    // NOT: Taranan mail mailscanresult'a TAŞINMAZ. Bu klasör yalnızca tarama
+    // NOT: Taranan mail mailreports'a TAŞINMAZ. Bu klasör yalnızca tarama
     // sonrası gelen RAPOR maillerini toplar (yukarıdaki isReportMail bloğunda).
     result.collectMove = { attempted: false, moved: false, reason: 'not-applicable' };
 
