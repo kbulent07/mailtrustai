@@ -11,6 +11,7 @@ const { runManualImapScan }       =
     require('../../../application/analyze/AnalyzeImapMailService');
 const { checkLicense, checkDailyLimit, checkMonthlyLimit } =
     require('../../../services/appState');
+const { removeDecoration }        = require('../../../imap/subjectDecoratorService');
 
 const router = express.Router();
 
@@ -57,7 +58,8 @@ router.post('/imap/accounts', async (req, res) => {
         password,
         autoSummaryReport:        req.body.autoSummaryReport        === true || req.body.autoSummaryReport        === 'true',
         moveHighRiskToQuarantine: req.body.moveHighRiskToQuarantine === true || req.body.moveHighRiskToQuarantine === 'true',
-        collectScannedMails:      req.body.collectScannedMails      === true || req.body.collectScannedMails      === 'true'
+        collectScannedMails:      req.body.collectScannedMails      === true || req.body.collectScannedMails      === 'true',
+        markRiskySubject:         req.body.markRiskySubject         === true || req.body.markRiskySubject         === 'true'
     });
     res.json({ success: true, count: accounts.length });
 });
@@ -81,7 +83,8 @@ router.get('/imap/accounts', (req, res) => {
         autoSummaryReport:        a.autoSummaryReport        === true,
         rejectUnauthorized:       a.rejectUnauthorized       !== false,
         moveHighRiskToQuarantine: a.moveHighRiskToQuarantine === true,
-        collectScannedMails:      a.collectScannedMails      === true
+        collectScannedMails:      a.collectScannedMails      === true,
+        markRiskySubject:         a.markRiskySubject         === true
     })));
 });
 
@@ -122,6 +125,52 @@ router.patch('/imap/accounts/:email/collect', (req, res) => {
     const updated = updateAccount(email, { collectScannedMails: enabled });
     if (!updated) return res.status(404).json({ error: 'Account not found' });
     res.json({ success: true, email, collectScannedMails: updated.collectScannedMails === true });
+});
+
+// PATCH /imap/accounts/:email/risk-marking
+// Riskli mailin konusuna emoji öneki eklensin mi?
+//   • high   → 🔴
+//   • medium → 🟣
+// Body: { enabled: true | false }
+router.patch('/imap/accounts/:email/risk-marking', (req, res) => {
+    const email = decodeURIComponent(req.params.email);
+    if (_isCustomerUser(req)) {
+        return res.status(403).json({ error: 'Risk işaretleme ayarı yalnız admin yetkisinde.' });
+    }
+    const enabled = req.body.enabled === true || req.body.enabled === 'true';
+    const updated = updateAccount(email, { markRiskySubject: enabled });
+    if (!updated) return res.status(404).json({ error: 'Account not found' });
+    res.json({ success: true, email, markRiskySubject: updated.markRiskySubject === true });
+});
+
+// POST /imap/messages/unmark
+// Bir mailin risk etiketini (🔴/🟣) kaldırır → orijinal konuya geri döndürür.
+// Hem müşteri admin'i hem de mail sahibi kendi mailini unmark edebilir.
+// Body: { email, uid, folder? }
+router.post('/imap/messages/unmark', async (req, res) => {
+    const { email, uid, folder } = req.body || {};
+    if (!email || !uid) {
+        return res.status(400).json({ error: 'email ve uid zorunlu' });
+    }
+    // user rolü: yalnız kendi e-posta hesabını unmark edebilir
+    if (_isCustomerUser(req) && !_emailMatchesUser(req, email)) {
+        return res.status(403).json({ error: 'Yalnız kendi IMAP hesabınızdaki etiketi kaldırabilirsiniz.' });
+    }
+    const account = loadCredentials().find(a => a.email === email);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    const result = await removeDecoration({
+        account,
+        uid:    Number(uid),
+        folder: folder || 'INBOX'
+    });
+
+    if (!result.restored) {
+        return res.status(result.reason === 'not-decorated' ? 404 : 400).json({
+            success: false, ...result
+        });
+    }
+    res.json({ success: true, ...result });
 });
 
 router.post('/imap/list', async (req, res) => {

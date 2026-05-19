@@ -22,6 +22,7 @@ const { analyzeWithClaude } = require('../integrations/claude');
 const { analyzeWithOpenAI } = require('../integrations/openai');
 const { scanAttachments: vtScan } = require('../integrations/virustotal');
 const { maybeMoveMessageToQuarantine, maybeMoveScannedMailToCollection } = require('../imap/quarantineService');
+const { maybeDecorateSubject, isAlreadyDecorated, PREFIX_HIGH, PREFIX_MEDIUM } = require('../imap/subjectDecoratorService');
 const { getImapSenderSkipInfo } = require('../imap/scanExclusions');
 const crypto = require('crypto');
 
@@ -261,11 +262,21 @@ function _scheduleWsMonitorRetry(account, license, entry, attempt = 0) {
  * @param {string} [source] - Log etiketi ('realtime' | 'catchup')
  */
 async function _analyzeAndBroadcast(account, license, uid, email, source = 'realtime') {
-    // Self-loop koruması
+    // Self-loop koruması — rapor mailleri
     const subject = String(email?.subject || '');
     if (subject.includes('[MailTrustAI Güvenlik Raporu]') ||
         subject.includes('[MailTrustAI Security Report]')) {
         console.log(`[WS-Monitor][${source}] Self-loop atlandı: "${subject.slice(0, 80)}"`);
+        return;
+    }
+    // Self-loop koruması — kendi eklediğimiz 🔴/🟣 etiketli mailler (APPEND sonrası IDLE event)
+    if (isAlreadyDecorated(email)) {
+        console.log(`[WS-Monitor][${source}] Etiketli mail atlandı (re-scan döngüsü engellendi): "${subject.slice(0, 80)}"`);
+        // UID baseline'ı yine de güncelle (yeni UID'yi takip et)
+        const decUid = Number(uid);
+        if (!Number.isNaN(decUid) && decUid > (_wsMonitorLastUid.get(account.email) || 0)) {
+            _wsMonitorLastUid.set(account.email, decUid);
+        }
         return;
     }
     const skipInfo = getImapSenderSkipInfo({ account, from: email?.from });
@@ -311,6 +322,23 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
         result.collectMove = { attempted: false, moved: false, reason: 'quarantined' };
     }
 
+    // ─── Risk emojisi etiketi (🔴 high, 🟣 medium) ────────────────────────────
+    // Mail başka bir klasöre taşınmadıysa (INBOX'ta ise) ve hesap ayarı açıksa
+    // konuya emoji öneği ekle. APPEND ile UID değişir → result.decoratedUid'i kaydet.
+    if (!result.quarantineMove?.moved && !result.collectMove?.moved) {
+        result.subjectDecoration = await maybeDecorateSubject({
+            account,
+            uid,
+            level: result.level,
+            parsedEmail: email
+        });
+    } else {
+        result.subjectDecoration = {
+            attempted: false, decorated: false,
+            reason: result.quarantineMove?.moved ? 'quarantined' : 'collected'
+        };
+    }
+
     // Otomatik mail raporu burada DEĞİL — scanMailboxMonitor (purpose='realtime')
     // akışında yapılıyor. Kullanıcı IMAP hesabı eklerken "anlık güvenlik raporu"
     // checkbox'ını işaretlerse otomatik olarak bir scanMailbox kaydı oluşur ve
@@ -319,10 +347,12 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     recordScan(result);
     broadcast({ type: 'new-email-scanned', result });
 
-    // UID baseline'ı güncelle
-    const numUid = Number(uid);
-    if (!Number.isNaN(numUid) && numUid > (_wsMonitorLastUid.get(account.email) || 0)) {
-        _wsMonitorLastUid.set(account.email, numUid);
+    // UID baseline'ı güncelle — decoration yapıldıysa yeni UID'yi kullan
+    const effectiveUid = result.subjectDecoration?.decorated
+        ? Number(result.subjectDecoration.newUid)
+        : Number(uid);
+    if (!Number.isNaN(effectiveUid) && effectiveUid > (_wsMonitorLastUid.get(account.email) || 0)) {
+        _wsMonitorLastUid.set(account.email, effectiveUid);
     }
 }
 
