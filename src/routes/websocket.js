@@ -262,11 +262,25 @@ function _scheduleWsMonitorRetry(account, license, entry, attempt = 0) {
  * @param {string} [source] - Log etiketi ('realtime' | 'catchup')
  */
 async function _analyzeAndBroadcast(account, license, uid, email, source = 'realtime') {
-    // Self-loop koruması — rapor mailleri
     const subject = String(email?.subject || '');
-    if (subject.includes('[MailTrustAI Güvenlik Raporu]') ||
-        subject.includes('[MailTrustAI Security Report]')) {
-        console.log(`[WS-Monitor][${source}] Self-loop atlandı: "${subject.slice(0, 80)}"`);
+
+    // ─── Rapor maili tespiti ───────────────────────────────────────────────
+    // MailTrustAI tarafından gönderilen güvenlik raporu mailleri:
+    //   • Analiz yapmaz (self-loop koruması)
+    //   • collectScannedMails ayarı açıksa → mailscanresult klasörüne taşır
+    const isReportMail =
+        subject.includes('[MailTrustAI Güvenlik Raporu]') ||
+        subject.includes('[MailTrustAI Security Report]');
+
+    if (isReportMail) {
+        console.log(`[WS-Monitor][${source}] Rapor maili tespit edildi: ${account.email} uid=${uid} "${subject.slice(0, 60)}"`);
+        // Ayar açıksa rapor mailini mailscanresult klasörüne taşı
+        const moveRes = await maybeMoveScannedMailToCollection({ account, uid });
+        if (moveRes?.moved) {
+            console.log(`[WS-Monitor][${source}] ✓ Rapor maili → mailscanresult (uid=${uid})`);
+        } else if (moveRes?.reason && moveRes.reason !== 'disabled') {
+            console.warn(`[WS-Monitor][${source}] Rapor maili taşınamadı (${moveRes.reason}): uid=${uid}`);
+        }
         return;
     }
     // Self-loop koruması — kendi eklediğimiz 🔴/🟣 etiketli mailler (APPEND sonrası IDLE event)
@@ -321,18 +335,14 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
 
     result.quarantineMove = await maybeMoveMessageToQuarantine({ account, uid, result });
 
-    // Quarantine'e taşınmadıysa (mail hâlâ INBOX'ta) tarama toplama klasörüne taşı.
-    // İkisi aynı anda etkinse öncelik Quarantine'dedir; mail iki kez taşınmaz.
-    if (!result.quarantineMove?.moved) {
-        result.collectMove = await maybeMoveScannedMailToCollection({ account, uid });
-    } else {
-        result.collectMove = { attempted: false, moved: false, reason: 'quarantined' };
-    }
+    // NOT: Taranan mail mailscanresult'a TAŞINMAZ. Bu klasör yalnızca tarama
+    // sonrası gelen RAPOR maillerini toplar (yukarıdaki isReportMail bloğunda).
+    result.collectMove = { attempted: false, moved: false, reason: 'not-applicable' };
 
     // ─── Risk emojisi etiketi (🔴 high, 🟣 medium) ────────────────────────────
-    // Mail başka bir klasöre taşınmadıysa (INBOX'ta ise) ve hesap ayarı açıksa
-    // konuya emoji öneği ekle. APPEND ile UID değişir → result.decoratedUid'i kaydet.
-    if (!result.quarantineMove?.moved && !result.collectMove?.moved) {
+    // Mail Quarantine'e taşınmadıysa (INBOX'ta ise) ve hesap ayarı açıksa
+    // konuya emoji öneği ekle. APPEND ile UID değişir → result.decoratedUid kaydedilir.
+    if (!result.quarantineMove?.moved) {
         result.subjectDecoration = await maybeDecorateSubject({
             account,
             uid,
@@ -342,7 +352,7 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     } else {
         result.subjectDecoration = {
             attempted: false, decorated: false,
-            reason: result.quarantineMove?.moved ? 'quarantined' : 'collected'
+            reason: 'quarantined'
         };
     }
 
@@ -350,13 +360,10 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     let finalLocation;
     if (result.quarantineMove?.moved) {
         finalLocation = `Quarantine (${result.quarantineMove.destinationFolder})`;
-    } else if (result.collectMove?.moved) {
-        finalLocation = `Collect (${result.collectMove.destinationFolder})`;
     } else if (result.subjectDecoration?.decorated) {
         finalLocation = `INBOX (etiketli, yeni uid=${result.subjectDecoration.newUid})`;
     } else {
         finalLocation = 'INBOX (değişiklik yok)';
-        // Decoration başarısız oldu ama orijinal mail KORUNUYOR — log'la
         if (result.subjectDecoration?.attempted && !result.subjectDecoration.decorated) {
             console.warn(
                 `[WS-Monitor][${source}] uid=${uid} decoration BAŞARISIZ ` +

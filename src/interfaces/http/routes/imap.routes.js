@@ -56,14 +56,24 @@ router.post('/imap/accounts', async (req, res) => {
         return res.status(400).json({ error: 'Password is required' });
     }
 
-    const accounts = addAccount({
+    const normalized = {
         ...req.body,
         password,
         autoSummaryReport:        req.body.autoSummaryReport        === true || req.body.autoSummaryReport        === 'true',
         moveHighRiskToQuarantine: req.body.moveHighRiskToQuarantine === true || req.body.moveHighRiskToQuarantine === 'true',
         collectScannedMails:      req.body.collectScannedMails      === true || req.body.collectScannedMails      === 'true',
         markRiskySubject:         req.body.markRiskySubject         === true || req.body.markRiskySubject         === 'true'
-    });
+    };
+    const accounts = addAccount(normalized);
+
+    // Proaktif klasör oluşturma — best-effort, arka planda, response'u bloklamasın
+    if (normalized.moveHighRiskToQuarantine) {
+        ensureFolderForAccount(normalized, DEFAULT_QUARANTINE_FOLDER).catch(() => {});
+    }
+    if (normalized.collectScannedMails) {
+        ensureFolderForAccount(normalized, DEFAULT_COLLECT_FOLDER).catch(() => {});
+    }
+
     res.json({ success: true, count: accounts.length });
 });
 

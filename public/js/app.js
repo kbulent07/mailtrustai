@@ -2104,59 +2104,78 @@ async function saveImapAccount() {
         return;
     }
 
-    // Anlık rapor ayarlarını kaydet / sil
-    const imapSaveRes = await fetch('/api/imap/accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(account)
-    });
-    const imapSaveData = await imapSaveRes.json();
-    if (!imapSaveRes.ok) {
-        alert(imapSaveData.error || 'Failed to save IMAP account');
-        return;
+    // ─── UI: Kaydet butonu "Kaydediliyor..." durumuna geçir ──────────────────
+    const saveBtn = document.getElementById('imapSaveBtn');
+    const originalBtnHtml = saveBtn?.innerHTML;
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '⏳ ' + _tLit('Kaydediliyor...', 'Saving...');
     }
 
-    const alert_ = getImapAlertFormData();
-    const targetEmail = account.email || editingImapAlertAccountEmail;
-    if (alert_.enabled) {
-        if (alert_.reportMode === 'all' && licenseInfo?.plan !== 'enterprise') {
-            alert_.reportMode = 'risky';
-        }
-        const headers = { 'Content-Type': 'application/json' };
-        if (licenseKey) headers['x-license-key'] = licenseKey;
-        // IMAP bağlantı bilgilerini de gönder — server scan-mailbox kaydı için bunlara ihtiyaç duyuyor.
-        // Edit modunda şifre boş olabilir; o durumda server mevcut kayıttaki şifreyi yeniden kullanır.
-        const payload = {
-            ...alert_,
-            imapEmail:              targetEmail,
-            imapHost:               account.host,
-            imapPort:               account.port,
-            imapPassword:           account.password,
-            imapTls:                account.secure,
-            imapRejectUnauthorized: account.rejectUnauthorized,
-            realtimeAlert:          true
-        };
-        try {
-            const res = await fetch('/api/scan-mailboxes', {
-                method: 'POST', headers, body: JSON.stringify(payload)
-            });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                alert((_tLit('Anlık rapor kaydedilemedi: ', 'Failed to save instant report: ')) + (data.error || res.status));
-                return;
-            }
-        } catch (e) {
-            alert((_tLit('Anlık rapor kaydedilemedi: ', 'Failed to save instant report: ')) + e.message);
+    try {
+        // ─── 1. IMAP hesabını kaydet ─────────────────────────────────────────
+        const imapSaveRes = await fetch('/api/imap/accounts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(account)
+        });
+        const imapSaveData = await imapSaveRes.json();
+        if (!imapSaveRes.ok) {
+            showToast(imapSaveData.error || 'IMAP hesabı kaydedilemedi', 'error');
             return;
         }
-    } else {
-        await fetch(`/api/scan-mailboxes/${encodeURIComponent(targetEmail)}`, { method: 'DELETE' }).catch(() => {});
-    }
 
-    closeImapModal();
-    document.getElementById('imapTestResult').innerHTML = '';
-    loadImapAccounts();
-    if (currentMode === 'scan-mailbox') loadScanMailboxes();
+        // ─── 2. Anlık rapor (scan-mailbox) ayarlarını kaydet ─────────────────
+        const alert_ = getImapAlertFormData();
+        const targetEmail = account.email || editingImapAlertAccountEmail;
+        if (alert_.enabled) {
+            if (alert_.reportMode === 'all' && licenseInfo?.plan !== 'enterprise') {
+                alert_.reportMode = 'risky';
+            }
+            const headers = { 'Content-Type': 'application/json' };
+            if (licenseKey) headers['x-license-key'] = licenseKey;
+            const payload = {
+                ...alert_,
+                imapEmail:              targetEmail,
+                imapHost:               account.host,
+                imapPort:               account.port,
+                imapPassword:           account.password,
+                imapTls:                account.secure,
+                imapRejectUnauthorized: account.rejectUnauthorized,
+                realtimeAlert:          true
+            };
+            try {
+                const res = await fetch('/api/scan-mailboxes', {
+                    method: 'POST', headers, body: JSON.stringify(payload)
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    showToast((_tLit('Anlık rapor kaydedilemedi: ', 'Failed to save instant report: ')) + (data.error || res.status), 'error');
+                    return;
+                }
+            } catch (e) {
+                showToast((_tLit('Anlık rapor kaydedilemedi: ', 'Failed to save instant report: ')) + e.message, 'error');
+                return;
+            }
+        } else {
+            await fetch(`/api/scan-mailboxes/${encodeURIComponent(targetEmail)}`, { method: 'DELETE' }).catch(() => {});
+        }
+
+        // ─── 3. BAŞARILI: Toast göster, modalı kapat, listeyi yenile ─────────
+        showToast(_tLit('IMAP hesabı kaydedildi ✓', 'IMAP account saved ✓'), 'success');
+        closeImapModal();
+        document.getElementById('imapTestResult').innerHTML = '';
+        loadImapAccounts();
+        if (currentMode === 'scan-mailbox') loadScanMailboxes();
+    } catch (e) {
+        showToast(_tLit('Kayıt hatası: ', 'Save error: ') + e.message, 'error');
+    } finally {
+        // ─── UI: Butonu eski haline döndür ───────────────────────────────────
+        if (saveBtn && originalBtnHtml) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalBtnHtml;
+        }
+    }
 }
 
 function getImapFormData() {
@@ -2221,7 +2240,7 @@ async function loadImapAccounts() {
                     <strong>${esc(account.email)}</strong>
                     <span class="text-muted">${esc(account.host)}:${account.port}</span>
                     ${account.moveHighRiskToQuarantine ? '<span class="email-monitor-badge" title="Yüksek riskli mailler Quarantine klasörüne taşınır">Quarantine</span>' : ''}
-                    ${account.collectScannedMails ? '<span class="email-monitor-badge" title="Tüm taranan mailler mailscanresult klasörüne taşınır">📦 Toplama</span>' : ''}
+                    ${account.collectScannedMails ? '<span class="email-monitor-badge" title="Rapor mailleri mailscanresult klasörüne taşınır">📦 Raporlar</span>' : ''}
                     ${account.markRiskySubject ? '<span class="email-monitor-badge" title="Riskli mailin konusuna 🔴/🟣 etiketi eklenir">🔴🟣</span>' : ''}
                     <span class="u-flex1"></span>
                     ${adminControls}
