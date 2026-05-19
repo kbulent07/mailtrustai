@@ -416,7 +416,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ### 6.1 Kurulum Scripti Çıktısından URL'yi Okuma
 
-Kurulum scripti (`install_server_ubuntu.sh` / `install_ubuntu.sh` / `install_customer_ubuntu.sh`) başarıyla tamamlandığında terminalin **en altında** şuna benzer bir blok çıkar:
+Kurulum scripti (`install/server/install_server_ubuntu.sh` veya `install/client/install_windows_user.ps1`) başarıyla tamamlandığında terminalin **en altında** şuna benzer bir blok çıkar:
 
 ```
 ╔══════════════════════════════════════════════════════════════╗
