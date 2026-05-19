@@ -122,6 +122,18 @@ function Assert-NativeOk($cmdLabel) {
     }
 }
 
+# Strict mode + ErrorActionPreference=Stop, native exe stderr ciktilarini
+# (docker'in "Unable to find image..." gibi BILGI mesajlari dahil) terminating
+# error olarak gorur ve trap'i tetikler. Bu wrapper, native komut suresince
+# ErrorActionPreference'i Continue'ya alir. Hata kontrolu icin LASTEXITCODE
+# Assert-NativeOk ile ayrica yapilir.
+function Invoke-NativeSilent {
+    param([scriptblock]$Block)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Block } finally { $ErrorActionPreference = $prev }
+}
+
 # ─── Banner ─────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Color "  ╔══════════════════════════════════════════════════════╗" 'Cyan'
@@ -292,7 +304,7 @@ if ($ImageFile) {
     if (-not (Test-Path $ImageFile)) { Fatal "Image dosyası bulunamadı: $ImageFile" }
 
     Step "Docker image yukleniyor: $ImageFile"
-    docker load -i $ImageFile
+    Invoke-NativeSilent { docker load -i $ImageFile }
     Assert-NativeOk "docker load"
     Ok "Image yuklendi."
 
@@ -368,7 +380,9 @@ volumes:
     if (-not $SkipBuild) {
         Step "Docker image derleniyor (bu 5-15 dakika surebilir)..."
         Set-Location $RepoRoot
-        docker compose --env-file $EnvFile -f docker-compose.customer.yml build --pull
+        Invoke-NativeSilent {
+            docker compose --env-file $EnvFile -f docker-compose.customer.yml build --pull
+        }
         Assert-NativeOk "docker compose build"
         Ok "Image derlendi: $ImageName"
     }
@@ -381,7 +395,9 @@ Step "Konteyner başlatılıyor..."
 Set-Location $InstallDir
 
 # Compose'u calistir
-Invoke-Expression "docker compose --env-file `"$EnvFile`" -f `"$ComposeFile`" up -d --remove-orphans"
+Invoke-NativeSilent {
+    Invoke-Expression "docker compose --env-file `"$EnvFile`" -f `"$ComposeFile`" up -d --remove-orphans"
+}
 if ($LASTEXITCODE -ne 0) {
     Fatal "docker compose up basarisiz oldu (exit: $LASTEXITCODE). Detay: docker compose -f `"$ComposeFile`" logs"
 }

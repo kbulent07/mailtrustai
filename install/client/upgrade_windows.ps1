@@ -132,17 +132,42 @@ $EnvBackup = Join-Path $BackupDir ".env.pre-upgrade.$TS"
 Copy-Item $EnvFile $EnvBackup -Force
 Ok "Env yedegi: $EnvBackup"
 
+# Yardimci: PS strict mode + ErrorActionPreference=Stop, native exe
+# stderr ciktilarini (docker'in "Unable to find image..." gibi bilgi
+# mesajlari dahil) terminating error olarak gorur. Bu wrapper, native
+# komut suresince Stop'u Continue'ya alir ve trap'in tetiklenmesini onler.
+function Invoke-NativeSilent {
+    param([scriptblock]$Block)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Block } finally { $ErrorActionPreference = $prev }
+}
+
+# alpine image'i ilk kullanimda docker stderr'e "Unable to find..." yazar.
+# Backup oncesi sessizce cekelim ki yedek dongusunde stderr gurultusu olmasin.
+Info "alpine image hazirlaniyor (yedekleme arac kutusu)..."
+Invoke-NativeSilent { docker image inspect alpine:latest 2>&1 | Out-Null }
+if ($LASTEXITCODE -ne 0) {
+    Invoke-NativeSilent { docker pull alpine:latest 2>&1 | Out-Null }
+    if ($LASTEXITCODE -ne 0) { Warn "alpine indirilemedi — yedekleme atlanacak." }
+}
+
 # Volume snapshot'lari — hem customer-data hem customer-logs
 function Backup-Volume($volName, $label) {
-    $exists = docker volume ls --format '{{.Name}}' 2>$null |
-        Select-String -Pattern "^$volName$" -Quiet
-    if ($exists) {
+    $exists = $false
+    Invoke-NativeSilent {
+        $script:exists = (docker volume ls --format '{{.Name}}' 2>$null |
+            Select-String -Pattern "^$volName$" -Quiet)
+    }
+    if ($script:exists -or $exists) {
         Info "$label volume snapshot aliniyor..."
         $tarName = "$label-pre-upgrade.$TS.tar.gz"
-        docker run --rm `
-            -v "${volName}:/data:ro" `
-            -v "${BackupDir}:/backup" `
-            alpine tar czf "/backup/$tarName" -C /data . 2>&1 | Out-Null
+        Invoke-NativeSilent {
+            docker run --rm `
+                -v "${volName}:/data:ro" `
+                -v "${BackupDir}:/backup" `
+                alpine tar czf "/backup/$tarName" -C /data . 2>&1 | Out-Null
+        }
         if ($LASTEXITCODE -eq 0) {
             Ok "$label yedegi: $BackupDir\$tarName"
         } else {
@@ -170,17 +195,17 @@ if ($ImageFile) {
 
     # Tar dosyasini yedekle (rollback icin)
     $tarBackup = Join-Path $BackupDir "image.pre-upgrade.$TS.tar"
-    try {
+    Invoke-NativeSilent {
         docker save mailtrustai-customer:latest -o $tarBackup 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            Ok "Onceki image yedegi: $tarBackup"
-        }
-    } catch {
+    }
+    if ($LASTEXITCODE -eq 0) {
+        Ok "Onceki image yedegi: $tarBackup"
+    } else {
         Warn "Onceki image yedeklenemedi (devam ediliyor)."
     }
 
     Info "Yeni image yukleniyor: $ImageFile"
-    docker load -i $ImageFile
+    Invoke-NativeSilent { docker load -i $ImageFile }
     Assert-NativeOk "docker load"
     Ok "Yeni image yuklendi."
 
@@ -262,7 +287,10 @@ if ($ImageFile) {
     }
 
     Info "Image derleniyor (5-15 dakika)..."
-    docker compose --env-file $EnvFile -f docker-compose.customer.yml build --pull
+    # docker compose build progress bar/satirlarini stderr'e yazar — wrap edilir.
+    Invoke-NativeSilent {
+        docker compose --env-file $EnvFile -f docker-compose.customer.yml build --pull
+    }
     Assert-NativeOk "docker compose build"
     Ok "Image derlendi."
 }
@@ -271,7 +299,9 @@ if ($ImageFile) {
 Step "6/7  Servisler yeniden baslatiliyor..."
 Set-Location $InstallDir
 
-Invoke-Expression "docker compose --env-file `"$EnvFile`" -f `"$ComposeFile`" up -d --remove-orphans"
+Invoke-NativeSilent {
+    Invoke-Expression "docker compose --env-file `"$EnvFile`" -f `"$ComposeFile`" up -d --remove-orphans"
+}
 if ($LASTEXITCODE -ne 0) {
     Fatal "docker compose up basarisiz. Detay: $UpgradeLog"
 }
