@@ -44,7 +44,8 @@ const PLAN_MATRIX = {
         features: {
             imapMonitor: true, deepAi: true, pdfReport: true, quarantine: true,
             siemWebhook: false, multiMailbox: true, localAi: false,
-            centralApiProxy: false, centralListSync: true, centralPolicySync: true
+            centralApiProxy: false, centralListSync: true, centralPolicySync: true,
+            scanMailbox: true, realtimeAlert: false
         },
         limits: { monthlyScanCount: 1000, mailboxCount: 10, userCount: 10 }
     },
@@ -54,7 +55,8 @@ const PLAN_MATRIX = {
         features: {
             imapMonitor: true, deepAi: true, pdfReport: true, quarantine: true,
             siemWebhook: true, multiMailbox: true, localAi: true,
-            centralApiProxy: true, centralListSync: true, centralPolicySync: true
+            centralApiProxy: true, centralListSync: true, centralPolicySync: true,
+            scanMailbox: true, realtimeAlert: true
         },
         limits: { monthlyScanCount: 9999999, mailboxCount: 1000, userCount: 1000 }
     }
