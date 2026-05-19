@@ -1,7 +1,7 @@
 // ============================================================
 // IMAP REAL-TIME MONITOR (IDLE) — with auto-reconnect
 // ============================================================
-const { createConnection } = require('./connection');
+const { createConnection, loadCredentials } = require('./connection');
 const { parseEmail } = require('../analysis/parser');
 
 const MAX_RECONNECT_DELAY_MS = 60 * 1000; // 60s üst sınır
@@ -43,6 +43,22 @@ class ImapMonitor {
 
     async _connect() {
         try {
+            // Her bağlantı denemesinde diskten en güncel credential'ı oku —
+            // UI'dan şifre/host değiştirilince mevcut monitor in-memory eski
+            // bilgilerle takılı kalmasın. Eğer disk okunamazsa veya hesap
+            // silinmişse mevcut this.account'la devam et (geriye uyumluluk).
+            if (this.account?.email) {
+                try {
+                    const latest = loadCredentials().find(a => a.email === this.account.email);
+                    if (latest) {
+                        const prevPwd = this.account.password;
+                        this.account = latest;
+                        if (prevPwd && prevPwd !== latest.password) {
+                            console.log(`[Monitor] ${this.account.email} credential disk'ten güncellendi (şifre değişti)`);
+                        }
+                    }
+                } catch (_) { /* loadCredentials hatasında eski account'la devam */ }
+            }
             this.client = await createConnection(this.account);
             await this.client.connect();
             this.lock = await this.client.getMailboxLock('INBOX');
