@@ -7707,11 +7707,12 @@ function renderListItems(type, items) {
 
 async function addListEntry(type) {
     const inputId = type === 'allowlist' ? 'allowlistInput' : 'blocklistInput';
-    const statusId = type === 'allowlist' ? 'allowlistStatus' : 'blocklistStatus';
     const input = document.getElementById(inputId);
-    const statusEl = document.getElementById(statusId);
     const domain = (input?.value || '').trim();
-    if (!domain) return;
+    if (!domain) {
+        showToast(_tLit('Domain girin (ör: ornek.com)', 'Enter a domain (e.g., example.com)'), 'warning');
+        return;
+    }
 
     try {
         const res = await fetch(`/api/lists/${type}`, {
@@ -7719,27 +7720,44 @@ async function addListEntry(type) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ domain })
         });
-        const data = await res.json();
+        // Yanıt JSON olmayabilir (404, 500 gibi durumlarda) — güvenli parse
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+
         if (!res.ok) {
-            if (statusEl) statusEl.innerHTML = `<span class="u-err">${esc(data.error || 'Hata')}</span>`;
+            const errMsg = data.error || `HTTP ${res.status}: ${res.statusText || 'Bilinmeyen hata'}`;
+            showToast(`${type === 'allowlist' ? 'Allowlist' : 'Blocklist'} hatası: ${errMsg}`, 'error');
+            console.error('[addListEntry]', type, res.status, errMsg);
             return;
         }
+
         if (input) input.value = '';
-        if (statusEl) {
-            statusEl.innerHTML = `<span class="u-ok">✅ Eklendi</span>`;
-            setTimeout(() => { statusEl.textContent = ''; }, 2000);
-        }
+        showToast(
+            _tLit(
+                `✅ ${domain} ${type === 'allowlist' ? 'Allowlist' : 'Blocklist'}'e eklendi`,
+                `✅ ${domain} added to ${type}`
+            ),
+            'success'
+        );
         loadListsPanel();
     } catch (e) {
-        if (statusEl) statusEl.innerHTML = `<span class="u-err">${esc(e.message)}</span>`;
+        showToast(_tLit('Ağ hatası: ', 'Network error: ') + e.message, 'error');
+        console.error('[addListEntry] fetch hatası:', e);
     }
 }
 
 async function removeListEntry(type, domain) {
     try {
-        await fetch(`/api/lists/${type}/${encodeURIComponent(domain)}`, { method: 'DELETE' });
+        const res = await fetch(`/api/lists/${type}/${encodeURIComponent(domain)}`, { method: 'DELETE' });
+        if (!res.ok) {
+            let data = {};
+            try { data = await res.json(); } catch (_) {}
+            showToast(`Silme hatası: ${data.error || 'HTTP ' + res.status}`, 'error');
+            return;
+        }
         loadListsPanel();
     } catch (e) {
+        showToast('Silme ağ hatası: ' + e.message, 'error');
         console.error('removeListEntry error:', e);
     }
 }

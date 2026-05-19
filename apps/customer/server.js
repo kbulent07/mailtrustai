@@ -80,7 +80,9 @@ const BLOCKED = [
     '/api/central',
     '/api/customer-sync',
     '/api/policy',
-    '/api/lists',
+    // NOT: '/api/lists' BLOKLU DEĞİL — customer kendi allowlist/blocklist'ini
+    // yönetebilmeli. License-server'daki '/api/lists/:customerId/whitelist'
+    // gibi endpoint'ler customer app'inde zaten yüklü değil.
     '/api/config'
 ];
 // /api/admin/restart ve /api/admin/stop → HARD-GATE'den muaf (customer admin yönetimi)
