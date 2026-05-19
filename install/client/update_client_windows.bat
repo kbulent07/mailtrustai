@@ -4,7 +4,7 @@ REM  MailTrustAI - Windows Musteri Guncelleme (cift-tikla)
 REM
 REM  Bu dosyaya cift tiklayinca:
 REM    1) Yonetici yetkisine yukselir (UAC istemi)
-REM    2) upgrade_windows.ps1'i calistirir:
+REM    2) update_client_windows.ps1'i calistirir:
 REM       - .env DOKUNULMAZ
 REM       - Otomatik yedek alir (.env + customer-data + customer-logs)
 REM       - git pull --ff-only ile yeni surume gecer
@@ -12,7 +12,7 @@ REM       - docker compose build + restart
 REM       - /healthz polling ile saglik kontrolu yapar
 REM
 REM  Onkosul: Repo C:\mailtrustai-source altinda kurulu olmali
-REM           (install_windows_musteri.bat ile kuruldu mu?)
+REM           (install_client_windows.bat ile kuruldu mu?)
 REM ============================================================
 
 setlocal
@@ -26,18 +26,18 @@ if %errorlevel% neq 0 (
 )
 
 REM --- Repo'yu bul ---
-REM upgrade_windows.ps1 git pull yapacagi icin REPO'DAKI .ps1'i kullanmali
-set "PS1_REPO=C:\mailtrustai-source\install\client\upgrade_windows.ps1"
+REM update_client_windows.ps1 git pull yapacagi icin REPO'DAKI .ps1'i kullanmali
+set "PS1_REPO=C:\mailtrustai-source\install\client\update_client_windows.ps1"
 
 if not exist "%PS1_REPO%" (
     echo.
-    echo HATA: Repo bulunamadi: C:\mailtrustai-source\install\client\upgrade_windows.ps1
+    echo HATA: Repo bulunamadi: C:\mailtrustai-source\install\client\update_client_windows.ps1
     echo.
-    echo Bu kurulum 'install_windows_musteri.bat' ile yapilmamis olabilir.
+    echo Bu kurulum 'install_client_windows.bat' ile yapilmamis olabilir.
     echo Guncelleme icin once asagidakilerden birini yapin:
     echo.
     echo   1) Bootstrap ile yeniden kur:
-    echo      install_windows_musteri.bat'a cift tiklayin
+    echo      install_client_windows.bat'a cift tiklayin
     echo.
     echo   2) Repo'yu manuel klonla:
     echo      git clone -b mainpaketler https://github.com/kbulent07/mailtrustai.git C:\mailtrustai-source

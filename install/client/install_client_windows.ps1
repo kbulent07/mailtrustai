@@ -9,7 +9,7 @@
       2) Git for Windows - varsa atlanir
       3) Docker Desktop - varsa atlanir (yeniden baslatma gerekebilir!)
       4) GitHub'dan mainpaketler repo'sunu klonlar
-      5) install_windows_user.ps1 ile asil musteri kurulumunu baslatir
+      5) install_client_windows_setup.ps1 ile asil musteri kurulumunu baslatir
 
 .PARAMETER InstallRoot
     Repo'nun klonlanacagi kok dizin. Varsayilan: C:\mailtrustai-source
@@ -26,10 +26,10 @@
 
 .EXAMPLE
     # En basit (interaktif):
-    powershell -ExecutionPolicy Bypass -File install_windows_musteri.ps1
+    powershell -ExecutionPolicy Bypass -File install_client_windows.ps1
 
     # Tek satir parametreli:
-    powershell -ExecutionPolicy Bypass -File install_windows_musteri.ps1 `
+    powershell -ExecutionPolicy Bypass -File install_client_windows.ps1 `
         -LicenseKey "MTAI-PRO-XXXX-XXXX" `
         -LicenseServerUrl "https://license.firma.com"
 #>
@@ -194,7 +194,7 @@ if (-not $dockerInstalled) {
         Warn "  3) Docker Desktop hosgeldin ekranini gecin (kayit/lisans onayi)"
         Warn "  4) Sistem tepsisinde Docker yesil/calisir oldugunu dogrulayin"
         Warn "  5) Bu kurulumu yeniden baslatin:"
-        Warn "     install_windows_musteri.bat'a tekrar cift tiklayin"
+        Warn "     install_client_windows.bat'a tekrar cift tiklayin"
         Warn "============================================================"
         try { Stop-Transcript | Out-Null } catch { }
         Read-Host "  Devam etmek icin Enter'a basin"
@@ -272,7 +272,7 @@ if (Test-Path $InstallRoot) {
 # ============================================================================
 Step "5/5  Musteri kurulum scripti baslatiliyor..."
 
-$InstallScript = Join-Path $InstallRoot 'install\client\install_windows_user.ps1'
+$InstallScript = Join-Path $InstallRoot 'install\client\install_client_windows_setup.ps1'
 if (-not (Test-Path $InstallScript)) {
     Fatal "Kurulum scripti bulunamadi: $InstallScript"
 }

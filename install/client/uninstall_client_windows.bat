@@ -7,10 +7,10 @@ REM    1) Yonetici yetkisine yukselir (UAC istemi)
 REM    2) Kullaniciya seri sorar:
 REM       - Sadece container kapat (veriler korunur)
 REM       - Her seyi sil (volume + .env + kurulum dizini)
-REM    3) uninstall_windows.ps1'i ilgili parametrelerle calistirir
+REM    3) uninstall_client_windows.ps1'i ilgili parametrelerle calistirir
 REM
 REM  PS1 dosyasi:
-REM    Once C:\mailtrustai-source\install\client\uninstall_windows.ps1
+REM    Once C:\mailtrustai-source\install\client\uninstall_client_windows.ps1
 REM    Sonra .bat ile ayni dizinde
 REM    Bulunmazsa GitHub'dan indirilir
 REM ============================================================
@@ -26,20 +26,20 @@ if %errorlevel% neq 0 (
 )
 
 REM --- PS1'i bul (oncelik sirasi: repo, ayni klasor, indir) ---
-set "PS1_REPO=C:\mailtrustai-source\install\client\uninstall_windows.ps1"
-set "PS1_LOCAL=%~dp0uninstall_windows.ps1"
+set "PS1_REPO=C:\mailtrustai-source\install\client\uninstall_client_windows.ps1"
+set "PS1_LOCAL=%~dp0uninstall_client_windows.ps1"
 set "PS1_PATH="
 
 if exist "%PS1_REPO%"  set "PS1_PATH=%PS1_REPO%"
 if not defined PS1_PATH if exist "%PS1_LOCAL%" set "PS1_PATH=%PS1_LOCAL%"
 
 if not defined PS1_PATH (
-    echo uninstall_windows.ps1 bulunamadi. GitHub'dan indiriliyor...
+    echo uninstall_client_windows.ps1 bulunamadi. GitHub'dan indiriliyor...
     set "PS1_PATH=%PS1_LOCAL%"
     powershell -ExecutionPolicy Bypass -NoProfile -Command ^
-        "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/client/uninstall_windows.ps1' -OutFile '!PS1_PATH!'"
+        "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/client/uninstall_client_windows.ps1' -OutFile '!PS1_PATH!'"
     if not exist "!PS1_PATH!" (
-        echo HATA: uninstall_windows.ps1 indirilemedi. Internet baglantinizi kontrol edin.
+        echo HATA: uninstall_client_windows.ps1 indirilemedi. Internet baglantinizi kontrol edin.
         pause
         exit /b 1
     )

@@ -1,13 +1,13 @@
 @echo off
 REM ============================================================
-REM  MailTrustAI - Windows Musteri Otomatik Kurulum (cift-tikla)
+REM  MailTrustAI - Windows Client Otomatik Kurulum (cift-tikla)
 REM
 REM  Bu dosyaya cift tiklayinca:
 REM    1) Yonetici yetkisine yukselir (UAC istemi cikar)
-REM    2) install_windows_musteri.ps1'i calistirir (yaninda yoksa indirir)
+REM    2) install_client_windows.ps1'i calistirir (yaninda yoksa indirir)
 REM    3) PS1 sirayla:
 REM         winget -> git -> Docker Desktop -> repo klon ->
-REM         install_windows_user.ps1 (asil kurulum)
+REM         install_client_windows_setup.ps1 (asil kurulum)
 REM
 REM  Internet baglantisi gerekir.
 REM  Docker Desktop ilk kurulduysa Windows yeniden baslatma isteyebilir.
@@ -24,14 +24,14 @@ if %errorlevel% neq 0 (
 )
 
 REM --- PS1 dosyasi yaninda mi? Yoksa GitHub'dan indir ---
-set "PS1_PATH=%~dp0install_windows_musteri.ps1"
+set "PS1_PATH=%~dp0install_client_windows.ps1"
 
 if not exist "%PS1_PATH%" (
-    echo install_windows_musteri.ps1 bulunamadi. GitHub'dan indiriliyor...
+    echo install_client_windows.ps1 bulunamadi. GitHub'dan indiriliyor...
     powershell -ExecutionPolicy Bypass -NoProfile -Command ^
-        "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/client/install_windows_musteri.ps1' -OutFile '%PS1_PATH%'"
+        "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/client/install_client_windows.ps1' -OutFile '%PS1_PATH%'"
     if not exist "%PS1_PATH%" (
-        echo HATA: install_windows_musteri.ps1 indirilemedi. Internet baglantinizi kontrol edin.
+        echo HATA: install_client_windows.ps1 indirilemedi. Internet baglantinizi kontrol edin.
         pause
         exit /b 1
     )
@@ -40,7 +40,7 @@ if not exist "%PS1_PATH%" (
 REM --- PS1'i calistir ---
 echo.
 echo ===============================================
-echo  MailTrustAI Musteri Kurulumu Baslatiliyor
+echo  MailTrustAI Client Kurulumu Baslatiliyor
 echo ===============================================
 echo.
 powershell -ExecutionPolicy Bypass -NoProfile -File "%PS1_PATH%"

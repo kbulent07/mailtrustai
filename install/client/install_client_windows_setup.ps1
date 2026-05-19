@@ -28,15 +28,15 @@
 
 .EXAMPLE
     # Etkileşimli kurulum (en basit yol):
-    powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1
+    powershell -ExecutionPolicy Bypass -File install\client\install_client_windows_setup.ps1
 
     # Parametrelerle:
-    powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\install_client_windows_setup.ps1 `
         -LicenseKey "MSA-XXXX-XXXX-XXXX" `
         -LicenseServerUrl "https://license.firma.com"
 
     # Hazır image tar dosyasıyla:
-    powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\install_client_windows_setup.ps1 `
         -ImageFile "C:\Downloads\mailtrustai-customer.tar"
 #>
 
@@ -451,7 +451,7 @@ switch ($Action) {
         $repoPath = $null
         $repoFile = Join-Path $dir '.repo_path'
         if (Test-Path $repoFile) { $repoPath = (Get-Content $repoFile -Raw).Trim() }
-        $upgradeScript = if ($repoPath) { Join-Path $repoPath 'install\client\upgrade_windows.ps1' } else { $null }
+        $upgradeScript = if ($repoPath) { Join-Path $repoPath 'install\client\update_client_windows.ps1' } else { $null }
         if ($upgradeScript -and (Test-Path $upgradeScript)) {
             & powershell -ExecutionPolicy Bypass -File $upgradeScript
         } else {

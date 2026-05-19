@@ -23,14 +23,14 @@
 
 .EXAMPLE
     # Klasik (interaktif, repo'dan):
-    powershell -ExecutionPolicy Bypass -File install\client\upgrade_windows.ps1
+    powershell -ExecutionPolicy Bypass -File install\client\update_client_windows.ps1
 
     # Yeni image tar dosyasiyla:
-    powershell -ExecutionPolicy Bypass -File install\client\upgrade_windows.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\update_client_windows.ps1 `
         -ImageFile "C:\Downloads\mailtrustai-customer-v2.tar"
 
     # Otomasyon (Task Scheduler):
-    powershell -ExecutionPolicy Bypass -File install\client\upgrade_windows.ps1 -Unattended
+    powershell -ExecutionPolicy Bypass -File install\client\update_client_windows.ps1 -Unattended
 #>
 
 [CmdletBinding()]
@@ -89,7 +89,7 @@ $EnvFile     = Join-Path $InstallDir '.env'
 $ComposeFile = Join-Path $InstallDir 'docker-compose.customer.yml'
 
 if (-not (Test-Path $InstallDir)) {
-    Fatal "Kurulum dizini bulunamadi: $InstallDir. Ilk kurulum icin install_windows_user.ps1 kullanin."
+    Fatal "Kurulum dizini bulunamadi: $InstallDir. Ilk kurulum icin install_client_windows_setup.ps1 kullanin."
 }
 if (-not (Test-Path $EnvFile)) {
     Fatal ".env bulunamadi: $EnvFile. Kurulum bozulmus olabilir; install scriptini yeniden calistirin."
@@ -364,7 +364,7 @@ if ($PrevCommit -and $NewCommit -and $PrevCommit -ne $NewCommit) {
     Write-Color "  Rollback (sorun varsa):" 'White'
     Write-Color "  cd `"$RepoRoot`"" 'Cyan'
     Write-Color "  git reset --hard $PrevCommit" 'Cyan'
-    Write-Color "  powershell -ExecutionPolicy Bypass -File install\client\upgrade_windows.ps1" 'Cyan'
+    Write-Color "  powershell -ExecutionPolicy Bypass -File install\client\update_client_windows.ps1" 'Cyan'
     Write-Host ""
 }
 

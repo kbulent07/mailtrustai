@@ -18,10 +18,10 @@
 
 .EXAMPLE
     # Sadece konteyneri kaldır (veriler korunur):
-    powershell -ExecutionPolicy Bypass -File install\client\uninstall_windows.ps1
+    powershell -ExecutionPolicy Bypass -File install\client\uninstall_client_windows.ps1
 
     # Her şeyi sil (tam temizlik):
-    powershell -ExecutionPolicy Bypass -File install\client\uninstall_windows.ps1 -Purge -RemoveImage
+    powershell -ExecutionPolicy Bypass -File install\client\uninstall_client_windows.ps1 -Purge -RemoveImage
 #>
 
 [CmdletBinding()]
@@ -104,7 +104,7 @@ if ($Purge) {
 } else {
     Write-Color "  Konteyner durdurulacak ve silinecek." 'Yellow'
     Write-Color "  Veriler (volumes, .env) KORUNACAK." 'Yellow'
-    Write-Color "  Tum verileri silmek icin: uninstall_windows.ps1 -Purge" 'Yellow'
+    Write-Color "  Tum verileri silmek icin: uninstall_client_windows.ps1 -Purge" 'Yellow'
     Write-Host ""
     if (-not $Unattended) {
         Read-Host "  Devam etmek icin Enter'a basin (Ctrl+C ile iptal)" | Out-Null
@@ -203,7 +203,7 @@ if (-not $Purge) {
     Write-Color "  Veriler korundu: $InstallDir" 'Yellow'
     Write-Color ""
     Write-Color "  Yeniden kurmak için:" 'White'
-    Write-Color "  powershell -ExecutionPolicy Bypass -File install\client\install_windows_user.ps1" 'Cyan'
+    Write-Color "  powershell -ExecutionPolicy Bypass -File install\client\install_client_windows_setup.ps1" 'Cyan'
 }
 
 Write-Host ""
