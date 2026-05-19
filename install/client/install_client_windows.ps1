@@ -100,6 +100,25 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     Fatal "Bu betik Yonetici yetkisiyle calistirilmalidir."
 }
 
+# --- ExecutionPolicy bir defalik ayarla -----------------------------------
+# Bu adim sayesinde kurulumdan sonra .ps1 dosyalari (mailtrustai-ctl.ps1,
+# update_client_windows.ps1, uninstall_client_windows.ps1) .bat sarmalayicisi
+# olmadan da dogrudan calistirilabilir.
+# CurrentUser scope kullanildigi icin sistem genelinde etki etmez.
+try {
+    $cuPolicy = Get-ExecutionPolicy -Scope CurrentUser
+    if ($cuPolicy -in @('Restricted','AllSigned','Undefined')) {
+        Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
+        Ok "ExecutionPolicy (CurrentUser) -> RemoteSigned (eski: $cuPolicy)"
+        Info "Artik .ps1 dosyalari dogrudan calistirilabilir (her seferinde .bat'a gerek yok)."
+    } else {
+        Info "ExecutionPolicy (CurrentUser) zaten uygun: $cuPolicy"
+    }
+} catch {
+    Warn "ExecutionPolicy ayarlanamadi: $($_.Exception.Message)"
+    Warn "Manuel ayarlamak icin: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force"
+}
+
 # ============================================================================
 # 1/5  winget kontrol + kurulum
 # ============================================================================

@@ -59,6 +59,15 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     Fatal "Bu betik yönetici (Administrator) yetkisiyle çalıştırılmalıdır."
 }
 
+# --- ExecutionPolicy self-fix --------------------------------------------
+try {
+    $cuPolicy = Get-ExecutionPolicy -Scope CurrentUser
+    if ($cuPolicy -in @('Restricted','AllSigned','Undefined')) {
+        Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
+        Info "ExecutionPolicy (CurrentUser) -> RemoteSigned (eski: $cuPolicy)"
+    }
+} catch { }
+
 # ─── Banner ──────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Color "  ╔══════════════════════════════════════════════════════╗" 'Red'

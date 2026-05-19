@@ -489,6 +489,19 @@ switch ($Action) {
 Set-Content -Path $ctlScript -Value $ctlContent -Encoding UTF8
 Ok "Yönetim scripti: $ctlScript"
 
+# ctl.bat sarmalayicisi: ExecutionPolicy ne olursa olsun calismayi garanti eder.
+# Kullanici PowerShell'i ozellestirmek istemezse 'mailtrustai-ctl.bat status' demesi yeterli.
+$ctlBat = Join-Path $InstallDir 'mailtrustai-ctl.bat'
+$ctlBatContent = @"
+@echo off
+REM MailTrustAI Musteri Yonetim Araci - .bat sarmalayicisi
+REM Kullanim: mailtrustai-ctl.bat {start|stop|restart|status|logs|update|backup}
+REM .ps1'i -ExecutionPolicy Bypass ile cagirir; policy kisitlamasi olsa bile calisir.
+powershell -ExecutionPolicy Bypass -NoProfile -File "%~dp0mailtrustai-ctl.ps1" %*
+"@
+Set-Content -Path $ctlBat -Value $ctlBatContent -Encoding Default
+Ok "Yonetim bat sarmalayicisi: $ctlBat"
+
 # Repo yolunu kaydet
 Set-Content -Path (Join-Path $InstallDir '.repo_path') -Value $RepoRoot -Encoding UTF8
 

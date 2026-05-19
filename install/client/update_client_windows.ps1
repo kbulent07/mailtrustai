@@ -73,6 +73,17 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     Fatal "Bu betik Yonetici yetkisiyle calistirilmalidir. PowerShell'i 'Yonetici olarak calistir' ile acin."
 }
 
+# --- ExecutionPolicy self-fix ------------------------------------------------
+# Bu script .bat sarmalayicisi olmadan dogrudan da calistirilabilir olsun.
+# CurrentUser scope RemoteSigned'a yukseltilir (sistem genelini etkilemez).
+try {
+    $cuPolicy = Get-ExecutionPolicy -Scope CurrentUser
+    if ($cuPolicy -in @('Restricted','AllSigned','Undefined')) {
+        Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
+        Info "ExecutionPolicy (CurrentUser) -> RemoteSigned (eski: $cuPolicy)"
+    }
+} catch { }
+
 # --- Banner ------------------------------------------------------------------
 Write-Host ""
 Write-Color "  ======================================================" 'Cyan'
