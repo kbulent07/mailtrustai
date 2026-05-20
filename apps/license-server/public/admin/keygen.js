@@ -135,6 +135,7 @@ function activateTab(tabName) {
     if (tabName === 'manage')    renderManageTable();
     if (tabName === 'audit')     loadAudit();
     if (tabName === 'transfers') loadAdminTransfers();
+    if (tabName === 'security')  loadSecurityStatus();
 }
 
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -161,7 +162,10 @@ $('loginForm').addEventListener('submit', async (e) => {
             const j = await r.json().catch(() => ({}));
             throw new Error(j.error || `HTTP ${r.status}`);
         }
-        sessionStorage.setItem(TOKEN_KEY, token);
+        const data = await r.json().catch(() => ({}));
+        // Sunucu artık oturum token'ı döndürüyor — sonraki istekler bununla
+        // yetkilenir. (Eski sürümle uyumluluk: sessionToken yoksa girilen token.)
+        sessionStorage.setItem(TOKEN_KEY, data.sessionToken || token);
         showDashboard();
     } catch (e) {
         errEl.textContent = 'Hata: ' + (e.message || 'giriş başarısız');
@@ -1089,6 +1093,52 @@ async function adminRejectTransfer(id) {
 
 $('adminTransfersRefresh')?.addEventListener('click', loadAdminTransfers);
 $('adminTransferStatus')?.addEventListener('change', loadAdminTransfers);
+
+// ================================================================
+// GÜVENLİK: panel erişim şifresi
+// ================================================================
+async function loadSecurityStatus() {
+    const el = $('securityStatus');
+    if (!el) return;
+    try {
+        const s = await api('/api/admin/security-status');
+        el.innerHTML = s.customPasswordSet
+            ? '✅ <strong>Özel panel şifresi ayarlı.</strong><br>Giriş için belirlediğiniz şifreyi kullanın.'
+            : '⚠️ <strong>Henüz özel şifre ayarlanmadı.</strong><br>Şu an yalnız <code>ADMIN_PANEL_TOKEN</code> ile giriş yapılıyor. Aşağıdan kendi şifrenizi belirleyebilirsiniz.';
+        el.innerHTML += '<br><span style="opacity:.7">Env token (kurtarma): ' +
+            (s.envTokenActive ? 'aktif' : 'tanımsız') + '</span>';
+    } catch (e) {
+        el.textContent = 'Durum alınamadı: ' + (e.message || 'hata');
+    }
+}
+
+$('changePasswordForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const cur  = $('cpCurrent').value;
+    const p1   = $('cpNew').value;
+    const p2   = $('cpNew2').value;
+    const resEl = $('changePasswordResult');
+    resEl.textContent = ''; resEl.style.color = '';
+    if (p1.length < 8) { resEl.style.color = '#f87171'; resEl.textContent = 'Yeni şifre en az 8 karakter olmalı.'; return; }
+    if (p1 !== p2)     { resEl.style.color = '#f87171'; resEl.textContent = 'Yeni şifreler uyuşmuyor.'; return; }
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true; const _t = btn.textContent; btn.textContent = '⏳ Güncelleniyor...';
+    try {
+        await api('/api/admin/change-password', {
+            method: 'POST',
+            body: { currentSecret: cur, newPassword: p1 }
+        });
+        resEl.style.color = '#34d399';
+        resEl.textContent = '✅ Panel şifresi güncellendi. Bir sonraki girişte yeni şifreyi kullanın.';
+        $('changePasswordForm').reset();
+        loadSecurityStatus();
+    } catch (err) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = 'Hata: ' + (err.message || 'şifre güncellenemedi');
+    } finally {
+        btn.disabled = false; btn.textContent = _t;
+    }
+});
 
 // ================================================================
 // BOOT: sessionStorage'da token varsa doğrula ve giriş yap

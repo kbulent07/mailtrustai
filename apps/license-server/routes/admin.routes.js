@@ -21,6 +21,11 @@ function escapeLike(s) {
 
 const ADMIN_TOKEN = env('ADMIN_PANEL_TOKEN') || '';
 const isProd = String(env('NODE_ENV', 'development')).toLowerCase() === 'production';
+
+// bcrypt — DB-saklı owner şifresi için (opsiyonel; yoksa yalnız env token çalışır)
+let bcrypt = null;
+try { bcrypt = require('bcrypt'); } catch (_) {}
+
 if (!ADMIN_TOKEN) {
     const { logger: _log } = require('@mailtrustai/shared');
     if (isProd) {
@@ -30,42 +35,130 @@ if (!ADMIN_TOKEN) {
     _log.warn('[admin] UYARI: ADMIN_PANEL_TOKEN tanımsız — admin panel yalnızca development için kapalı (uçlar 503).');
 }
 
+// ─── Owner panel şifresi (DB-saklı, opsiyonel) + oturum yönetimi ──────────────
+// admin_settings tablosunda 'admin_password_hash' (bcrypt) saklanır.
+// /admin/login HEM env token'ı (kurtarma/break-glass) HEM DB şifresini kabul eder.
+// Başarılı login bir OTURUM token'ı üretir; sonraki istekler bu token ile
+// yetkilenir → her istekte bcrypt çalışmaz (oturum doğrulaması in-memory, hızlı).
+const _adminSessions = new Map(); // sessionToken -> expiresAtMs
+const SESSION_TTL_MS = envInt('ADMIN_PANEL_SESSION_HOURS', 12) * 3600 * 1000;
+
+function _pruneSessions() {
+    const now = Date.now();
+    for (const [t, exp] of _adminSessions) if (now > exp) _adminSessions.delete(t);
+}
+function _newSession() {
+    _pruneSessions();
+    const token = crypto.randomBytes(32).toString('hex');
+    _adminSessions.set(token, Date.now() + SESSION_TTL_MS);
+    return token;
+}
+function _validSession(token) {
+    if (!token) return false;
+    const exp = _adminSessions.get(token);
+    if (!exp) return false;
+    if (Date.now() > exp) { _adminSessions.delete(token); return false; }
+    return true;
+}
+function _envTokenEquals(provided) {
+    if (!ADMIN_TOKEN || !provided) return false;
+    const a = Buffer.from(String(provided)), b = Buffer.from(ADMIN_TOKEN);
+    if (a.length !== b.length) return false;
+    try { return crypto.timingSafeEqual(a, b); } catch (_) { return false; }
+}
+async function _getAdminPasswordHash() {
+    try {
+        const row = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'admin_password_hash'");
+        return row?.setting_value || null;
+    } catch (_) { return null; }
+}
+// Login secret doğrulama: env token (kurtarma) VEYA DB şifresi (bcrypt)
+async function _verifyLoginSecret(provided) {
+    if (!provided || typeof provided !== 'string') return false;
+    if (_envTokenEquals(provided)) return true;
+    const hash = await _getAdminPasswordHash();
+    if (hash && bcrypt) {
+        try { return await bcrypt.compare(provided, hash); } catch (_) { return false; }
+    }
+    return false;
+}
+
 function adminAuth(req, res, next) {
     if (!ADMIN_TOKEN) return res.status(503).json({ error: 'admin panel kapalı (ADMIN_PANEL_TOKEN tanımsız)' });
     const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
     if (!m) return res.status(401).json({ error: 'admin token gerekli' });
-    const tokenBuf = Buffer.from(m[1]);
-    const expectBuf = Buffer.from(ADMIN_TOKEN);
-    if (tokenBuf.length !== expectBuf.length) return res.status(401).json({ error: 'admin token gecersiz' });
-    try {
-        if (!crypto.timingSafeEqual(tokenBuf, expectBuf)) {
-            return res.status(401).json({ error: 'admin token gecersiz' });
-        }
-    } catch (_) { return res.status(401).json({ error: 'admin token gecersiz' }); }
-    req.actor = 'admin';
-    next();
+    const bearer = m[1];
+    // Geçerli oturum token'ı VEYA env token (break-glass / API scriptleri)
+    if (_validSession(bearer) || _envTokenEquals(bearer)) {
+        req.actor = 'admin';
+        return next();
+    }
+    return res.status(401).json({ error: 'admin token gecersiz' });
 }
 
 // ============================================================
-// POST /api/admin/login  (public — token doğrulama + audit)
+// POST /api/admin/login  (public — env token VEYA owner şifresi → oturum token)
 // ============================================================
 router.post('/admin/login', asyncH(async (req, res) => {
     const { token } = req.body || {};
     if (!ADMIN_TOKEN) return res.status(503).json({ error: 'admin panel kapalı' });
     if (!token || typeof token !== 'string') return res.status(400).json({ error: 'token gerekli' });
-    const a = Buffer.from(token), b = Buffer.from(ADMIN_TOKEN);
-    if (a.length !== b.length) {
-        await audit('admin', 'admin.login.fail', null, { reason: 'bad-length' });
-        return res.status(401).json({ error: 'gecersiz token' });
-    }
-    let ok = false;
-    try { ok = crypto.timingSafeEqual(a, b); } catch (_) {}
+
+    const ok = await _verifyLoginSecret(token);
     if (!ok) {
-        await audit('admin', 'admin.login.fail', null, { reason: 'bad-token' });
+        await audit('admin', 'admin.login.fail', null, { reason: 'bad-secret' });
         return res.status(401).json({ error: 'gecersiz token' });
     }
-    await audit('admin', 'admin.login.ok', null, null);
-    res.json({ ok: true, expiresIn: envInt('ADMIN_PANEL_SESSION_HOURS', 12) * 3600 });
+    const sessionToken = _newSession();
+    const viaEnv = _envTokenEquals(token);
+    await audit('admin', 'admin.login.ok', null, { via: viaEnv ? 'env-token' : 'password' });
+    res.json({ ok: true, sessionToken, expiresIn: Math.floor(SESSION_TTL_MS / 1000) });
+}));
+
+// ============================================================
+// GET /api/admin/security-status — özel şifre ayarlı mı? (UI bilgi)
+// ============================================================
+router.get('/admin/security-status', adminAuth, asyncH(async (req, res) => {
+    const hash = await _getAdminPasswordHash();
+    res.json({ customPasswordSet: !!hash, envTokenActive: !!ADMIN_TOKEN });
+}));
+
+// ============================================================
+// POST /api/admin/change-password — owner panel giriş şifresini değiştir
+// body: { currentSecret, newPassword }
+//   • currentSecret: mevcut şifre VEYA env token (doğrulama)
+//   • newPassword:   yeni panel şifresi (>=8 karakter, bcrypt'lenir)
+// Env token kurtarma amacıyla HER ZAMAN geçerli kalır.
+// ============================================================
+router.post('/admin/change-password', adminAuth, asyncH(async (req, res) => {
+    if (!bcrypt) return res.status(503).json({ error: 'bcrypt kurulu değil (şifre özelliği kapalı)' });
+    const { currentSecret, newPassword } = req.body || {};
+    if (!currentSecret || !newPassword) {
+        return res.status(400).json({ error: 'currentSecret ve newPassword gerekli' });
+    }
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+        return res.status(400).json({ error: 'Yeni şifre en az 8 karakter olmalı' });
+    }
+
+    const ok = await _verifyLoginSecret(currentSecret);
+    if (!ok) {
+        await audit('admin', 'admin.password.change.fail', null, { reason: 'bad-current' });
+        return res.status(403).json({ error: 'Mevcut şifre/token hatalı' });
+    }
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    const now = Date.now();
+    const upsertSql = isMariaCheck()
+        ? `INSERT INTO admin_settings(setting_key, setting_value, updated_at)
+           VALUES('admin_password_hash', ?, ?)
+           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = VALUES(updated_at)`
+        : `INSERT INTO admin_settings(setting_key, setting_value, updated_at)
+           VALUES('admin_password_hash', ?, ?)
+           ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at`;
+    await run(upsertSql, [hash, now]);
+    await audit('admin', 'admin.password.change.ok', null, null);
+
+    res.json({ ok: true });
 }));
 
 // ============================================================
@@ -446,8 +539,7 @@ router.get('/admin/dealers', adminAuth, asyncH(async (req, res) => {
 // DEALER YÖNETİMİ (admin paneli)
 // ============================================================
 const { v4: uuid } = require('uuid');
-let bcrypt = null;
-try { bcrypt = require('bcrypt'); } catch (_) {}
+// NOT: bcrypt dosyanın başında zaten require edildi (owner şifre özelliği).
 
 // POST /api/admin/dealers — yeni bayi olustur
 router.post('/admin/dealers', adminAuth, asyncH(async (req, res) => {

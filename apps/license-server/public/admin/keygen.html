@@ -49,6 +49,7 @@
             <a class="nav-item" data-tab="manage">⚙️ <span>Lisans Yönet</span></a>
             <a class="nav-item" data-tab="audit">📜 <span>Audit Log</span></a>
             <a class="nav-item" data-tab="transfers">🔁 <span>Transferler</span></a>
+            <a class="nav-item" data-tab="security">🔐 <span>Güvenlik</span></a>
         </aside>
 
         <main class="main" role="main" aria-label="Yönetim Paneli İçeriği">
@@ -379,6 +380,38 @@
                 </table>
             </div>
             <div id="adminTransferResult" style="margin-top:10px"></div>
+        </section>
+
+        <!-- =========== TAB: GÜVENLİK =========== -->
+        <section class="tab-content" data-tab="security">
+            <h2>🔐 Panel Erişim Şifresi</h2>
+            <div class="two-col">
+                <div class="col">
+                    <div id="securityStatus" class="form-card" style="margin-bottom:14px;font-size:13px;color:#cbd5e1;line-height:1.7">
+                        Durum yükleniyor...
+                    </div>
+                    <div class="form-card" style="font-size:12px;color:#94a3b8;line-height:1.7">
+                        ℹ️ Bu panele giriş için kullandığınız şifreyi buradan değiştirebilirsiniz.<br>
+                        • Yeni şifre veritabanında <strong>bcrypt</strong> ile şifreli saklanır.<br>
+                        • Sunucu <code>.env</code> dosyasındaki <strong>ADMIN_PANEL_TOKEN</strong>
+                          her zaman <strong>kurtarma (break-glass)</strong> amacıyla geçerli kalır —
+                          şifrenizi unutursanız onunla girebilirsiniz.
+                    </div>
+                </div>
+                <div class="col">
+                    <h2>🔑 Şifre Değiştir</h2>
+                    <form id="changePasswordForm" class="form-card">
+                        <label for="cpCurrent">Mevcut Şifre / Token</label>
+                        <input type="password" id="cpCurrent" required placeholder="mevcut şifre veya ADMIN_PANEL_TOKEN" autocomplete="current-password">
+                        <label for="cpNew">Yeni Şifre</label>
+                        <input type="password" id="cpNew" required minlength="8" placeholder="≥ 8 karakter" autocomplete="new-password">
+                        <label for="cpNew2">Yeni Şifre (Tekrar)</label>
+                        <input type="password" id="cpNew2" required minlength="8" placeholder="tekrar" autocomplete="new-password">
+                        <button type="submit" class="primary">🔐 Şifreyi Güncelle</button>
+                        <div id="changePasswordResult" class="result" role="status" aria-live="polite"></div>
+                    </form>
+                </div>
+            </div>
         </section>
 
         </main>
