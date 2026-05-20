@@ -11,6 +11,7 @@ const { validateLicenseKey } = require('../../../license/license');
 const { cleanupInitialCredsFile } = require('../../../services/initialSetupService');
 const customerUserStore = require('../../../storage/customerUserStore');
 const { sendSystemEmail } = require('../../../smtp/sender');
+const { recordAudit } = require('../../../storage/auditLog');
 
 // Timing-safe string karşılaştırma — setup token bilgi sızıntısını engeller.
 function _tokenEquals(a, b) {
@@ -258,6 +259,107 @@ router.get('/customer/reset-password/validate', (req, res) => {
     const row   = customerUserStore.findByResetToken(token);
     if (!row) return res.status(400).json({ valid: false, error: 'Geçersiz veya süresi dolmuş bağlantı.' });
     res.json({ valid: true, email: row.email });
+});
+
+// ─── OWNER KURTARMA: MSA_SETUP_TOKEN ile admin şifre sıfırlama ────────────────
+// SMTP yapılandırılmamışsa (e-posta sihirli bağlantı çalışmaz) owner, sunucu
+// .env'indeki MSA_SETUP_TOKEN ile bir admin'in şifresini sıfırlayabilir.
+// İlk kurulumla aynı hijack koruması: localhost VEYA geçerli token.
+// Rate-limit login ile paylaşılır (brute-force koruması).
+function _checkRecoveryAuth(req) {
+    const ipRaw = String(req.ip || req.connection?.remoteAddress || '');
+    const isLocal = /^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1|localhost)$/i.test(ipRaw);
+    const expectedToken = process.env.MSA_SETUP_TOKEN || '';
+    const providedToken = String(
+        req.headers['x-setup-token'] ||
+        req.query?.setup_token ||
+        req.body?.setupToken ||
+        ''
+    );
+    const tokenMatch = _tokenEquals(expectedToken, providedToken);
+    // Token tanımlı değilse yalnız localhost; tanımlıysa eşleşme zorunlu.
+    const ok = expectedToken ? tokenMatch : isLocal;
+    return { ok, isLocal, tokenMatch, hasToken: !!expectedToken };
+}
+
+// POST /customer/admin-recover/list — token doğrula → admin e-postalarını döndür
+router.post('/customer/admin-recover/list', (req, res) => {
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    const rate = customerAuth.checkLoginRate(ip);
+    if (!rate.allowed) {
+        return res.status(429).json({
+            error: `Çok fazla deneme. ${Math.ceil(rate.retryAfter / 60)} dakika sonra deneyin.`,
+            retryAfter: rate.retryAfter
+        });
+    }
+
+    const auth = _checkRecoveryAuth(req);
+    if (!auth.ok) {
+        const _mask = (s) => s ? (String(s).slice(0, 3) + '***len=' + String(s).length) : '<empty>';
+        console.warn('[AdminRecover-403] list reddedildi ip=' + ip +
+            ' hasToken=' + auth.hasToken + ' provided=' + _mask(req.body?.setupToken || ''));
+        return res.status(403).json({
+            error: auth.hasToken
+                ? 'Geçersiz kurtarma token\'ı.'
+                : 'Sunucu .env dosyasında MSA_SETUP_TOKEN tanımlı değil; bu işlem yalnız localhost\'tan yapılabilir.'
+        });
+    }
+
+    // Yalnız aktif admin'leri listele (e-posta + son giriş bilgisi)
+    const admins = customerUserStore.listAll()
+        .filter(u => u.role === 'admin' && (u.active === 1 || u.active === true || u.active === undefined))
+        .map(u => ({ email: u.email, lastLogin: u.lastLogin || null }));
+
+    // Başarılı token doğrulamasında rate limiter'ı sıfırlama YAPMA — yine de
+    // reset adımında deneme hakkı kalsın; ama bilgi sızdırmamak için her zaman
+    // 200 ile boş/ dolu liste döndürüyoruz (token yanlışsa zaten 403 döndü).
+    res.json({ ok: true, admins });
+});
+
+// POST /customer/admin-recover/reset — token + admin e-postası + yeni şifre
+router.post('/customer/admin-recover/reset', async (req, res) => {
+    try {
+        const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+        const rate = customerAuth.checkLoginRate(ip);
+        if (!rate.allowed) {
+            return res.status(429).json({
+                error: `Çok fazla deneme. ${Math.ceil(rate.retryAfter / 60)} dakika sonra deneyin.`,
+                retryAfter: rate.retryAfter
+            });
+        }
+
+        const auth = _checkRecoveryAuth(req);
+        if (!auth.ok) {
+            return res.status(403).json({
+                error: auth.hasToken
+                    ? 'Geçersiz kurtarma token\'ı.'
+                    : 'Sunucu .env dosyasında MSA_SETUP_TOKEN tanımlı değil; bu işlem yalnız localhost\'tan yapılabilir.'
+            });
+        }
+
+        const email    = String(req.body?.email || '').trim().toLowerCase();
+        const password = String(req.body?.password || '');
+        if (!email)              return res.status(400).json({ error: 'Admin e-postası gerekli.' });
+        if (password.length < 6) return res.status(400).json({ error: 'Şifre en az 6 karakter olmalıdır.' });
+
+        // Hedef gerçekten bir admin mi? (yalnız admin şifresi sıfırlanabilir)
+        const target = customerUserStore.findByEmail(email);
+        if (!target || target.role !== 'admin') {
+            return res.status(404).json({ error: 'Bu e-posta ile bir yönetici hesabı bulunamadı.' });
+        }
+
+        await customerUserStore.setPassword(email, password);
+        customerAuth.clearLoginRate(ip); // başarılı sıfırlamada rate limiter'ı sıfırla
+
+        console.log(`[AdminRecover] Yönetici şifresi sıfırlandı: ${email} (kaynak: ${auth.isLocal ? 'localhost' : 'setup-token'})`);
+        recordAudit({
+            req, actorType: 'owner', actorId: email,
+            action: 'admin.recover.reset', status: 'success'
+        });
+        res.json({ ok: true, email });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // Eski endpoint — admin paneli üzerinden müşteri şifre sıfırlama.

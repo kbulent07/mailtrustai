@@ -49,17 +49,70 @@
 
         <!-- Şifremi Unuttum Formu -->
         <div id="customerAuthForgotForm" class="hidden">
-            <p style="font-size:13px;color:#94a3b8;margin:0 0 16px">Kayıtlı e-posta adresinizi girin. Şifre sıfırlama bağlantısı gönderilecek.</p>
-            <div style="margin-bottom:14px">
-                <label for="customerAuthForgotEmail" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">E-posta</label>
-                <input id="customerAuthForgotEmail" type="email" placeholder="ornek@sirket.com" autocomplete="email" required
-                    style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
-                    onkeydown="if(event.key==='Enter')customerAuthForgotSend()">
+            <!-- Sekmeler: E-posta ile / Token ile -->
+            <div style="display:flex;gap:6px;margin-bottom:16px;background:#0b1220;border:1px solid #263244;border-radius:8px;padding:4px">
+                <button type="button" id="forgotTabEmail" data-fn="forgotShowTab" data-arg="email"
+                    style="flex:1;padding:8px;background:#6366f1;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">📧 E-posta ile</button>
+                <button type="button" id="forgotTabToken" data-fn="forgotShowTab" data-arg="token"
+                    style="flex:1;padding:8px;background:transparent;color:#94a3b8;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">🔑 Token ile</button>
             </div>
-            <button data-fn="customerAuthForgotSend" id="customerAuthForgotBtn"
-                style="width:100%;padding:11px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
-                📧 Bağlantı Gönder
-            </button>
+
+            <!-- A) E-POSTA İLE (mevcut magic link) -->
+            <div id="forgotPaneEmail">
+                <p style="font-size:13px;color:#94a3b8;margin:0 0 16px">Kayıtlı e-posta adresinizi girin. Şifre sıfırlama bağlantısı gönderilecek.</p>
+                <div style="margin-bottom:14px">
+                    <label for="customerAuthForgotEmail" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">E-posta</label>
+                    <input id="customerAuthForgotEmail" type="email" placeholder="ornek@sirket.com" autocomplete="email"
+                        style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
+                        onkeydown="if(event.key==='Enter')customerAuthForgotSend()">
+                </div>
+                <button data-fn="customerAuthForgotSend" id="customerAuthForgotBtn"
+                    style="width:100%;padding:11px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+                    📧 Bağlantı Gönder
+                </button>
+            </div>
+
+            <!-- B) TOKEN İLE (owner kurtarma — SMTP gerekmez) -->
+            <div id="forgotPaneToken" class="hidden">
+                <p style="font-size:13px;color:#94a3b8;margin:0 0 14px">
+                    Sunucu <code style="color:#a5b4fc">.env</code> dosyasındaki <strong>MSA_SETUP_TOKEN</strong> ile
+                    bir yönetici hesabının şifresini sıfırlayın. (E-posta/SMTP gerekmez.)
+                </p>
+                <div style="margin-bottom:12px">
+                    <label for="recoverToken" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Kurtarma Token'ı</label>
+                    <input id="recoverToken" type="password" placeholder="MSA_SETUP_TOKEN" autocomplete="off"
+                        style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px;font-family:monospace">
+                </div>
+                <button data-fn="recoverListAdmins" id="recoverListBtn"
+                    style="width:100%;padding:11px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+                    🔍 Yöneticileri Listele
+                </button>
+
+                <!-- Token doğrulandıktan sonra açılır -->
+                <div id="recoverStep2" class="hidden" style="margin-top:16px;border-top:1px solid #263244;padding-top:14px">
+                    <div style="margin-bottom:12px">
+                        <label for="recoverAdminSelect" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yönetici Hesabı</label>
+                        <select id="recoverAdminSelect"
+                            style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"></select>
+                    </div>
+                    <div style="margin-bottom:12px">
+                        <label for="recoverNewPwd" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yeni Şifre</label>
+                        <input id="recoverNewPwd" type="password" placeholder="••••••••" autocomplete="new-password" minlength="6"
+                            style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px">
+                    </div>
+                    <div style="margin-bottom:14px">
+                        <label for="recoverNewPwd2" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;color:#cbd5e1">Yeni Şifre (Tekrar)</label>
+                        <input id="recoverNewPwd2" type="password" placeholder="••••••••" autocomplete="new-password" minlength="6"
+                            style="width:100%;box-sizing:border-box;padding:10px 12px;background:#0b1220;border:1px solid #263244;border-radius:8px;color:#f1f5f9;font-size:14px"
+                            onkeydown="if(event.key==='Enter')recoverResetSubmit()">
+                    </div>
+                    <button data-fn="recoverResetSubmit" id="recoverResetBtn"
+                        style="width:100%;padding:11px;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+                        🔐 Şifreyi Sıfırla
+                    </button>
+                </div>
+            </div>
+
             <div style="text-align:center;margin-top:12px">
                 <button data-fn="showLogin" style="background:none;border:none;color:#6366f1;font-size:13px;cursor:pointer;text-decoration:underline">
                     ← Giriş Yap
@@ -166,11 +219,93 @@
 
     window.showForgotPasswordView = function() {
         titleEl.textContent = 'Şifremi Unuttum';
-        subEl.textContent   = 'Sıfırlama bağlantısı e-postanıza gönderilecek.';
+        subEl.textContent   = 'E-posta ile veya kurtarma token\'ı ile sıfırlayın.';
         _hideAll();
         forgotForm.classList.remove('hidden');
         errEl.textContent = '';
+        forgotShowTab('email');   // her açılışta e-posta sekmesine dön
         setTimeout(() => document.getElementById('customerAuthForgotEmail')?.focus(), 50);
+    };
+
+    // Sekme geçişi: 'email' | 'token' (data-fn dispatcher data-arg'ı string olarak geçer)
+    window.forgotShowTab = function(tab) {
+        const isEmail = tab !== 'token';
+        const paneEmail = document.getElementById('forgotPaneEmail');
+        const paneToken = document.getElementById('forgotPaneToken');
+        const tabEmail  = document.getElementById('forgotTabEmail');
+        const tabToken  = document.getElementById('forgotTabToken');
+        paneEmail.classList.toggle('hidden', !isEmail);
+        paneToken.classList.toggle('hidden', isEmail);
+        // Aktif sekme stili
+        tabEmail.style.background = isEmail ? '#6366f1' : 'transparent';
+        tabEmail.style.color      = isEmail ? '#fff' : '#94a3b8';
+        tabToken.style.background = isEmail ? 'transparent' : '#6366f1';
+        tabToken.style.color      = isEmail ? '#94a3b8' : '#fff';
+        errEl.style.color = '#f87171'; errEl.textContent = '';
+        // Token sekmesinden çıkınca step2'yi gizle
+        if (isEmail) document.getElementById('recoverStep2').classList.add('hidden');
+    };
+
+    // Token doğrula → admin listesini doldur
+    window.recoverListAdmins = async function() {
+        errEl.style.color = '#f87171'; errEl.textContent = '';
+        const token = (document.getElementById('recoverToken').value || '').trim();
+        if (!token) { errEl.textContent = 'Kurtarma token\'ı zorunludur.'; return; }
+        const btn = document.getElementById('recoverListBtn');
+        btn.disabled = true; btn.textContent = '⏳ Doğrulanıyor...';
+        try {
+            const res  = await fetch('/api/customer/admin-recover/list', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ setupToken: token })
+            });
+            const data = await res.json();
+            if (!res.ok) { errEl.textContent = data.error || 'Token doğrulanamadı.'; return; }
+            const admins = data.admins || [];
+            if (!admins.length) { errEl.textContent = 'Hiç yönetici hesabı bulunamadı.'; return; }
+            const sel = document.getElementById('recoverAdminSelect');
+            sel.innerHTML = admins.map(a =>
+                `<option value="${a.email}">${a.email}${a.lastLogin ? ' (son giriş: ' + new Date(a.lastLogin).toLocaleDateString('tr-TR') + ')' : ''}</option>`
+            ).join('');
+            document.getElementById('recoverStep2').classList.remove('hidden');
+            errEl.style.color = '#34d399';
+            errEl.textContent = '✅ ' + admins.length + ' yönetici bulundu. Hesap seçip yeni şifre girin.';
+            setTimeout(() => document.getElementById('recoverNewPwd')?.focus(), 50);
+        } catch (e) {
+            errEl.textContent = 'Bağlantı hatası: ' + e.message;
+        } finally {
+            btn.disabled = false; btn.textContent = '🔍 Yöneticileri Listele';
+        }
+    };
+
+    // Seçilen admin'in şifresini token ile sıfırla
+    window.recoverResetSubmit = async function() {
+        errEl.style.color = '#f87171'; errEl.textContent = '';
+        const token = (document.getElementById('recoverToken').value || '').trim();
+        const email = document.getElementById('recoverAdminSelect').value;
+        const p1 = document.getElementById('recoverNewPwd').value;
+        const p2 = document.getElementById('recoverNewPwd2').value;
+        if (!email)        { errEl.textContent = 'Yönetici hesabı seçin.'; return; }
+        if (p1.length < 6) { errEl.textContent = 'Şifre en az 6 karakter olmalıdır.'; return; }
+        if (p1 !== p2)     { errEl.textContent = 'Şifreler uyuşmuyor.'; return; }
+        const btn = document.getElementById('recoverResetBtn');
+        btn.disabled = true; btn.textContent = '⏳ Sıfırlanıyor...';
+        try {
+            const res  = await fetch('/api/customer/admin-recover/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ setupToken: token, email, password: p1 })
+            });
+            const data = await res.json();
+            if (!res.ok) { errEl.textContent = data.error || 'Sıfırlama başarısız.'; return; }
+            errEl.style.color = '#34d399';
+            errEl.textContent = '✅ ' + data.email + ' şifresi güncellendi. Giriş yapabilirsiniz.';
+            setTimeout(() => { showLogin(); document.getElementById('customerAuthEmail').value = data.email; }, 1800);
+        } catch (e) {
+            errEl.textContent = 'Bağlantı hatası: ' + e.message;
+        } finally {
+            btn.disabled = false; btn.textContent = '🔐 Şifreyi Sıfırla';
+        }
     };
 
     window.customerAuthForgotSend = async function() {
