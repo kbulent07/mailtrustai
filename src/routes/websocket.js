@@ -275,7 +275,11 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     if (isReportMail) {
         console.log(`[WS-Monitor][${source}] Rapor maili tespit edildi: ${account.email} uid=${uid} "${subject.slice(0, 60)}"`);
         // Ayar açıksa rapor mailini mailreports klasörüne taşı
-        const moveRes = await maybeMoveScannedMailToCollection({ account, uid });
+        // messageId ile dış kural taşımışsa da bulunur
+        const moveRes = await maybeMoveScannedMailToCollection({
+            account, uid,
+            messageId: email?.messageId || null
+        });
         if (moveRes?.moved) {
             console.log(`[WS-Monitor][${source}] ✓ Rapor maili → mailreports (uid=${uid})`);
         } else if (moveRes?.reason && moveRes.reason !== 'disabled') {
@@ -338,10 +342,9 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     result.collectMove = { attempted: false, moved: false, reason: 'not-applicable' };
 
     // ─── 1) Risk emojisi etiketi (🔴 high, 🟣 medium) — ÖNCE çalışır ──────────
-    // İki ayar birden açıksa (markRiskySubject + moveHighRiskToQuarantine),
-    // önce konuya etiket eklenir → APPEND ile YENİ UID oluşur → orijinal silinir.
-    // Sonra Quarantine taşıma adımı yeni UID üzerinden çalışır (aşağıda).
-    // Böylece Quarantine'e ulaşan mail de etiketli olur.
+    // Dış kural (Outlook filter / Sieve) maili başka klasöre taşıdıysa,
+    // subjectDecorator Message-ID ile maili bulup orada etiketler.
+    // newFolder/newUid değerleri quarantine adımına aktarılır.
     result.subjectDecoration = await maybeDecorateSubject({
         account,
         uid,
@@ -349,43 +352,49 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
         parsedEmail: email
     });
 
-    // Decoration başarılıysa → quarantine'e bundan sonraki UID üzerinden git
+    // Decoration sonrası gerçek konum
+    const decoratedFolder = result.subjectDecoration?.decorated
+        ? (result.subjectDecoration.newFolder || 'INBOX')
+        : 'INBOX';
     const effectiveUid = result.subjectDecoration?.decorated
         ? Number(result.subjectDecoration.newUid)
         : Number(uid);
 
     // ─── 2) Quarantine — etiketleme sonrası taşı ─────────────────────────────
+    // Mail nerede olursa olsun bul (Message-ID ile) ve oradan Quarantine'e taşı
     result.quarantineMove = await maybeMoveMessageToQuarantine({
         account,
-        uid: effectiveUid,
+        uid:          effectiveUid,
+        sourceFolder: decoratedFolder,
+        messageId:    email?.messageId || null,
         result
     });
 
     // ─── Mail akışının final durumu — mail nerede? ─────────────────────────────
     // Sıra: decoration (önce) → quarantine (sonra)
-    // Dış kural (mail client filter / server Sieve) maili başka klasöre taşımış olabilir.
+    // Dış kural mail taşımış olsa bile locator ile bulunup işlem yapılır.
     let finalLocation;
     const decorated  = !!result.subjectDecoration?.decorated;
     const quarantine = !!result.quarantineMove?.moved;
-    const movedExt =
-        result.subjectDecoration?.reason === 'mail-moved-externally' ||
-        result.quarantineMove?.reason   === 'mail-moved-externally' ||
-        result.quarantineMove?.reason   === 'mail-moved-during-operation';
+    const extDec = result.subjectDecoration?.movedExternally;
+    const extQua = result.quarantineMove?.movedExternally;
+    const extTag = (extDec || extQua) ? ' [dış kuralla taşınmıştı, bulundu]' : '';
 
     if (decorated && quarantine) {
-        finalLocation = `Quarantine — ETİKETLİ (${result.subjectDecoration.prefix.trim()}, ${result.quarantineMove.destinationFolder})`;
+        finalLocation = `Quarantine — ETİKETLİ (${result.subjectDecoration.prefix.trim()}, ${result.quarantineMove.destinationFolder})${extTag}`;
     } else if (quarantine) {
-        finalLocation = `Quarantine (${result.quarantineMove.destinationFolder})`;
+        finalLocation = `Quarantine (${result.quarantineMove.destinationFolder})${extTag}`;
     } else if (decorated) {
-        finalLocation = `INBOX (etiketli ${result.subjectDecoration.prefix.trim()}, yeni uid=${result.subjectDecoration.newUid})`;
-    } else if (movedExt) {
-        finalLocation = '⚠ Dış kural maili taşımış — işlem yapılamadı (mail client/server filter)';
+        finalLocation = `${result.subjectDecoration.newFolder || 'INBOX'} (etiketli ${result.subjectDecoration.prefix.trim()}, yeni uid=${result.subjectDecoration.newUid})${extTag}`;
+    } else if (result.subjectDecoration?.reason === 'mail-not-found-anywhere' ||
+               result.quarantineMove?.reason   === 'mail-not-found-anywhere') {
+        finalLocation = '⚠ Mail hiçbir klasörde bulunamadı (silinmiş olabilir)';
     } else {
         finalLocation = 'INBOX (değişiklik yok)';
         if (result.subjectDecoration?.attempted && !result.subjectDecoration.decorated) {
             console.warn(
                 `[WS-Monitor][${source}] uid=${uid} decoration BAŞARISIZ ` +
-                `(${result.subjectDecoration.reason || 'unknown'}) — mail INBOX'ta korundu`
+                `(${result.subjectDecoration.reason || 'unknown'}) — mail KORUNDU`
             );
         }
     }

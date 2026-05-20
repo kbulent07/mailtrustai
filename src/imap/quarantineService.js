@@ -1,4 +1,5 @@
 const { createConnection, loadCredentials } = require('./connection');
+const { findMessageByMessageId } = require('./messageLocator');
 
 // ─── Klasör adı varsayılanları ──────────────────────────────────────────────
 // Her ikisi de INBOX altında (subfolder) — mail istemcilerinde INBOX dalı altında
@@ -43,9 +44,7 @@ function shouldMoveMessageToQuarantine(result) {
     return (result.findings || []).some((finding) => String(finding?.severity || '').toLowerCase() === 'critical');
 }
 
-async function maybeMoveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', result }) {
-    // Re-read the flag from disk on every call so settings changes (e.g. enabling the
-    // checkbox in the IMAP accounts form) take effect without restarting the monitor.
+async function maybeMoveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', result, messageId = null }) {
     const stored = account?.email
         ? (loadCredentials().find(a => a.email === account.email) || account)
         : account;
@@ -60,62 +59,96 @@ async function maybeMoveMessageToQuarantine({ account, uid, sourceFolder = 'INBO
         return { attempted: false, moved: false, reason: 'not-eligible' };
     }
 
-    console.log(`[Quarantine] Taşıma başlatılıyor: ${account?.email} uid=${uid} level=${result?.level}`);
+    console.log(`[Quarantine] Taşıma başlatılıyor: ${account?.email} source=${sourceFolder} uid=${uid} level=${result?.level}`);
     return moveMessageToQuarantine({
         account,
         uid,
         sourceFolder,
-        destinationFolder: DEFAULT_QUARANTINE_FOLDER
+        destinationFolder: DEFAULT_QUARANTINE_FOLDER,
+        messageId
     });
 }
 
-async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', destinationFolder = DEFAULT_QUARANTINE_FOLDER }) {
+async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', destinationFolder = DEFAULT_QUARANTINE_FOLDER, messageId = null }) {
     if (!account?.email) {
         return { attempted: true, moved: false, destinationFolder, error: 'Missing IMAP account email' };
     }
 
     let client = null;
     let lock = null;
+    let actualSource = sourceFolder;
+    let actualUid    = uid;
+    let movedExternally = false;
+
     try {
         client = await createConnection(account);
         await client.connect();
         // Sunucu delimiter'ine göre 'INBOX/foo' → 'INBOX.foo' gibi normalize et
         const resolvedDest = resolveFolderPath(client, destinationFolder);
-        lock = await client.getMailboxLock(sourceFolder);
 
-        if (resolvedDest !== sourceFolder) {
-            await ensureMailbox(client, resolvedDest);
+        // ─── PRE-CHECK: mail beklenen klasörde mi? ──────────────────────────
+        let foundInSource = false;
+        try {
+            const tryLock = await client.getMailboxLock(sourceFolder);
+            try {
+                const m = await client.search({ uid: String(uid) }, { uid: true });
+                foundInSource = !!(m && m.length > 0);
+            } finally { tryLock.release(); }
+        } catch (_) { /* fall through to locator */ }
 
-            // Pre-check: mail hâlâ source klasörde mi? (dış kural taşıdıysa MOVE NO döndürür)
-            const searchResult = await client.search({ uid: String(uid) }, { uid: true });
-            if (!searchResult || searchResult.length === 0) {
-                console.warn(
-                    `[FolderMove] ⚠ Mail ${sourceFolder} klasöründe bulunamadı: uid=${uid}. ` +
-                    `Muhtemelen başka bir kural (mail client filter / server Sieve) maili taşımış. İşlem atlandı.`
-                );
+        // ─── BULUNAMADIYSA: Message-ID ile arama (dış kural taşımış olabilir) ─
+        if (!foundInSource) {
+            if (!messageId) {
+                console.warn(`[FolderMove] ⚠ Mail ${sourceFolder} klasöründe yok, Message-ID bilinmiyor — arama yapılamaz.`);
                 return {
-                    attempted: true,
-                    moved: false,
+                    attempted: true, moved: false,
                     destinationFolder: resolvedDest,
-                    reason: 'mail-moved-externally',
-                    hint: `Mail ${sourceFolder} dışında — kullanıcı kuralı veya server filter taşımış olabilir`
+                    reason: 'mail-not-found-no-messageid'
                 };
             }
-
-            console.log(`[FolderMove] ${account.email} uid=${uid}: ${sourceFolder} → ${resolvedDest}`);
-            const moveRes = await client.messageMove(uid, resolvedDest, { uid: true });
-            // moveRes: { path, uidMap } (UIDPLUS varsa). Mail başarıyla taşındı.
-            console.log(`[FolderMove] ✓ Başarılı: uid=${uid} → ${resolvedDest} (yeni uid=${moveRes?.uidMap?.get?.(uid) || '?'})`);
+            console.log(`[FolderMove] Mail "${sourceFolder}" klasöründe yok — Message-ID ile aranıyor: ${messageId}`);
+            const found = await findMessageByMessageId(client, messageId, { preferFolder: sourceFolder });
+            if (!found) {
+                return {
+                    attempted: true, moved: false,
+                    destinationFolder: resolvedDest,
+                    reason: 'mail-not-found-anywhere',
+                    messageId
+                };
+            }
+            actualSource = found.folder;
+            actualUid    = found.uid;
+            movedExternally = true;
+            console.log(`[FolderMove] ✓ Mail bulundu: "${actualSource}" uid=${actualUid} — oradan ${resolvedDest}'e taşınıyor`);
         }
 
-        return { attempted: true, moved: true, destinationFolder: resolvedDest };
+        // Hedef klasörle aynı mı? (örn. zaten Quarantine'deyse)
+        if (resolvedDest === actualSource) {
+            console.log(`[FolderMove] Mail zaten hedef klasörde: ${actualSource} — taşıma atlandı`);
+            return { attempted: true, moved: true, destinationFolder: resolvedDest, alreadyThere: true };
+        }
+
+        // ─── Asıl taşıma: actualSource → resolvedDest ───────────────────────
+        lock = await client.getMailboxLock(actualSource);
+        await ensureMailbox(client, resolvedDest);
+
+        console.log(`[FolderMove] ${account.email} uid=${actualUid}: ${actualSource} → ${resolvedDest}${movedExternally ? ' [dış kuralla taşınmıştı]' : ''}`);
+        const moveRes = await client.messageMove(actualUid, resolvedDest, { uid: true });
+        console.log(`[FolderMove] ✓ Başarılı: uid=${actualUid} → ${resolvedDest} (yeni uid=${moveRes?.uidMap?.get?.(actualUid) || '?'})`);
+
+        return {
+            attempted: true,
+            moved: true,
+            destinationFolder: resolvedDest,
+            sourceFolder:      actualSource,
+            movedExternally
+        };
     } catch (error) {
         const errMsg = String(error?.message || '');
-        // "Mail bulunamadı" türü hataları açık etiketle (yarış koşulu)
-        const movedExternally = /no such message|not found|expunge|invalid uid/i.test(errMsg);
-        if (movedExternally) {
+        const raceCond = /no such message|not found|expunge|invalid uid/i.test(errMsg);
+        if (raceCond) {
             console.warn(
-                `[FolderMove] ⚠ Mail taşıma yarış koşulu: uid=${uid} ${sourceFolder} → ${destinationFolder}. ` +
+                `[FolderMove] ⚠ Yarış koşulu: uid=${actualUid} ${actualSource} → ${destinationFolder}. ` +
                 `Mail bu sırada başka bir kural tarafından taşındı/silindi.`
             );
             return {
@@ -123,7 +156,7 @@ async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', d
                 reason: 'mail-moved-during-operation', error: errMsg
             };
         }
-        console.error(`[FolderMove] ✗ Başarısız: ${account.email} uid=${uid} → ${destinationFolder}: ${errMsg}`);
+        console.error(`[FolderMove] ✗ Başarısız: ${account.email} uid=${actualUid} (${actualSource}) → ${destinationFolder}: ${errMsg}`);
         return {
             attempted: true,
             moved: false,
@@ -218,7 +251,7 @@ function isCollectScannedEnabled(account) {
  * @param {number} uid          - Taşınacak mailin IMAP UID'si
  * @param {string} sourceFolder - Kaynak klasör (varsayılan: INBOX)
  */
-async function maybeMoveScannedMailToCollection({ account, uid, sourceFolder = 'INBOX' }) {
+async function maybeMoveScannedMailToCollection({ account, uid, sourceFolder = 'INBOX', messageId = null }) {
     const stored = account?.email
         ? (loadCredentials().find(a => a.email === account.email) || account)
         : account;
@@ -231,12 +264,12 @@ async function maybeMoveScannedMailToCollection({ account, uid, sourceFolder = '
     }
 
     console.log(`[Collect] Tarama klasörüne taşınıyor: ${account?.email} uid=${uid} → ${DEFAULT_COLLECT_FOLDER}`);
-    // moveMessageToQuarantine zaten genel bir IMAP taşıma fonksiyonu; destinationFolder ile yönlendiriyoruz
     return moveMessageToQuarantine({
         account,
         uid,
         sourceFolder,
-        destinationFolder: DEFAULT_COLLECT_FOLDER
+        destinationFolder: DEFAULT_COLLECT_FOLDER,
+        messageId
     });
 }
 

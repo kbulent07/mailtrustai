@@ -17,6 +17,7 @@
 'use strict';
 
 const { createConnection, loadCredentials } = require('./connection');
+const { findMessageByMessageId } = require('./messageLocator');
 
 // ─── Sabitler ─────────────────────────────────────────────────
 const PREFIX_HIGH   = '🔴 ';
@@ -264,35 +265,56 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
 
     let client = null;
     let lock = null;
+    // Gerçek konum (locator ile değişebilir)
+    let actualFolder = folder;
+    let actualUid    = uid;
+    let movedExternally = false;
+
     try {
         client = await createConnection(account);
         await client.connect();
-        lock = await client.getMailboxLock(folder);
 
-        // Mailbox'taki mevcut UID listesini hızlıca kontrol et —
-        // dış kural (Sieve, Outlook filter vb.) maili taşımışsa UID listede olmaz
-        const mbStatus = await client.status(folder, { uidNext: true, messages: true });
-        // İlgili UID için bir EXISTS/SEARCH yap
-        const searchResult = await client.search({ uid: String(uid) }, { uid: true });
-        if (!searchResult || searchResult.length === 0) {
-            // Mail INBOX'ta yok — büyük ihtimalle dış kural taşıdı
-            const messageId = parsedEmail?.messageId || '?';
-            console.warn(
-                `[SubjectDecorator] ⚠ Mail INBOX'ta bulunamadı: uid=${uid} ` +
-                `(Message-ID: ${messageId}). ` +
-                `Muhtemelen mail client/server kuralı maili başka klasöre taşıdı.`
-            );
-            return {
-                attempted: true,
-                decorated: false,
-                reason: 'mail-moved-externally',
-                hint: 'Mail INBOX dışında — kullanıcı kuralı veya server filter taşımış olabilir'
-            };
+        // ─── 1) ÖNCE: tercih edilen klasörde mail hâlâ var mı? ──────────────
+        let foundInPreferred = false;
+        try {
+            const tryLock = await client.getMailboxLock(folder);
+            try {
+                const m = await client.search({ uid: String(uid) }, { uid: true });
+                foundInPreferred = !!(m && m.length > 0);
+            } finally { tryLock.release(); }
+        } catch (_) { /* tercih klasörü erişilemiyor — locator'a düş */ }
+
+        // ─── 2) BULUNAMADIYSA: Message-ID ile tüm klasörlerde ara ───────────
+        if (!foundInPreferred) {
+            const messageId = parsedEmail?.messageId;
+            if (!messageId) {
+                console.warn(`[SubjectDecorator] ⚠ Mail ${folder} klasöründe yok ve Message-ID bilinmiyor — arama yapılamaz.`);
+                return {
+                    attempted: true, decorated: false,
+                    reason: 'mail-not-found-no-messageid'
+                };
+            }
+            console.log(`[SubjectDecorator] Mail "${folder}" klasöründe yok — Message-ID ile aranıyor: ${messageId}`);
+            const found = await findMessageByMessageId(client, messageId, { preferFolder: folder });
+            if (!found) {
+                return {
+                    attempted: true, decorated: false,
+                    reason: 'mail-not-found-anywhere',
+                    messageId
+                };
+            }
+            actualFolder = found.folder;
+            actualUid    = found.uid;
+            movedExternally = true;
+            console.log(`[SubjectDecorator] ✓ Mail bulundu: "${actualFolder}" uid=${actualUid} — orada etiketleniyor`);
         }
+
+        // ─── 3) Hedef klasör üzerinde lock al ve işleme başla ───────────────
+        lock = await client.getMailboxLock(actualFolder);
 
         // Orijinal maili tüm metadata ile çek
         let original = null;
-        for await (const msg of client.fetch(uid, {
+        for await (const msg of client.fetch(actualUid, {
             source:       true,
             internalDate: true,
             flags:        true
@@ -303,8 +325,8 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
 
         if (!original?.source) {
             // SEARCH OK demişti ama FETCH boş döndü — yarış koşulu (mail bu saniyede taşındı/silindi)
-            console.warn(`[SubjectDecorator] ⚠ FETCH boş döndü uid=${uid} — mail bu sırada taşınmış olabilir`);
-            return { attempted: true, decorated: false, reason: 'fetch-empty-race' };
+            console.warn(`[SubjectDecorator] ⚠ FETCH boş döndü folder=${actualFolder} uid=${actualUid} — mail bu sırada taşınmış olabilir`);
+            return { attempted: true, decorated: false, reason: 'fetch-empty-race', folder: actualFolder, uid: actualUid };
         }
 
         // Raw mail'i değiştir (Subject'i yenile, tracking header'ları ekle)
@@ -314,19 +336,16 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
         const flags = Array.from(original.flags || []).filter(f => f !== '\\Recent');
 
         // APPEND — orijinal tarih ve flag'lerle yeni versiyonu yükle
-        console.log(`[SubjectDecorator] APPEND: ${account.email} uid=${uid} (${origSubject.slice(0, 40)}...)`);
-        const appendRes = await client.append(folder, modifiedRaw, flags, original.internalDate);
+        // NOT: actualFolder kullanılır (locator dış kuralla taşınmışsa farklı klasör)
+        console.log(`[SubjectDecorator] APPEND: ${account.email} folder=${actualFolder} uid=${actualUid} (${origSubject.slice(0, 40)}...)`);
+        const appendRes = await client.append(actualFolder, modifiedRaw, flags, original.internalDate);
 
         if (!appendRes || !appendRes.uid) {
-            console.warn(`[SubjectDecorator] APPEND başarısız (UID yok) — orijinal mail KORUNDU (uid=${uid})`);
-            return { attempted: true, decorated: false, reason: 'append-failed' };
+            console.warn(`[SubjectDecorator] APPEND başarısız (UID yok) — orijinal mail KORUNDU (folder=${actualFolder} uid=${actualUid})`);
+            return { attempted: true, decorated: false, reason: 'append-failed', folder: actualFolder };
         }
 
-        // ─── KRİTİK GÜVENLİK KONTROLÜ ────────────────────────────
-        // APPEND server "uid X verdim" diye yanıt verse bile, bazı sunucular
-        // (özellikle Gmail) Message-ID deduplikasyonu yüzünden maili SESSİZCE
-        // düşürebilir. Orijinali silmeden önce yeni UID'nin gerçekten mevcut
-        // olduğunu doğrulamalıyız — aksi halde mail kalıcı kaybolur.
+        // ─── KRİTİK GÜVENLİK KONTROLÜ — APPEND doğrulanmadan DELETE yapma ──
         let verified = false;
         let verifyError = null;
         try {
@@ -343,31 +362,31 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
         }
 
         if (!verified) {
-            // Yeni UID FETCH edilemedi → APPEND aslında başarısız (Gmail/Exchange dedup)
-            // Orijinali SİLME — mail korunur, kullanıcı INBOX'ta görmeye devam eder
             console.error(
                 `[SubjectDecorator] DURDURULDU — APPEND başarılı raporlandı ama UID ${appendRes.uid} ` +
-                `INBOX'ta doğrulanamadı (muhtemelen Message-ID dedup). ` +
-                `Orijinal mail KORUNDU (uid=${uid}). Hata: ${verifyError || 'fetch-empty'}`
+                `${actualFolder} klasöründe doğrulanamadı. Orijinal mail KORUNDU (uid=${actualUid}). Hata: ${verifyError || 'fetch-empty'}`
             );
             return {
-                attempted: true,
-                decorated: false,
+                attempted: true, decorated: false,
                 reason: 'append-not-verified',
                 appendedUid: appendRes.uid,
-                verifyError
+                verifyError,
+                folder: actualFolder
             };
         }
 
         // Doğrulandı → orijinali sil
-        console.log(`[SubjectDecorator] Doğrulandı, orijinal siliniyor: ${account.email} uid=${uid} → yeni uid=${appendRes.uid}`);
-        await client.messageDelete(uid, { uid: true });
+        console.log(`[SubjectDecorator] Doğrulandı, orijinal siliniyor: ${account.email} folder=${actualFolder} uid=${actualUid} → yeni uid=${appendRes.uid}`);
+        await client.messageDelete(actualUid, { uid: true });
 
-        console.log(`[SubjectDecorator] Başarılı: ${account.email} uid ${uid} → ${appendRes.uid} (${riskLevel})`);
+        console.log(`[SubjectDecorator] ✓ Başarılı: ${account.email} ${actualFolder}/${actualUid} → ${actualFolder}/${appendRes.uid} (${riskLevel})${movedExternally ? ' [dış kuralla taşınmış]' : ''}`);
         return {
             attempted: true,
             decorated: true,
             newUid:    appendRes.uid,
+            newFolder: actualFolder,            // ← önemli: caller bunu quarantine source olarak kullanır
+            originalFolder: folder,
+            movedExternally,
             prefix,
             riskLevel
         };
