@@ -1,0 +1,36 @@
+MailTrustAI Client - Kullanim Sartlari
+=======================================
+
+Bu yazilim MailTrustAI lisans sahibinin bayisi tarafindan dagitilmaktadir.
+
+LISANS GEREKLIDIR
+-----------------
+Bu yazilim, gecerli bir aktif lisans olmadan calistirilamaz. Lisans
+anahtariniz yoksa lutfen yetkili bayinizle iletisime gecin.
+
+VERI MAHREMIYETI
+----------------
+- Mail icerikleri YALNIZCA yerel makinenizde isleniyor.
+- Yalnizca lisans dogrulamasi icin license-server ile iletisim kurulur.
+- Hicbir mail icerigi disariya gonderilmez.
+
+GEREKSINIMLER
+-------------
+- Windows 10/11 64-bit
+- 8 GB+ RAM
+- 10 GB+ bos disk alani
+- Docker Desktop (yoksa otomatik kurulur)
+- Internet baglantisi (lisans dogrulamasi icin)
+
+SORUMLULUK REDDI
+----------------
+Bu yazilim "OLDUGU GIBI" saglanmaktadir. MailTrustAI ve bayileri,
+kullanicinin kendi sorumlulugunda kullanim sonucunda dogabilecek
+herhangi bir kayip veya zarardan sorumlu degildir.
+
+DESTEK
+------
+Sorun ve oneriler icin:
+  https://github.com/kbulent07/mailtrustai
+
+Devam etmek icin "Kabul ediyorum"u secin.

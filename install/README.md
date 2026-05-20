@@ -1,5 +1,22 @@
 # MailTrustAI — Kurulum Kılavuzu
 
+## ⚡ En Hızlı Yol (TL;DR)
+
+| Hedef | Komut |
+|---|---|
+| **Windows Müşteri** | [Releases](https://github.com/kbulent07/mailtrustai/releases)'ten `MailTrustAI-Client-Setup-*.exe` indir → çift tıkla → lisans+URL gir |
+| **Ubuntu Sunucu** | `curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick.sh \| sudo bash` |
+| **Ubuntu Müşteri** | `curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick-client.sh \| sudo bash -s -- --license=MTAI-XXX --server=https://license.firma.com` |
+
+Bu tek-adım yöntemler önkoşulları (git, docker) otomatik kurar, repoyu klonlar ve
+asıl kurulum scriptini çalıştırır. Detaylı/manuel yöntemler aşağıda.
+
+> **Windows `.exe` nereden geliyor?** `installer/MailTrustAIClient.iss` (Inno Setup)
+> dosyasından, her `v*` tag push'unda GitHub Actions ile otomatik derlenir
+> (bkz. `installer/README.md`). Lokal derleme: `.\installer\build-installer.ps1 -InstallIfMissing`
+
+---
+
 ## Adlandırma Konvansiyonu
 
 ```
