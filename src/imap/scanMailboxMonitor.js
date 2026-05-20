@@ -7,6 +7,7 @@ const { sendReportEmail } = require('../smtp/sender');
 const { buildReportHtml, isRisky } = require('../smtp/reportBuilder');
 const { recordScan } = require('../storage/scanHistory');
 const { maybeMoveMessageToQuarantine } = require('./quarantineService');
+const { maybeDecorateSubject } = require('./subjectDecoratorService');
 const { getImapSenderSkipInfo } = require('./scanExclusions');
 const fs = require('fs');
 const path = require('path');
@@ -128,9 +129,33 @@ class ScanMailboxMonitor {
             result.scanSource = 'scan-mailbox';
             result.account = account;
             result.scanMailboxUid = uid;
-            result.quarantineMove = await maybeMoveMessageToQuarantine({
+
+            // ─── 1) Risk emojisi etiketi (🔴 high, 🟣 medium) — quarantine'den ÖNCE ──
+            // İki monitör aynı INBOX'u izlediğinde (WS-Monitor + bu monitör),
+            // yüksek riskli maili önce kim taşırsa diğeri etiketleyemiyordu.
+            // Çözüm: bu monitör de decoration'ı quarantine'den ÖNCE yapar.
+            // markRiskySubject ayarı diskten okunur; kapalıysa no-op döner.
+            // Decoration UID'yi değiştirir → quarantine yeni UID'yi kullanır.
+            // (Çift-etiketleme subjectDecorator içindeki taze-fetch guard'ı ile önlenir.)
+            result.subjectDecoration = await maybeDecorateSubject({
                 account: this.account,
                 uid,
+                level: result.level,
+                parsedEmail: email
+            });
+            const _decoratedFolder = result.subjectDecoration?.decorated
+                ? (result.subjectDecoration.newFolder || 'INBOX')
+                : 'INBOX';
+            const _effectiveUid = result.subjectDecoration?.decorated
+                ? Number(result.subjectDecoration.newUid)
+                : Number(uid);
+
+            // ─── 2) Quarantine — etiketten sonra ───────────────────────────────
+            result.quarantineMove = await maybeMoveMessageToQuarantine({
+                account: this.account,
+                uid:          _effectiveUid,
+                sourceFolder: _decoratedFolder,
+                messageId:    email?.messageId || null,
                 result
             });
 

@@ -329,6 +329,18 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
             return { attempted: true, decorated: false, reason: 'fetch-empty-race', folder: actualFolder, uid: actualUid };
         }
 
+        // ─── ÇİFT-ETİKETLEME KORUMASI (yarış koşulu) ────────────────────────
+        // İki monitör (WS-Monitor + scanMailboxMonitor) aynı INBOX'u izliyor ve
+        // ikisi de aynı maile Message-ID locator ile ulaşabilir. parsedEmail
+        // bayatsa (henüz etiketsizken parse edildiyse) isAlreadyDecorated yukarıda
+        // false döner. Bu yüzden TAZE çekilen ham mailde decorated header'ını
+        // tekrar kontrol ediyoruz — varsa çift 🔴🔴 eklemeyi engelle.
+        const rawProbe = original.source.toString('binary');
+        if (rawProbe.search(new RegExp('^' + HEADER_DECORATED + '\\s*:', 'im')) !== -1) {
+            console.log(`[SubjectDecorator] Mail zaten etiketli (taze fetch'te header bulundu) — atlandı: ${actualFolder}/${actualUid}`);
+            return { attempted: true, decorated: false, reason: 'already-decorated-onfetch', folder: actualFolder, uid: actualUid };
+        }
+
         // Raw mail'i değiştir (Subject'i yenile, tracking header'ları ekle)
         const modifiedRaw = rewriteSubjectInRaw(original.source, newSubject, origSubject, riskLevel);
 
