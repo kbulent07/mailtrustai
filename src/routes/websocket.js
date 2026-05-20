@@ -333,35 +333,46 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
         `subject="${String(email.subject || '').slice(0, 60)}"`
     );
 
-    result.quarantineMove = await maybeMoveMessageToQuarantine({ account, uid, result });
-
     // NOT: Taranan mail mailreports'a TAŞINMAZ. Bu klasör yalnızca tarama
     // sonrası gelen RAPOR maillerini toplar (yukarıdaki isReportMail bloğunda).
     result.collectMove = { attempted: false, moved: false, reason: 'not-applicable' };
 
-    // ─── Risk emojisi etiketi (🔴 high, 🟣 medium) ────────────────────────────
-    // Mail Quarantine'e taşınmadıysa (INBOX'ta ise) ve hesap ayarı açıksa
-    // konuya emoji öneği ekle. APPEND ile UID değişir → result.decoratedUid kaydedilir.
-    if (!result.quarantineMove?.moved) {
-        result.subjectDecoration = await maybeDecorateSubject({
-            account,
-            uid,
-            level: result.level,
-            parsedEmail: email
-        });
-    } else {
-        result.subjectDecoration = {
-            attempted: false, decorated: false,
-            reason: 'quarantined'
-        };
-    }
+    // ─── 1) Risk emojisi etiketi (🔴 high, 🟣 medium) — ÖNCE çalışır ──────────
+    // İki ayar birden açıksa (markRiskySubject + moveHighRiskToQuarantine),
+    // önce konuya etiket eklenir → APPEND ile YENİ UID oluşur → orijinal silinir.
+    // Sonra Quarantine taşıma adımı yeni UID üzerinden çalışır (aşağıda).
+    // Böylece Quarantine'e ulaşan mail de etiketli olur.
+    result.subjectDecoration = await maybeDecorateSubject({
+        account,
+        uid,
+        level: result.level,
+        parsedEmail: email
+    });
+
+    // Decoration başarılıysa → quarantine'e bundan sonraki UID üzerinden git
+    const effectiveUid = result.subjectDecoration?.decorated
+        ? Number(result.subjectDecoration.newUid)
+        : Number(uid);
+
+    // ─── 2) Quarantine — etiketleme sonrası taşı ─────────────────────────────
+    result.quarantineMove = await maybeMoveMessageToQuarantine({
+        account,
+        uid: effectiveUid,
+        result
+    });
 
     // ─── Mail akışının final durumu — mail nerede? ─────────────────────────────
+    // Sıra: decoration (önce) → quarantine (sonra)
     let finalLocation;
-    if (result.quarantineMove?.moved) {
+    const decorated  = !!result.subjectDecoration?.decorated;
+    const quarantine = !!result.quarantineMove?.moved;
+    if (decorated && quarantine) {
+        // Hem etiketli hem taşındı: en açıklayıcı senaryo
+        finalLocation = `Quarantine — ETİKETLİ (${result.subjectDecoration.prefix.trim()}, ${result.quarantineMove.destinationFolder})`;
+    } else if (quarantine) {
         finalLocation = `Quarantine (${result.quarantineMove.destinationFolder})`;
-    } else if (result.subjectDecoration?.decorated) {
-        finalLocation = `INBOX (etiketli, yeni uid=${result.subjectDecoration.newUid})`;
+    } else if (decorated) {
+        finalLocation = `INBOX (etiketli ${result.subjectDecoration.prefix.trim()}, yeni uid=${result.subjectDecoration.newUid})`;
     } else {
         finalLocation = 'INBOX (değişiklik yok)';
         if (result.subjectDecoration?.attempted && !result.subjectDecoration.decorated) {
@@ -381,10 +392,8 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     recordScan(result);
     broadcast({ type: 'new-email-scanned', result });
 
-    // UID baseline'ı güncelle — decoration yapıldıysa yeni UID'yi kullan
-    const effectiveUid = result.subjectDecoration?.decorated
-        ? Number(result.subjectDecoration.newUid)
-        : Number(uid);
+    // UID baseline'ı güncelle — yukarıdaki effectiveUid'i tekrar kullan
+    // (decoration sonrası yeni UID, yoksa orijinal UID)
     if (!Number.isNaN(effectiveUid) && effectiveUid > (_wsMonitorLastUid.get(account.email) || 0)) {
         _wsMonitorLastUid.set(account.email, effectiveUid);
     }
