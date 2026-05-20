@@ -363,16 +363,23 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
 
     // ─── Mail akışının final durumu — mail nerede? ─────────────────────────────
     // Sıra: decoration (önce) → quarantine (sonra)
+    // Dış kural (mail client filter / server Sieve) maili başka klasöre taşımış olabilir.
     let finalLocation;
     const decorated  = !!result.subjectDecoration?.decorated;
     const quarantine = !!result.quarantineMove?.moved;
+    const movedExt =
+        result.subjectDecoration?.reason === 'mail-moved-externally' ||
+        result.quarantineMove?.reason   === 'mail-moved-externally' ||
+        result.quarantineMove?.reason   === 'mail-moved-during-operation';
+
     if (decorated && quarantine) {
-        // Hem etiketli hem taşındı: en açıklayıcı senaryo
         finalLocation = `Quarantine — ETİKETLİ (${result.subjectDecoration.prefix.trim()}, ${result.quarantineMove.destinationFolder})`;
     } else if (quarantine) {
         finalLocation = `Quarantine (${result.quarantineMove.destinationFolder})`;
     } else if (decorated) {
         finalLocation = `INBOX (etiketli ${result.subjectDecoration.prefix.trim()}, yeni uid=${result.subjectDecoration.newUid})`;
+    } else if (movedExt) {
+        finalLocation = '⚠ Dış kural maili taşımış — işlem yapılamadı (mail client/server filter)';
     } else {
         finalLocation = 'INBOX (değişiklik yok)';
         if (result.subjectDecoration?.attempted && !result.subjectDecoration.decorated) {

@@ -85,6 +85,23 @@ async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', d
 
         if (resolvedDest !== sourceFolder) {
             await ensureMailbox(client, resolvedDest);
+
+            // Pre-check: mail hâlâ source klasörde mi? (dış kural taşıdıysa MOVE NO döndürür)
+            const searchResult = await client.search({ uid: String(uid) }, { uid: true });
+            if (!searchResult || searchResult.length === 0) {
+                console.warn(
+                    `[FolderMove] ⚠ Mail ${sourceFolder} klasöründe bulunamadı: uid=${uid}. ` +
+                    `Muhtemelen başka bir kural (mail client filter / server Sieve) maili taşımış. İşlem atlandı.`
+                );
+                return {
+                    attempted: true,
+                    moved: false,
+                    destinationFolder: resolvedDest,
+                    reason: 'mail-moved-externally',
+                    hint: `Mail ${sourceFolder} dışında — kullanıcı kuralı veya server filter taşımış olabilir`
+                };
+            }
+
             console.log(`[FolderMove] ${account.email} uid=${uid}: ${sourceFolder} → ${resolvedDest}`);
             const moveRes = await client.messageMove(uid, resolvedDest, { uid: true });
             // moveRes: { path, uidMap } (UIDPLUS varsa). Mail başarıyla taşındı.
@@ -93,12 +110,25 @@ async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', d
 
         return { attempted: true, moved: true, destinationFolder: resolvedDest };
     } catch (error) {
-        console.error(`[FolderMove] ✗ Başarısız: ${account.email} uid=${uid} → ${destinationFolder}: ${error.message}`);
+        const errMsg = String(error?.message || '');
+        // "Mail bulunamadı" türü hataları açık etiketle (yarış koşulu)
+        const movedExternally = /no such message|not found|expunge|invalid uid/i.test(errMsg);
+        if (movedExternally) {
+            console.warn(
+                `[FolderMove] ⚠ Mail taşıma yarış koşulu: uid=${uid} ${sourceFolder} → ${destinationFolder}. ` +
+                `Mail bu sırada başka bir kural tarafından taşındı/silindi.`
+            );
+            return {
+                attempted: true, moved: false, destinationFolder,
+                reason: 'mail-moved-during-operation', error: errMsg
+            };
+        }
+        console.error(`[FolderMove] ✗ Başarısız: ${account.email} uid=${uid} → ${destinationFolder}: ${errMsg}`);
         return {
             attempted: true,
             moved: false,
             destinationFolder,
-            error: error.message
+            error: errMsg
         };
     } finally {
         if (lock) lock.release();

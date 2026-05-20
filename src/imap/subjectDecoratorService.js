@@ -269,6 +269,27 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
         await client.connect();
         lock = await client.getMailboxLock(folder);
 
+        // Mailbox'taki mevcut UID listesini hızlıca kontrol et —
+        // dış kural (Sieve, Outlook filter vb.) maili taşımışsa UID listede olmaz
+        const mbStatus = await client.status(folder, { uidNext: true, messages: true });
+        // İlgili UID için bir EXISTS/SEARCH yap
+        const searchResult = await client.search({ uid: String(uid) }, { uid: true });
+        if (!searchResult || searchResult.length === 0) {
+            // Mail INBOX'ta yok — büyük ihtimalle dış kural taşıdı
+            const messageId = parsedEmail?.messageId || '?';
+            console.warn(
+                `[SubjectDecorator] ⚠ Mail INBOX'ta bulunamadı: uid=${uid} ` +
+                `(Message-ID: ${messageId}). ` +
+                `Muhtemelen mail client/server kuralı maili başka klasöre taşıdı.`
+            );
+            return {
+                attempted: true,
+                decorated: false,
+                reason: 'mail-moved-externally',
+                hint: 'Mail INBOX dışında — kullanıcı kuralı veya server filter taşımış olabilir'
+            };
+        }
+
         // Orijinal maili tüm metadata ile çek
         let original = null;
         for await (const msg of client.fetch(uid, {
@@ -281,7 +302,9 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
         }
 
         if (!original?.source) {
-            return { attempted: true, decorated: false, reason: 'fetch-failed' };
+            // SEARCH OK demişti ama FETCH boş döndü — yarış koşulu (mail bu saniyede taşındı/silindi)
+            console.warn(`[SubjectDecorator] ⚠ FETCH boş döndü uid=${uid} — mail bu sırada taşınmış olabilir`);
+            return { attempted: true, decorated: false, reason: 'fetch-empty-race' };
         }
 
         // Raw mail'i değiştir (Subject'i yenile, tracking header'ları ekle)
