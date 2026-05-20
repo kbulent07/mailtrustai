@@ -136,6 +136,7 @@ function activateTab(tabName) {
     if (tabName === 'audit')     loadAudit();
     if (tabName === 'transfers') loadAdminTransfers();
     if (tabName === 'security')  loadSecurityStatus();
+    if (tabName === 'users')     loadOwnerUsers();
 }
 
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -145,27 +146,32 @@ document.querySelectorAll('.nav-item').forEach(el => {
 // ================================================================
 // LOGIN / LOGOUT
 // ================================================================
+// Oturum rolü + yetkileri (login sonrası doldurulur, UI gating'de kullanılır)
+let currentRole = null;
+let currentPerms = [];
+
 $('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const token  = $('adminToken').value.trim();
+    const email  = ($('adminEmail')?.value || '').trim().toLowerCase();
+    const secret = $('adminToken').value.trim();
     const errEl  = $('loginError');
     const btn    = $('loginBtn');
     errEl.textContent = '';
     btn.disabled = true; btn.textContent = '⏳ Doğrulanıyor...';
     try {
+        // E-posta doluysa owner-user girişi; boşsa token/şifre (super-admin).
+        const body = email ? { email, password: secret } : { token: secret };
         const r = await fetch('/api/admin/login', {
             method : 'POST',
             headers: { 'content-type': 'application/json' },
-            body   : JSON.stringify({ token })
+            body   : JSON.stringify(body)
         });
-        if (!r.ok) {
-            const j = await r.json().catch(() => ({}));
-            throw new Error(j.error || `HTTP ${r.status}`);
-        }
         const data = await r.json().catch(() => ({}));
-        // Sunucu artık oturum token'ı döndürüyor — sonraki istekler bununla
-        // yetkilenir. (Eski sürümle uyumluluk: sessionToken yoksa girilen token.)
-        sessionStorage.setItem(TOKEN_KEY, data.sessionToken || token);
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        sessionStorage.setItem(TOKEN_KEY, data.sessionToken || secret);
+        currentRole  = data.role || 'super-admin';
+        currentPerms = data.permissions || [];
+        applyPermissions();
         showDashboard();
     } catch (e) {
         errEl.textContent = 'Hata: ' + (e.message || 'giriş başarısız');
@@ -173,6 +179,19 @@ $('loginForm').addEventListener('submit', async (e) => {
         btn.disabled = false; btn.textContent = '🔓 Giriş Yap';
     }
 });
+
+// Rol yetkilerine göre UI gating: yetkisiz sekmeleri gizle.
+function hasPerm(perm) { return currentPerms.includes(perm); }
+function applyPermissions() {
+    document.querySelectorAll('.nav-item[data-perm]').forEach(el => {
+        el.style.display = hasPerm(el.dataset.perm) ? '' : 'none';
+    });
+    // Aktif sekme gizlendiyse Özet'e dön
+    const activeNav = document.querySelector('.nav-item.active');
+    if (activeNav && activeNav.dataset.perm && !hasPerm(activeNav.dataset.perm)) {
+        activateTab('overview');
+    }
+}
 
 $('logoutBtn').addEventListener('click', () => {
     sessionStorage.removeItem(TOKEN_KEY);
@@ -193,29 +212,38 @@ async function showDashboard() {
 }
 
 async function loadAll() {
-    try {
-        const [stats, dealersResp, customersResp, groupedResp] = await Promise.all([
-            api('/api/admin/stats'),
-            api('/api/admin/dealers'),
-            api('/api/admin/customers'),
-            api('/api/admin/customers-grouped')
-        ]);
-        renderStats(stats);
-        allDealers   = dealersResp.dealers || [];
-        allItems     = customersResp.items  || [];
-        groupedItems = groupedResp.items    || [];
-        populateDealerSelects();
-        renderActiveView();
-        renderManageTable();
-    } catch (e) {
-        if (e.status === 401) {
-            sessionStorage.removeItem(TOKEN_KEY);
-            showToast('Oturum süresi doldu. Yeniden giriş yapın.', 'warning');
-            setTimeout(() => location.reload(), 1500);
-            return;
-        }
-        showToast('Veri yüklenemedi: ' + e.message, 'error');
+    // Yetkiye göre sadece erişilebilir uçları çağır; biri 403/başka hata
+    // verirse diğerleri etkilenmesin (allSettled). 401 → oturum bitti.
+    const wantDealers   = !currentPerms.length || hasPerm('dealers:read');
+    const wantCustomers = !currentPerms.length || hasPerm('customers:read');
+
+    const tasks = {
+        stats:     api('/api/admin/stats'),
+        dealers:   wantDealers   ? api('/api/admin/dealers')            : Promise.resolve(null),
+        customers: wantCustomers ? api('/api/admin/customers')          : Promise.resolve(null),
+        grouped:   wantCustomers ? api('/api/admin/customers-grouped')  : Promise.resolve(null)
+    };
+    const keys = Object.keys(tasks);
+    const settled = await Promise.allSettled(keys.map(k => tasks[k]));
+    const out = {};
+    let sessionExpired = false;
+    settled.forEach((r, i) => {
+        if (r.status === 'fulfilled') out[keys[i]] = r.value;
+        else if (r.reason?.status === 401) sessionExpired = true;
+    });
+    if (sessionExpired) {
+        sessionStorage.removeItem(TOKEN_KEY);
+        showToast('Oturum süresi doldu. Yeniden giriş yapın.', 'warning');
+        setTimeout(() => location.reload(), 1500);
+        return;
     }
+    if (out.stats) renderStats(out.stats);
+    allDealers   = out.dealers?.dealers   || [];
+    allItems     = out.customers?.items   || [];
+    groupedItems = out.grouped?.items     || [];
+    populateDealerSelects();
+    renderActiveView();
+    renderManageTable();
 }
 
 function renderStats(s) {
@@ -1141,13 +1169,118 @@ $('changePasswordForm')?.addEventListener('submit', async (e) => {
 });
 
 // ================================================================
-// BOOT: sessionStorage'da token varsa doğrula ve giriş yap
+// OWNER KULLANICILARI (RBAC) — yalnız users:manage rolü görür
+// ================================================================
+let _ownerRolesCache = null;
+async function _loadRolesInto(selectId) {
+    const sel = $(selectId);
+    if (!sel) return;
+    try {
+        if (!_ownerRolesCache) {
+            const r = await api('/api/admin/roles');
+            _ownerRolesCache = r.roles || [];
+        }
+        sel.innerHTML = _ownerRolesCache.map(r => `<option value="${r.value}">${escapeHtml(r.label)}</option>`).join('');
+    } catch (_) { /* yetki yoksa sessiz */ }
+}
+
+async function loadOwnerUsers() {
+    const body = $('ownerUsersBody');
+    if (!body) return;
+    await _loadRolesInto('newOwnerRole');
+    try {
+        const r = await api('/api/admin/owner-users');
+        const users = r.users || [];
+        if (!users.length) {
+            body.innerHTML = '<tr><td colspan="5" class="loading">Henüz kullanıcı yok.</td></tr>';
+            return;
+        }
+        body.innerHTML = users.map(u => {
+            const last = u.lastLogin ? new Date(u.lastLogin).toLocaleString('tr-TR') : '—';
+            const stat = u.active ? '<span class="ok">aktif</span>' : '<span class="err">pasif</span>';
+            return `<tr>
+                <td>${escapeHtml(u.email)}</td>
+                <td>${escapeHtml(u.roleLabel || u.role)}</td>
+                <td>${stat}</td>
+                <td>${last}</td>
+                <td class="btn-group">
+                    <button class="action-btn" data-act="ou-pw"     data-id="${u.id}" title="Şifre sıfırla">🔑</button>
+                    <button class="action-btn" data-act="ou-role"   data-id="${u.id}" data-role="${u.role}" title="Rol değiştir">🎭</button>
+                    <button class="action-btn" data-act="ou-active" data-id="${u.id}" data-active="${u.active?1:0}" title="${u.active?'Pasifleştir':'Aktifleştir'}">${u.active?'⏸':'▶'}</button>
+                    <button class="action-btn danger" data-act="ou-del" data-id="${u.id}" data-email="${escapeHtml(u.email)}" title="Sil">🗑</button>
+                </td>
+            </tr>`;
+        }).join('');
+        // Aksiyon butonları
+        body.querySelectorAll('[data-act="ou-pw"]').forEach(b => b.addEventListener('click', () => ownerUserResetPw(b.dataset.id)));
+        body.querySelectorAll('[data-act="ou-role"]').forEach(b => b.addEventListener('click', () => ownerUserChangeRole(b.dataset.id, b.dataset.role)));
+        body.querySelectorAll('[data-act="ou-active"]').forEach(b => b.addEventListener('click', () => ownerUserToggleActive(b.dataset.id, b.dataset.active === '1')));
+        body.querySelectorAll('[data-act="ou-del"]').forEach(b => b.addEventListener('click', () => ownerUserDelete(b.dataset.id, b.dataset.email)));
+    } catch (e) {
+        body.innerHTML = `<tr><td colspan="5" class="error">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+$('ownerUserCreateForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = ($('newOwnerEmail').value || '').trim().toLowerCase();
+    const role  = $('newOwnerRole').value;
+    const pw    = $('newOwnerPassword').value;
+    const resEl = $('ownerUserCreateResult');
+    resEl.textContent = ''; resEl.style.color = '';
+    if (pw.length < 8) { resEl.style.color = '#f87171'; resEl.textContent = 'Şifre en az 8 karakter olmalı.'; return; }
+    try {
+        await api('/api/admin/owner-users', { method: 'POST', body: { email, password: pw, role } });
+        resEl.style.color = '#34d399';
+        resEl.textContent = '✅ Kullanıcı oluşturuldu.';
+        $('ownerUserCreateForm').reset();
+        await _loadRolesInto('newOwnerRole');
+        loadOwnerUsers();
+    } catch (err) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = 'Hata: ' + (err.message || 'oluşturulamadı');
+    }
+});
+
+async function ownerUserResetPw(id) {
+    const pw = prompt('Yeni şifre (≥ 8 karakter):');
+    if (pw === null) return;
+    if (pw.length < 8) { showToast('Şifre en az 8 karakter olmalı.', 'error'); return; }
+    try { await api(`/api/admin/owner-users/${encodeURIComponent(id)}/password`, { method: 'POST', body: { password: pw } });
+        showToast('Şifre güncellendi.', 'success'); }
+    catch (e) { showToast('Hata: ' + e.message, 'error'); }
+}
+async function ownerUserChangeRole(id, currentRoleVal) {
+    const roles = (_ownerRolesCache || []).map(r => r.value).join(', ');
+    const role = prompt('Yeni rol (' + roles + '):', currentRoleVal);
+    if (role === null) return;
+    try { await api(`/api/admin/owner-users/${encodeURIComponent(id)}/role`, { method: 'POST', body: { role } });
+        showToast('Rol güncellendi.', 'success'); loadOwnerUsers(); }
+    catch (e) { showToast('Hata: ' + e.message, 'error'); }
+}
+async function ownerUserToggleActive(id, isActive) {
+    try { await api(`/api/admin/owner-users/${encodeURIComponent(id)}/active`, { method: 'POST', body: { active: !isActive } });
+        showToast(isActive ? 'Pasifleştirildi.' : 'Aktifleştirildi.', 'success'); loadOwnerUsers(); }
+    catch (e) { showToast('Hata: ' + e.message, 'error'); }
+}
+async function ownerUserDelete(id, email) {
+    if (!confirm('Silinsin mi: ' + email + ' ?')) return;
+    try { await api(`/api/admin/owner-users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        showToast('Silindi.', 'success'); loadOwnerUsers(); }
+    catch (e) { showToast('Hata: ' + e.message, 'error'); }
+}
+
+// ================================================================
+// BOOT: sessionStorage'da token varsa doğrula + rol/yetki geri yükle
 // ================================================================
 (async function boot() {
     const t = sessionStorage.getItem(TOKEN_KEY);
     if (!t) return;
     try {
-        await api('/api/admin/stats');
+        const s = await api('/api/admin/security-status');
+        currentRole  = s.role || 'super-admin';
+        currentPerms = s.permissions || [];
+        applyPermissions();
         showDashboard();
     } catch (_) {
         sessionStorage.removeItem(TOKEN_KEY);

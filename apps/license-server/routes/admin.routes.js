@@ -35,30 +35,34 @@ if (!ADMIN_TOKEN) {
     _log.warn('[admin] UYARI: ADMIN_PANEL_TOKEN tanımsız — admin panel yalnızca development için kapalı (uçlar 503).');
 }
 
-// ─── Owner panel şifresi (DB-saklı, opsiyonel) + oturum yönetimi ──────────────
-// admin_settings tablosunda 'admin_password_hash' (bcrypt) saklanır.
-// /admin/login HEM env token'ı (kurtarma/break-glass) HEM DB şifresini kabul eder.
-// Başarılı login bir OTURUM token'ı üretir; sonraki istekler bu token ile
-// yetkilenir → her istekte bcrypt çalışmaz (oturum doğrulaması in-memory, hızlı).
-const _adminSessions = new Map(); // sessionToken -> expiresAtMs
+// ─── RBAC: owner kullanıcıları + rol-farkında oturum yönetimi ────────────────
+// İki giriş yolu:
+//   1) E-posta + şifre → owner_users tablosundan rol çözülür
+//   2) ADMIN_PANEL_TOKEN (env) VEYA admin_settings şifresi → super-admin
+//      (break-glass / kurtarma — her zaman geçerli)
+// Başarılı login rol+email taşıyan bir OTURUM token'ı üretir; sonraki istekler
+// bununla yetkilenir → her istekte bcrypt çalışmaz (oturum in-memory, hızlı).
+const { isValidRole, permsForRole, roleHasPerm, ROLE_LABELS } = require('../lib/permissions');
+
+const _adminSessions = new Map(); // sessionToken -> { expiresAt, role, email }
 const SESSION_TTL_MS = envInt('ADMIN_PANEL_SESSION_HOURS', 12) * 3600 * 1000;
 
 function _pruneSessions() {
     const now = Date.now();
-    for (const [t, exp] of _adminSessions) if (now > exp) _adminSessions.delete(t);
+    for (const [t, s] of _adminSessions) if (now > s.expiresAt) _adminSessions.delete(t);
 }
-function _newSession() {
+function _newSession(role, email) {
     _pruneSessions();
     const token = crypto.randomBytes(32).toString('hex');
-    _adminSessions.set(token, Date.now() + SESSION_TTL_MS);
+    _adminSessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, role, email: email || null });
     return token;
 }
-function _validSession(token) {
-    if (!token) return false;
-    const exp = _adminSessions.get(token);
-    if (!exp) return false;
-    if (Date.now() > exp) { _adminSessions.delete(token); return false; }
-    return true;
+function _getSession(token) {
+    if (!token) return null;
+    const s = _adminSessions.get(token);
+    if (!s) return null;
+    if (Date.now() > s.expiresAt) { _adminSessions.delete(token); return null; }
+    return s;
 }
 function _envTokenEquals(provided) {
     if (!ADMIN_TOKEN || !provided) return false;
@@ -72,8 +76,8 @@ async function _getAdminPasswordHash() {
         return row?.setting_value || null;
     } catch (_) { return null; }
 }
-// Login secret doğrulama: env token (kurtarma) VEYA DB şifresi (bcrypt)
-async function _verifyLoginSecret(provided) {
+// Super-admin secret: env token (kurtarma) VEYA admin_settings şifresi (bcrypt)
+async function _verifySuperAdminSecret(provided) {
     if (!provided || typeof provided !== 'string') return false;
     if (_envTokenEquals(provided)) return true;
     const hash = await _getAdminPasswordHash();
@@ -82,45 +86,114 @@ async function _verifyLoginSecret(provided) {
     }
     return false;
 }
+async function _findOwnerByEmail(email) {
+    try {
+        return await get('SELECT id, email, pwd_hash, role, active FROM owner_users WHERE email = ?',
+            [String(email || '').trim().toLowerCase()]);
+    } catch (_) { return null; }
+}
 
 function adminAuth(req, res, next) {
     if (!ADMIN_TOKEN) return res.status(503).json({ error: 'admin panel kapalı (ADMIN_PANEL_TOKEN tanımsız)' });
     const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
     if (!m) return res.status(401).json({ error: 'admin token gerekli' });
     const bearer = m[1];
-    // Geçerli oturum token'ı VEYA env token (break-glass / API scriptleri)
-    if (_validSession(bearer) || _envTokenEquals(bearer)) {
+
+    // 1) Geçerli oturum token'ı → role/email oturumdan
+    const sess = _getSession(bearer);
+    if (sess) {
+        req.actor = sess.email || 'admin';
+        req.ownerRole = sess.role;
+        req.ownerEmail = sess.email;
+        return next();
+    }
+    // 2) Env token doğrudan Bearer (break-glass / API scriptleri) → super-admin
+    if (_envTokenEquals(bearer)) {
         req.actor = 'admin';
+        req.ownerRole = 'super-admin';
+        req.ownerEmail = null;
         return next();
     }
     return res.status(401).json({ error: 'admin token gecersiz' });
 }
 
+// Yetki guard'ı: req.ownerRole'un verilen yetkiye sahip olmasını şart koşar.
+function requirePerm(perm) {
+    return function (req, res, next) {
+        const role = req.ownerRole || 'super-admin'; // adminAuth garanti eder
+        if (roleHasPerm(role, perm)) return next();
+        return res.status(403).json({ error: `Bu işlem için yetkiniz yok (gerekli: ${perm}, rol: ${role})` });
+    };
+}
+
 // ============================================================
-// POST /api/admin/login  (public — env token VEYA owner şifresi → oturum token)
+// POST /api/admin/login
+//   body: { email, password }  → owner_users (rol bazlı)
+//      VEYA { token }          → super-admin (env token / panel şifresi)
+//   → { ok, sessionToken, role, email, permissions, expiresIn }
 // ============================================================
 router.post('/admin/login', asyncH(async (req, res) => {
-    const { token } = req.body || {};
     if (!ADMIN_TOKEN) return res.status(503).json({ error: 'admin panel kapalı' });
-    if (!token || typeof token !== 'string') return res.status(400).json({ error: 'token gerekli' });
+    const { email, password, token } = req.body || {};
 
-    const ok = await _verifyLoginSecret(token);
+    // YOL 1 — e-posta + şifre (owner kullanıcısı)
+    if (email && typeof email === 'string') {
+        if (!password || typeof password !== 'string') {
+            return res.status(400).json({ error: 'şifre gerekli' });
+        }
+        const u = await _findOwnerByEmail(email);
+        if (!u || !u.active || !bcrypt) {
+            await audit('admin', 'admin.login.fail', null, { reason: 'no-user', email });
+            return res.status(401).json({ error: 'geçersiz e-posta veya şifre' });
+        }
+        let ok = false;
+        try { ok = await bcrypt.compare(password, u.pwd_hash); } catch (_) {}
+        if (!ok) {
+            await audit('admin', 'admin.login.fail', null, { reason: 'bad-password', email });
+            return res.status(401).json({ error: 'geçersiz e-posta veya şifre' });
+        }
+        const role = isValidRole(u.role) ? u.role : 'support';
+        const sessionToken = _newSession(role, u.email);
+        await run('UPDATE owner_users SET last_login = ? WHERE id = ?', [Date.now(), u.id]).catch(() => {});
+        await audit(u.email, 'admin.login.ok', null, { via: 'owner-user', role });
+        return res.json({
+            ok: true, sessionToken, role, email: u.email,
+            permissions: permsForRole(role),
+            expiresIn: Math.floor(SESSION_TTL_MS / 1000)
+        });
+    }
+
+    // YOL 2 — token / panel şifresi (super-admin break-glass)
+    if (!token || typeof token !== 'string') return res.status(400).json({ error: 'token veya email+password gerekli' });
+    const ok = await _verifySuperAdminSecret(token);
     if (!ok) {
         await audit('admin', 'admin.login.fail', null, { reason: 'bad-secret' });
         return res.status(401).json({ error: 'gecersiz token' });
     }
-    const sessionToken = _newSession();
+    const sessionToken = _newSession('super-admin', null);
     const viaEnv = _envTokenEquals(token);
-    await audit('admin', 'admin.login.ok', null, { via: viaEnv ? 'env-token' : 'password' });
-    res.json({ ok: true, sessionToken, expiresIn: Math.floor(SESSION_TTL_MS / 1000) });
+    await audit('admin', 'admin.login.ok', null, { via: viaEnv ? 'env-token' : 'password', role: 'super-admin' });
+    res.json({
+        ok: true, sessionToken, role: 'super-admin', email: null,
+        permissions: permsForRole('super-admin'),
+        expiresIn: Math.floor(SESSION_TTL_MS / 1000)
+    });
 }));
 
 // ============================================================
-// GET /api/admin/security-status — özel şifre ayarlı mı? (UI bilgi)
+// GET /api/admin/security-status — oturum rolü + yetkiler + şifre durumu (UI)
 // ============================================================
 router.get('/admin/security-status', adminAuth, asyncH(async (req, res) => {
     const hash = await _getAdminPasswordHash();
-    res.json({ customPasswordSet: !!hash, envTokenActive: !!ADMIN_TOKEN });
+    const role = req.ownerRole || 'super-admin';
+    res.json({
+        customPasswordSet: !!hash,
+        envTokenActive: !!ADMIN_TOKEN,
+        role,
+        roleLabel: ROLE_LABELS[role] || role,
+        email: req.ownerEmail || null,
+        permissions: permsForRole(role)
+    });
 }));
 
 // ============================================================
@@ -131,6 +204,10 @@ router.get('/admin/security-status', adminAuth, asyncH(async (req, res) => {
 // Env token kurtarma amacıyla HER ZAMAN geçerli kalır.
 // ============================================================
 router.post('/admin/change-password', adminAuth, asyncH(async (req, res) => {
+    // Bu, super-admin break-glass panel şifresidir — yalnız super-admin değiştirebilir.
+    if ((req.ownerRole || 'super-admin') !== 'super-admin') {
+        return res.status(403).json({ error: 'Panel kurtarma şifresini yalnız süper-admin değiştirebilir.' });
+    }
     if (!bcrypt) return res.status(503).json({ error: 'bcrypt kurulu değil (şifre özelliği kapalı)' });
     const { currentSecret, newPassword } = req.body || {};
     if (!currentSecret || !newPassword) {
@@ -165,7 +242,7 @@ router.post('/admin/change-password', adminAuth, asyncH(async (req, res) => {
 // POST /api/admin/customers — Müşteri kaydı oluştur (lisans üretmeden)
 //   Genişletilmiş alanlar: fatura (vergi dairesi/no + adres), BI iletişim, adres.
 // ============================================================
-router.post('/admin/customers', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/customers', adminAuth, requirePerm('customers:write'), asyncH(async (req, res) => {
     const {
         customerId, dealerId, companyName, email,
         taxOffice, taxNumber, billingAddress,
@@ -228,7 +305,7 @@ router.post('/admin/customers', adminAuth, asyncH(async (req, res) => {
 }));
 
 // GET /api/admin/customers/:id — tek müşteri detayı
-router.get('/admin/customers/:id', adminAuth, asyncH(async (req, res) => {
+router.get('/admin/customers/:id', adminAuth, requirePerm('customers:read'), asyncH(async (req, res) => {
     const row = await get('SELECT * FROM customers WHERE id = ?', [req.params.id]);
     if (!row) return res.status(404).json({ error: 'müşteri bulunamadı' });
     res.json({ customer: row });
@@ -239,7 +316,7 @@ router.get('/admin/customers/:id', adminAuth, asyncH(async (req, res) => {
 //   Bir müşterinin BIRDEN FAZLA lisansı olabilir — her lisans için ayrı row.
 //   licenseCount alanı, aynı müşterinin toplam lisans sayısını gösterir.
 // ============================================================
-router.get('/admin/customers', adminAuth, asyncH(async (req, res) => {
+router.get('/admin/customers', adminAuth, requirePerm('customers:read'), asyncH(async (req, res) => {
     const { dealerId, plan, status, q } = req.query;
 
     let where = [];
@@ -347,7 +424,7 @@ router.get('/admin/customers', adminAuth, asyncH(async (req, res) => {
 // GET /api/admin/customers-grouped — Müşteri başına 1 row, lisanslar array
 //   Bir müşterinin N lisansı varsa hepsi licenses[] içinde döner.
 // ============================================================
-router.get('/admin/customers-grouped', adminAuth, asyncH(async (req, res) => {
+router.get('/admin/customers-grouped', adminAuth, requirePerm('customers:read'), asyncH(async (req, res) => {
     const { dealerId, q } = req.query;
     let where = [];
     let params = [];
@@ -421,7 +498,7 @@ router.get('/admin/customers-grouped', adminAuth, asyncH(async (req, res) => {
 // POST /api/admin/licenses/:id/label — lisansa etiket ata
 // body: { label: string | null }   max 128 karakter
 // ============================================================
-router.post('/admin/licenses/:id/label', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/licenses/:id/label', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
     const { label } = req.body || {};
     const licenseId = req.params.id;
 
@@ -442,7 +519,7 @@ router.post('/admin/licenses/:id/label', adminAuth, asyncH(async (req, res) => {
 // ============================================================
 // GET /api/admin/licenses — sade liste (tablo için)
 // ============================================================
-router.get('/admin/licenses', adminAuth, asyncH(async (req, res) => {
+router.get('/admin/licenses', adminAuth, requirePerm('licenses:read'), asyncH(async (req, res) => {
     const rows = await all(
         `SELECT l.id, l.customer_id, l.dealer_id, l.plan, l.tier, l.status,
                 l.license_key_masked, l.issued_at, l.expires_at, l.grace_days,
@@ -456,7 +533,7 @@ router.get('/admin/licenses', adminAuth, asyncH(async (req, res) => {
 // POST /api/admin/licenses/:id/offline-grace
 // body: { days: number | null }   (null = override sil — plan default'a dön)
 // ============================================================
-router.post('/admin/licenses/:id/offline-grace', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/licenses/:id/offline-grace', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
     const { days } = req.body || {};
     const licenseId = req.params.id;
 
@@ -486,7 +563,7 @@ router.post('/admin/licenses/:id/offline-grace', adminAuth, asyncH(async (req, r
 //   Filtreler verilirse sadece eşleşen aktif lisanslara uygulanır.
 //   Hepsi boşsa = TÜM AKTİF lisanslar.
 // ============================================================
-router.post('/admin/offline-grace/bulk', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/offline-grace/bulk', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
     const { days, dealerId, plan, status } = req.body || {};
 
     // Kazara tüm lisansları etkilememek için en az bir filtre zorunlu.
@@ -530,7 +607,7 @@ router.post('/admin/offline-grace/bulk', adminAuth, asyncH(async (req, res) => {
 // ============================================================
 // GET /api/admin/dealers — bulk filter dropdown'lar için
 // ============================================================
-router.get('/admin/dealers', adminAuth, asyncH(async (req, res) => {
+router.get('/admin/dealers', adminAuth, requirePerm('dealers:read'), asyncH(async (req, res) => {
     const rows = await all('SELECT id, name, email, created_at FROM dealers ORDER BY name');
     res.json({ dealers: rows });
 }));
@@ -542,7 +619,7 @@ const { v4: uuid } = require('uuid');
 // NOT: bcrypt dosyanın başında zaten require edildi (owner şifre özelliği).
 
 // POST /api/admin/dealers — yeni bayi olustur
-router.post('/admin/dealers', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/dealers', adminAuth, requirePerm('dealers:write'), asyncH(async (req, res) => {
     const { id, name, email, password } = req.body || {};
     if (!id || typeof id !== 'string') return res.status(400).json({ error: 'id gerekli' });
     if (id.length > 64) return res.status(400).json({ error: 'id 64 karakteri aşmamalı' });
@@ -566,7 +643,7 @@ router.post('/admin/dealers', adminAuth, asyncH(async (req, res) => {
 }));
 
 // POST /api/admin/dealers/:id/password — parolayi guncelle/set
-router.post('/admin/dealers/:id/password', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/dealers/:id/password', adminAuth, requirePerm('dealers:write'), asyncH(async (req, res) => {
     const { password } = req.body || {};
     if (!password || typeof password !== 'string' || password.length < 8) {
         return res.status(400).json({ error: 'parola 8+ karakter olmalı' });
@@ -583,7 +660,7 @@ router.post('/admin/dealers/:id/password', adminAuth, asyncH(async (req, res) =>
 }));
 
 // DELETE /api/admin/dealers/:id — bayi sil (yumusak: customer.dealer_id NULL kalir)
-router.delete('/admin/dealers/:id', adminAuth, asyncH(async (req, res) => {
+router.delete('/admin/dealers/:id', adminAuth, requirePerm('dealers:write'), asyncH(async (req, res) => {
     const dealer = await get('SELECT id FROM dealers WHERE id = ?', [req.params.id]);
     if (!dealer) return res.status(404).json({ error: 'bayi bulunamadı' });
     // 0001 migration: customers.dealer_id ON DELETE SET NULL (mariadb) / no-action (sqlite)
@@ -603,7 +680,7 @@ const { sha256 } = require('@mailtrustai/security');
 const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX } = require('@mailtrustai/license-core');
 
 // POST /api/admin/licenses — admin'in direkt lisans uretmesi
-router.post('/admin/licenses', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/licenses', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
     const { customerId, dealerId, plan = 'pro', tier, companyName, email, label } = req.body || {};
     const isTrial    = req.body?.trial === true || req.body?.trial === 'true';
     const validDaysNum = Number(req.body?.validDays ?? (isTrial ? 14 : 365));
@@ -665,7 +742,7 @@ function isMariaCheck() {
 }
 
 // POST /api/admin/licenses/:id/revoke
-router.post('/admin/licenses/:id/revoke', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/licenses/:id/revoke', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
     const { reason } = req.body || {};
     const license = await get('SELECT id, customer_id FROM licenses WHERE id = ?', [req.params.id]);
     if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
@@ -675,7 +752,7 @@ router.post('/admin/licenses/:id/revoke', adminAuth, asyncH(async (req, res) => 
 }));
 
 // POST /api/admin/licenses/:id/unrevoke — yeniden aktive et
-router.post('/admin/licenses/:id/unrevoke', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/licenses/:id/unrevoke', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
     const license = await get('SELECT id, expires_at FROM licenses WHERE id = ?', [req.params.id]);
     if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
     await run("UPDATE licenses SET status = 'active' WHERE id = ?", [req.params.id]);
@@ -684,7 +761,7 @@ router.post('/admin/licenses/:id/unrevoke', adminAuth, asyncH(async (req, res) =
 }));
 
 // POST /api/admin/licenses/:id/renew { addDays }
-router.post('/admin/licenses/:id/renew', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/licenses/:id/renew', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
     const { addDays = 365 } = req.body || {};
     const days = Number(addDays);
     if (!Number.isFinite(days) || days <= 0 || days > 36500) {
@@ -701,7 +778,7 @@ router.post('/admin/licenses/:id/renew', adminAuth, asyncH(async (req, res) => {
 // ============================================================
 // GET /api/admin/audit — filtreli
 // ============================================================
-router.get('/admin/audit', adminAuth, asyncH(async (req, res) => {
+router.get('/admin/audit', adminAuth, requirePerm('audit:read'), asyncH(async (req, res) => {
     const { actor, action, target, limit, since } = req.query;
     const lim = Math.min(Math.max(Number(limit) || 200, 1), 1000);
 
@@ -751,7 +828,7 @@ router.get('/admin/stats', adminAuth, asyncH(async (req, res) => {
 // ============================================================
 // Transfer Talepleri — Admin tam erişim
 // ============================================================
-router.get('/admin/transfers', adminAuth, asyncH(async (req, res) => {
+router.get('/admin/transfers', adminAuth, requirePerm('transfers:read'), asyncH(async (req, res) => {
     const status = req.query.status || 'pending';
     const limitN = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
     const statusFilter = status === 'all' ? null : status;
@@ -768,7 +845,7 @@ router.get('/admin/transfers', adminAuth, asyncH(async (req, res) => {
     res.json({ transfers: rows || [] });
 }));
 
-router.post('/admin/transfers/:id/approve', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/transfers/:id/approve', adminAuth, requirePerm('transfers:write'), asyncH(async (req, res) => {
     const tr = await get('SELECT * FROM transfer_requests WHERE id=?', [req.params.id]);
     if (!tr) return res.status(404).json({ error: 'transfer talebi bulunamadı' });
     if (tr.status !== 'pending') return res.status(409).json({ error: `talep zaten işlendi: ${tr.status}` });
@@ -796,7 +873,7 @@ router.post('/admin/transfers/:id/approve', adminAuth, asyncH(async (req, res) =
     res.json({ ok: true, message: 'Transfer onaylandı.' });
 }));
 
-router.post('/admin/transfers/:id/reject', adminAuth, asyncH(async (req, res) => {
+router.post('/admin/transfers/:id/reject', adminAuth, requirePerm('transfers:write'), asyncH(async (req, res) => {
     const { reason } = req.body || {};
     const tr = await get('SELECT * FROM transfer_requests WHERE id=?', [req.params.id]);
     if (!tr) return res.status(404).json({ error: 'transfer talebi bulunamadı' });
@@ -813,6 +890,93 @@ router.post('/admin/transfers/:id/reject', adminAuth, asyncH(async (req, res) =>
     }
     await audit('admin', 'license.transfer.rejected', tr.license_id, { transferId: tr.id, reason });
     res.json({ ok: true, message: 'Transfer reddedildi.' });
+}));
+
+// ============================================================
+// OWNER KULLANICI YÖNETİMİ (RBAC) — yalnız users:manage (super-admin)
+// ============================================================
+const { ROLES, ROLE_LABELS: _ROLE_LABELS } = require('../lib/permissions');
+
+function _normEmail(e) { return String(e || '').trim().toLowerCase(); }
+function _isValidEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
+
+// GET /api/admin/roles — UI dropdown için rol listesi (etiketli)
+router.get('/admin/roles', adminAuth, asyncH(async (req, res) => {
+    res.json({ roles: ROLES.map(r => ({ value: r, label: _ROLE_LABELS[r] || r })) });
+}));
+
+// GET /api/admin/owner-users — tüm owner kullanıcıları
+router.get('/admin/owner-users', adminAuth, requirePerm('users:manage'), asyncH(async (req, res) => {
+    const rows = await all('SELECT id, email, role, active, created_at, last_login FROM owner_users ORDER BY created_at ASC');
+    res.json({ count: rows.length, users: rows.map(u => ({
+        id: u.id, email: u.email, role: u.role,
+        roleLabel: _ROLE_LABELS[u.role] || u.role,
+        active: u.active === 1 || u.active === true,
+        createdAt: u.created_at, lastLogin: u.last_login
+    })) });
+}));
+
+// POST /api/admin/owner-users — yeni owner kullanıcısı oluştur
+router.post('/admin/owner-users', adminAuth, requirePerm('users:manage'), asyncH(async (req, res) => {
+    if (!bcrypt) return res.status(503).json({ error: 'bcrypt kurulu değil' });
+    const { email, password, role } = req.body || {};
+    const e = _normEmail(email);
+    if (!_isValidEmail(e))                 return res.status(400).json({ error: 'Geçerli e-posta gerekli' });
+    if (!password || String(password).length < 8) return res.status(400).json({ error: 'Şifre en az 8 karakter olmalı' });
+    if (!isValidRole(role))                return res.status(400).json({ error: `Geçersiz rol. Geçerli: ${ROLES.join(', ')}` });
+
+    const existing = await get('SELECT id FROM owner_users WHERE email = ?', [e]);
+    if (existing) return res.status(409).json({ error: 'Bu e-posta zaten kayıtlı' });
+
+    const id = uuid();
+    const hash = await bcrypt.hash(String(password), 10);
+    await run('INSERT INTO owner_users(id, email, pwd_hash, role, active, created_at) VALUES(?,?,?,?,?,?)',
+        [id, e, hash, role, 1, Date.now()]);
+    await audit(req.actor, 'owner-user.create', e, { role });
+    res.json({ ok: true, id, email: e, role });
+}));
+
+// POST /api/admin/owner-users/:id/password — şifre sıfırla
+router.post('/admin/owner-users/:id/password', adminAuth, requirePerm('users:manage'), asyncH(async (req, res) => {
+    if (!bcrypt) return res.status(503).json({ error: 'bcrypt kurulu değil' });
+    const { password } = req.body || {};
+    if (!password || String(password).length < 8) return res.status(400).json({ error: 'Şifre en az 8 karakter olmalı' });
+    const u = await get('SELECT id, email FROM owner_users WHERE id = ?', [req.params.id]);
+    if (!u) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    const hash = await bcrypt.hash(String(password), 10);
+    await run('UPDATE owner_users SET pwd_hash = ? WHERE id = ?', [hash, req.params.id]);
+    await audit(req.actor, 'owner-user.password.reset', u.email, null);
+    res.json({ ok: true });
+}));
+
+// POST /api/admin/owner-users/:id/role — rol değiştir
+router.post('/admin/owner-users/:id/role', adminAuth, requirePerm('users:manage'), asyncH(async (req, res) => {
+    const { role } = req.body || {};
+    if (!isValidRole(role)) return res.status(400).json({ error: `Geçersiz rol. Geçerli: ${ROLES.join(', ')}` });
+    const u = await get('SELECT id, email, role FROM owner_users WHERE id = ?', [req.params.id]);
+    if (!u) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    await run('UPDATE owner_users SET role = ? WHERE id = ?', [role, req.params.id]);
+    await audit(req.actor, 'owner-user.role.change', u.email, { from: u.role, to: role });
+    res.json({ ok: true, role });
+}));
+
+// POST /api/admin/owner-users/:id/active — etkinleştir/devre dışı
+router.post('/admin/owner-users/:id/active', adminAuth, requirePerm('users:manage'), asyncH(async (req, res) => {
+    const active = req.body?.active === true || req.body?.active === 'true' ? 1 : 0;
+    const u = await get('SELECT id, email FROM owner_users WHERE id = ?', [req.params.id]);
+    if (!u) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    await run('UPDATE owner_users SET active = ? WHERE id = ?', [active, req.params.id]);
+    await audit(req.actor, 'owner-user.active', u.email, { active: !!active });
+    res.json({ ok: true, active: !!active });
+}));
+
+// DELETE /api/admin/owner-users/:id — sil
+router.delete('/admin/owner-users/:id', adminAuth, requirePerm('users:manage'), asyncH(async (req, res) => {
+    const u = await get('SELECT id, email FROM owner_users WHERE id = ?', [req.params.id]);
+    if (!u) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    await run('DELETE FROM owner_users WHERE id = ?', [req.params.id]);
+    await audit(req.actor, 'owner-user.delete', u.email, null);
+    res.json({ ok: true });
 }));
 
 module.exports = router;

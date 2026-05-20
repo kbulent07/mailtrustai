@@ -18,11 +18,17 @@
             <p class="muted">Merkezi Yönetim Paneli</p>
         </div>
         <form id="loginForm" autocomplete="on">
-            <label for="adminToken">Admin Token</label>
-            <input type="password" id="adminToken" placeholder="ADMIN_PANEL_TOKEN" autocomplete="current-password" required minlength="8">
+            <label for="adminEmail">E-posta <span style="opacity:.6;font-weight:400">(owner kullanıcısı)</span></label>
+            <input type="email" id="adminEmail" placeholder="kullanici@firma.com" autocomplete="username">
+            <label for="adminToken">Şifre / Admin Token</label>
+            <input type="password" id="adminToken" placeholder="şifreniz veya ADMIN_PANEL_TOKEN" autocomplete="current-password" required minlength="8">
             <button type="submit" id="loginBtn">🔓 Giriş Yap</button>
             <div id="loginError" class="error" role="alert" aria-live="polite"></div>
-            <p class="hint">Token <code>license-server/.env.docker</code> içindeki <code>ADMIN_PANEL_TOKEN</code> değeridir.</p>
+            <p class="hint">
+                Owner kullanıcısıysanız <strong>e-posta + şifre</strong> girin.<br>
+                E-postayı boş bırakıp <code>ADMIN_PANEL_TOKEN</code> (veya panel şifresi) girerseniz
+                <strong>süper-admin</strong> olarak girersiniz (kurtarma).
+            </p>
         </form>
     </div>
 </div>
@@ -43,12 +49,13 @@
         <!-- =========== SIDEBAR =========== -->
         <aside class="sidebar" role="navigation" aria-label="Ana Menü">
             <a class="nav-item active" data-tab="overview">📊 <span>Özet</span></a>
-            <a class="nav-item" data-tab="customers">👤 <span>Müşteriler</span></a>
-            <a class="nav-item" data-tab="dealers">👥 <span>Bayiler</span></a>
-            <a class="nav-item" data-tab="create">🔑 <span>Lisans Üret</span></a>
-            <a class="nav-item" data-tab="manage">⚙️ <span>Lisans Yönet</span></a>
-            <a class="nav-item" data-tab="audit">📜 <span>Audit Log</span></a>
-            <a class="nav-item" data-tab="transfers">🔁 <span>Transferler</span></a>
+            <a class="nav-item" data-tab="customers" data-perm="customers:read">👤 <span>Müşteriler</span></a>
+            <a class="nav-item" data-tab="dealers" data-perm="dealers:read">👥 <span>Bayiler</span></a>
+            <a class="nav-item" data-tab="create" data-perm="licenses:write">🔑 <span>Lisans Üret</span></a>
+            <a class="nav-item" data-tab="manage" data-perm="licenses:read">⚙️ <span>Lisans Yönet</span></a>
+            <a class="nav-item" data-tab="audit" data-perm="audit:read">📜 <span>Audit Log</span></a>
+            <a class="nav-item" data-tab="transfers" data-perm="transfers:read">🔁 <span>Transferler</span></a>
+            <a class="nav-item" data-tab="users" data-perm="users:manage">👮 <span>Kullanıcılar</span></a>
             <a class="nav-item" data-tab="security">🔐 <span>Güvenlik</span></a>
         </aside>
 
@@ -380,6 +387,41 @@
                 </table>
             </div>
             <div id="adminTransferResult" style="margin-top:10px"></div>
+        </section>
+
+        <!-- =========== TAB: KULLANICILAR (RBAC) =========== -->
+        <section class="tab-content" data-tab="users">
+            <div class="two-col">
+                <div class="col">
+                    <h2>👮 Owner Kullanıcıları</h2>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>E-posta</th><th>Rol</th><th>Durum</th><th>Son Giriş</th><th>İşlem</th></tr></thead>
+                            <tbody id="ownerUsersBody"><tr><td colspan="5" class="loading">Yükleniyor...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col">
+                    <h2>➕ Yeni Kullanıcı</h2>
+                    <form id="ownerUserCreateForm" class="form-card">
+                        <label for="newOwnerEmail">E-posta</label>
+                        <input type="email" id="newOwnerEmail" required placeholder="kullanici@firma.com" autocomplete="off">
+                        <label for="newOwnerRole">Rol</label>
+                        <select id="newOwnerRole" required></select>
+                        <label for="newOwnerPassword">Şifre</label>
+                        <input type="password" id="newOwnerPassword" required minlength="8" placeholder="≥ 8 karakter" autocomplete="new-password">
+                        <button type="submit" class="primary">Oluştur</button>
+                        <div id="ownerUserCreateResult" class="result" role="status" aria-live="polite"></div>
+                    </form>
+                    <div class="form-card" style="margin-top:12px;font-size:12px;color:#94a3b8;line-height:1.7">
+                        <strong>Roller:</strong><br>
+                        • <strong>Süper Admin</strong>: her şey + kullanıcı yönetimi<br>
+                        • <strong>Admin</strong>: müşteri/bayi/lisans/transfer (kullanıcı yönetimi yok)<br>
+                        • <strong>Muhasebe</strong>: müşteri + lisans + fatura (salt-okunur)<br>
+                        • <strong>Destek</strong>: müşteri görüntüleme + transfer onay/red + audit
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- =========== TAB: GÜVENLİK =========== -->
