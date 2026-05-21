@@ -635,6 +635,151 @@
 </div>
 
 <!-- =====================================================
+     Müşteri Yapılandırma Modalı — customerConfigModal
+     Policy / Whitelist / Blacklist / API Policy
+     ===================================================== -->
+<div id="customerConfigModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ccModalTitle">
+    <div class="modal-card" style="max-width:780px;width:97%">
+        <h3 id="ccModalTitle">⚙️ Müşteri Yapılandırması</h3>
+        <p class="muted" style="margin-bottom:12px">
+            Müşteri: <strong id="ccCustomerName">—</strong>
+            &nbsp;|&nbsp; ID: <code id="ccCustomerId">—</code>
+        </p>
+
+        <!-- Alt-sekme butonları -->
+        <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid #2d3448;padding-bottom:0">
+            <button class="cc-tab-btn active" data-cc="policy"    style="padding:7px 14px;border:none;border-bottom:2px solid #6366f1;background:transparent;color:#e2e8f0;cursor:pointer;font-size:.88em">📋 Policy</button>
+            <button class="cc-tab-btn"        data-cc="whitelist" style="padding:7px 14px;border:none;border-bottom:2px solid transparent;background:transparent;color:#8b95b3;cursor:pointer;font-size:.88em">✅ Whitelist</button>
+            <button class="cc-tab-btn"        data-cc="blacklist" style="padding:7px 14px;border:none;border-bottom:2px solid transparent;background:transparent;color:#8b95b3;cursor:pointer;font-size:.88em">🚫 Blacklist</button>
+            <button class="cc-tab-btn"        data-cc="apipolicy" style="padding:7px 14px;border:none;border-bottom:2px solid transparent;background:transparent;color:#8b95b3;cursor:pointer;font-size:.88em">🔌 API Policy</button>
+        </div>
+
+        <!-- POLICY -->
+        <div class="cc-panel active" id="cc-panel-policy">
+            <p style="font-size:.8em;color:#8b95b3;margin-bottom:8px">
+                Müşteri için özellik geçersiz kılmaları ve limitler. JSON formatı.
+                <code style="font-size:.78em">{ "featureOverrides": {}, "limits": {} }</code>
+            </p>
+            <textarea id="ccPolicyJson" rows="12"
+                style="width:100%;background:#0d1117;color:#e2e8f0;border:1px solid #2d3448;border-radius:6px;padding:12px;font-family:monospace;font-size:.82em;resize:vertical;box-sizing:border-box"
+                placeholder='{ "featureOverrides": { "phishingDetection": true }, "limits": { "maxMailboxes": 5 } }'></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+                <button id="ccPolicySave" class="action-btn primary">💾 Kaydet</button>
+                <button id="ccPolicyFmt"  class="action-btn">{ } Formatla</button>
+                <span id="ccPolicyVer"    style="font-size:.78em;color:#8b95b3;margin-left:auto"></span>
+            </div>
+            <div id="ccPolicyResult" style="font-size:.82em;min-height:16px;margin-top:6px"></div>
+        </div>
+
+        <!-- WHITELIST -->
+        <div class="cc-panel hidden" id="cc-panel-whitelist">
+            <p style="font-size:.8em;color:#8b95b3;margin-bottom:8px">
+                Beyaz liste — her satıra bir giriş. <strong>domains</strong> ve <strong>senders</strong> alanları.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div>
+                    <label style="font-size:.8em;color:#8b95b3;display:block;margin-bottom:4px">Alan Adları (domains)</label>
+                    <textarea id="ccWlDomains" rows="10"
+                        style="width:100%;background:#0d1117;color:#e2e8f0;border:1px solid #2d3448;border-radius:6px;padding:10px;font-family:monospace;font-size:.82em;resize:vertical;box-sizing:border-box"
+                        placeholder="example.com&#10;trusted.org"></textarea>
+                </div>
+                <div>
+                    <label style="font-size:.8em;color:#8b95b3;display:block;margin-bottom:4px">Gönderenler (senders)</label>
+                    <textarea id="ccWlSenders" rows="10"
+                        style="width:100%;background:#0d1117;color:#e2e8f0;border:1px solid #2d3448;border-radius:6px;padding:10px;font-family:monospace;font-size:.82em;resize:vertical;box-sizing:border-box"
+                        placeholder="trusted@example.com&#10;boss@company.com"></textarea>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+                <button id="ccWlSave" class="action-btn primary">💾 Kaydet</button>
+                <span id="ccWlVer" style="font-size:.78em;color:#8b95b3;margin-left:auto"></span>
+            </div>
+            <div id="ccWlResult" style="font-size:.82em;min-height:16px;margin-top:6px"></div>
+        </div>
+
+        <!-- BLACKLIST -->
+        <div class="cc-panel hidden" id="cc-panel-blacklist">
+            <p style="font-size:.8em;color:#8b95b3;margin-bottom:8px">
+                Kara liste — her satıra bir giriş. <strong>domains</strong>, <strong>senders</strong>, <strong>urls</strong>, <strong>attachmentHashes</strong>.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div>
+                    <label style="font-size:.8em;color:#8b95b3;display:block;margin-bottom:4px">Alan Adları (domains)</label>
+                    <textarea id="ccBlDomains" rows="8"
+                        style="width:100%;background:#0d1117;color:#e2e8f0;border:1px solid #2d3448;border-radius:6px;padding:10px;font-family:monospace;font-size:.82em;resize:vertical;box-sizing:border-box"
+                        placeholder="malicious.com&#10;phishing.site"></textarea>
+                </div>
+                <div>
+                    <label style="font-size:.8em;color:#8b95b3;display:block;margin-bottom:4px">Gönderenler (senders)</label>
+                    <textarea id="ccBlSenders" rows="8"
+                        style="width:100%;background:#0d1117;color:#e2e8f0;border:1px solid #2d3448;border-radius:6px;padding:10px;font-family:monospace;font-size:.82em;resize:vertical;box-sizing:border-box"
+                        placeholder="spam@evil.com"></textarea>
+                </div>
+                <div>
+                    <label style="font-size:.8em;color:#8b95b3;display:block;margin-bottom:4px">URL'ler (urls)</label>
+                    <textarea id="ccBlUrls" rows="8"
+                        style="width:100%;background:#0d1117;color:#e2e8f0;border:1px solid #2d3448;border-radius:6px;padding:10px;font-family:monospace;font-size:.82em;resize:vertical;box-sizing:border-box"
+                        placeholder="http://evil.com/payload"></textarea>
+                </div>
+                <div>
+                    <label style="font-size:.8em;color:#8b95b3;display:block;margin-bottom:4px">Dosya Hash'leri (attachmentHashes)</label>
+                    <textarea id="ccBlHashes" rows="8"
+                        style="width:100%;background:#0d1117;color:#e2e8f0;border:1px solid #2d3448;border-radius:6px;padding:10px;font-family:monospace;font-size:.82em;resize:vertical;box-sizing:border-box"
+                        placeholder="sha256:aabbcc..."></textarea>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+                <button id="ccBlSave" class="action-btn primary">💾 Kaydet</button>
+                <span id="ccBlVer" style="font-size:.78em;color:#8b95b3;margin-left:auto"></span>
+            </div>
+            <div id="ccBlResult" style="font-size:.82em;min-height:16px;margin-top:6px"></div>
+        </div>
+
+        <!-- API POLICY -->
+        <div class="cc-panel hidden" id="cc-panel-apipolicy">
+            <p style="font-size:.8em;color:#8b95b3;margin-bottom:12px">
+                Müşteri için izin verilen API sağlayıcıları, hız limitleri ve kota ayarları.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div>
+                    <label style="font-size:.8em;color:#8b95b3;display:block;margin-bottom:6px">İzin Verilen Sağlayıcılar</label>
+                    <div id="ccApiProviders" style="display:flex;flex-direction:column;gap:6px">
+                        <label style="display:flex;align-items:center;gap:8px;font-size:.85em"><input type="checkbox" id="ccProv_openai"       value="openai">       OpenAI</label>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:.85em"><input type="checkbox" id="ccProv_claude"       value="claude">       Claude (Anthropic)</label>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:.85em"><input type="checkbox" id="ccProv_virustotal"   value="virustotal">   VirusTotal</label>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:.85em"><input type="checkbox" id="ccProv_otx"          value="otx">          OTX (AlienVault)</label>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:.85em"><input type="checkbox" id="ccProv_urlscan"      value="urlscan">      urlscan.io</label>
+                    </div>
+                </div>
+                <div>
+                    <label style="font-size:.8em;color:#8b95b3;display:block;margin-bottom:4px">Hız Limiti (istek/dk, boş=sınırsız)</label>
+                    <input type="number" id="ccApiRateLimit" min="0" placeholder="ör: 60"
+                        style="width:100%;padding:8px;border-radius:6px;border:1px solid #2d3448;background:#0d1117;color:#e2e8f0;font-size:.88em;margin-bottom:12px">
+                    <label style="font-size:.8em;color:#8b95b3;display:block;margin-bottom:4px">Günlük Kota (istek, boş=sınırsız)</label>
+                    <input type="number" id="ccApiDailyQuota" min="0" placeholder="ör: 1000"
+                        style="width:100%;padding:8px;border-radius:6px;border:1px solid #2d3448;background:#0d1117;color:#e2e8f0;font-size:.88em;margin-bottom:12px">
+                    <label style="font-size:.8em;color:#8b95b3;display:block;margin-bottom:4px">Aylık Kota (istek, boş=sınırsız)</label>
+                    <input type="number" id="ccApiMonthlyQuota" min="0" placeholder="ör: 25000"
+                        style="width:100%;padding:8px;border-radius:6px;border:1px solid #2d3448;background:#0d1117;color:#e2e8f0;font-size:.88em;margin-bottom:12px">
+                    <label style="display:flex;align-items:center;gap:8px;font-size:.85em">
+                        <input type="checkbox" id="ccApiProxy"> Merkezi API Proxy Aktif
+                    </label>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:14px;align-items:center">
+                <button id="ccApiSave" class="action-btn primary">💾 Kaydet</button>
+                <span id="ccApiVer" style="font-size:.78em;color:#8b95b3;margin-left:auto"></span>
+            </div>
+            <div id="ccApiResult" style="font-size:.82em;min-height:16px;margin-top:6px"></div>
+        </div>
+
+        <div style="margin-top:14px;text-align:right">
+            <button id="ccClose" class="action-btn">Kapat</button>
+        </div>
+    </div>
+</div>
+
+<!-- =====================================================
      Haberleşme Logu Modalı — heartbeatLogModal
      ===================================================== -->
 <div id="heartbeatLogModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="hbLogModalTitle">

@@ -390,6 +390,7 @@ function renderFlatTable() {
                     <button class="action-btn" data-action="grace" data-license="${lic.id}" data-name="${da}" data-mask="${dm}">İzin Ver</button>
                     <button class="action-btn" data-action="label" data-license="${lic.id}" data-name="${da}" data-mask="${dm}" data-current="${dcl}">Etiket</button>
                 ` : ''}
+                <button class="action-btn" data-action="config" data-custid="${encodeURIComponent(it.customerId)}" data-custname="${da}">⚙️ Yapılandır</button>
             </td>
         </tr>`;
     }).join('');
@@ -467,7 +468,7 @@ function renderGroupedTable() {
                 <td>${dealerLabel}</td>
                 <td><span class="license-count-badge${c.licenseCount > 1 ? '' : ' warn'}">${c.licenseCount} lisans</span></td>
                 <td><span class="tag tag-active">${c.activeCount} aktif</span></td>
-                <td></td>
+                <td><button class="action-btn" data-action="config" data-custid="${encodeURIComponent(c.customerId)}" data-custname="${encodeURIComponent(c.companyName || c.customerId)}">⚙️ Yapılandır</button></td>
             </tr>
             <tr class="sub-licenses hidden" data-for="${escapeHtml(c.customerId)}">
                 <td colspan="6">
@@ -513,6 +514,14 @@ function bindRowActions(tbody) {
                     decodeURIComponent(btn.dataset.name),
                     decodeURIComponent(btn.dataset.mask),
                     decodeURIComponent(btn.dataset.current || ''));
+            });
+        } else if (a === 'config') {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openCustomerConfig(
+                    decodeURIComponent(btn.dataset.custid  || ''),
+                    decodeURIComponent(btn.dataset.custname || '')
+                );
             });
         }
     });
@@ -1685,6 +1694,199 @@ $('hbDetailModal')?.addEventListener('click', (e) => { if (e.target === $('hbDet
 // Tarih inputlarında Enter → filtrele
 ['hbLogFrom', 'hbLogTo'].forEach(id => {
     $(`${id}`)?.addEventListener('keydown', e => { if (e.key === 'Enter') loadHeartbeatLog(); });
+});
+
+// ================================================================
+// MÜŞTERİ YAPILANDIRMA MODALI
+// ================================================================
+
+let _ccCustomerId = null;
+
+/** Modalı aç + ilk alt-sekmeyi yükle */
+async function openCustomerConfig(customerId, customerName) {
+    _ccCustomerId = customerId;
+    $('ccCustomerId').textContent    = customerId;
+    $('ccCustomerName').textContent  = customerName || customerId;
+
+    // Alt-sekme sıfırla → policy aktif
+    document.querySelectorAll('.cc-tab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.cc === 'policy');
+        b.style.borderBottomColor  = b.dataset.cc === 'policy' ? '#6366f1' : 'transparent';
+        b.style.color              = b.dataset.cc === 'policy' ? '#e2e8f0' : '#8b95b3';
+    });
+    document.querySelectorAll('.cc-panel').forEach(p =>
+        p.classList.toggle('hidden', p.id !== 'cc-panel-policy')
+    );
+
+    $('customerConfigModal').classList.remove('hidden');
+    await _ccLoad('policy');
+}
+
+/** Alt-sekme değiştir + verisini yükle */
+async function _ccActivateTab(ccName) {
+    document.querySelectorAll('.cc-tab-btn').forEach(b => {
+        const active = b.dataset.cc === ccName;
+        b.classList.toggle('active', active);
+        b.style.borderBottomColor = active ? '#6366f1' : 'transparent';
+        b.style.color             = active ? '#e2e8f0' : '#8b95b3';
+    });
+    document.querySelectorAll('.cc-panel').forEach(p =>
+        p.classList.toggle('hidden', p.id !== `cc-panel-${ccName}`)
+    );
+    await _ccLoad(ccName);
+}
+
+/** Verisi yüklenmemiş sekmeyi API'den doldur */
+async function _ccLoad(ccName) {
+    if (!_ccCustomerId) return;
+    try {
+        if (ccName === 'policy') {
+            const d = await api(`/api/admin/customers/${encodeURIComponent(_ccCustomerId)}/policy`);
+            $('ccPolicyJson').value = JSON.stringify(d.body || {}, null, 2);
+            $('ccPolicyVer').textContent = d.version ? `v${d.version}` : 'v0';
+            $('ccPolicyResult').textContent = '';
+        } else if (ccName === 'whitelist') {
+            const d = await api(`/api/admin/customers/${encodeURIComponent(_ccCustomerId)}/whitelist`);
+            $('ccWlDomains').value  = (d.body?.domains  || []).join('\n');
+            $('ccWlSenders').value  = (d.body?.senders  || []).join('\n');
+            $('ccWlVer').textContent = d.version ? `v${d.version}` : 'v0';
+            $('ccWlResult').textContent = '';
+        } else if (ccName === 'blacklist') {
+            const d = await api(`/api/admin/customers/${encodeURIComponent(_ccCustomerId)}/blacklist`);
+            $('ccBlDomains').value  = (d.body?.domains           || []).join('\n');
+            $('ccBlSenders').value  = (d.body?.senders           || []).join('\n');
+            $('ccBlUrls').value     = (d.body?.urls              || []).join('\n');
+            $('ccBlHashes').value   = (d.body?.attachmentHashes  || []).join('\n');
+            $('ccBlVer').textContent = d.version ? `v${d.version}` : 'v0';
+            $('ccBlResult').textContent = '';
+        } else if (ccName === 'apipolicy') {
+            const d = await api(`/api/admin/customers/${encodeURIComponent(_ccCustomerId)}/api-policy`);
+            const b = d.body || {};
+            const providers = b.allowedProviders || [];
+            ['openai','claude','virustotal','otx','urlscan'].forEach(p => {
+                const el = $(`ccProv_${p}`);
+                if (el) el.checked = providers.includes(p);
+            });
+            $('ccApiRateLimit').value    = b.rateLimit     != null ? b.rateLimit    : '';
+            $('ccApiDailyQuota').value   = b.dailyQuota    != null ? b.dailyQuota   : '';
+            $('ccApiMonthlyQuota').value = b.monthlyQuota  != null ? b.monthlyQuota : '';
+            $('ccApiProxy').checked      = !!b.centralApiProxyEnabled;
+            $('ccApiVer').textContent    = d.version ? `v${d.version}` : 'v0';
+            $('ccApiResult').textContent = '';
+        }
+    } catch (e) {
+        const resId = { policy:'ccPolicyResult', whitelist:'ccWlResult', blacklist:'ccBlResult', apipolicy:'ccApiResult' }[ccName];
+        if (resId && $(resId)) { $(resId).style.color='#f87171'; $(resId).textContent = 'Yüklenemedi: ' + e.message; }
+    }
+}
+
+function _parseLines(text) {
+    return (text || '').split('\n').map(l => l.trim()).filter(l => l.length > 0);
+}
+
+// Alt-sekme tıklama
+document.querySelectorAll('.cc-tab-btn').forEach(b =>
+    b.addEventListener('click', () => _ccActivateTab(b.dataset.cc))
+);
+
+// Policy kaydet
+$('ccPolicySave')?.addEventListener('click', async () => {
+    const resEl = $('ccPolicyResult');
+    resEl.style.color = '#8b95b3'; resEl.textContent = 'Kaydediliyor...';
+    try {
+        const body = JSON.parse($('ccPolicyJson').value || '{}');
+        const r = await api(`/api/admin/customers/${encodeURIComponent(_ccCustomerId)}/policy`,
+            { method: 'POST', body });
+        $('ccPolicyVer').textContent = `v${r.version}`;
+        resEl.style.color = '#34d399'; resEl.textContent = `✅ Kaydedildi (v${r.version})`;
+    } catch (e) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = e.message.includes('JSON') ? '❌ Geçersiz JSON: ' + e.message : '❌ ' + e.message;
+    }
+});
+
+// Policy formatla
+$('ccPolicyFmt')?.addEventListener('click', () => {
+    try {
+        const obj = JSON.parse($('ccPolicyJson').value || '{}');
+        $('ccPolicyJson').value = JSON.stringify(obj, null, 2);
+    } catch (e) {
+        $('ccPolicyResult').style.color = '#f87171';
+        $('ccPolicyResult').textContent = 'Geçersiz JSON: ' + e.message;
+    }
+});
+
+// Whitelist kaydet
+$('ccWlSave')?.addEventListener('click', async () => {
+    const resEl = $('ccWlResult');
+    resEl.style.color = '#8b95b3'; resEl.textContent = 'Kaydediliyor...';
+    try {
+        const body = {
+            domains: _parseLines($('ccWlDomains').value),
+            senders: _parseLines($('ccWlSenders').value)
+        };
+        const r = await api(`/api/admin/customers/${encodeURIComponent(_ccCustomerId)}/whitelist`,
+            { method: 'POST', body });
+        $('ccWlVer').textContent = `v${r.version}`;
+        resEl.style.color = '#34d399';
+        resEl.textContent = `✅ Kaydedildi (v${r.version}) — ${body.domains.length} alan, ${body.senders.length} gönderen`;
+    } catch (e) {
+        resEl.style.color = '#f87171'; resEl.textContent = '❌ ' + e.message;
+    }
+});
+
+// Blacklist kaydet
+$('ccBlSave')?.addEventListener('click', async () => {
+    const resEl = $('ccBlResult');
+    resEl.style.color = '#8b95b3'; resEl.textContent = 'Kaydediliyor...';
+    try {
+        const body = {
+            domains:           _parseLines($('ccBlDomains').value),
+            senders:           _parseLines($('ccBlSenders').value),
+            urls:              _parseLines($('ccBlUrls').value),
+            attachmentHashes:  _parseLines($('ccBlHashes').value)
+        };
+        const r = await api(`/api/admin/customers/${encodeURIComponent(_ccCustomerId)}/blacklist`,
+            { method: 'POST', body });
+        $('ccBlVer').textContent = `v${r.version}`;
+        resEl.style.color = '#34d399';
+        resEl.textContent = `✅ Kaydedildi (v${r.version}) — ${body.domains.length} alan, ${body.senders.length} gönderen, ${body.urls.length} URL, ${body.attachmentHashes.length} hash`;
+    } catch (e) {
+        resEl.style.color = '#f87171'; resEl.textContent = '❌ ' + e.message;
+    }
+});
+
+// API Policy kaydet
+$('ccApiSave')?.addEventListener('click', async () => {
+    const resEl = $('ccApiResult');
+    resEl.style.color = '#8b95b3'; resEl.textContent = 'Kaydediliyor...';
+    try {
+        const allowedProviders = ['openai','claude','virustotal','otx','urlscan']
+            .filter(p => $(`ccProv_${p}`)?.checked);
+        const rl  = $('ccApiRateLimit').value.trim();
+        const dq  = $('ccApiDailyQuota').value.trim();
+        const mq  = $('ccApiMonthlyQuota').value.trim();
+        const body = {
+            allowedProviders,
+            rateLimit:               rl  ? Number(rl)  : null,
+            dailyQuota:              dq  ? Number(dq)  : null,
+            monthlyQuota:            mq  ? Number(mq)  : null,
+            centralApiProxyEnabled:  !!$('ccApiProxy')?.checked
+        };
+        const r = await api(`/api/admin/customers/${encodeURIComponent(_ccCustomerId)}/api-policy`,
+            { method: 'POST', body });
+        $('ccApiVer').textContent = `v${r.version}`;
+        resEl.style.color = '#34d399';
+        resEl.textContent = `✅ Kaydedildi (v${r.version})`;
+    } catch (e) {
+        resEl.style.color = '#f87171'; resEl.textContent = '❌ ' + e.message;
+    }
+});
+
+// Modal kapat
+$('ccClose')?.addEventListener('click', () => $('customerConfigModal').classList.add('hidden'));
+$('customerConfigModal')?.addEventListener('click', e => {
+    if (e.target === $('customerConfigModal')) $('customerConfigModal').classList.add('hidden');
 });
 
 // ================================================================

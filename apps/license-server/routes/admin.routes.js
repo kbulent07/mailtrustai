@@ -10,6 +10,8 @@ const express = require('express');
 const crypto = require('crypto');
 const { asyncH, env, safeJSON, envInt } = require('@mailtrustai/shared');
 const { all, get, run, audit, isMaria } = require('../db');
+const { getList, setList } = require('./lists.routes');
+const { getApiPolicy } = require('./apiPolicy.routes');
 
 const router = express.Router();
 
@@ -1210,6 +1212,81 @@ router.post('/admin/pricing', adminAuth, requirePerm('pricing:write'), asyncH(as
     );
     await audit(req.actor, 'pricing.create', id, { plan, billing_period, currency });
     res.status(201).json({ ok: true, id });
+}));
+
+// ============================================================
+// MÜŞTERİ YAPILANDIRMA — Policy / Lists / API Policy
+// Tüm endpoint'ler customers:write veya customers:read gerektirir.
+// ============================================================
+
+// ── Policy ────────────────────────────────────────────────────────────────────
+router.get('/admin/customers/:id/policy', adminAuth, requirePerm('customers:read'), asyncH(async (req, res) => {
+    const row = await get('SELECT * FROM policies WHERE customer_id=?', [req.params.id]);
+    if (!row) return res.json({ customerId: req.params.id, version: 0, body: { featureOverrides: {}, limits: {} } });
+    res.json({ customerId: row.customer_id, version: row.version, body: safeJSON(row.body_json, {}), updatedAt: row.updated_at });
+}));
+
+router.post('/admin/customers/:id/policy', adminAuth, requirePerm('customers:write'), asyncH(async (req, res) => {
+    const cid = req.params.id;
+    const cust = await get('SELECT id FROM customers WHERE id=?', [cid]);
+    if (!cust) return res.status(404).json({ error: 'müşteri bulunamadı' });
+    const current = await get('SELECT version FROM policies WHERE customer_id=?', [cid]);
+    const nextVersion = (current?.version || 0) + 1;
+    const sql = isMaria
+        ? `INSERT INTO policies(customer_id,version,body_json,updated_at) VALUES(?,?,?,?)
+           ON DUPLICATE KEY UPDATE version=VALUES(version),body_json=VALUES(body_json),updated_at=VALUES(updated_at)`
+        : `INSERT INTO policies(customer_id,version,body_json,updated_at) VALUES(?,?,?,?)
+           ON CONFLICT(customer_id) DO UPDATE SET version=excluded.version,body_json=excluded.body_json,updated_at=excluded.updated_at`;
+    await run(sql, [cid, nextVersion, JSON.stringify(req.body || {}), Date.now()]);
+    await audit(req.ownerEmail || 'admin', 'policy.update', cid, { version: nextVersion });
+    res.json({ ok: true, version: nextVersion });
+}));
+
+// ── Whitelist ─────────────────────────────────────────────────────────────────
+router.get('/admin/customers/:id/whitelist', adminAuth, requirePerm('customers:read'), asyncH(async (req, res) => {
+    res.json(await getList(req.params.id, 'whitelist'));
+}));
+
+router.post('/admin/customers/:id/whitelist', adminAuth, requirePerm('customers:write'), asyncH(async (req, res) => {
+    const cust = await get('SELECT id FROM customers WHERE id=?', [req.params.id]);
+    if (!cust) return res.status(404).json({ error: 'müşteri bulunamadı' });
+    const version = await setList(req.params.id, 'whitelist', req.body || {});
+    await audit(req.ownerEmail || 'admin', 'lists.whitelist.update', req.params.id, { version });
+    res.json({ ok: true, version });
+}));
+
+// ── Blacklist ─────────────────────────────────────────────────────────────────
+router.get('/admin/customers/:id/blacklist', adminAuth, requirePerm('customers:read'), asyncH(async (req, res) => {
+    res.json(await getList(req.params.id, 'blacklist'));
+}));
+
+router.post('/admin/customers/:id/blacklist', adminAuth, requirePerm('customers:write'), asyncH(async (req, res) => {
+    const cust = await get('SELECT id FROM customers WHERE id=?', [req.params.id]);
+    if (!cust) return res.status(404).json({ error: 'müşteri bulunamadı' });
+    const version = await setList(req.params.id, 'blacklist', req.body || {});
+    await audit(req.ownerEmail || 'admin', 'lists.blacklist.update', req.params.id, { version });
+    res.json({ ok: true, version });
+}));
+
+// ── API Policy ────────────────────────────────────────────────────────────────
+router.get('/admin/customers/:id/api-policy', adminAuth, requirePerm('customers:read'), asyncH(async (req, res) => {
+    res.json(await getApiPolicy(req.params.id));
+}));
+
+router.post('/admin/customers/:id/api-policy', adminAuth, requirePerm('customers:write'), asyncH(async (req, res) => {
+    const cid = req.params.id;
+    const cust = await get('SELECT id FROM customers WHERE id=?', [cid]);
+    if (!cust) return res.status(404).json({ error: 'müşteri bulunamadı' });
+    const current = await get('SELECT version FROM api_policies WHERE customer_id=?', [cid]);
+    const nextVersion = (current?.version || 0) + 1;
+    const sql = isMaria
+        ? `INSERT INTO api_policies(customer_id,version,body_json,updated_at) VALUES(?,?,?,?)
+           ON DUPLICATE KEY UPDATE version=VALUES(version),body_json=VALUES(body_json),updated_at=VALUES(updated_at)`
+        : `INSERT INTO api_policies(customer_id,version,body_json,updated_at) VALUES(?,?,?,?)
+           ON CONFLICT(customer_id) DO UPDATE SET version=excluded.version,body_json=excluded.body_json,updated_at=excluded.updated_at`;
+    await run(sql, [cid, nextVersion, JSON.stringify(req.body || {}), Date.now()]);
+    await audit(req.ownerEmail || 'admin', 'api-policy.update', cid, { version: nextVersion });
+    res.json({ ok: true, version: nextVersion });
 }));
 
 module.exports = router;
