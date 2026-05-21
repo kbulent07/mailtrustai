@@ -2,8 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const cors = require('cors');
 const WebSocket = require('ws');
 const path = require('path');
 const apiRoutes = require('./src/routes/api');
@@ -54,67 +52,12 @@ if (CUSTOMER_ONLY) {
     console.log('[Mode] CUSTOMER_ONLY aktif — keygen/bayi panelleri ve lisans-üretici API\'leri devre dışı.');
 }
 
-// ─── Security headers (Helmet + CSP) ──────────────────────
-// Mevcut frontend bol miktarda inline onclick / style= kullaniyor —
-// strict CSP UI'yi kirar. Bu sebeple 'unsafe-inline' izinli ama
-// 3rd-party origin script/style/connect engelli (en yaygin XSS vektoru
-// olan harici malicious CDN injection'a karsi yine de etkili).
-//
-// İleride frontend refactor edilirse 'unsafe-inline' kaldirilip
-// nonce/hash tabanli politikaya gecilebilir.
-app.use(helmet({
-    contentSecurityPolicy: {
-        useDefaults: true,
-        directives: {
-            'default-src':  ["'self'"],
-            'script-src':   ["'self'", "'unsafe-inline'"],
-            'style-src':    ["'self'", "'unsafe-inline'"],
-            'img-src':      ["'self'", 'data:', 'blob:'],
-            'font-src':     ["'self'", 'data:'],
-            'connect-src':  ["'self'", 'ws:', 'wss:'],  // WebSocket icin
-            'frame-ancestors': ["'none'"],              // clickjacking koruma
-            'object-src':   ["'none'"],                 // <object>/<embed> bloklu
-            'base-uri':     ["'self'"]
-        }
-    },
-    crossOriginEmbedderPolicy: false,  // WebSocket + dis kaynak uyumu
-    crossOriginResourcePolicy: { policy: 'same-site' }
-}));
-
-// ─── CORS ─────────────────────────────────────────────────
-// MSA_ALLOWED_ORIGINS virgulle ayrilmis whitelist (ornek: https://app.x.com,https://admin.x.com)
-// Tanimsizsa same-origin/no-Origin disinda istekler reddedilir.
-// "*" verilirse tum origin'lere izin verilir (sadece dev/test icin onerilir).
-const ALLOWED_ORIGINS = String(process.env.MSA_ALLOWED_ORIGINS || '')
-    .split(',').map(s => s.trim()).filter(Boolean);
-
-app.use(cors({
-    origin(origin, cb) {
-        // Tarayici disi/same-origin istekler (origin yok) her zaman gecer.
-        if (!origin) return cb(null, true);
-        if (ALLOWED_ORIGINS.includes('*')) return cb(null, true);
-        if (ALLOWED_ORIGINS.length === 0)   return cb(null, false); // default deny
-        if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-        return cb(null, false);
-    },
-    credentials: true,
-    methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-    allowedHeaders: ['Content-Type','Authorization','X-Requested-With']
-}));
-if (ALLOWED_ORIGINS.length === 0) {
-    console.log('[Security] CORS: same-origin only (MSA_ALLOWED_ORIGINS tanimsiz).');
-} else {
-    console.log(`[Security] CORS whitelist: ${ALLOWED_ORIGINS.join(', ')}`);
-}
+// Security headers
+app.use(helmet({ contentSecurityPolicy: false }));
 
 // Middleware
-// JSON: 50mb → 5mb (buyuk dosya zaten multer üzerinden geliyor; .eml metin
-// payload'ı icin 5mb yeterli). MSA_JSON_BODY_LIMIT ile override edilebilir.
-// urlencoded form body kucuk olmali — DoS/ReDoS vektorunu daraltir.
-const JSON_LIMIT = process.env.MSA_JSON_BODY_LIMIT || '5mb';
-const URL_LIMIT  = process.env.MSA_URL_BODY_LIMIT  || '200kb';
-app.use(express.json({ limit: JSON_LIMIT }));
-app.use(express.urlencoded({ extended: true, limit: URL_LIMIT }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // no-cache yalnızca dinamik içerik (API + HTML sayfaları) için. Static asset'ler
 // (CSS/JS/PNG) tarayıcı tarafından önbelleklenebilsin → bandwidth ve hız.
@@ -140,36 +83,6 @@ app.use(express.static(path.join(__dirname, 'public'), {
         res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     }
 }));
-
-// ─── Rate limiting ────────────────────────────────────────
-// Iki katmanli koruma: genel API icin yumusak, analyze/* icin sert.
-// MSA_DISABLE_RATE_LIMIT=true ile testlerde devre dist birakilabilir.
-const RATE_LIMIT_DISABLED = String(process.env.MSA_DISABLE_RATE_LIMIT || '').toLowerCase() === 'true';
-
-if (!RATE_LIMIT_DISABLED) {
-    const globalLimiter = rateLimit({
-        windowMs:        15 * 60 * 1000, // 15 dk
-        max:             Number(process.env.MSA_RATE_LIMIT_GLOBAL_MAX) || 300,
-        standardHeaders: true,
-        legacyHeaders:   false,
-        message:         { error: 'Cok fazla istek — kisa bir sure sonra tekrar deneyin.' }
-    });
-
-    // Analyze cagrilari maliyetli (LLM + VT) ve buyuk payload alir → daha sert
-    const analyzeLimiter = rateLimit({
-        windowMs:        5 * 60 * 1000,  // 5 dk
-        max:             Number(process.env.MSA_RATE_LIMIT_ANALYZE_MAX) || 30,
-        standardHeaders: true,
-        legacyHeaders:   false,
-        message:         { error: 'Analiz hizi limiti asildi — 5 dk sonra tekrar deneyin.' }
-    });
-
-    app.use('/api/analyze', analyzeLimiter);
-    app.use('/api', globalLimiter);
-    console.log('[Security] Rate limit aktif (global 300/15dk, analyze 30/5dk).');
-} else {
-    console.warn('[Security] UYARI: MSA_DISABLE_RATE_LIMIT=true — rate limit kapali.');
-}
 
 // API Routes
 app.use('/api', apiRoutes);

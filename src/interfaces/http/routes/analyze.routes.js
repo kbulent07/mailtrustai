@@ -8,7 +8,6 @@ const express = require('express');
 const multer  = require('multer');
 
 const { parseEmail, parseUploadedEmail } = require('../../../analysis/parser');
-const { assertFileFormat, makeUploadFilter } = require('../../../utils/fileMagic');
 const { analyzeParsedEmail, analyzeStandaloneAttachment } =
     require('../../../application/analyze/AnalyzeUploadedMailService');
 const { state, checkLicense, checkDailyLimit, checkMonthlyLimit, incrementScanCounts } =
@@ -21,54 +20,18 @@ const { getMonthlyCount } = require('../../../storage/monthlyCounter');
 const DEEP_AI_COST = 5; // Derinlemesine inceleme aylık limitten 5 düşer
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-// Genis whitelist: eml/msg + yaygin ek tipleri (analyze/file standalone attachment).
-// Magic-number kontrolu route handler icinde assertFileFormat ile yapilir.
-const ALLOWED_UPLOAD_EXTS = [
-    'eml','msg',
-    'pdf','doc','docx','xls','xlsx','ppt','pptx',
-    'zip','rar','7z','gz',
-    'png','jpg','jpeg','gif','bmp','webp',
-    'txt','csv','json','xml','html','htm',
-    'exe','dll','js','vbs','ps1','bat','cmd','sh' // ek tarama icin — buyuk olasilikla zararli
-];
-
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 50 * 1024 * 1024 },
-    fileFilter: makeUploadFilter(ALLOWED_UPLOAD_EXTS)
-});
-
-// .eml/.msg endpoint'i icin sikilastirilmis liste
-const EML_ALLOWED_FORMATS = ['eml','msg','ole2','zip']; // ole2=msg, zip = bazi mail clientlerinin .msg wrapper'i
-
-// Multer hatalarini (LIMIT_FILE_SIZE, fileFilter) JSON 400'e cevirir.
-function uploadSingle(fieldName) {
-    const mw = upload.single(fieldName);
-    return (req, res, next) => mw(req, res, (err) => {
-        if (!err) return next();
-        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
-        return res.status(status).json({ error: err.message || 'Dosya yuklemesi reddedildi' });
-    });
-}
-
-router.post('/analyze/eml', uploadSingle('file'), async (req, res) => {
+router.post('/analyze/eml', upload.single('file'), async (req, res) => {
     try {
         const license = checkLicense(req);
         if (!checkDailyLimit(license))   return res.status(429).json({ error: 'Daily scan limit reached' });
         if (!checkMonthlyLimit(license)) return res.status(429).json({ error: 'Monthly scan limit reached' });
 
         let source;
-        if (req.file) {
-            // Magic-number dogrulamasi — uzanti spoof'unu engeller
-            const check = assertFileFormat(req.file.buffer, req.file.originalname || '', EML_ALLOWED_FORMATS);
-            if (!check.ok) return res.status(400).json({ error: check.reason });
-            source = req.file.buffer;
-        } else if (req.body.source) {
-            source = req.body.source;
-        } else {
-            return res.status(400).json({ error: 'No EML file or source provided' });
-        }
+        if (req.file)             source = req.file.buffer;
+        else if (req.body.source) source = req.body.source;
+        else return res.status(400).json({ error: 'No EML file or source provided' });
 
         const parsed = req.file
             ? await parseUploadedEmail(source, req.file.originalname || '')
@@ -82,7 +45,7 @@ router.post('/analyze/eml', uploadSingle('file'), async (req, res) => {
     }
 });
 
-router.post('/analyze/file', uploadSingle('file'), async (req, res) => {
+router.post('/analyze/file', upload.single('file'), async (req, res) => {
     try {
         const license = checkLicense(req);
         if (!checkDailyLimit(license))   return res.status(429).json({ error: 'Daily scan limit reached' });
@@ -91,8 +54,6 @@ router.post('/analyze/file', uploadSingle('file'), async (req, res) => {
 
         const lowerName = String(req.file.originalname || '').toLowerCase();
         if (lowerName.endsWith('.eml') || lowerName.endsWith('.msg')) {
-            const check = assertFileFormat(req.file.buffer, req.file.originalname || '', EML_ALLOWED_FORMATS);
-            if (!check.ok) return res.status(400).json({ error: check.reason });
             const parsed = await parseUploadedEmail(req.file.buffer, req.file.originalname || '');
             if (!parsed.success) return res.status(400).json({ error: parsed.error });
             const result = await analyzeParsedEmail(parsed.data, license, 'upload');
