@@ -122,6 +122,21 @@
         .included-credits { color: var(--ok); font-weight: 600; }
         .extra-price      { color: var(--warn); }
 
+        /* ── Tutar hücreleri ─────────────────────────────────────── */
+        .amount-positive { color: #34d399; font-weight: 600; }
+        .amount-negative { color: #f87171; font-weight: 600; }
+        .amount-zero     { color: var(--muted); }
+
+        /* ── Maliyet tahmini kutusu ──────────────────────────────── */
+        .cost-estimate-box {
+            font-size: .82em; color: #fbbf24; margin-bottom: 12px;
+            padding: 8px 12px; border-radius: 6px;
+            background: rgba(251,191,36,.07);
+            border: 1px solid rgba(251,191,36,.2);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .cost-estimate-box .cost-val { font-weight: 700; font-size: 1.1em; color: #fde68a; }
+
         /* ── Toast ───────────────────────────────────────────────── */
         #toast-host { position: fixed; bottom: 20px; right: 20px;
                       display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
@@ -179,7 +194,7 @@
         <span class="topbar-brand">🤝 MailTrustAI · <strong>Bayi Paneli</strong></span>
         <div class="topbar-right">
             <span class="dealer-info-pill" id="dealerNamePill">—</span>
-            <span class="dealer-info-pill">Kredi: <span id="dealerCredits" class="dealer-credits">—</span></span>
+            <span class="dealer-info-pill">Kredi: <span id="dealerCredits" class="dealer-credits">—</span><span id="dealerCreditsTry" style="margin-left:6px;font-size:.82em;color:#fbbf24;font-weight:400"></span></span>
             <button id="logoutBtn">Çıkış</button>
         </div>
     </header>
@@ -298,14 +313,15 @@
                     <thead>
                         <tr>
                             <th>Tarih</th>
-                            <th>İşlem</th>
+                            <th>İşlem (Kredi)</th>
+                            <th>Tutar (TRY)</th>
                             <th>Bakiye</th>
                             <th>Neden</th>
                             <th>Açıklama</th>
                         </tr>
                     </thead>
                     <tbody id="creditLogBody">
-                        <tr><td colspan="5" class="loading">Yükleniyor...</td></tr>
+                        <tr><td colspan="6" class="loading">Yükleniyor...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -351,7 +367,12 @@
         <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Süre (gün)</label>
         <input type="number" id="clicDays" value="365" min="1" max="36500" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:10px">
         <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Etiket <span style="color:var(--muted);font-weight:400">(opsiyonel)</span></label>
-        <input type="text" id="clicLabel" maxlength="128" placeholder="ör: Ana lisans 2026" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:16px">
+        <input type="text" id="clicLabel" maxlength="128" placeholder="ör: Ana lisans 2026" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:12px">
+        <!-- Maliyet tahmini — JS tarafından doldurulur -->
+        <div id="clicCostEstimate" class="cost-estimate-box">
+            💡 Bu lisans <strong>1 kredi</strong> düşer
+            <span id="clicCostTry" style="margin-left:auto"></span>
+        </div>
         <div id="clicResult" style="font-size:.83em;min-height:18px;margin-bottom:10px"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end">
             <button id="clicCancel" style="padding:7px 16px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">İptal</button>

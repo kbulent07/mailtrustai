@@ -287,12 +287,29 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
         });
     }
 
-    // Kredi hareketini kaydet
+    // Kredi hareketini kaydet (TRY tutarı: bu plan için extra_credit_price)
     const newBalance = (dealer.credits ?? 0) - 1;
+    let priceAmount  = 0;
+    let priceCurrency = 'TRY';
+    try {
+        const priceRow = await get(
+            `SELECT extra_credit_price, currency
+             FROM pricing_plans
+             WHERE plan = ? AND is_active = 1
+             ORDER BY extra_credit_price ASC LIMIT 1`,
+            [plan]
+        );
+        if (priceRow) {
+            priceAmount   = priceRow.extra_credit_price || 0;
+            priceCurrency = priceRow.currency || 'TRY';
+        }
+    } catch (_) { /* pricing tablosu yoksa sessizce geç */ }
+
     await run(
-        'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at) VALUES(?,?,?,?,?,?,?,?)',
+        'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at,price_amount,currency) VALUES(?,?,?,?,?,?,?,?,?,?)',
         [uuid(), dealer.id, -1, newBalance, 'license.create',
-         `Lisans üretimi (bayi paneli): müşteri=${customerId}, plan=${plan}`, 'dealer-panel', Date.now()]
+         `Lisans üretimi (bayi paneli): müşteri=${customerId}, plan=${plan}`, 'dealer-panel', Date.now(),
+         priceAmount, priceCurrency]
     );
 
     // Lisansı üret
@@ -425,7 +442,9 @@ router.get('/dealer/credit-log', dealerSessionAuth, asyncH(async (req, res) => {
     const { dealerId } = req.dealerSession;
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const rows = await all(
-        `SELECT id, delta, balance, reason, description, actor, created_at
+        `SELECT id, delta, balance, reason, description, actor, created_at,
+                COALESCE(price_amount, 0) AS price_amount,
+                COALESCE(currency, 'TRY') AS currency
          FROM dealer_credit_log
          WHERE dealer_id = ?
          ORDER BY created_at DESC LIMIT ?`,

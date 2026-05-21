@@ -130,6 +130,23 @@ function showDashboard() {
 }
 
 // ─── Bayi bilgisi + kredi ─────────────────────────────────────────────────────
+
+/** Topbar'daki TRY eşdeğer gösterimini günceller */
+function _refreshTopbarTry() {
+    const tryEl    = $('dealerCreditsTry');
+    const credText = $('dealerCredits')?.textContent;
+    if (!tryEl || !_pricingCache) return;
+    const credits  = parseInt((credText || '0').replace(/\D/g, ''), 10);
+    if (isNaN(credits)) return;
+    // Pro planın birim fiyatı üzerinden yaklaşık değer göster
+    const unitPrice = _planUnitPrice('pro');
+    if (unitPrice && unitPrice > 0 && credits > 0) {
+        tryEl.textContent = `(≈ ${fmtPrice(credits * unitPrice, 'TRY')})`;
+    } else {
+        tryEl.textContent = '';
+    }
+}
+
 async function loadDealerMe() {
     try {
         const r = await api('/api/dealer/me');
@@ -137,6 +154,7 @@ async function loadDealerMe() {
         $('dealerNamePill').textContent = d.name || d.id || '—';
         const credits = d.credits ?? 0;
         $('dealerCredits').textContent  = credits.toLocaleString('tr-TR');
+        _refreshTopbarTry();
         checkCreditWarning(credits);
     } catch (_) {}
 }
@@ -144,6 +162,32 @@ async function loadDealerMe() {
 // ─── FİYATLANDIRMA ────────────────────────────────────────────────────────────
 const PLAN_LABELS   = { demo: '🆓 Demo', pro: '⭐ Pro', enterprise: '🏢 Enterprise' };
 const PERIOD_LABELS = { monthly: 'Aylık', annual: 'Yıllık' };
+
+// Fiyat planlarını önbellekte tut — modalda ve kredi logunda kullanılır
+let _pricingCache = null; // { plans: [], enterpriseMultiplier, creditUnit }
+
+/** Belirli bir plan için en düşük extra_credit_price döner (TRY/kredi) */
+function _planUnitPrice(plan) {
+    if (!_pricingCache || !_pricingCache.plans.length) return null;
+    const matching = _pricingCache.plans.filter(p => p.plan === plan && p.extra_credit_price > 0);
+    if (!matching.length) return null;
+    return Math.min(...matching.map(p => p.extra_credit_price));
+}
+
+/** Lisans Üret modalındaki maliyet tahminini günceller */
+function _updateClicCostEstimate(plan) {
+    const tryEl = $('clicCostTry');
+    if (!tryEl) return;
+    const unitPrice = _planUnitPrice(plan);
+    if (unitPrice && unitPrice > 0) {
+        tryEl.textContent = `≈ ${fmtPrice(unitPrice, 'TRY')} / kredi`;
+    } else if (plan === 'demo') {
+        tryEl.textContent = '(ücretsiz)';
+        tryEl.style.color = '#6ee7b7';
+    } else {
+        tryEl.textContent = '';
+    }
+}
 
 async function loadPricing() {
     const tbody   = $('pricingBody');
@@ -155,6 +199,11 @@ async function loadPricing() {
         const plans = r.plans || [];
         const mult  = r.enterpriseMultiplier || 1.20;
         const unit  = r.creditUnit || 'tarama';
+
+        // Önbelleğe al
+        _pricingCache = { plans, enterpriseMultiplier: mult, creditUnit: unit };
+        // Topbar TRY değerini güncelle (kredi sayısı zaten yüklüyse)
+        _refreshTopbarTry();
 
         if (infoDiv) {
             infoDiv.innerHTML =
@@ -400,35 +449,50 @@ async function doTransferAction(id, action, reason) {
 async function loadCreditLog() {
     const tbody = $('creditLogBody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" class="loading">Yükleniyor...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Yükleniyor...</td></tr>';
     try {
         const r = await api('/api/dealer/credit-log?limit=100');
         const log = r.log || [];
         if (!log.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="empty-msg">Henüz kredi hareketi yok.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">Henüz kredi hareketi yok.</td></tr>';
             return;
         }
         tbody.innerHTML = log.map(row => {
             const deltaColor = row.delta > 0 ? '#34d399' : '#f87171';
             const deltaText  = row.delta > 0 ? `+${row.delta}` : String(row.delta);
             const reasonMap  = {
-                'credit.load':     '⬆️ Kredi Yükleme',
-                'credit.manual':   '✏️ Manuel Düzenleme',
-                'license.create':  '🔑 Lisans Üretimi',
-                'credit.deduct':   '➖ Kesinti'
+                'credit.load':    '⬆️ Kredi Yükleme',
+                'credit.manual':  '✏️ Manuel Düzenleme',
+                'license.create': '🔑 Lisans Üretimi',
+                'credit.deduct':  '➖ Kesinti'
             };
             const reasonLabel = reasonMap[row.reason] || escapeHtml(row.reason || '—');
+
+            // TRY tutar sütunu
+            let amountCell;
+            const amt = Number(row.price_amount || 0);
+            if (amt > 0) {
+                // Toplam tutar = birim fiyat × |delta|
+                const total = amt * Math.abs(row.delta);
+                const sign  = row.delta > 0 ? '+' : '−';
+                const cls   = row.delta > 0 ? 'amount-positive' : 'amount-negative';
+                amountCell  = `<span class="${cls}">${sign} ${fmtPrice(total, row.currency || 'TRY')}</span>`;
+            } else {
+                amountCell  = `<span class="amount-zero">—</span>`;
+            }
+
             return `<tr>
                 <td style="white-space:nowrap">${fmtDate(row.created_at)}<br>
                     <span style="font-size:.75em;color:var(--muted)">${new Date(row.created_at).toLocaleTimeString('tr-TR')}</span></td>
                 <td style="color:${deltaColor};font-weight:600;font-size:1.05em">${deltaText}</td>
+                <td>${amountCell}</td>
                 <td style="font-weight:600">${row.balance != null ? row.balance.toLocaleString('tr-TR') : '—'}</td>
                 <td>${reasonLabel}</td>
                 <td style="font-size:.82em;color:var(--muted)">${escapeHtml(row.description || '—')}</td>
             </tr>`;
         }).join('');
     } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="5" class="err-msg">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="err-msg">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
     }
 }
 
@@ -488,6 +552,7 @@ function openCreateLicModal(customerId, customerName) {
     $('clicPlan').value  = 'pro';
     $('clicDays').value  = '365';
     $('clicLabel').value = '';
+    _updateClicCostEstimate('pro');
     $('createLicModal').style.display = 'flex';
 }
 
@@ -506,6 +571,8 @@ $('clicPlan')?.addEventListener('change', function() {
         const daysEl = $('clicDays');
         if (daysEl && Number(daysEl.value) > 14) daysEl.value = '14';
     }
+    // Maliyet tahminini güncelle
+    _updateClicCostEstimate(this.value);
 });
 
 $('clicCreate')?.addEventListener('click', async () => {
@@ -528,6 +595,7 @@ $('clicCreate')?.addEventListener('click', async () => {
         showToast('Lisans üretildi. Kalan kredi: ' + r.remainingCredits, 'success');
         // Kredi sayacını güncelle
         $('dealerCredits').textContent = r.remainingCredits.toLocaleString('tr-TR');
+        _refreshTopbarTry();
         checkCreditWarning(r.remainingCredits);
         // Lisans anahtarını göster
         setTimeout(() => {
