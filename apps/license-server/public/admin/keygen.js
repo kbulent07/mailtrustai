@@ -721,18 +721,29 @@ function renderManageTable() {
 
     const tbody = $('manageBody');
     if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">Kayıt bulunamadı.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Kayıt bulunamadı.</td></tr>';
         return;
     }
 
     tbody.innerHTML = filtered.map(it => {
         const lic     = it.license;
+        const latest  = it.latest;
         const expired = lic.expiresAt && lic.expiresAt < Date.now();
         const statusTag = `<span class="tag tag-${expired ? 'expired' : lic.status}">${expired ? 'expired' : lic.status}</span>`;
         const labelTag  = lic.label
             ? `<span class="label-tag">${escapeHtml(lic.label)}</span>`
             : '<span class="muted">—</span>';
         const da = encodeURIComponent(it.companyName || it.customerId);
+
+        // Son iletişim: durum badge + tam tarih-saat + göreceli süre
+        const hbTs = latest?.lastHeartbeatAt;
+        const onlineCls = latest?.onlineStatus || 'never';
+        const onlineLabel = { online: '🟢 Çevrimiçi', stale: '🟡 Eski', offline: '🔴 Çevrimdışı', never: '⚫ Hiç bağlanmadı' };
+        const contactCell = hbTs
+            ? `<span class="tag tag-${onlineCls}" title="${fmtDateTime(hbTs)}">${onlineLabel[onlineCls] || onlineCls}</span>
+               <br><small class="muted" title="${fmtDateTime(hbTs)}">${timeAgo(hbTs)}</small>
+               <br><small class="muted" style="font-size:10px;opacity:.7">${fmtDateTime(hbTs)}</small>`
+            : `<span class="tag tag-never">⚫ Hiç bağlanmadı</span>`;
 
         const revokeBtn = lic.status === 'active'
             ? `<button class="action-btn danger" data-action="revoke" data-license="${lic.id}" data-name="${da}">🚫 İptal</button>`
@@ -747,6 +758,7 @@ function renderManageTable() {
             <td>${escapeHtml(lic.plan)} / ${escapeHtml(lic.tier || '—')}</td>
             <td>${statusTag}</td>
             <td>${fmtDate(lic.expiresAt)}</td>
+            <td>${contactCell}</td>
             <td class="btn-group">
                 ${revokeBtn}
                 <button class="action-btn" data-action="renew" data-license="${lic.id}" data-name="${da}">⏳ Uzat</button>
