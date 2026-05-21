@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const WebSocket = require('ws');
 const path = require('path');
 const apiRoutes = require('./src/routes/api');
@@ -83,6 +84,36 @@ app.use(express.static(path.join(__dirname, 'public'), {
         res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     }
 }));
+
+// ─── Rate limiting ────────────────────────────────────────
+// Iki katmanli koruma: genel API icin yumusak, analyze/* icin sert.
+// MSA_DISABLE_RATE_LIMIT=true ile testlerde devre dist birakilabilir.
+const RATE_LIMIT_DISABLED = String(process.env.MSA_DISABLE_RATE_LIMIT || '').toLowerCase() === 'true';
+
+if (!RATE_LIMIT_DISABLED) {
+    const globalLimiter = rateLimit({
+        windowMs:        15 * 60 * 1000, // 15 dk
+        max:             Number(process.env.MSA_RATE_LIMIT_GLOBAL_MAX) || 300,
+        standardHeaders: true,
+        legacyHeaders:   false,
+        message:         { error: 'Cok fazla istek — kisa bir sure sonra tekrar deneyin.' }
+    });
+
+    // Analyze cagrilari maliyetli (LLM + VT) ve buyuk payload alir → daha sert
+    const analyzeLimiter = rateLimit({
+        windowMs:        5 * 60 * 1000,  // 5 dk
+        max:             Number(process.env.MSA_RATE_LIMIT_ANALYZE_MAX) || 30,
+        standardHeaders: true,
+        legacyHeaders:   false,
+        message:         { error: 'Analiz hizi limiti asildi — 5 dk sonra tekrar deneyin.' }
+    });
+
+    app.use('/api/analyze', analyzeLimiter);
+    app.use('/api', globalLimiter);
+    console.log('[Security] Rate limit aktif (global 300/15dk, analyze 30/5dk).');
+} else {
+    console.warn('[Security] UYARI: MSA_DISABLE_RATE_LIMIT=true — rate limit kapali.');
+}
 
 // API Routes
 app.use('/api', apiRoutes);
