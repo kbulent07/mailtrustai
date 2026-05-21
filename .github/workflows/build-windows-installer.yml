@@ -1,0 +1,114 @@
+name: build-windows-installer
+
+# ============================================================
+# MailTrustAI Client — Windows EXE installer derleme
+#
+# Tetikleyiciler:
+#   - tag push: v*               → release'a otomatik upload
+#   - manuel workflow_dispatch   → arttifact olarak indir
+#
+# Cikti: dist/MailTrustAI-Client-Setup-<ver>.exe
+# ============================================================
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Surum etiketi (orn. 2.0.1) — bos birakilirsa .iss icindeki MyAppVersion kullanilir'
+        required: false
+        default: ''
+
+permissions:
+  contents: write   # Release'a yukleme icin
+  actions: read
+
+jobs:
+  build:
+    name: Inno Setup ile EXE derle
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Inno Setup kuruluyor (chocolatey)
+        shell: pwsh
+        run: |
+          choco install innosetup --version=6.2.2 -y --no-progress
+          # ISCC path'i PATH'e ekle (chocolatey default lokasyon)
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+              Write-Error "ISCC bulunamadi: $iscc"
+              exit 1
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files (x86)\Inno Setup 6'
+
+      - name: Surum bilgisi belirle
+        id: version
+        shell: pwsh
+        run: |
+          $version = ''
+          if ('${{ github.event_name }}' -eq 'push') {
+              # Tag adindan 'v' prefix'ini cikar
+              $version = '${{ github.ref_name }}' -replace '^v', ''
+          } elseif ('${{ inputs.version }}') {
+              $version = '${{ inputs.version }}'
+          }
+          if (-not $version) {
+              # .iss'den MyAppVersion oku
+              $iss = Get-Content 'installer/MailTrustAIClient.iss' -Raw
+              if ($iss -match '#define\s+MyAppVersion\s+"([^"]+)"') {
+                  $version = $matches[1]
+              } else {
+                  $version = '0.0.0-dev'
+              }
+          }
+          Write-Output "version=$version"
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: .iss icine surumu yansit (tag push ise)
+        if: github.event_name == 'push' || inputs.version != ''
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $issPath = 'installer/MailTrustAIClient.iss'
+          (Get-Content $issPath -Raw) `
+              -replace '(#define\s+MyAppVersion\s+")[^"]+(")', "`${1}$version`${2}" `
+              | Set-Content -Path $issPath -Encoding UTF8
+          Write-Output "Yeni MyAppVersion: $version"
+          Select-String -Path $issPath -Pattern 'MyAppVersion' | Select-Object -First 1
+
+      - name: ISCC ile derle
+        shell: pwsh
+        run: |
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' /Qp 'installer\MailTrustAIClient.iss'
+          if (-not (Test-Path 'dist')) {
+              Write-Error 'dist/ olusmadi — ISCC fail'
+              exit 1
+          }
+          Get-ChildItem dist | Format-Table -AutoSize
+
+      - name: Build artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: MailTrustAI-Client-Setup-${{ steps.version.outputs.version }}
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Release'a EXE yukle (tag push ise)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          # draft=false → tag push'unda dogrudan public release
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

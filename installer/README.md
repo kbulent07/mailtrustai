@@ -32,16 +32,22 @@ installer/
 
 ### A) CI (önerilen) — otomatik
 
-`.github/workflows/build-windows-installer.yml` tag push'unda Windows runner'da
-derler ve GitHub Releases'a yükler:
+[`build-windows-installer.yml`](../.github/workflows/build-windows-installer.yml)
+tag push'unda Windows runner'da derler ve GitHub Releases'a yükler.
+Eşzamanlı olarak [`build-linux-installer.yml`](../.github/workflows/build-linux-installer.yml)
+da Linux için `.run` dosyasını üretir → aynı release'a iliştirilir:
 
 ```bash
 git tag v2.0.1
 git push origin v2.0.1
-# → Actions çalışır → Releases'te MailTrustAI-Client-Setup-2.0.1.exe
+# → Actions calisir → Releases'te:
+#    - MailTrustAI-Client-Setup-2.0.1.exe   (Windows)
+#    - MailTrustAI-Client-Setup-2.0.1.run   (Linux)
 ```
 
 Manuel tetikleme: Actions sekmesi → "build-windows-installer" → Run workflow.
+(Tag verilmemişse `.iss` içindeki `MyAppVersion` kullanılır; isterseniz
+`workflow_dispatch` input'una elle versiyon yazabilirsiniz.)
 
 ### B) Lokal derleme
 

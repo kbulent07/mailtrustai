@@ -5,15 +5,26 @@
 | Hedef | Komut |
 |---|---|
 | **Windows Müşteri** | [Releases](https://github.com/kbulent07/mailtrustai/releases)'ten `MailTrustAI-Client-Setup-*.exe` indir → çift tıkla → lisans+URL gir |
+| **Ubuntu Müşteri (tek dosya)** | [Releases](https://github.com/kbulent07/mailtrustai/releases)'ten `MailTrustAI-Client-Setup-*.run` indir → `chmod +x` → `sudo ./...run` |
 | **Ubuntu Sunucu** | `curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick.sh \| sudo bash` |
-| **Ubuntu Müşteri** | `curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick-client.sh \| sudo bash -s -- --license=MTAI-XXX --server=https://license.firma.com` |
+| **Ubuntu Müşteri (one-liner)** | `curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick-client.sh \| sudo bash -s -- --license=MTAI-XXX --server=https://license.firma.com` |
 
 Bu tek-adım yöntemler önkoşulları (git, docker) otomatik kurar, repoyu klonlar ve
 asıl kurulum scriptini çalıştırır. Detaylı/manuel yöntemler aşağıda.
 
 > **Windows `.exe` nereden geliyor?** `installer/MailTrustAIClient.iss` (Inno Setup)
-> dosyasından, her `v*` tag push'unda GitHub Actions ile otomatik derlenir
-> (bkz. `installer/README.md`). Lokal derleme: `.\installer\build-installer.ps1 -InstallIfMissing`
+> dosyasından, her `v*` tag push'unda GitHub Actions
+> ([`build-windows-installer.yml`](../.github/workflows/build-windows-installer.yml))
+> ile otomatik derlenir (bkz. `installer/README.md`).
+> Lokal derleme: `.\installer\build-installer.ps1 -InstallIfMissing`
+
+> **Linux `.run` nereden geliyor?** `install/client/build-linux-installer.sh`
+> `makeself` ile tek-dosya self-extracting installer üretir; her `v*` tag push'unda
+> GitHub Actions
+> ([`build-linux-installer.yml`](../.github/workflows/build-linux-installer.yml))
+> ile derlenip Release'a yüklenir.
+> Lokal derleme: `bash install/client/build-linux-installer.sh --version 2.0.1`
+> (önkoşul: `sudo apt install makeself`)
 
 ---
 
@@ -139,7 +150,26 @@ powershell -ExecutionPolicy Bypass -File install\client\uninstall_client_windows
 
 ## 3. Müşteri / Client — Ubuntu
 
-### Kurulum
+### Tek dosya kurulum (`.run` — yeni)
+
+```bash
+# Releases'ten indir:
+wget https://github.com/kbulent07/mailtrustai/releases/latest/download/MailTrustAI-Client-Setup-X.Y.Z.run
+chmod +x MailTrustAI-Client-Setup-*.run
+sudo ./MailTrustAI-Client-Setup-*.run        # interaktif menu: install/update/uninstall
+
+# Otomasyon:
+sudo MSA_INSTALLER_MODE=install \
+     LICENSE_KEY="MTAI-PRO-XXXX-XXXX" \
+     LICENSE_SERVER_URL="https://license.firma.com" \
+     ./MailTrustAI-Client-Setup-*.run
+```
+
+`.run` dosyası self-extracting'tir — git/docker yoksa otomatik kurar,
+repo'yu `/opt/mailtrustai-source`'a klonlar (mainpaketler), ardından
+`install_client_ubuntu.sh`'i tetikler.
+
+### Klasik kurulum (repo zaten klonluysa)
 
 ```bash
 git clone -b mainpaketler https://github.com/kbulent07/mailtrustai.git /home/ubuntu/mailtrustai
