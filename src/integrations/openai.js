@@ -9,6 +9,17 @@ const OPENAI_API_URL = 'https://api.openai.com/v1/responses';
 // Varsayılan model — .env veya ayarlar üzerinden geçersiz kılınabilir
 const OPENAI_MODEL = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini';
 
+// Network timeout — hung request'lerin kuyrugun sismesine engel olur.
+// .env'den ayarlanabilir (MSA_OPENAI_TIMEOUT_MS), default 30 sn.
+const OPENAI_TIMEOUT_MS = Math.max(5000, Number(process.env.MSA_OPENAI_TIMEOUT_MS) || 30000);
+
+function fetchWithTimeout(url, opts = {}, ms = OPENAI_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return fetch(url, { ...opts, signal: controller.signal })
+        .finally(() => clearTimeout(timer));
+}
+
 // Kullanıcıya sunulacak hazır model listesi
 const AVAILABLE_OPENAI_MODELS = [
     // GPT-5 Serisi
@@ -70,7 +81,7 @@ ${context}
 `.trim();
 
     try {
-        const response = await fetch(OPENAI_API_URL, {
+        const response = await fetchWithTimeout(OPENAI_API_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -354,7 +365,7 @@ Respond with EXACTLY this JSON shape:
 `.trim();
 
     try {
-        const response = await fetch(OPENAI_API_URL, {
+        const response = await fetchWithTimeout(OPENAI_API_URL, {
             method: 'POST',
             headers: {
                 'Content-Type':  'application/json',
@@ -525,7 +536,8 @@ Respond with EXACTLY this JSON shape:
 `.trim();
 
     try {
-        const response = await fetch(OPENAI_API_URL, {
+        // Deep analysis uzun cevap dondurebilir; bu cagriya 2x timeout taniyoruz.
+        const response = await fetchWithTimeout(OPENAI_API_URL, {
             method: 'POST',
             headers: {
                 'Content-Type':  'application/json',
@@ -538,7 +550,7 @@ Respond with EXACTLY this JSON shape:
                 instructions,
                 input: prompt
             })
-        });
+        }, OPENAI_TIMEOUT_MS * 2);
 
         const data = await response.json();
         if (!response.ok) {

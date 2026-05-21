@@ -14,6 +14,18 @@ const VT_POLL_MAX_DELAY_MS  = 20000;  // üst sınır
 // Ekler arası bekleme — ücretsiz API rate limit (4 istek/dk)
 const VT_INTER_FILE_DELAY_MS = 16000;
 
+// Network timeout — VT API hung baglanti riskini onler.
+// Upload buyuk dosya icin olabildigince genis (2 dk), GET'ler daha kisa (20 sn).
+const VT_GET_TIMEOUT_MS    = Math.max(5000,  Number(process.env.MSA_VT_GET_TIMEOUT_MS)    || 20000);
+const VT_UPLOAD_TIMEOUT_MS = Math.max(10000, Number(process.env.MSA_VT_UPLOAD_TIMEOUT_MS) || 120000);
+
+function vtFetch(url, opts = {}, ms = VT_GET_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return fetch(url, { ...opts, signal: controller.signal })
+        .finally(() => clearTimeout(timer));
+}
+
 function sanitizeUploadFilename(filename) {
     const raw = String(filename || 'attachment.bin');
     const extension = raw.match(/\.[a-z0-9]{1,12}$/i)?.[0] || '.bin';
@@ -51,7 +63,7 @@ function appendStatusDetail(message, status, detail) {
 async function lookupHash(hash, apiKey) {
     if (!apiKey) return { checked: false, error: 'No API key provided' };
     try {
-        const res = await fetch(`${VT_BASE}/files/${hash}`, {
+        const res = await vtFetch(`${VT_BASE}/files/${hash}`, {
             headers: { 'x-apikey': apiKey, 'accept': 'application/json' }
         });
         if (res.status === 404) return { checked: true, found: false, message: 'File not in VT database' };
@@ -119,11 +131,11 @@ async function uploadAndAnalyze(att, apiKey) {
         const uploadName = sanitizeUploadFilename(att.filename);
         form.append('file', new Blob([content], { type: mime }), uploadName);
 
-        const uploadRes = await fetch(`${VT_BASE}/files`, {
+        const uploadRes = await vtFetch(`${VT_BASE}/files`, {
             method: 'POST',
             headers: { 'x-apikey': apiKey, accept: 'application/json' },
             body: form
-        });
+        }, VT_UPLOAD_TIMEOUT_MS);
 
         if (uploadRes.status === 429) {
             return { checked: false, error: 'VT upload rate limit exceeded (4 req/min)' };
@@ -176,7 +188,7 @@ async function waitForAnalysis(analysisId, apiKey) {
             await delay(waitMs);
         }
 
-        const res = await fetch(`${VT_BASE}/analyses/${analysisId}`, {
+        const res = await vtFetch(`${VT_BASE}/analyses/${analysisId}`, {
             headers: { 'x-apikey': apiKey, accept: 'application/json' }
         });
 
