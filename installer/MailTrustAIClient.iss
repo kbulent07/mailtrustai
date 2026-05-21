@@ -68,6 +68,14 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "..\install\client\install_client_windows.ps1";       DestDir: "{tmp}"; Flags: deleteafterinstall ignoreversion
 Source: "..\install\client\install_client_windows_setup.ps1"; DestDir: "{tmp}"; Flags: deleteafterinstall ignoreversion
 
+[Registry]
+; Repo kok dizinini kayit defterine yaz. Kaldirma sirasinda
+; {reg:...} ile okunarak uninstall script dogru konumdan cagrilir.
+Root: HKLM; Subkey: "Software\MailTrustAI\Client"; \
+  ValueType: string; ValueName: "RepoRoot"; \
+  ValueData: "{code:GetRepoRoot}"; \
+  Flags: uninsdeletekey
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "Ek gorevler:"; Flags: unchecked
 Name: "openbrowser"; Description: "Kurulum bitince tarayicida ac"; GroupDescription: "Ek gorevler:"
@@ -92,10 +100,11 @@ Filename: "powershell.exe"; \
 Filename: "http://localhost:3000"; Description: "MailTrustAI Kontrol Paneli'ni ac"; Tasks: openbrowser; Flags: shellexec postinstall skipifsilent
 
 [UninstallRun]
-; Kaldirma sirasinda mevcut uninstall script'i cagrilir (soft mode default).
-; Kullanici PURGE isterse manuel olarak uninstall_client_windows.bat'i kullanir.
+; Kaldirma sirasinda repo koku kayit defterinden okunarak uninstall
+; script'i soft modda (container durdur, .env/volume koru) cagrilir.
+; Tam temizlik icin kullanici uninstall_client_windows.bat'i calistirabilir.
 Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""C:\mailtrustai-source\install\client\uninstall_client_windows.ps1"" -Unattended"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{reg:HKLM\Software\MailTrustAI\Client,RepoRoot}\install\client\uninstall_client_windows.ps1"" -Unattended"; \
   RunOnceId: "MailTrustAIUninstall"; \
   Flags: runhidden
 

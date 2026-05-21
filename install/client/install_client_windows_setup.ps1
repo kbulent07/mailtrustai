@@ -47,7 +47,11 @@ param(
     [string]$InstallDir       = 'C:\MailTrustAI',
     [int]   $Port             = 3000,
     [string]$ImageFile        = '',
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    # Bootstrap veya Inno Setup installer tarafindan cagrildiginda Read-Host
+    # cagirilari gizli pencerede takilip kalir. Bu switch tum interaktif
+    # sorulari atlar ve parametre/varsayilan degerler kullanilir.
+    [switch]$Unattended
 )
 
 Set-StrictMode -Version Latest
@@ -194,10 +198,18 @@ if (-not $LicenseServerUrl) {
 }
 $LicenseServerUrl = $LicenseServerUrl.TrimEnd('/')
 
-$InstallDir       = Read-Input "Kurulum dizini" $InstallDir
-$Port             = [int](Read-Input "Uygulama port numarasi" $Port)
-# Not: $Hostname PowerShell 7+'da automatic variable, $ContainerHostname kullaniyoruz.
-$ContainerHostname = Read-Input "Container hostname (sifreleme anahtari turevinde kullanilir)" "mailtrustai"
+# Unattended modda (installer / bootstrap'tan cagrildiginda) Read-Host
+# gizli pencerede takilir. Bu durumda parametre/varsayilan degerler kullanilir.
+if (-not $Unattended) {
+    $InstallDir        = Read-Input "Kurulum dizini" $InstallDir
+    $Port              = [int](Read-Input "Uygulama port numarasi" $Port)
+    # Not: $Hostname PowerShell 7+'da automatic variable, $ContainerHostname kullaniyoruz.
+    $ContainerHostname = Read-Input "Container hostname (sifreleme anahtari turevinde kullanilir)" "mailtrustai"
+} else {
+    # Varsayilanlar / parametre degerleri oldugundan ek soru sorulmaz.
+    $ContainerHostname = 'mailtrustai'
+    Info "Otomatik mod etkin — InstallDir: $InstallDir | Port: $Port | Hostname: $ContainerHostname"
+}
 
 # ─── 4. Mevcut kurulum kontrolü ─────────────────────────────────────────────
 $EnvFile      = Join-Path $InstallDir '.env'

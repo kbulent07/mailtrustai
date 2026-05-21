@@ -296,11 +296,16 @@ if (-not (Test-Path $InstallScript)) {
     Fatal "Kurulum scripti bulunamadi: $InstallScript"
 }
 
-# Parametreleri ilet
+# Parametreleri ilet.
+# -Unattended: bootstrap her zaman unattended modda cagirirdi cunku bu
+# script gizli/otomatik ortamlarda da calisabilir. Asil kurulum (setup.ps1)
+# Read-Host'u gizli pencerede cagirmaz; LicenseKey/URL zaten yukaridaki
+# interaktif sorulardan gelir, diger parametreler varsayilan alir.
 $psArgs = @(
     '-ExecutionPolicy', 'Bypass',
     '-NoProfile',
-    '-File', $InstallScript
+    '-File', $InstallScript,
+    '-Unattended'
 )
 if ($LicenseKey)       { $psArgs += @('-LicenseKey', $LicenseKey) }
 if ($LicenseServerUrl) { $psArgs += @('-LicenseServerUrl', $LicenseServerUrl) }
