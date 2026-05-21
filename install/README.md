@@ -7,7 +7,11 @@
 | **Windows Müşteri** | [Releases](https://github.com/kbulent07/mailtrustai/releases)'ten `MailTrustAI-Client-Setup-*.exe` indir → çift tıkla → lisans+URL gir |
 | **Ubuntu Müşteri (tek dosya)** | [Releases](https://github.com/kbulent07/mailtrustai/releases)'ten `MailTrustAI-Client-Setup-*.run` indir → `chmod +x` → `sudo ./...run` |
 | **Ubuntu Sunucu** | `curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick.sh \| sudo bash` |
-| **Ubuntu Müşteri (one-liner)** | `curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick-client.sh \| sudo bash -s -- --license=MTAI-XXX --server=https://license.firma.com` |
+| **Ubuntu Müşteri (one-liner)** | `curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick-client.sh \| sudo bash -s -- --license=MTAI-XXX` |
+
+> **License-server varsayılanı**: `http://licence.mailtrustai.com:3200` (MailTrustAI merkezi sunucusu).
+> Tüm installer'lar (Ubuntu/Windows/EXE/.run) bu adresi default olarak gösterir.
+> Farklı bir sunucu için `--server=...`, `LICENSE_SERVER_URL=...` veya wizard'da URL'i değiştirin.
 
 Bu tek-adım yöntemler önkoşulları (git, docker) otomatik kurar, repoyu klonlar ve
 asıl kurulum scriptini çalıştırır. Detaylı/manuel yöntemler aşağıda.
@@ -161,7 +165,7 @@ sudo ./MailTrustAI-Client-Setup-*.run        # interaktif menu: install/update/u
 # Otomasyon:
 sudo MSA_INSTALLER_MODE=install \
      LICENSE_KEY="MTAI-PRO-XXXX-XXXX" \
-     LICENSE_SERVER_URL="https://license.firma.com" \
+     LICENSE_SERVER_URL="http://licence.mailtrustai.com:3200" \
      ./MailTrustAI-Client-Setup-*.run
 ```
 
@@ -180,7 +184,7 @@ sudo bash install/client/install_client_ubuntu.sh
 
 # Parametreli (otomasyon)
 sudo LICENSE_KEY="MTAI-PRO-XXXX-XXXX" \
-     LICENSE_SERVER_URL="https://license.firma.com" \
+     LICENSE_SERVER_URL="http://licence.mailtrustai.com:3200" \
      CUSTOMER_PORT=3000 \
      bash install/client/install_client_ubuntu.sh
 ```

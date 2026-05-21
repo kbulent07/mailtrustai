@@ -140,14 +140,14 @@ begin
     'Bu bilgi yerel olarak .env dosyasinda saklanir, internet uzerinden license-server''a iletilir.');
   LicensePage.Add('Lisans Anahtari:', False);
 
-  // 3) License-server URL sayfasi
+  // 3) License-server URL sayfasi — varsayilan mailtrustai.com altyapisi
   ServerURLPage := CreateInputQueryPage(LicensePage.ID,
     'License Server URL',
     'Lisans dogrulamasi yapilacak adres',
-    'Genel ortamda bayinizin verdigi URL''i kullanin. ' +
-    'Ornek: https://license.bayi.com');
+    'Varsayilan deger MailTrustAI merkezi sunucusudur. ' +
+    'Farkli bir license-server kullanacaksaniz URL''i degistirebilirsiniz.');
   ServerURLPage.Add('URL:', False);
-  ServerURLPage.Values[0] := 'https://license.mailtrustai.com';
+  ServerURLPage.Values[0] := 'http://licence.mailtrustai.com:3200';
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
