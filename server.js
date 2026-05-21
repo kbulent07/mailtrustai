@@ -54,8 +54,32 @@ if (CUSTOMER_ONLY) {
     console.log('[Mode] CUSTOMER_ONLY aktif — keygen/bayi panelleri ve lisans-üretici API\'leri devre dışı.');
 }
 
-// Security headers
-app.use(helmet({ contentSecurityPolicy: false }));
+// ─── Security headers (Helmet + CSP) ──────────────────────
+// Mevcut frontend bol miktarda inline onclick / style= kullaniyor —
+// strict CSP UI'yi kirar. Bu sebeple 'unsafe-inline' izinli ama
+// 3rd-party origin script/style/connect engelli (en yaygin XSS vektoru
+// olan harici malicious CDN injection'a karsi yine de etkili).
+//
+// İleride frontend refactor edilirse 'unsafe-inline' kaldirilip
+// nonce/hash tabanli politikaya gecilebilir.
+app.use(helmet({
+    contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+            'default-src':  ["'self'"],
+            'script-src':   ["'self'", "'unsafe-inline'"],
+            'style-src':    ["'self'", "'unsafe-inline'"],
+            'img-src':      ["'self'", 'data:', 'blob:'],
+            'font-src':     ["'self'", 'data:'],
+            'connect-src':  ["'self'", 'ws:', 'wss:'],  // WebSocket icin
+            'frame-ancestors': ["'none'"],              // clickjacking koruma
+            'object-src':   ["'none'"],                 // <object>/<embed> bloklu
+            'base-uri':     ["'self'"]
+        }
+    },
+    crossOriginEmbedderPolicy: false,  // WebSocket + dis kaynak uyumu
+    crossOriginResourcePolicy: { policy: 'same-site' }
+}));
 
 // ─── CORS ─────────────────────────────────────────────────
 // MSA_ALLOWED_ORIGINS virgulle ayrilmis whitelist (ornek: https://app.x.com,https://admin.x.com)
