@@ -521,30 +521,132 @@ async function loadDealers() {
 }
 
 function renderDealersTable() {
-    const tbody = $('dealersBody');
+    const tbody   = $('dealersBody');
+    const canEdit = currentPerms.includes('dealers:write');
     if (!allDealers.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="loading">Henüz bayi yok.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">Henüz bayi yok.</td></tr>';
         return;
     }
-    tbody.innerHTML = allDealers.map(d => `<tr>
+    tbody.innerHTML = allDealers.map(d => {
+        const credits      = d.credits ?? 0;
+        const creditBadge  = credits === 0
+            ? `<span style="color:#ef4444;font-weight:700">0</span>`
+            : `<span style="color:#10b981;font-weight:700">${credits.toLocaleString('tr-TR')}</span>`;
+        const creditBtn = canEdit
+            ? `<button class="action-btn" data-action="dealerCredit" data-id="${escapeHtml(d.id)}" data-name="${escapeHtml(d.name || d.id)}" data-credits="${credits}" title="Kredi yönet">💳 Kredi</button>`
+            : '';
+        return `<tr>
         <td><code>${escapeHtml(d.id)}</code></td>
         <td>${escapeHtml(d.name || '—')}</td>
         <td>${escapeHtml(d.email || '—')}</td>
-        <td><small class="muted">${fmtDate(d.createdAt)}</small></td>
-        <td>
+        <td style="text-align:center">${creditBadge}</td>
+        <td><small class="muted">${fmtDate(d.createdAt || d.created_at)}</small></td>
+        <td class="btn-group">
+            ${creditBtn}
             <button class="action-btn" data-action="dealerPw" data-id="${escapeHtml(d.id)}">🔑 Parola</button>
             <button class="action-btn danger" data-action="dealerDel" data-id="${escapeHtml(d.id)}" data-name="${escapeHtml(d.name || d.id)}">🗑️ Sil</button>
         </td>
-    </tr>`).join('');
+    </tr>`;
+    }).join('');
 
     tbody.querySelectorAll('button.action-btn').forEach(btn => {
-        if (btn.dataset.action === 'dealerPw') {
-            btn.addEventListener('click', () => openDealerPwModal(btn.dataset.id));
-        } else if (btn.dataset.action === 'dealerDel') {
-            btn.addEventListener('click', () => confirmDeleteDealer(btn.dataset.id, btn.dataset.name));
-        }
+        if      (btn.dataset.action === 'dealerCredit') openCreditModal(btn.dataset.id, btn.dataset.name, Number(btn.dataset.credits));
+        else if (btn.dataset.action === 'dealerPw')     openDealerPwModal(btn.dataset.id);
+        else if (btn.dataset.action === 'dealerDel')    confirmDeleteDealer(btn.dataset.id, btn.dataset.name);
     });
 }
+
+// ================================================================
+// KREDİ YÖNETİMİ MODALI
+// ================================================================
+let _creditDealerId = null;
+
+async function openCreditModal(dealerId, dealerName, currentCredits) {
+    _creditDealerId = dealerId;
+    $('creditModalDealerName').textContent = dealerName || dealerId;
+    $('creditModalBalance').textContent    = (currentCredits ?? 0).toLocaleString('tr-TR');
+    $('creditModalAmount').value           = '';
+    $('creditModalDesc').value             = '';
+    $('creditModalResult').textContent     = '';
+    // Ekle seçili başlat
+    document.querySelector('input[name="creditOp"][value="add"]').checked = true;
+    $('creditModal').classList.remove('hidden');
+    // Son işlemleri yükle
+    loadCreditLog(dealerId);
+}
+
+async function loadCreditLog(dealerId) {
+    const tbody = $('creditLogBody');
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:8px;color:#8b95b3">Yükleniyor...</td></tr>';
+    try {
+        const r = await api(`/api/admin/dealers/${encodeURIComponent(dealerId)}/credit-log?limit=15`);
+        // Bakiyeyi de güncelle
+        $('creditModalBalance').textContent = (r.balance ?? 0).toLocaleString('tr-TR');
+        const log = r.log || [];
+        if (!log.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:8px;color:#8b95b3">Henüz işlem yok.</td></tr>';
+            return;
+        }
+        const reasonLabels = {
+            'load':         '💳 Yükleme',
+            'license.create': '🔑 Lisans',
+            'manual.deduct':  '➖ Manuel',
+            'error.refund':   '↩️ İade'
+        };
+        tbody.innerHTML = log.map(entry => {
+            const deltaStr = entry.delta > 0
+                ? `<span style="color:#10b981">+${entry.delta}</span>`
+                : `<span style="color:#ef4444">${entry.delta}</span>`;
+            return `<tr>
+                <td style="padding:4px 6px;white-space:nowrap">${fmtDateTime(entry.created_at)}</td>
+                <td style="padding:4px 6px;text-align:center">${deltaStr}</td>
+                <td style="padding:4px 6px;text-align:center">${entry.balance}</td>
+                <td style="padding:4px 6px">${escapeHtml(reasonLabels[entry.reason] || entry.reason || '—')}</td>
+                <td style="padding:4px 6px;color:#8b95b3">${escapeHtml(entry.description || '—')}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" style="color:#ef4444;padding:8px;text-align:center">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+$('creditModalCancel').addEventListener('click', () => $('creditModal').classList.add('hidden'));
+$('creditModal').addEventListener('click', (e) => { if (e.target === $('creditModal')) $('creditModal').classList.add('hidden'); });
+
+$('creditModalApply').addEventListener('click', async () => {
+    const op     = document.querySelector('input[name="creditOp"]:checked')?.value || 'add';
+    const amount = parseInt($('creditModalAmount').value, 10);
+    const desc   = ($('creditModalDesc').value || '').trim();
+    const resEl  = $('creditModalResult');
+    resEl.textContent = '';
+
+    if (!amount || amount < 1) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = 'Miktar 1 veya üzeri tam sayı olmalı.';
+        return;
+    }
+    const delta = op === 'add' ? amount : -amount;
+    const btn   = $('creditModalApply');
+    btn.disabled = true; btn.textContent = '⏳';
+    try {
+        const r = await api(`/api/admin/dealers/${encodeURIComponent(_creditDealerId)}/credits`, {
+            method: 'POST',
+            body:   { delta, description: desc || undefined }
+        });
+        resEl.style.color = '#34d399';
+        resEl.textContent = `✅ İşlem tamamlandı. Yeni bakiye: ${(r.balance ?? 0).toLocaleString('tr-TR')} kredi`;
+        $('creditModalAmount').value = '';
+        $('creditModalDesc').value   = '';
+        // Tabloyu ve log'u yenile
+        await loadCreditLog(_creditDealerId);
+        await loadDealers();
+    } catch (e) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = 'Hata: ' + e.message;
+    } finally {
+        btn.disabled = false; btn.textContent = '💾 Uygula';
+    }
+});
 
 $('dealerCreateForm').addEventListener('submit', async (e) => {
     e.preventDefault();

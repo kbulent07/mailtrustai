@@ -222,8 +222,8 @@
                     <h2>👥 Bayi Listesi</h2>
                     <div class="table-wrap">
                         <table>
-                            <thead><tr><th>ID</th><th>Ad</th><th>E-posta</th><th>Oluşturma</th><th>Aksiyon</th></tr></thead>
-                            <tbody id="dealersBody"><tr><td colspan="5" class="loading">Yükleniyor...</td></tr></tbody>
+                            <thead><tr><th>ID</th><th>Ad</th><th>E-posta</th><th>Kredi</th><th>Oluşturma</th><th>Aksiyon</th></tr></thead>
+                            <tbody id="dealersBody"><tr><td colspan="6" class="loading">Yükleniyor...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -566,6 +566,52 @@
             <button id="renewModalApply" class="primary">Uzat</button>
         </div>
         <div id="renewModalResult" class="result" role="status" aria-live="polite"></div>
+    </div>
+</div>
+
+<div id="creditModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="creditModalTitle">
+    <div class="modal-card" style="max-width:520px;width:95%">
+        <h3 id="creditModalTitle">💳 Kredi Yönetimi</h3>
+        <p class="muted">Bayi: <strong id="creditModalDealerName"></strong>
+            &nbsp;|&nbsp; Mevcut Bakiye: <strong id="creditModalBalance" style="color:#10b981">—</strong> kredi</p>
+
+        <div style="display:flex;gap:10px;margin:14px 0 10px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.9em">
+                <input type="radio" name="creditOp" value="add" checked style="accent-color:#10b981"> ➕ Kredi Ekle
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.9em">
+                <input type="radio" name="creditOp" value="deduct" style="accent-color:#ef4444"> ➖ Kredi Düş
+            </label>
+        </div>
+
+        <label for="creditModalAmount">Miktar</label>
+        <input type="number" id="creditModalAmount" min="1" step="1" placeholder="Kredi miktarı (tam sayı)" autocomplete="off" style="margin-bottom:10px">
+
+        <label for="creditModalDesc">Açıklama <span class="muted">(opsiyonel)</span></label>
+        <input type="text" id="creditModalDesc" maxlength="256" placeholder="ör: Şubat ayı kredi yüklemesi" autocomplete="off">
+
+        <div class="modal-btns" style="margin-top:14px">
+            <button id="creditModalCancel">İptal</button>
+            <button id="creditModalApply" class="primary">💾 Uygula</button>
+        </div>
+        <div id="creditModalResult" class="result" role="status" aria-live="polite"></div>
+
+        <!-- Son işlemler -->
+        <div style="margin-top:18px">
+            <h4 style="font-size:.9em;color:#8b95b3;margin-bottom:8px">📋 Son İşlemler</h4>
+            <div style="max-height:180px;overflow-y:auto">
+                <table style="font-size:.8em;width:100%">
+                    <thead><tr>
+                        <th style="padding:4px 6px">Tarih</th>
+                        <th style="padding:4px 6px">Delta</th>
+                        <th style="padding:4px 6px">Bakiye</th>
+                        <th style="padding:4px 6px">Sebep</th>
+                        <th style="padding:4px 6px">Açıklama</th>
+                    </tr></thead>
+                    <tbody id="creditLogBody"><tr><td colspan="5" style="text-align:center;padding:8px;color:#8b95b3">Yükleniyor...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 

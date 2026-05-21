@@ -132,7 +132,9 @@ async function loadDealerMe() {
         const r = await api('/api/dealer/me');
         const d = r.dealer || {};
         $('dealerNamePill').textContent = d.name || d.id || '—';
-        $('dealerCredits').textContent  = (d.credits || 0).toLocaleString('tr-TR');
+        const credits = d.credits ?? 0;
+        $('dealerCredits').textContent  = credits.toLocaleString('tr-TR');
+        checkCreditWarning(credits);
     } catch (_) {}
 }
 
@@ -285,6 +287,39 @@ function buildLicenseRow(l) {
 }
 
 $('refreshCustomersBtn')?.addEventListener('click', loadCustomers);
+
+// ─── Kredi uyarısı (başlangıçta veya yenileme sonrası) ────────────────────────
+function checkCreditWarning(credits) {
+    const pill   = $('dealerCredits');
+    const banner = $('creditWarningBanner');
+    const text   = $('creditWarningText');
+    if (!pill) return;
+
+    if (credits === 0) {
+        pill.style.color = '#ef4444';
+        pill.title = '⚠️ Krediniz tükendi!';
+        if (banner) {
+            text.textContent = '⚠️ Krediniz tükendi! Yeni lisans üretemezsiniz. Lütfen yöneticinizle iletişime geçin.';
+            banner.classList.remove('hidden');
+            banner.style.display = 'flex';
+        }
+    } else if (credits <= 5) {
+        pill.style.color = '#f59e0b';
+        pill.title = `⚠️ Düşük kredi: ${credits} kaldı.`;
+        if (banner) {
+            text.textContent = `⚠️ Kredi bakiyeniz çok düşük: ${credits} kredi kaldı. Yakında lisans üretemeyeceksiniz.`;
+            banner.classList.remove('hidden');
+            banner.style.display = 'flex';
+            banner.style.background = '#451a03';
+            banner.style.color = '#fcd34d';
+            banner.style.borderColor = '#92400e';
+        }
+    } else {
+        pill.style.color = '#10b981';
+        pill.title = '';
+        if (banner) banner.classList.add('hidden');
+    }
+}
 
 // ─── BOOT: mevcut session kontrolü ───────────────────────────────────────────
 (async function boot() {

@@ -608,8 +608,57 @@ router.post('/admin/offline-grace/bulk', adminAuth, requirePerm('licenses:write'
 // GET /api/admin/dealers — bulk filter dropdown'lar için
 // ============================================================
 router.get('/admin/dealers', adminAuth, requirePerm('dealers:read'), asyncH(async (req, res) => {
-    const rows = await all('SELECT id, name, email, created_at FROM dealers ORDER BY name');
-    res.json({ dealers: rows });
+    const rows = await all('SELECT id, name, email, credits, created_at FROM dealers ORDER BY name');
+    res.json({ dealers: rows.map(d => ({ ...d, credits: d.credits ?? 0 })) });
+}));
+
+// ============================================================
+// KREDİ YÖNETİMİ — POST /api/admin/dealers/:id/credits
+// body: { delta, description }
+//   delta > 0 : kredi yükle
+//   delta < 0 : kredi düş (manuel hata düzeltme, iade geri alma vb.)
+// ============================================================
+router.post('/admin/dealers/:id/credits', adminAuth, requirePerm('dealers:write'), asyncH(async (req, res) => {
+    const dealer = await get('SELECT id, name, credits FROM dealers WHERE id = ?', [req.params.id]);
+    if (!dealer) return res.status(404).json({ error: 'bayi bulunamadı' });
+
+    const { delta, description } = req.body || {};
+    const d = parseInt(delta, 10);
+    if (!Number.isInteger(d) || d === 0)
+        return res.status(400).json({ error: 'delta sıfırdan farklı tam sayı olmalı' });
+
+    const currentCredits = dealer.credits ?? 0;
+    const newBalance     = currentCredits + d;
+
+    if (newBalance < 0)
+        return res.status(400).json({ error: `Yetersiz bakiye. Mevcut: ${currentCredits}, İstenen düşme: ${Math.abs(d)}` });
+
+    const desc = description ? String(description).trim().slice(0, 512) : null;
+    const reason = d > 0 ? 'load' : 'manual.deduct';
+
+    await run('UPDATE dealers SET credits = ? WHERE id = ?', [newBalance, dealer.id]);
+
+    const { v4: _uuid } = require('uuid');
+    await run(
+        'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at) VALUES(?,?,?,?,?,?,?,?)',
+        [_uuid(), dealer.id, d, newBalance, reason, desc, req.actor || 'admin', Date.now()]
+    );
+    await audit(req.actor, d > 0 ? 'dealer.credit.load' : 'dealer.credit.deduct', dealer.id,
+        { delta: d, newBalance, description: desc });
+
+    res.json({ ok: true, dealerId: dealer.id, delta: d, balance: newBalance });
+}));
+
+// GET /api/admin/dealers/:id/credit-log — son N işlem
+router.get('/admin/dealers/:id/credit-log', adminAuth, requirePerm('dealers:read'), asyncH(async (req, res) => {
+    const dealer = await get('SELECT id, name, credits FROM dealers WHERE id = ?', [req.params.id]);
+    if (!dealer) return res.status(404).json({ error: 'bayi bulunamadı' });
+    const lim = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+    const rows = await all(
+        'SELECT id, delta, balance, reason, description, actor, created_at FROM dealer_credit_log WHERE dealer_id = ? ORDER BY created_at DESC LIMIT ?',
+        [dealer.id, lim]
+    );
+    res.json({ dealerId: dealer.id, name: dealer.name, balance: dealer.credits ?? 0, log: rows });
 }));
 
 // ============================================================

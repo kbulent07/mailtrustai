@@ -83,6 +83,40 @@ router.post('/license/create', asyncH(async (req, res) => {
     if (tier && !TIER_MATRIX[tier]) {
         return badRequest(res, `tier geçersiz: ${tier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`);
     }
+
+    // ─── Bayi kredi kontrolü — bayiyle üretiliyorsa 1 kredi kesilir ─────────
+    // Admin panelinden (dealerId olmadan) üretimde kredi kontrolü yapılmaz.
+    if (dealerId) {
+        const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [String(dealerId)]);
+        if (!dealer) return badRequest(res, `bayi bulunamadı: ${dealerId}`);
+
+        // Atomik kredi düşme: credits > 0 koşuluyla — race condition koruması.
+        const upd = await run(
+            'UPDATE dealers SET credits = credits - 1 WHERE id = ? AND credits > 0',
+            [dealer.id]
+        );
+        const changed = upd?.affectedRows ?? upd?.changes ?? 0;
+        if (changed === 0) {
+            await audit(dealerId, 'dealer.credit.insufficient', null, { customerId, plan });
+            return res.status(402).json({
+                error: 'Yetersiz kredi. Lütfen yöneticinizle iletişime geçin.',
+                code:  'INSUFFICIENT_CREDITS',
+                balance: dealer.credits ?? 0
+            });
+        }
+        // Güncel bakiyeyi oku ve işlem kütüğüne yaz.
+        const newBalance = (dealer.credits ?? 0) - 1;
+        const { v4: _uuid } = require('uuid');
+        await run(
+            'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at) VALUES(?,?,?,?,?,?,?,?)',
+            [_uuid(), dealer.id, -1, newBalance, 'license.create',
+             `Lisans üretimi: müşteri=${customerId}, plan=${plan}`, 'system', Date.now()]
+        );
+        await audit(dealerId, 'dealer.credit.deduct', dealer.id,
+            { delta: -1, newBalance, customerId, plan });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Label opsiyonel; trial ise otomatik "[Trial]" prefix eklenir.
     const rawLabel = (typeof label === 'string' && label.trim()) ? label.trim() : '';
     const licenseLabel = isTrial
