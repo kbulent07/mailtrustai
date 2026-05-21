@@ -103,6 +103,7 @@
                letter-spacing: .05em; }
         .tag-pro        { background: #312e81; color: #a5b4fc; }
         .tag-enterprise { background: #1e3a5f; color: #93c5fd; }
+        .tag-basic      { background: #1c3035; color: #67e8f9; }
         .tag-demo       { background: #1f2937; color: #9ca3af; }
         .tag-active     { background: #064e3b; color: #6ee7b7; }
         .tag-expired    { background: #451a03; color: #fcd34d; }
@@ -111,6 +112,9 @@
         .tag-annual     { background: #0c2340; color: #7dd3fc; }
         .tag-online     { background: #064e3b; color: #6ee7b7; }
         .tag-offline    { background: #3b0764; color: #d8b4fe; }
+        .tag-pending    { background: #312e10; color: #fde68a; }
+        .tag-approved   { background: #064e3b; color: #6ee7b7; }
+        .tag-rejected   { background: #450a0a; color: #fca5a5; }
 
         /* ── Price table cells ───────────────────────────────────── */
         .price-val { font-size: 1.15em; font-weight: 700; color: var(--text); }
@@ -189,7 +193,8 @@
     <nav class="tabs" role="tablist">
         <button class="tab-btn active" data-tab="pricing" role="tab">💰 Fiyatlandırma</button>
         <button class="tab-btn" data-tab="customers" role="tab">👥 Müşterilerim</button>
-        <button class="tab-btn" data-tab="credits" role="tab">💳 Kredi Hareketleri</button>
+        <button class="tab-btn" data-tab="transfers" role="tab" id="transfersTabBtn">🔁 Transferler <span id="pendingTransferBadge" class="hidden" style="background:#fde68a;color:#1a1a00;border-radius:10px;padding:1px 6px;font-size:.72em;margin-left:4px;font-weight:700">0</span></button>
+        <button class="tab-btn" data-tab="credits" role="tab">💳 Kredi</button>
     </nav>
 
     <div class="main-content">
@@ -242,6 +247,43 @@
 
             <div id="customerList">
                 <div class="loading">Yükleniyor...</div>
+            </div>
+        </div>
+
+        <!-- ===== TRANSFER TALEPLERİ ===== -->
+        <div class="tab-panel" id="panel-transfers">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+                <div class="section-title" style="margin-bottom:0">🔁 Cihaz Transfer Talepleri</div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <select id="transferStatusFilter" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.85em">
+                        <option value="pending">Bekleyen</option>
+                        <option value="approved">Onaylanan</option>
+                        <option value="rejected">Reddedilen</option>
+                        <option value="all">Tümü</option>
+                    </select>
+                    <button id="refreshTransfersBtn" style="font-size:.8em;background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer">↻ Yenile</button>
+                </div>
+            </div>
+            <p style="font-size:.82em;color:var(--muted);margin-bottom:14px">
+                Müşterinizin yazılımı farklı bir cihaza taşındığında burada transfer talebi oluşur. Onaylayarak yeni cihazın aktivasyonunu sağlayabilirsiniz.
+            </p>
+            <div id="transferResult" style="font-size:.85em;min-height:18px;margin-bottom:10px"></div>
+            <div style="overflow-x:auto">
+                <table id="transfersTable">
+                    <thead>
+                        <tr>
+                            <th>Tarih</th>
+                            <th>Müşteri</th>
+                            <th>Lisans</th>
+                            <th>Plan</th>
+                            <th>Durum</th>
+                            <th>Aksiyonlar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transfersBody">
+                        <tr><td colspan="6" class="loading">Yükleniyor...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 

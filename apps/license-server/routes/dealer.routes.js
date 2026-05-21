@@ -325,6 +325,100 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
     });
 }));
 
+// ─── GET /api/dealer/transfers — Bayinin müşterilerinin transfer talepleri ─────
+// ?status=pending|approved|rejected|all   (varsayılan: pending)
+// ?limit=100 (max 500)
+router.get('/dealer/transfers', dealerSessionAuth, asyncH(async (req, res) => {
+    const { dealerId } = req.dealerSession;
+    const status = req.query.status || 'pending';
+    const limit  = Math.min(Number(req.query.limit) || 100, 500);
+    const statusFilter = status === 'all' ? null : status;
+
+    const rows = await all(
+        `SELECT tr.id, tr.status, tr.requested_at, tr.resolved_at, tr.resolved_by, tr.reject_reason,
+                l.id AS license_id, l.plan, l.license_key_masked,
+                c.id AS customer_id, c.company_name
+         FROM transfer_requests tr
+         JOIN licenses  l ON l.id = tr.license_id
+         LEFT JOIN customers c ON c.id = l.customer_id
+         WHERE l.dealer_id = ? ${statusFilter ? 'AND tr.status = ?' : ''}
+         ORDER BY tr.requested_at DESC LIMIT ?`,
+        statusFilter ? [dealerId, statusFilter, limit] : [dealerId, limit]
+    );
+
+    // Bekleyen sayısını da döndür (badge için)
+    const pendingRow = await get(
+        `SELECT COUNT(*) AS c FROM transfer_requests tr
+         JOIN licenses l ON l.id = tr.license_id
+         WHERE l.dealer_id = ? AND tr.status = 'pending'`,
+        [dealerId]
+    );
+
+    res.json({ count: rows.length, pendingCount: pendingRow?.c || 0, transfers: rows || [] });
+}));
+
+// ─── POST /api/dealer/transfers/:id/approve ────────────────────────────────────
+router.post('/dealer/transfers/:id/approve', dealerSessionAuth, asyncH(async (req, res) => {
+    const { dealerId } = req.dealerSession;
+    const tr = await get(
+        `SELECT tr.*, l.dealer_id FROM transfer_requests tr
+         JOIN licenses l ON l.id = tr.license_id
+         WHERE tr.id = ?`,
+        [req.params.id]
+    );
+    if (!tr) return res.status(404).json({ error: 'Transfer talebi bulunamadı' });
+    if (tr.dealer_id !== dealerId) return res.status(403).json({ error: 'Bu talep size ait değil' });
+    if (tr.status !== 'pending') return res.status(409).json({ error: `Talep zaten işlendi: ${tr.status}` });
+
+    const resolvedAt = Date.now();
+    const upd = await run(
+        'UPDATE transfer_requests SET status=?, resolved_at=?, resolved_by=? WHERE id=? AND status=?',
+        ['approved', resolvedAt, dealerId, tr.id, 'pending']
+    );
+    if ((upd?.affectedRows ?? upd?.changes ?? 0) === 0) {
+        return res.status(409).json({ error: 'Talep eş zamanlı işlendi, yenileyin.' });
+    }
+
+    // Eski cihaz aktivasyonunu sil
+    if (tr.old_hostname_hash) {
+        await run('DELETE FROM activations WHERE license_id=? AND hostname_hash=? AND instance_id != ?',
+            [tr.license_id, tr.old_hostname_hash, tr.new_instance_id || '']);
+    }
+    // Aynı lisans için diğer bekleyen talepleri reddet
+    await run(
+        'UPDATE transfer_requests SET status=?,resolved_at=?,resolved_by=?,reject_reason=? WHERE license_id=? AND status=? AND id!=?',
+        ['rejected', resolvedAt, dealerId, 'Başka transfer onaylandı', tr.license_id, 'pending', tr.id]
+    );
+    await audit(dealerId, 'license.transfer.approved', tr.license_id, { transferId: tr.id });
+    res.json({ ok: true, message: 'Transfer onaylandı. Müşteri lisansı yeniden aktive edebilir.' });
+}));
+
+// ─── POST /api/dealer/transfers/:id/reject ─────────────────────────────────────
+router.post('/dealer/transfers/:id/reject', dealerSessionAuth, asyncH(async (req, res) => {
+    const { dealerId } = req.dealerSession;
+    const { reason } = req.body || {};
+    const tr = await get(
+        `SELECT tr.*, l.dealer_id FROM transfer_requests tr
+         JOIN licenses l ON l.id = tr.license_id
+         WHERE tr.id = ?`,
+        [req.params.id]
+    );
+    if (!tr) return res.status(404).json({ error: 'Transfer talebi bulunamadı' });
+    if (tr.dealer_id !== dealerId) return res.status(403).json({ error: 'Bu talep size ait değil' });
+    if (tr.status !== 'pending') return res.status(409).json({ error: `Talep zaten işlendi: ${tr.status}` });
+
+    const resolvedAt = Date.now();
+    const upd = await run(
+        'UPDATE transfer_requests SET status=?,resolved_at=?,resolved_by=?,reject_reason=? WHERE id=? AND status=?',
+        ['rejected', resolvedAt, dealerId, reason || 'Bayi tarafından reddedildi', tr.id, 'pending']
+    );
+    if ((upd?.affectedRows ?? upd?.changes ?? 0) === 0) {
+        return res.status(409).json({ error: 'Talep eş zamanlı işlendi, yenileyin.' });
+    }
+    await audit(dealerId, 'license.transfer.rejected', tr.license_id, { transferId: tr.id, reason });
+    res.json({ ok: true, message: 'Transfer reddedildi.' });
+}));
+
 // ─── GET /api/dealer/credit-log — Bayi kendi kredi hareketlerini görür ────────
 // ?limit=50 (max 200)
 router.get('/dealer/credit-log', dealerSessionAuth, asyncH(async (req, res) => {

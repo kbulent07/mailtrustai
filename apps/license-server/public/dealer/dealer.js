@@ -74,6 +74,7 @@ function activateTab(tabName) {
     );
     if (tabName === 'pricing')   loadPricing();
     if (tabName === 'customers') loadCustomers();
+    if (tabName === 'transfers') loadTransfers();
     if (tabName === 'credits')   loadCreditLog();
 }
 
@@ -106,6 +107,7 @@ $('loginForm').addEventListener('submit', async (e) => {
         showDashboard();
         loadDealerMe();
         loadPricing();
+        loadPendingTransferBadge();
     } catch (err) {
         errEl.textContent = 'Hata: ' + (err.message || 'giriş başarısız');
     } finally {
@@ -297,6 +299,102 @@ function buildLicenseRow(l) {
 
 $('refreshCustomersBtn')?.addEventListener('click', loadCustomers);
 $('refreshCreditsBtn')?.addEventListener('click', loadCreditLog);
+$('refreshTransfersBtn')?.addEventListener('click', loadTransfers);
+$('transferStatusFilter')?.addEventListener('change', loadTransfers);
+
+// ─── TRANSFER TALEPLERİ ───────────────────────────────────────────────────────
+async function loadTransfers() {
+    const tbody   = $('transfersBody');
+    const resEl   = $('transferResult');
+    const status  = $('transferStatusFilter')?.value || 'pending';
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="6" class="loading">Yükleniyor...</td></tr>`;
+    if (resEl) resEl.textContent = '';
+
+    try {
+        const r = await api(`/api/dealer/transfers?status=${encodeURIComponent(status)}`);
+        const list = r.transfers || [];
+
+        // Bekleyen badge güncelle
+        const badge = $('pendingTransferBadge');
+        if (badge) {
+            const n = r.pendingCount || 0;
+            badge.textContent = n;
+            badge.classList.toggle('hidden', n === 0);
+        }
+
+        if (!list.length) {
+            const labels = { pending:'Bekleyen', approved:'Onaylanan', rejected:'Reddedilen', all:'' };
+            tbody.innerHTML = `<tr><td colspan="6" class="empty-msg">${labels[status] || ''} transfer talebi yok.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = list.map(tr => {
+            const statusTag = `<span class="tag tag-${tr.status}">${
+                tr.status === 'pending' ? '⏳ Bekliyor' :
+                tr.status === 'approved' ? '✅ Onaylandı' : '❌ Reddedildi'
+            }</span>`;
+
+            const actions = tr.status === 'pending'
+                ? `<button class="btn-approve" data-id="${escapeHtml(tr.id)}"
+                       style="font-size:.78em;padding:4px 10px;border-radius:5px;border:none;background:#065f46;color:#6ee7b7;cursor:pointer;margin-right:4px">
+                       ✅ Onayla</button>
+                   <button class="btn-reject" data-id="${escapeHtml(tr.id)}"
+                       style="font-size:.78em;padding:4px 10px;border-radius:5px;border:none;background:#450a0a;color:#fca5a5;cursor:pointer">
+                       ❌ Reddet</button>`
+                : `<span class="muted" style="font-size:.78em">${tr.resolved_by ? escapeHtml(tr.resolved_by) : '—'}<br>${tr.resolved_at ? fmtDate(tr.resolved_at) : ''}</span>`;
+
+            return `<tr>
+                <td style="white-space:nowrap">${fmtDate(tr.requested_at)}<br>
+                    <span class="muted" style="font-size:.75em">${timeAgo(tr.requested_at)}</span></td>
+                <td><strong>${escapeHtml(tr.company_name || tr.customer_id || '—')}</strong><br>
+                    <span class="muted" style="font-size:.75em">${escapeHtml(tr.customer_id || '')}</span></td>
+                <td><code style="font-size:.78em">${escapeHtml(tr.license_key_masked || tr.license_id || '—')}</code></td>
+                <td><span class="tag tag-${tr.plan || 'demo'}">${escapeHtml(tr.plan || '—')}</span></td>
+                <td>${statusTag}${tr.reject_reason ? `<br><span class="muted" style="font-size:.75em">${escapeHtml(tr.reject_reason)}</span>` : ''}</td>
+                <td>${actions}</td>
+            </tr>`;
+        }).join('');
+
+        // Onayla / Reddet buton event'leri
+        tbody.querySelectorAll('.btn-approve').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (!confirm('Bu transfer onaylansın mı? Eski cihazın aktivasyonu kaldırılacak.')) return;
+                await doTransferAction(btn.dataset.id, 'approve');
+            });
+        });
+        tbody.querySelectorAll('.btn-reject').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const reason = prompt('Red gerekçesi (opsiyonel):') ?? null;
+                if (reason === null) return; // iptal
+                await doTransferAction(btn.dataset.id, 'reject', reason);
+            });
+        });
+
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="err-msg">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+async function doTransferAction(id, action, reason) {
+    const resEl = $('transferResult');
+    try {
+        const body = action === 'reject' && reason ? { reason } : {};
+        const r = await api(`/api/dealer/transfers/${encodeURIComponent(id)}/${action}`, {
+            method: 'POST', body
+        });
+        showToast(r.message || (action === 'approve' ? 'Onaylandı.' : 'Reddedildi.'),
+            action === 'approve' ? 'success' : 'info');
+        if (resEl) {
+            resEl.style.color = action === 'approve' ? '#34d399' : '#f87171';
+            resEl.textContent = r.message || '';
+        }
+        loadTransfers();
+    } catch (e) {
+        showToast('Hata: ' + e.message, 'error');
+        if (resEl) { resEl.style.color = '#f87171'; resEl.textContent = 'Hata: ' + e.message; }
+    }
+}
 
 // ─── KREDİ HAREKETLERİ ───────────────────────────────────────────────────────
 async function loadCreditLog() {
@@ -450,6 +548,19 @@ $('clicCreate')?.addEventListener('click', async () => {
     }
 });
 
+// ─── Bekleyen transfer sayısını badge'e yaz (giriş sonrası + periyodik) ───────
+async function loadPendingTransferBadge() {
+    try {
+        const r = await api('/api/dealer/transfers?status=pending&limit=1');
+        const badge = $('pendingTransferBadge');
+        if (badge) {
+            const n = r.pendingCount || 0;
+            badge.textContent = n;
+            badge.classList.toggle('hidden', n === 0);
+        }
+    } catch (_) {}
+}
+
 // ─── Kredi uyarısı (başlangıçta veya yenileme sonrası) ────────────────────────
 function checkCreditWarning(credits) {
     const pill   = $('dealerCredits');
@@ -494,6 +605,7 @@ function checkCreditWarning(credits) {
         $('dealerCredits').textContent  = (d.credits || 0).toLocaleString('tr-TR');
         showDashboard();
         loadPricing();
+        loadPendingTransferBadge();
     } catch (_) {
         sessionStorage.removeItem(DEALER_TOKEN_KEY);
         sessionStorage.removeItem(DEALER_ID_KEY);
