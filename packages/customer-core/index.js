@@ -57,7 +57,13 @@ const routes = {
     customer:       lazy(() => _req('src/interfaces/http/routes/customer.routes')),
     customerUsers:  lazy(() => _req('src/interfaces/http/routes/customerUsers.routes')),
     fpSuggestions:  lazy(() => _req('src/interfaces/http/routes/fpSuggestions.routes')),
-    settings:       lazy(() => _req('src/interfaces/http/routes/settings.routes'))
+    settings:       lazy(() => _req('src/interfaces/http/routes/settings.routes')),
+    // licenseCustomer: customer-side endpoint'ler (fingerprint, lic-status, usage).
+    // Admin endpoint'ler (generate/trial/revoke/...) license.routes.js'de — o dosya
+    // yasak pattern icerdigi icin customer image build'inde Dockerfile silmiyor ama
+    // check-customer-package fail etmesin diye mount ETMIYORUZ. Sadece bu split kaynak
+    // mount edilir.
+    licenseCustomer: lazy(() => _req('src/interfaces/http/routes/licenseCustomer.routes'))
 };
 
 // Sözleşme: tüketiciler ya direkt çağırır (`core.middleware.adminAuth()`) ya da

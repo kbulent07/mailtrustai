@@ -46,6 +46,10 @@ const customerAuthRoutes = core.routes.customer();
 const customerUsersRoutes = core.routes.customerUsers();
 const fpSuggestionsRoutes = core.routes.fpSuggestions();
 const settingsRoutes = core.routes.settings();
+// License customer routes: /api/license/fingerprint, /lic-status, /usage, /prices, /tiers.
+// Admin endpoint'ler (generate/trial/revoke) license.routes.js'de — customer image'a
+// yasak pattern (generateLicenseKey) icerdigi icin DAHIL EDILMIYOR.
+const licenseCustomerRoutes = core.routes.licenseCustomer();
 
 const app = express();
 const server = http.createServer(app);
@@ -281,6 +285,7 @@ customerApi.use(statsRoutes);
 customerApi.use(customerAuthRoutes);
 customerApi.use(customerUsersRoutes);
 customerApi.use(settingsRoutes);
+customerApi.use(licenseCustomerRoutes);
 
 // FP (Yanlış Pozitif) önerileri — yeni lisans sistemiyle uyumlu.
 // req._licenseOverride = true inject edilerek eski HMAC lisans kontrolü bypass edilir.
