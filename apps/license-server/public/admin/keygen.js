@@ -865,6 +865,7 @@ function renderManageTable() {
             <td class="btn-group">
                 ${revokeBtn}
                 <button class="action-btn" data-action="renew" data-license="${lic.id}" data-name="${da}">⏳ Uzat</button>
+                <button class="action-btn" data-action="hblog" data-license="${lic.id}" data-name="${da}">📡 Log</button>
             </td>
         </tr>`;
     }).join('');
@@ -879,6 +880,8 @@ function renderManageTable() {
             btn.addEventListener('click', () => doUnrevoke(lid, name));
         } else if (a === 'renew') {
             btn.addEventListener('click', () => openRenewModal(lid, name));
+        } else if (a === 'hblog') {
+            btn.addEventListener('click', () => openHeartbeatLog(lid, name));
         }
     });
 }
@@ -1522,6 +1525,155 @@ $('pricingSettingsSaveBtn')?.addEventListener('click', async () => {
 });
 
 $('pricingReloadBtn')?.addEventListener('click', () => loadPricing());
+
+// ================================================================
+// HEARTBEAT LOG — 📡 Haberleşme Geçmişi Modalı
+// ================================================================
+
+let _hbLogLicenseId   = null;
+let _hbLogCustomerName = null;
+
+/** Modal aç, ilk yüklemeyi tetikle */
+async function openHeartbeatLog(licenseId, customerName) {
+    _hbLogLicenseId    = licenseId;
+    _hbLogCustomerName = decodeURIComponent(customerName || licenseId);
+
+    $('hbLogLicenseId').textContent    = licenseId;
+    $('hbLogCustomerName').textContent = _hbLogCustomerName;
+    $('hbLogStats').innerHTML          = '';
+
+    // Tarih aralığı: varsayılan son 5 yıl → bugün
+    const today = new Date();
+    const from5 = new Date(today);
+    from5.setFullYear(from5.getFullYear() - 5);
+    $('hbLogFrom').value = from5.toISOString().slice(0, 10);
+    $('hbLogTo').value   = today.toISOString().slice(0, 10);
+
+    // Instance select sıfırla
+    const instSel = $('hbLogInstance');
+    instSel.innerHTML = '<option value="">Tümü</option>';
+
+    $('heartbeatLogModal').classList.remove('hidden');
+    await loadHeartbeatLog();
+}
+
+/** Log verilerini çek ve tabloya yaz */
+async function loadHeartbeatLog() {
+    const tbody = $('hbLogBody');
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#8b95b3">Yükleniyor...</td></tr>';
+    $('hbLogStats').innerHTML = '';
+    $('hbLogInfo').textContent = '';
+
+    const fromVal  = $('hbLogFrom').value;
+    const toVal    = $('hbLogTo').value;
+    const instVal  = $('hbLogInstance').value;
+    const limitVal = $('hbLogLimit').value || '500';
+
+    // ms timestamp'e çevir
+    const sinceMs = fromVal ? new Date(fromVal + 'T00:00:00').getTime() : (Date.now() - 5 * 365.25 * 24 * 3600 * 1000);
+    const untilMs = toVal   ? new Date(toVal   + 'T23:59:59').getTime() : Date.now();
+
+    const params = new URLSearchParams({ since: sinceMs, until: untilMs, limit: limitVal });
+    if (instVal) params.set('instance', instVal);
+
+    let data;
+    try {
+        data = await api(`/api/admin/licenses/${_hbLogLicenseId}/heartbeats?${params}`);
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:#f87171">Hata: ${escapeHtml(e.message)}</td></tr>`;
+        return;
+    }
+
+    // Instance dropdown güncelle (sadece ilk yüklemede / instance boşken)
+    if (data.instances && data.instances.length) {
+        const instSel = $('hbLogInstance');
+        const current = instSel.value;
+        instSel.innerHTML = '<option value="">Tümü</option>';
+        data.instances.forEach(inst => {
+            const opt = document.createElement('option');
+            opt.value = inst;
+            opt.textContent = inst.length > 32 ? inst.slice(0, 14) + '…' + inst.slice(-10) : inst;
+            opt.title = inst;
+            if (inst === current) opt.selected = true;
+            instSel.appendChild(opt);
+        });
+    }
+
+    // İstatistik çubuğu
+    if (data.heartbeats && data.heartbeats.length) {
+        const firstTs = data.heartbeats[data.heartbeats.length - 1].ts;
+        const lastTs  = data.heartbeats[0].ts;
+        const uniqueInst = new Set(data.heartbeats.map(h => h.instanceId)).size;
+        $('hbLogStats').innerHTML = `
+            <span>📊 <strong>${data.count}</strong> kayıt</span>
+            <span>🖥️ <strong>${uniqueInst}</strong> instance</span>
+            <span>📅 İlk: <strong>${fmtDateTime(firstTs)}</strong></span>
+            <span>⏱️ Son: <strong>${fmtDateTime(lastTs)}</strong></span>
+        `;
+    }
+
+    // Kayıt yok
+    if (!data.heartbeats || !data.heartbeats.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:#8b95b3">Bu aralıkta haberleşme kaydı bulunamadı.<br><small>Heartbeat log özelliği bu yükseltmeden sonraki bağlantıları kaydeder.</small></td></tr>';
+        $('hbLogInfo').textContent = '0 kayıt';
+        return;
+    }
+
+    // Sağlık durumu renkler
+    const healthColor = { ok: '#34d399', warning: '#fbbf24', error: '#f87171', unknown: '#8b95b3' };
+
+    tbody.innerHTML = data.heartbeats.map(h => {
+        const hc = healthColor[h.healthStatus?.toLowerCase()] || '#8b95b3';
+        const instShort = (h.instanceId || '—').length > 20
+            ? (h.instanceId.slice(0, 10) + '…' + h.instanceId.slice(-6))
+            : (h.instanceId || '—');
+        return `<tr style="border-bottom:1px solid #1e2336">
+            <td style="padding:7px 10px;white-space:nowrap;color:#e2e8f0">${fmtDateTime(h.ts)}<br><small class="muted" style="font-size:10px">${timeAgo(h.ts)}</small></td>
+            <td style="padding:7px 10px;font-family:monospace;font-size:.8em;color:#a5b4fc" title="${escapeHtml(h.instanceId || '')}">${escapeHtml(instShort)}</td>
+            <td style="padding:7px 10px;color:#94a3b8">${escapeHtml(h.appVersion || '—')}</td>
+            <td style="padding:7px 10px;color:#94a3b8">${escapeHtml(h.environment || '—')}</td>
+            <td style="padding:7px 10px">
+                ${h.healthStatus
+                    ? `<span style="color:${hc};font-weight:600">${escapeHtml(h.healthStatus)}</span>`
+                    : '<span class="muted">—</span>'}
+            </td>
+            <td style="padding:7px 10px">
+                <button class="action-btn" data-hbid="${h.id}" data-ts="${h.ts}" data-inst="${escapeHtml(h.instanceId || '')}"
+                    onclick="openHbDetail(${h.id}, ${h.ts}, '${escapeHtml(h.instanceId || '')}', ${JSON.stringify(JSON.stringify(h.payload))})">
+                    🔍 Detay
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    $('hbLogInfo').textContent = `${data.count} kayıt gösteriliyor (limit: ${limitVal})${data.count >= Number(limitVal) ? ' — daha fazlası olabilir, limiti artırın.' : ''}`;
+}
+
+/** Heartbeat detay modalı */
+function openHbDetail(id, ts, instanceId, payloadJson) {
+    $('hbDetailMeta').textContent = `#${id} • ${fmtDateTime(ts)} • ${instanceId}`;
+    let formatted = '—';
+    try {
+        const obj = JSON.parse(payloadJson);
+        formatted = obj ? JSON.stringify(obj, null, 2) : '(boş)';
+    } catch (_) {
+        formatted = payloadJson || '—';
+    }
+    $('hbDetailPayload').textContent = formatted;
+    $('hbDetailModal').classList.remove('hidden');
+}
+
+// Filtre butonu
+$('hbLogFilter')?.addEventListener('click', loadHeartbeatLog);
+$('hbLogClose')?.addEventListener('click', () => $('heartbeatLogModal').classList.add('hidden'));
+$('hbDetailClose')?.addEventListener('click', () => $('hbDetailModal').classList.add('hidden'));
+$('heartbeatLogModal')?.addEventListener('click', (e) => { if (e.target === $('heartbeatLogModal')) $('heartbeatLogModal').classList.add('hidden'); });
+$('hbDetailModal')?.addEventListener('click', (e) => { if (e.target === $('hbDetailModal')) $('hbDetailModal').classList.add('hidden'); });
+
+// Tarih inputlarında Enter → filtrele
+['hbLogFrom', 'hbLogTo'].forEach(id => {
+    $(`${id}`)?.addEventListener('keydown', e => { if (e.key === 'Enter') loadHeartbeatLog(); });
+});
 
 // ================================================================
 // BOOT: sessionStorage'da token varsa doğrula + rol/yetki geri yükle

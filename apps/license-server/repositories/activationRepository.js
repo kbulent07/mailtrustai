@@ -50,11 +50,33 @@ async function deleteRecentByInstance(licenseId, instanceId, withinMs = 5000) {
     );
 }
 
-async function updateHeartbeat(licenseId, instanceId, payloadJson) {
-    return run(
+/**
+ * Aktivasyon heartbeat'ini günceller VE heartbeat_log tablosuna geçmiş kaydı ekler.
+ * @param {string} licenseId
+ * @param {string} instanceId
+ * @param {string} payloadJson  — JSON.stringify(safePayload)
+ * @param {object} [meta]       — { appVersion, environment, healthStatus }
+ */
+async function updateHeartbeat(licenseId, instanceId, payloadJson, meta = {}) {
+    const hbNow = Date.now();
+    await run(
         'UPDATE activations SET last_heartbeat_at=?, last_payload_json=? WHERE license_id=? AND instance_id=?',
-        [Date.now(), payloadJson, licenseId, instanceId]
+        [hbNow, payloadJson, licenseId, instanceId]
     );
+
+    // Haberleşme geçmişi — heartbeat_log tablosuna arşiv kaydı (5+ yıllık).
+    // Tablo yoksa (eski kurulum, migration henüz çalışmadı) sessizce atla.
+    try {
+        await run(
+            `INSERT INTO heartbeat_log(license_id, instance_id, ts, app_version, environment, health_status, payload_json)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [licenseId, instanceId, hbNow,
+             meta.appVersion   || null,
+             meta.environment  || null,
+             meta.healthStatus || null,
+             payloadJson]
+        );
+    } catch (_) { /* migration henüz uygulanmadıysa sessizce geç */ }
 }
 
 module.exports = {

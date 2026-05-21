@@ -315,7 +315,12 @@ router.post('/license/heartbeat', asyncH(async (req, res) => {
     for (const k of SAFE_KEYS) {
         if (Object.prototype.hasOwnProperty.call(req.body || {}, k)) safePayload[k] = req.body[k];
     }
-    await activationRepo.updateHeartbeat(license.id, instanceId, JSON.stringify(safePayload));
+    // activationRepo.updateHeartbeat: activations UPSERT + heartbeat_log arşiv kaydı
+    await activationRepo.updateHeartbeat(license.id, instanceId, JSON.stringify(safePayload), {
+        appVersion:   safePayload.appVersion   || null,
+        environment:  safePayload.environment  || null,
+        healthStatus: safePayload.healthStatus || null
+    });
     res.json({ ok: true, serverTime: Date.now() });
 }));
 

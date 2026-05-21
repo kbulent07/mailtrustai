@@ -530,6 +530,78 @@ router.get('/admin/licenses', adminAuth, requirePerm('licenses:read'), asyncH(as
 }));
 
 // ============================================================
+// GET /api/admin/licenses/:id/heartbeats
+// Bir lisansın haberleşme geçmişi (heartbeat_log tablosundan).
+// Query params:
+//   since  : ms timestamp (varsayılan: son 5 yıl)
+//   until  : ms timestamp (varsayılan: şimdi)
+//   limit  : max kayıt (varsayılan: 500, max: 5000)
+//   instance: instance_id filtresi (opsiyonel)
+// ============================================================
+router.get('/admin/licenses/:id/heartbeats', adminAuth, requirePerm('licenses:read'), asyncH(async (req, res) => {
+    const licenseId = req.params.id;
+    const license = await get('SELECT id FROM licenses WHERE id = ?', [licenseId]);
+    if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
+
+    const now = Date.now();
+    const FIVE_YEARS_MS = 5 * 365.25 * 24 * 3600 * 1000;
+    const since    = Number(req.query.since)    || (now - FIVE_YEARS_MS);
+    const until    = Number(req.query.until)    || now;
+    const limit    = Math.min(Number(req.query.limit) || 500, 5000);
+    const instance = req.query.instance || null;
+
+    let rows;
+    try {
+        if (instance) {
+            rows = await all(
+                `SELECT id, license_id, instance_id, ts, app_version, environment, health_status, payload_json
+                 FROM heartbeat_log
+                 WHERE license_id = ? AND instance_id = ? AND ts BETWEEN ? AND ?
+                 ORDER BY ts DESC LIMIT ?`,
+                [licenseId, instance, since, until, limit]
+            );
+        } else {
+            rows = await all(
+                `SELECT id, license_id, instance_id, ts, app_version, environment, health_status, payload_json
+                 FROM heartbeat_log
+                 WHERE license_id = ? AND ts BETWEEN ? AND ?
+                 ORDER BY ts DESC LIMIT ?`,
+                [licenseId, since, until, limit]
+            );
+        }
+    } catch (_) {
+        // heartbeat_log tablosu yoksa (eski kurulum, migration bekliyor)
+        rows = [];
+    }
+
+    // İnstance listesini de döndür (filtre dropdown için)
+    let instances = [];
+    try {
+        instances = await all(
+            `SELECT DISTINCT instance_id FROM heartbeat_log WHERE license_id = ? ORDER BY instance_id`,
+            [licenseId]
+        );
+    } catch (_) { instances = []; }
+
+    res.json({
+        licenseId,
+        since,
+        until,
+        count: rows.length,
+        instances: instances.map(r => r.instance_id),
+        heartbeats: rows.map(r => ({
+            id:           r.id,
+            instanceId:   r.instance_id,
+            ts:           r.ts,
+            appVersion:   r.app_version,
+            environment:  r.environment,
+            healthStatus: r.health_status,
+            payload:      r.payload_json ? (() => { try { return JSON.parse(r.payload_json); } catch (_) { return null; } })() : null
+        }))
+    });
+}));
+
+// ============================================================
 // POST /api/admin/licenses/:id/offline-grace
 // body: { days: number | null }   (null = override sil — plan default'a dön)
 // ============================================================
