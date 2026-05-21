@@ -74,6 +74,7 @@ function activateTab(tabName) {
     );
     if (tabName === 'pricing')   loadPricing();
     if (tabName === 'customers') loadCustomers();
+    if (tabName === 'credits')   loadCreditLog();
 }
 
 document.querySelectorAll('.tab-btn').forEach(b =>
@@ -232,7 +233,7 @@ async function loadCustomers() {
 }
 
 function buildCustomerBlock(c) {
-    const licCount = c.licenses.length;
+    const licCount    = c.licenses.length;
     const activeCount = c.licenses.filter(l => l.status === 'active').length;
     const summaryBadge = activeCount > 0
         ? `<span class="tag tag-active">${activeCount} Aktif</span>`
@@ -240,21 +241,29 @@ function buildCustomerBlock(c) {
 
     const licensesHtml = licCount === 0
         ? '<p class="muted" style="padding:8px 0">Lisans yok.</p>'
-        : `<table style="margin-top:8px">
+        : `<div style="overflow-x:auto"><table style="margin-top:8px">
             <thead><tr>
                 <th>Lisans</th><th>Plan</th><th>Durum</th>
                 <th>Bitiş</th><th>Son Bağlantı</th>
             </tr></thead>
             <tbody>${c.licenses.map(l => buildLicenseRow(l)).join('')}</tbody>
-           </table>`;
+           </table></div>`;
+
+    const cid   = escapeHtml(c.id);
+    const cname = escapeHtml(c.companyName || c.id);
 
     return `<div class="customer-block">
         <div class="customer-header">
             <span class="arrow" style="color:var(--muted);font-size:.8em">▼</span>
-            <span class="customer-name">${escapeHtml(c.companyName || c.id)}</span>
+            <span class="customer-name">${cname}</span>
             <span class="muted" style="font-size:.8em">${escapeHtml(c.email || '')}</span>
             ${summaryBadge}
-            <span class="muted" style="font-size:.75em;margin-left:auto">${fmtDate(c.createdAt)}</span>
+            <button class="btn-clic" data-cid="${cid}" data-cname="${cname}"
+                style="margin-left:auto;font-size:.75em;padding:3px 10px;border-radius:5px;border:1px solid var(--primary);background:transparent;color:var(--primary);cursor:pointer"
+                onclick="event.stopPropagation();openCreateLicModal('${cid}','${cname}')">
+                ➕ Lisans Üret
+            </button>
+            <span class="muted" style="font-size:.75em">${fmtDate(c.createdAt)}</span>
         </div>
         <div class="customer-body">
             ${licensesHtml}
@@ -287,6 +296,159 @@ function buildLicenseRow(l) {
 }
 
 $('refreshCustomersBtn')?.addEventListener('click', loadCustomers);
+$('refreshCreditsBtn')?.addEventListener('click', loadCreditLog);
+
+// ─── KREDİ HAREKETLERİ ───────────────────────────────────────────────────────
+async function loadCreditLog() {
+    const tbody = $('creditLogBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="5" class="loading">Yükleniyor...</td></tr>';
+    try {
+        const r = await api('/api/dealer/credit-log?limit=100');
+        const log = r.log || [];
+        if (!log.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-msg">Henüz kredi hareketi yok.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = log.map(row => {
+            const deltaColor = row.delta > 0 ? '#34d399' : '#f87171';
+            const deltaText  = row.delta > 0 ? `+${row.delta}` : String(row.delta);
+            const reasonMap  = {
+                'credit.load':     '⬆️ Kredi Yükleme',
+                'credit.manual':   '✏️ Manuel Düzenleme',
+                'license.create':  '🔑 Lisans Üretimi',
+                'credit.deduct':   '➖ Kesinti'
+            };
+            const reasonLabel = reasonMap[row.reason] || escapeHtml(row.reason || '—');
+            return `<tr>
+                <td style="white-space:nowrap">${fmtDate(row.created_at)}<br>
+                    <span style="font-size:.75em;color:var(--muted)">${new Date(row.created_at).toLocaleTimeString('tr-TR')}</span></td>
+                <td style="color:${deltaColor};font-weight:600;font-size:1.05em">${deltaText}</td>
+                <td style="font-weight:600">${row.balance != null ? row.balance.toLocaleString('tr-TR') : '—'}</td>
+                <td>${reasonLabel}</td>
+                <td style="font-size:.82em;color:var(--muted)">${escapeHtml(row.description || '—')}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" class="err-msg">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+// ─── YENİ MÜŞTERİ MODALI ─────────────────────────────────────────────────────
+function openAddCustomerModal() {
+    ['ncCustomerId','ncCompanyName','ncEmail','ncContactName','ncPhone'].forEach(id => {
+        const el = $(id); if (el) el.value = '';
+    });
+    $('ncResult').textContent = '';
+    $('addCustomerModal').style.display = 'flex';
+    $('ncCustomerId')?.focus();
+}
+
+function closeAddCustomerModal() {
+    $('addCustomerModal').style.display = 'none';
+}
+
+$('addCustomerBtn')?.addEventListener('click', openAddCustomerModal);
+$('ncCancel')?.addEventListener('click', closeAddCustomerModal);
+$('addCustomerModal')?.addEventListener('click', e => {
+    if (e.target === $('addCustomerModal')) closeAddCustomerModal();
+});
+
+$('ncSave')?.addEventListener('click', async () => {
+    const resEl = $('ncResult');
+    const customerId   = ($('ncCustomerId')?.value   || '').trim();
+    const companyName  = ($('ncCompanyName')?.value  || '').trim();
+    const email        = ($('ncEmail')?.value        || '').trim();
+    const contactName  = ($('ncContactName')?.value  || '').trim();
+    const contactPhone = ($('ncPhone')?.value        || '').trim();
+
+    if (!customerId) { resEl.style.color='#f87171'; resEl.textContent='Müşteri ID zorunlu.'; return; }
+    resEl.style.color='#94a3b8'; resEl.textContent='Kaydediliyor...';
+    try {
+        await api('/api/dealer/customers', {
+            method: 'POST',
+            body: { customerId, companyName, email, contactName, contactPhone }
+        });
+        resEl.style.color = '#34d399';
+        resEl.textContent = '✅ Müşteri kaydedildi.';
+        showToast('Müşteri kaydedildi: ' + (companyName || customerId), 'success');
+        setTimeout(closeAddCustomerModal, 800);
+        loadCustomers();
+    } catch (e) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = 'Hata: ' + e.message;
+    }
+});
+
+// ─── LİSANS ÜRET MODALI ──────────────────────────────────────────────────────
+let _clicCustomerId = null;
+
+function openCreateLicModal(customerId, customerName) {
+    _clicCustomerId = customerId;
+    $('clicCustomerName').textContent = decodeURIComponent ? customerName : customerName;
+    $('clicResult').textContent = '';
+    $('clicPlan').value  = 'pro';
+    $('clicDays').value  = '365';
+    $('clicLabel').value = '';
+    $('createLicModal').style.display = 'flex';
+}
+
+function closeCreateLicModal() {
+    $('createLicModal').style.display = 'none';
+}
+
+$('clicCancel')?.addEventListener('click', closeCreateLicModal);
+$('createLicModal')?.addEventListener('click', e => {
+    if (e.target === $('createLicModal')) closeCreateLicModal();
+});
+
+$('clicPlan')?.addEventListener('change', function() {
+    // Demo seçilince süreyi 14 ile sınırla
+    if (this.value === 'demo') {
+        const daysEl = $('clicDays');
+        if (daysEl && Number(daysEl.value) > 14) daysEl.value = '14';
+    }
+});
+
+$('clicCreate')?.addEventListener('click', async () => {
+    const resEl = $('clicResult');
+    if (!_clicCustomerId) return;
+    const plan     = $('clicPlan')?.value  || 'pro';
+    const validDays= Number($('clicDays')?.value) || 365;
+    const label    = ($('clicLabel')?.value || '').trim();
+
+    resEl.style.color = '#94a3b8'; resEl.textContent = '⏳ Lisans üretiliyor...';
+    $('clicCreate').disabled = true;
+
+    try {
+        const r = await api('/api/dealer/licenses', {
+            method: 'POST',
+            body: { customerId: _clicCustomerId, plan, validDays, label: label || undefined }
+        });
+        resEl.style.color = '#34d399';
+        resEl.textContent = `✅ Lisans üretildi! Kalan kredi: ${r.remainingCredits}`;
+        showToast('Lisans üretildi. Kalan kredi: ' + r.remainingCredits, 'success');
+        // Kredi sayacını güncelle
+        $('dealerCredits').textContent = r.remainingCredits.toLocaleString('tr-TR');
+        checkCreditWarning(r.remainingCredits);
+        // Lisans anahtarını göster
+        setTimeout(() => {
+            resEl.innerHTML += `<br><strong>Lisans Anahtarı:</strong> <code style="font-size:.85em">${escapeHtml(r.licenseKey)}</code>
+                <button onclick="navigator.clipboard.writeText('${escapeHtml(r.licenseKey)}');showToast('Kopyalandı','success')"
+                    style="margin-left:6px;font-size:.75em;padding:2px 8px;border-radius:4px;border:1px solid #4ade80;background:transparent;color:#4ade80;cursor:pointer">📋 Kopyala</button>`;
+        }, 200);
+        loadCustomers();
+        loadDealerMe();
+    } catch (e) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = 'Hata: ' + e.message;
+        if (e.status === 402) {
+            resEl.textContent = '⚠️ Yetersiz kredi! Yöneticinizden kredi yüklemesini isteyin.';
+        }
+    } finally {
+        $('clicCreate').disabled = false;
+    }
+});
 
 // ─── Kredi uyarısı (başlangıçta veya yenileme sonrası) ────────────────────────
 function checkCreditWarning(credits) {

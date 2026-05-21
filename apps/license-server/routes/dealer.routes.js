@@ -4,17 +4,22 @@
 //
 // Auth: In-memory session token (bcrypt ile doğrulanan dealers tablosu).
 // Endpoint'ler:
-//   POST /api/dealer/login        → oturum başlat, sessionToken döner
-//   GET  /api/dealer/pricing      → aktif fiyat planları (oturum gerekmez)
-//   GET  /api/dealer/me           → bayi bilgisi + kredi (oturum gerekir)
-//   GET  /api/dealer/customers    → bayinin müşterileri + lisanslar (oturum gerekir)
-//   POST /api/dealer/logout       → oturumu kapat
+//   POST /api/dealer/login              → oturum başlat, sessionToken döner
+//   GET  /api/dealer/pricing            → aktif fiyat planları (oturum gerekmez)
+//   GET  /api/dealer/me                 → bayi bilgisi + kredi (oturum gerekir)
+//   GET  /api/dealer/customers          → bayinin müşterileri + lisanslar (oturum gerekir)
+//   POST /api/dealer/customers          → yeni müşteri ekle / güncelle (oturum gerekir)
+//   POST /api/dealer/licenses           → kendi müşterisine lisans üret (kredi kesilir)
+//   GET  /api/dealer/credit-log         → kendi kredi hareketleri
+//   POST /api/dealer/logout             → oturumu kapat
 
 const express = require('express');
 const crypto  = require('crypto');
 const bcrypt  = require('bcrypt');
+const { v4: uuid } = require('uuid');
 const { asyncH, envInt } = require('@mailtrustai/shared');
-const { all, get, audit } = require('../db');
+const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX } = require('@mailtrustai/license-core');
+const { all, get, run, upsert, audit } = require('../db');
 
 const router = express.Router();
 
@@ -196,6 +201,143 @@ router.get('/dealer/customers', dealerSessionAuth, asyncH(async (req, res) => {
 
     const customers = [...grouped.values()];
     res.json({ count: customers.length, customers });
+}));
+
+// ─── POST /api/dealer/customers — Yeni müşteri ekle / güncelle ───────────────
+// body: { customerId, companyName, email, contactName?, contactPhone? }
+// Müşteri dealer'a ait değilse 403.
+router.post('/dealer/customers', dealerSessionAuth, asyncH(async (req, res) => {
+    const { dealerId } = req.dealerSession;
+    const { customerId, companyName, email, contactName, contactPhone } = req.body || {};
+    if (!customerId || typeof customerId !== 'string' || customerId.trim().length < 3) {
+        return res.status(400).json({ error: 'customerId en az 3 karakter olmalı' });
+    }
+    const cid = customerId.trim();
+
+    // Varsa: sadece bu bayiye ait müşteri güncellenebilir
+    const existing = await get('SELECT dealer_id FROM customers WHERE id = ?', [cid]);
+    if (existing && existing.dealer_id !== dealerId) {
+        return res.status(403).json({ error: 'Bu müşteri size ait değil' });
+    }
+
+    await upsert('customers',
+        {
+            id:            cid,
+            dealer_id:     dealerId,
+            company_name:  companyName    || null,
+            email:         email          || null,
+            contact_name:  contactName    || null,
+            contact_phone: contactPhone   || null,
+            created_at:    Date.now()
+        },
+        {
+            keys:   ['id'],
+            update: ['company_name', 'email', 'contact_name', 'contact_phone']
+        }
+    );
+    await audit(dealerId, 'customer.upsert', cid, { companyName, source: 'dealer-panel' });
+    res.json({ ok: true, customerId: cid });
+}));
+
+// ─── POST /api/dealer/licenses — Kendi müşterisine lisans üret ───────────────
+// body: { customerId, plan, tier?, validDays?, label? }
+// 1 kredi kesilir. Müşteri bu bayiye ait olmalıdır.
+router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
+    const { dealerId } = req.dealerSession;
+    const { customerId, plan = 'pro', tier, label } = req.body || {};
+    const validDays = Number(req.body?.validDays ?? 365);
+
+    if (!customerId || typeof customerId !== 'string') {
+        return res.status(400).json({ error: 'customerId gerekli' });
+    }
+    if (!Number.isFinite(validDays) || validDays < 1 || validDays > 36500) {
+        return res.status(400).json({ error: 'validDays 1..36500 arası olmalı' });
+    }
+    if (!PLAN_MATRIX[plan]) {
+        return res.status(400).json({ error: `Geçersiz plan: ${plan}. Geçerli: ${Object.keys(PLAN_MATRIX).join(', ')}` });
+    }
+    if (plan === 'demo' && validDays > 14) {
+        return res.status(400).json({ error: 'Demo lisans en fazla 14 gün olabilir.' });
+    }
+    if (tier && !TIER_MATRIX[tier]) {
+        return res.status(400).json({ error: `Geçersiz tier: ${tier}` });
+    }
+
+    // Müşteri bu bayiye ait mi?
+    const customer = await get('SELECT id, dealer_id FROM customers WHERE id = ?', [customerId.trim()]);
+    if (!customer) return res.status(404).json({ error: 'Müşteri bulunamadı' });
+    if (customer.dealer_id !== dealerId) {
+        return res.status(403).json({ error: 'Bu müşteri size ait değil' });
+    }
+
+    // Atomik kredi düşme: race condition koruması
+    const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [dealerId]);
+    if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
+
+    const upd = await run(
+        'UPDATE dealers SET credits = credits - 1 WHERE id = ? AND credits > 0',
+        [dealer.id]
+    );
+    const changed = upd?.affectedRows ?? upd?.changes ?? 0;
+    if (changed === 0) {
+        return res.status(402).json({
+            error: 'Yetersiz kredi. Yöneticinizden kredi yüklemesini isteyin.',
+            code:  'INSUFFICIENT_CREDITS',
+            balance: dealer.credits ?? 0
+        });
+    }
+
+    // Kredi hareketini kaydet
+    const newBalance = (dealer.credits ?? 0) - 1;
+    await run(
+        'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at) VALUES(?,?,?,?,?,?,?,?)',
+        [uuid(), dealer.id, -1, newBalance, 'license.create',
+         `Lisans üretimi (bayi paneli): müşteri=${customerId}, plan=${plan}`, 'dealer-panel', Date.now()]
+    );
+
+    // Lisansı üret
+    const planDef = getPlan(plan, tier);
+    const { key, keyHash } = generateLicenseKey({ customerId: customerId.trim(), dealerId, plan });
+    const id        = uuid();
+    const issuedAt  = Date.now();
+    const expiresAt = issuedAt + validDays * 86400 * 1000;
+    const rawLabel  = typeof label === 'string' ? label.trim().slice(0, 128) : null;
+
+    await run(
+        `INSERT INTO licenses(id, customer_id, dealer_id, license_key_hash, license_key_masked, plan, tier, status, issued_at, expires_at, grace_days, features_json, limits_json, label)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, customerId.trim(), dealerId, keyHash,
+         `${key.slice(0, 8)}…${key.slice(-4)}`,
+         plan, planDef.tier || null, 'active', issuedAt, expiresAt, planDef.graceDays,
+         JSON.stringify(planDef.features), JSON.stringify(planDef.limits), rawLabel || null]
+    );
+
+    await audit(dealerId, 'license.create', id, { customerId: customerId.trim(), plan, tier: planDef.tier, source: 'dealer-panel' });
+
+    res.json({
+        ok:         true,
+        id,
+        licenseKey: key,
+        plan,
+        tier:       planDef.tier,
+        expiresAt,
+        remainingCredits: newBalance
+    });
+}));
+
+// ─── GET /api/dealer/credit-log — Bayi kendi kredi hareketlerini görür ────────
+// ?limit=50 (max 200)
+router.get('/dealer/credit-log', dealerSessionAuth, asyncH(async (req, res) => {
+    const { dealerId } = req.dealerSession;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const rows = await all(
+        `SELECT id, delta, balance, reason, description, actor, created_at
+         FROM dealer_credit_log
+         WHERE dealer_id = ?
+         ORDER BY created_at DESC LIMIT ?`,
+        [dealerId, limit]
+    );
+    res.json({ count: rows.length, log: rows || [] });
 }));
 
 module.exports = router;

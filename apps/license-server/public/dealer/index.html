@@ -189,6 +189,7 @@
     <nav class="tabs" role="tablist">
         <button class="tab-btn active" data-tab="pricing" role="tab">💰 Fiyatlandırma</button>
         <button class="tab-btn" data-tab="customers" role="tab">👥 Müşterilerim</button>
+        <button class="tab-btn" data-tab="credits" role="tab">💳 Kredi Hareketleri</button>
     </nav>
 
     <div class="main-content">
@@ -226,7 +227,10 @@
         <div class="tab-panel" id="panel-customers">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
                 <div class="section-title" style="margin-bottom:0">👥 Müşterilerim</div>
-                <button id="refreshCustomersBtn" style="font-size:.8em;background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer">↻ Yenile</button>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button id="addCustomerBtn" style="font-size:.8em;background:var(--primary);color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer">➕ Yeni Müşteri</button>
+                    <button id="refreshCustomersBtn" style="font-size:.8em;background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer">↻ Yenile</button>
+                </div>
             </div>
 
             <!-- İstatistikler -->
@@ -241,6 +245,76 @@
             </div>
         </div>
 
+        <!-- ===== KREDİ HAREKETLERİ ===== -->
+        <div class="tab-panel" id="panel-credits">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+                <div class="section-title" style="margin-bottom:0">💳 Kredi Hareketleri</div>
+                <button id="refreshCreditsBtn" style="font-size:.8em;background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer">↻ Yenile</button>
+            </div>
+            <div style="overflow-x:auto">
+                <table id="creditLogTable">
+                    <thead>
+                        <tr>
+                            <th>Tarih</th>
+                            <th>İşlem</th>
+                            <th>Bakiye</th>
+                            <th>Neden</th>
+                            <th>Açıklama</th>
+                        </tr>
+                    </thead>
+                    <tbody id="creditLogBody">
+                        <tr><td colspan="5" class="loading">Yükleniyor...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ===== YENİ MÜŞTERİ MODALI ===== -->
+<div id="addCustomerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+    <div class="card" style="max-width:460px;width:95%;padding:24px;position:relative">
+        <h3 style="margin:0 0 16px;font-size:1.05em">➕ Yeni Müşteri Ekle</h3>
+        <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Müşteri ID <span style="color:#ef4444">*</span> <span style="font-weight:400">(benzersiz, değiştirilemez)</span></label>
+        <input type="text" id="ncCustomerId" placeholder="ör: firma-abc veya 123" maxlength="64" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:10px">
+        <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Firma Adı</label>
+        <input type="text" id="ncCompanyName" placeholder="ör: ABC Yazılım A.Ş." maxlength="120" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:10px">
+        <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">E-posta</label>
+        <input type="email" id="ncEmail" placeholder="iletisim@firma.com" maxlength="190" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:10px">
+        <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">İletişim Kişisi</label>
+        <input type="text" id="ncContactName" placeholder="Ad Soyad" maxlength="100" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:10px">
+        <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Telefon</label>
+        <input type="tel" id="ncPhone" placeholder="+90 5xx xxx xx xx" maxlength="30" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:16px">
+        <div id="ncResult" style="font-size:.83em;min-height:18px;margin-bottom:10px"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button id="ncCancel" style="padding:7px 16px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">İptal</button>
+            <button id="ncSave" style="padding:7px 18px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:600">Kaydet</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== LİSANS ÜRET MODALI ===== -->
+<div id="createLicModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+    <div class="card" style="max-width:440px;width:95%;padding:24px;position:relative">
+        <h3 style="margin:0 0 4px;font-size:1.05em">➕ Lisans Üret</h3>
+        <p style="font-size:.82em;color:var(--muted);margin:0 0 16px">Müşteri: <strong id="clicCustomerName">—</strong></p>
+        <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Plan <span style="color:#ef4444">*</span></label>
+        <select id="clicPlan" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:10px">
+            <option value="demo">Demo (max 14 gün)</option>
+            <option value="basic">Basic</option>
+            <option value="pro" selected>Pro</option>
+            <option value="enterprise">Enterprise</option>
+        </select>
+        <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Süre (gün)</label>
+        <input type="number" id="clicDays" value="365" min="1" max="36500" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:10px">
+        <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Etiket <span style="color:var(--muted);font-weight:400">(opsiyonel)</span></label>
+        <input type="text" id="clicLabel" maxlength="128" placeholder="ör: Ana lisans 2026" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:16px">
+        <div id="clicResult" style="font-size:.83em;min-height:18px;margin-bottom:10px"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button id="clicCancel" style="padding:7px 16px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">İptal</button>
+            <button id="clicCreate" style="padding:7px 18px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:600">🔑 Üret (1 Kredi)</button>
+        </div>
     </div>
 </div>
 
