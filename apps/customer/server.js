@@ -120,8 +120,10 @@ if (_ALLOWED_ORIGINS.length === 0) {
 }
 
 // ─── Helmet + CSP ─────────────────────────────────────────
-// Mevcut frontend bol inline onclick/style= kullaniyor — strict CSP UI'yi kirar.
+// Mevcut frontend bol inline onclick / onchange / style= kullaniyor (449+ kullanim).
 // Bu sebeple 'unsafe-inline' izinli ama 3rd-party origin script/style/connect engelli.
+// script-src-attr 'unsafe-inline' KRITIK: Helmet useDefaults bunu 'none' yapar ve
+// onclick/onchange gibi inline event handler'larini bloklar (UI'da butonlar olmez).
 // Frontend refactor sonrasi nonce/hash tabanli politikaya gecilebilir.
 app.use(helmet({
     contentSecurityPolicy: {
@@ -129,6 +131,7 @@ app.use(helmet({
         directives: {
             'default-src':     ["'self'"],
             'script-src':      ["'self'", "'unsafe-inline'"],
+            'script-src-attr': ["'unsafe-inline'"],  // onclick="..." vb. icin sart
             'style-src':       ["'self'", "'unsafe-inline'"],
             'img-src':         ["'self'", 'data:', 'blob:'],
             'font-src':        ["'self'", 'data:'],
