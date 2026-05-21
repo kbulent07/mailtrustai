@@ -252,14 +252,26 @@ async function loadCustomers() {
         const customers = r.customers || [];
 
         // İstatistik kartları
-        let totalActive = 0, totalExpired = 0;
+        const now30 = Date.now() + 30 * 86400_000; // 30 gün sonra
+        let totalActive = 0, totalExpired = 0, totalExpiringSoon = 0;
         customers.forEach(c => c.licenses.forEach(l => {
-            if (l.status === 'active') totalActive++;
-            if (l.expiresAt && l.expiresAt < Date.now()) totalExpired++;
+            const exp = l.expiresAt;
+            if (l.status === 'active') {
+                totalActive++;
+                if (exp && exp > Date.now() && exp < now30) totalExpiringSoon++;
+            }
+            if (exp && exp < Date.now()) totalExpired++;
         }));
         $('statTotalCustomers').textContent = customers.length;
         $('statActiveL').textContent  = totalActive;
         $('statExpiredL').textContent = totalExpired;
+
+        // "Yakında bitiyor" kartı — 30 gün içinde biten aktif lisanslar
+        const expSoonVal  = $('statExpiringSoon');
+        const expSoonChip = $('expiringSoonChip');
+        if (expSoonVal) expSoonVal.textContent = totalExpiringSoon;
+        if (expSoonChip) expSoonChip.style.display = totalExpiringSoon > 0 ? '' : 'none';
+
         $('customerStats').style.display = 'flex';
 
         if (!customers.length) {
@@ -326,7 +338,10 @@ function buildLicenseRow(l) {
     const planTag    = `<span class="tag tag-${l.plan || 'demo'}">${escapeHtml(l.plan || '—')}</span>`;
     const now        = Date.now();
     const isExpired  = l.expiresAt && l.expiresAt < now;
-    let   statusTag;
+    const daysLeft   = l.expiresAt ? Math.ceil((l.expiresAt - now) / 86400_000) : null;
+    const expireSoon = l.status === 'active' && !isExpired && daysLeft !== null && daysLeft <= 30;
+
+    let statusTag;
     if (l.status === 'revoked')       statusTag = '<span class="tag tag-revoked">İptal</span>';
     else if (isExpired)               statusTag = '<span class="tag tag-expired">Süresi Doldu</span>';
     else if (l.status === 'active')   statusTag = '<span class="tag tag-active">Aktif</span>';
@@ -336,12 +351,27 @@ function buildLicenseRow(l) {
         ? '<span class="tag tag-online" title="Son 5 dk içinde bağlandı">🟢 Çevrimiçi</span>'
         : '';
 
-    return `<tr>
+    // Bitiş tarihi: yakında bitiyorsa turuncu vurgulu
+    let expiryCell;
+    if (!l.expiresAt) {
+        expiryCell = '<span class="muted">—</span>';
+    } else if (isExpired) {
+        expiryCell = `<span style="color:#f87171">${fmtDate(l.expiresAt)}</span>`;
+    } else if (expireSoon) {
+        expiryCell = `<span style="color:#f59e0b;font-weight:600" title="${daysLeft} gün kaldı">
+                        ⚠️ ${fmtDate(l.expiresAt)}
+                        <br><span style="font-size:.75em">${daysLeft} gün kaldı</span>
+                      </span>`;
+    } else {
+        expiryCell = `${fmtDate(l.expiresAt)}${daysLeft !== null ? `<br><span class="muted" style="font-size:.75em">${daysLeft} gün</span>` : ''}`;
+    }
+
+    return `<tr${expireSoon ? ' style="background:rgba(245,158,11,.05)"' : ''}>
         <td><code style="font-size:.8em">${escapeHtml(l.keyMasked || l.id)}</code>
             ${l.label ? `<br><span class="muted" style="font-size:.75em">${escapeHtml(l.label)}</span>` : ''}</td>
         <td>${planTag}</td>
         <td>${statusTag} ${onlineBadge}</td>
-        <td>${fmtDate(l.expiresAt)}</td>
+        <td>${expiryCell}</td>
         <td><span class="muted">${l.lastHeartbeatAt ? timeAgo(l.lastHeartbeatAt) : '—'}</span></td>
     </tr>`;
 }
@@ -451,8 +481,32 @@ async function loadCreditLog() {
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="6" class="loading">Yükleniyor...</td></tr>';
     try {
-        const r = await api('/api/dealer/credit-log?limit=100');
+        const r = await api('/api/dealer/credit-log?limit=200');
         const log = r.log || [];
+
+        // ─── Özet kartları ────────────────────────────────────────────
+        if (log.length) {
+            let sumLoaded = 0, sumUsed = 0, sumPaidTry = 0, sumSpentTry = 0;
+            for (const row of log) {
+                const amt = Number(row.price_amount || 0);
+                if (row.delta > 0) {
+                    sumLoaded  += row.delta;
+                    sumPaidTry += amt * row.delta;
+                } else {
+                    sumUsed    += Math.abs(row.delta);
+                    sumSpentTry+= amt * Math.abs(row.delta);
+                }
+            }
+            const sumRow = $('creditSummaryRow');
+            if (sumRow) {
+                $('csSumLoaded').textContent   = sumLoaded.toLocaleString('tr-TR') + ' kredi';
+                $('csSumUsed').textContent     = sumUsed.toLocaleString('tr-TR')   + ' kredi';
+                $('csSumPaidTry').textContent  = sumPaidTry  > 0 ? fmtPrice(sumPaidTry,  'TRY') : '—';
+                $('csSumSpentTry').textContent = sumSpentTry > 0 ? fmtPrice(sumSpentTry, 'TRY') : '—';
+                sumRow.style.display = 'flex';
+            }
+        }
+
         if (!log.length) {
             tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">Henüz kredi hareketi yok.</td></tr>';
             return;

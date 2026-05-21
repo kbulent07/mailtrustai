@@ -258,6 +258,10 @@
                 <div class="stat-chip"><div class="lbl">Toplam Müşteri</div><div class="val" id="statTotalCustomers">—</div></div>
                 <div class="stat-chip"><div class="lbl">Aktif Lisans</div><div class="val" style="color:var(--ok)" id="statActiveL">—</div></div>
                 <div class="stat-chip"><div class="lbl">Süresi Dolan</div><div class="val" style="color:var(--warn)" id="statExpiredL">—</div></div>
+                <div class="stat-chip" id="expiringSoonChip" style="border-color:#92400e;display:none">
+                    <div class="lbl" style="color:#fcd34d">⚠️ 30 Gün İçinde Bitiyor</div>
+                    <div class="val" style="color:#fbbf24" id="statExpiringSoon">0</div>
+                </div>
             </div>
 
             <div id="customerList">
@@ -308,6 +312,27 @@
                 <div class="section-title" style="margin-bottom:0">💳 Kredi Hareketleri</div>
                 <button id="refreshCreditsBtn" style="font-size:.8em;background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer">↻ Yenile</button>
             </div>
+
+            <!-- Özet kartlar — JS tarafından doldurulur -->
+            <div class="stat-row" id="creditSummaryRow" style="display:none">
+                <div class="stat-chip">
+                    <div class="lbl">⬆️ Yüklenen Kredi</div>
+                    <div class="val" style="color:var(--ok)" id="csSumLoaded">—</div>
+                </div>
+                <div class="stat-chip">
+                    <div class="lbl">⬇️ Kullanılan Kredi</div>
+                    <div class="val" style="color:var(--err)" id="csSumUsed">—</div>
+                </div>
+                <div class="stat-chip">
+                    <div class="lbl">💵 Ödenen Toplam</div>
+                    <div class="val" style="color:#fbbf24" id="csSumPaidTry">—</div>
+                </div>
+                <div class="stat-chip">
+                    <div class="lbl">🔑 Harcanan Toplam</div>
+                    <div class="val" style="color:var(--err)" id="csSumSpentTry">—</div>
+                </div>
+            </div>
+
             <div style="overflow-x:auto">
                 <table id="creditLogTable">
                     <thead>
