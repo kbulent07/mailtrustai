@@ -14,6 +14,8 @@ process.env.MSA_CUSTOMER_ONLY = 'true';
 const express = require('express');
 const http = require('http');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const cors = require('cors');
 const WebSocket = require('ws');
 const path = require('path');
 
@@ -94,9 +96,57 @@ app.use((req, res, next) => {
 });
 logger.info('[customer] HARD-GATE aktif: keygen/bayi/license-generator/dealer/admin endpoint\'leri 404.');
 
+// ─── CORS ─────────────────────────────────────────────────
+// MSA_ALLOWED_ORIGINS virgulle ayrilmis whitelist. Bos = same-origin only.
+// '*' verilirse tum origin'lere acilir (sadece dev/test icin).
+const _ALLOWED_ORIGINS = String(env('MSA_ALLOWED_ORIGINS', ''))
+    .split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors({
+    origin(origin, cb) {
+        if (!origin) return cb(null, true);                    // same-origin / tooling
+        if (_ALLOWED_ORIGINS.includes('*')) return cb(null, true);
+        if (_ALLOWED_ORIGINS.length === 0)   return cb(null, false);
+        if (_ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+        return cb(null, false);
+    },
+    credentials: true,
+    methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+    allowedHeaders: ['Content-Type','Authorization','X-Requested-With']
+}));
+if (_ALLOWED_ORIGINS.length === 0) {
+    logger.info('[customer] CORS: same-origin only (MSA_ALLOWED_ORIGINS tanimsiz).');
+} else {
+    logger.info(`[customer] CORS whitelist: ${_ALLOWED_ORIGINS.join(', ')}`);
+}
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: envInt('CUSTOMER_JSON_LIMIT_MB', 50) * 1024 * 1024, reviver: safeJSONReviver }));
 app.use(express.urlencoded({ extended: true, limit: envInt('CUSTOMER_URLENC_LIMIT_MB', 50) * 1024 * 1024 }));
+
+// ─── Rate limiting ────────────────────────────────────────
+// Iki katmanli koruma: genel API icin yumusak, analyze/* icin sert.
+// MSA_DISABLE_RATE_LIMIT=true ile test ortaminda devre disi.
+if (!envBool('MSA_DISABLE_RATE_LIMIT', false)) {
+    const globalLimiter = rateLimit({
+        windowMs:        15 * 60 * 1000,
+        max:             envInt('MSA_RATE_LIMIT_GLOBAL_MAX', 300),
+        standardHeaders: true,
+        legacyHeaders:   false,
+        message:         { error: 'Cok fazla istek — kisa bir sure sonra tekrar deneyin.' }
+    });
+    const analyzeLimiter = rateLimit({
+        windowMs:        5 * 60 * 1000,
+        max:             envInt('MSA_RATE_LIMIT_ANALYZE_MAX', 30),
+        standardHeaders: true,
+        legacyHeaders:   false,
+        message:         { error: 'Analiz hizi limiti asildi — 5 dk sonra tekrar deneyin.' }
+    });
+    app.use('/api/analyze', analyzeLimiter);
+    app.use('/api', globalLimiter);
+    logger.info('[customer] Rate limit aktif (global 300/15dk, analyze 30/5dk).');
+} else {
+    logger.warn('[customer] UYARI: MSA_DISABLE_RATE_LIMIT=true — rate limit kapali.');
+}
 
 function healthPayload() {
     return { ok: true, service: 'customer', time: Date.now(), version: APP.VERSION };
