@@ -3,6 +3,7 @@
 // ============================================================
 const Anthropic = require('@anthropic-ai/sdk');
 const { recordCall } = require('../storage/llmUsageStore');
+const { redact, truncate } = require('../utils/logSafe');
 
 // Kurucu (founder) tarafı yönetimi: model değiştirme .env üzerinden yapılır.
 // MSA_CLAUDE_MODEL veya MSA_LOCKED_CLAUDE_MODEL set'liyse o kullanılır.
@@ -86,7 +87,7 @@ Provide your analysis in EXACTLY the following JSON format (return raw JSON only
             return { success: true, findings: data };
         } catch (e) {
             recordCall({ provider: 'anthropic', model: CLAUDE_MODEL, purpose: 'analysis', success: false });
-            console.error('Claude JSON Parse Error. Raw response:', responseText);
+            console.error('Claude JSON Parse Error. Raw response:', truncate(redact(responseText), 500));
             return { success: false, error: 'Failed to parse AI response' };
         }
     } catch (e) {
