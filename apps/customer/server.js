@@ -119,9 +119,35 @@ if (_ALLOWED_ORIGINS.length === 0) {
     logger.info(`[customer] CORS whitelist: ${_ALLOWED_ORIGINS.join(', ')}`);
 }
 
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: envInt('CUSTOMER_JSON_LIMIT_MB', 50) * 1024 * 1024, reviver: safeJSONReviver }));
-app.use(express.urlencoded({ extended: true, limit: envInt('CUSTOMER_URLENC_LIMIT_MB', 50) * 1024 * 1024 }));
+// ─── Helmet + CSP ─────────────────────────────────────────
+// Mevcut frontend bol inline onclick/style= kullaniyor — strict CSP UI'yi kirar.
+// Bu sebeple 'unsafe-inline' izinli ama 3rd-party origin script/style/connect engelli.
+// Frontend refactor sonrasi nonce/hash tabanli politikaya gecilebilir.
+app.use(helmet({
+    contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+            'default-src':     ["'self'"],
+            'script-src':      ["'self'", "'unsafe-inline'"],
+            'style-src':       ["'self'", "'unsafe-inline'"],
+            'img-src':         ["'self'", 'data:', 'blob:'],
+            'font-src':        ["'self'", 'data:'],
+            'connect-src':     ["'self'", 'ws:', 'wss:'],
+            'frame-ancestors': ["'none'"],
+            'object-src':      ["'none'"],
+            'base-uri':        ["'self'"]
+        }
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'same-site' }
+}));
+
+// Body limit: legacy default 50MB cok genis. JSON 5mb, urlencoded 200kb yeterli;
+// buyuk dosya zaten multer uzerinden (50mb). ReDoS/parser stress'i azaltir.
+const _jsonLimit = envInt('CUSTOMER_JSON_LIMIT_MB', 5) * 1024 * 1024;
+const _urlencLimit = envInt('CUSTOMER_URLENC_LIMIT_KB', 200) * 1024;
+app.use(express.json({ limit: _jsonLimit, reviver: safeJSONReviver }));
+app.use(express.urlencoded({ extended: true, limit: _urlencLimit }));
 
 // ─── Rate limiting ────────────────────────────────────────
 // Iki katmanli koruma: genel API icin yumusak, analyze/* icin sert.
