@@ -588,6 +588,7 @@ async function openCreditModal(dealerId, dealerName, currentCredits) {
     $('creditModalBalance').textContent    = (currentCredits ?? 0).toLocaleString('tr-TR');
     $('creditModalAmount').value           = '';
     $('creditModalDesc').value             = '';
+    $('creditModalTryAmount').value        = '';
     $('creditModalResult').textContent     = '';
     // Ekle seçili başlat
     document.querySelector('input[name="creditOp"][value="add"]').checked = true;
@@ -598,18 +599,18 @@ async function openCreditModal(dealerId, dealerName, currentCredits) {
 
 async function loadCreditLog(dealerId) {
     const tbody = $('creditLogBody');
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:8px;color:#8b95b3">Yükleniyor...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:8px;color:#8b95b3">Yükleniyor...</td></tr>';
     try {
         const r = await api(`/api/admin/dealers/${encodeURIComponent(dealerId)}/credit-log?limit=15`);
         // Bakiyeyi de güncelle
         $('creditModalBalance').textContent = (r.balance ?? 0).toLocaleString('tr-TR');
         const log = r.log || [];
         if (!log.length) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:8px;color:#8b95b3">Henüz işlem yok.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:8px;color:#8b95b3">Henüz işlem yok.</td></tr>';
             return;
         }
         const reasonLabels = {
-            'load':         '💳 Yükleme',
+            'load':           '💳 Yükleme',
             'license.create': '🔑 Lisans',
             'manual.deduct':  '➖ Manuel',
             'error.refund':   '↩️ İade'
@@ -618,16 +619,31 @@ async function loadCreditLog(dealerId) {
             const deltaStr = entry.delta > 0
                 ? `<span style="color:#10b981">+${entry.delta}</span>`
                 : `<span style="color:#ef4444">${entry.delta}</span>`;
+
+            // TRY tutar hücresi
+            const amt  = Number(entry.price_amount || 0);
+            const cur  = entry.currency || 'TRY';
+            let amtStr;
+            if (amt > 0) {
+                const total = amt * Math.abs(entry.delta);
+                const sign  = entry.delta > 0 ? '+' : '−';
+                const clr   = entry.delta > 0 ? '#10b981' : '#ef4444';
+                amtStr = `<span style="color:${clr};font-weight:600">${sign} ${fmtPrice(total, cur)}</span>`;
+            } else {
+                amtStr = `<span style="color:#8b95b3">—</span>`;
+            }
+
             return `<tr>
                 <td style="padding:4px 6px;white-space:nowrap">${fmtDateTime(entry.created_at)}</td>
                 <td style="padding:4px 6px;text-align:center">${deltaStr}</td>
+                <td style="padding:4px 6px;text-align:right">${amtStr}</td>
                 <td style="padding:4px 6px;text-align:center">${entry.balance}</td>
                 <td style="padding:4px 6px">${escapeHtml(reasonLabels[entry.reason] || entry.reason || '—')}</td>
                 <td style="padding:4px 6px;color:#8b95b3">${escapeHtml(entry.description || '—')}</td>
             </tr>`;
         }).join('');
     } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="5" style="color:#ef4444;padding:8px;text-align:center">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="color:#ef4444;padding:8px;text-align:center">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
     }
 }
 
@@ -635,10 +651,12 @@ $('creditModalCancel').addEventListener('click', () => $('creditModal').classLis
 $('creditModal').addEventListener('click', (e) => { if (e.target === $('creditModal')) $('creditModal').classList.add('hidden'); });
 
 $('creditModalApply').addEventListener('click', async () => {
-    const op     = document.querySelector('input[name="creditOp"]:checked')?.value || 'add';
-    const amount = parseInt($('creditModalAmount').value, 10);
-    const desc   = ($('creditModalDesc').value || '').trim();
-    const resEl  = $('creditModalResult');
+    const op          = document.querySelector('input[name="creditOp"]:checked')?.value || 'add';
+    const amount      = parseInt($('creditModalAmount').value, 10);
+    const desc        = ($('creditModalDesc').value      || '').trim();
+    const tryAmountRaw= ($('creditModalTryAmount').value || '').trim();
+    const priceAmount = tryAmountRaw ? parseFloat(tryAmountRaw) : undefined;
+    const resEl       = $('creditModalResult');
     resEl.textContent = '';
 
     if (!amount || amount < 1) {
@@ -646,18 +664,28 @@ $('creditModalApply').addEventListener('click', async () => {
         resEl.textContent = 'Miktar 1 veya üzeri tam sayı olmalı.';
         return;
     }
+    if (priceAmount !== undefined && (isNaN(priceAmount) || priceAmount < 0)) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = 'TRY tutarı geçerli bir sayı olmalı.';
+        return;
+    }
     const delta = op === 'add' ? amount : -amount;
-    const btn   = $('creditModalApply');
+    const body  = { delta, description: desc || undefined };
+    if (priceAmount !== undefined) body.priceAmount = priceAmount;
+
+    const btn = $('creditModalApply');
     btn.disabled = true; btn.textContent = '⏳';
     try {
         const r = await api(`/api/admin/dealers/${encodeURIComponent(_creditDealerId)}/credits`, {
             method: 'POST',
-            body:   { delta, description: desc || undefined }
+            body
         });
+        const amtNote = priceAmount > 0 ? ` (${fmtPrice(priceAmount, 'TRY')})` : '';
         resEl.style.color = '#34d399';
-        resEl.textContent = `✅ İşlem tamamlandı. Yeni bakiye: ${(r.balance ?? 0).toLocaleString('tr-TR')} kredi`;
-        $('creditModalAmount').value = '';
-        $('creditModalDesc').value   = '';
+        resEl.textContent = `✅ İşlem tamamlandı. Yeni bakiye: ${(r.balance ?? 0).toLocaleString('tr-TR')} kredi${amtNote}`;
+        $('creditModalAmount').value    = '';
+        $('creditModalDesc').value      = '';
+        $('creditModalTryAmount').value = '';
         // Tabloyu ve log'u yenile
         await loadCreditLog(_creditDealerId);
         await loadDealers();

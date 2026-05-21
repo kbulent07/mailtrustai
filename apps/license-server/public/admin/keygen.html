@@ -593,7 +593,10 @@
         <input type="number" id="creditModalAmount" min="1" step="1" placeholder="Kredi miktarı (tam sayı)" autocomplete="off" style="margin-bottom:10px">
 
         <label for="creditModalDesc">Açıklama <span class="muted">(opsiyonel)</span></label>
-        <input type="text" id="creditModalDesc" maxlength="256" placeholder="ör: Şubat ayı kredi yüklemesi" autocomplete="off">
+        <input type="text" id="creditModalDesc" maxlength="256" placeholder="ör: Şubat ayı kredi yüklemesi" autocomplete="off" style="margin-bottom:10px">
+
+        <label for="creditModalTryAmount">TRY Tutarı <span class="muted">(opsiyonel — ödenen/kesilen tutar)</span></label>
+        <input type="number" id="creditModalTryAmount" min="0" step="0.01" placeholder="ör: 999.00" autocomplete="off">
 
         <div class="modal-btns" style="margin-top:14px">
             <button id="creditModalCancel">İptal</button>
@@ -609,11 +612,12 @@
                     <thead><tr>
                         <th style="padding:4px 6px">Tarih</th>
                         <th style="padding:4px 6px">Delta</th>
+                        <th style="padding:4px 6px">Tutar</th>
                         <th style="padding:4px 6px">Bakiye</th>
                         <th style="padding:4px 6px">Sebep</th>
                         <th style="padding:4px 6px">Açıklama</th>
                     </tr></thead>
-                    <tbody id="creditLogBody"><tr><td colspan="5" style="text-align:center;padding:8px;color:#8b95b3">Yükleniyor...</td></tr></tbody>
+                    <tbody id="creditLogBody"><tr><td colspan="6" style="text-align:center;padding:8px;color:#8b95b3">Yükleniyor...</td></tr></tbody>
                 </table>
             </div>
         </div>

@@ -696,7 +696,7 @@ router.post('/admin/dealers/:id/credits', adminAuth, requirePerm('dealers:write'
     const dealer = await get('SELECT id, name, credits FROM dealers WHERE id = ?', [req.params.id]);
     if (!dealer) return res.status(404).json({ error: 'bayi bulunamadı' });
 
-    const { delta, description } = req.body || {};
+    const { delta, description, priceAmount, currency: reqCurrency } = req.body || {};
     const d = parseInt(delta, 10);
     if (!Number.isInteger(d) || d === 0)
         return res.status(400).json({ error: 'delta sıfırdan farklı tam sayı olmalı' });
@@ -707,18 +707,21 @@ router.post('/admin/dealers/:id/credits', adminAuth, requirePerm('dealers:write'
     if (newBalance < 0)
         return res.status(400).json({ error: `Yetersiz bakiye. Mevcut: ${currentCredits}, İstenen düşme: ${Math.abs(d)}` });
 
-    const desc = description ? String(description).trim().slice(0, 512) : null;
-    const reason = d > 0 ? 'load' : 'manual.deduct';
+    const desc        = description ? String(description).trim().slice(0, 512) : null;
+    const reason      = d > 0 ? 'load' : 'manual.deduct';
+    const prcAmount   = priceAmount != null ? parseFloat(priceAmount) : 0;
+    const prcCurrency = (reqCurrency && typeof reqCurrency === 'string') ? reqCurrency.trim().slice(0, 8) : 'TRY';
 
     await run('UPDATE dealers SET credits = ? WHERE id = ?', [newBalance, dealer.id]);
 
     const { v4: _uuid } = require('uuid');
     await run(
-        'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at) VALUES(?,?,?,?,?,?,?,?)',
-        [_uuid(), dealer.id, d, newBalance, reason, desc, req.actor || 'admin', Date.now()]
+        'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at,price_amount,currency) VALUES(?,?,?,?,?,?,?,?,?,?)',
+        [_uuid(), dealer.id, d, newBalance, reason, desc, req.actor || 'admin', Date.now(),
+         Number.isFinite(prcAmount) ? prcAmount : 0, prcCurrency]
     );
     await audit(req.actor, d > 0 ? 'dealer.credit.load' : 'dealer.credit.deduct', dealer.id,
-        { delta: d, newBalance, description: desc });
+        { delta: d, newBalance, description: desc, priceAmount: prcAmount || undefined });
 
     res.json({ ok: true, dealerId: dealer.id, delta: d, balance: newBalance });
 }));
@@ -729,7 +732,10 @@ router.get('/admin/dealers/:id/credit-log', adminAuth, requirePerm('dealers:read
     if (!dealer) return res.status(404).json({ error: 'bayi bulunamadı' });
     const lim = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
     const rows = await all(
-        'SELECT id, delta, balance, reason, description, actor, created_at FROM dealer_credit_log WHERE dealer_id = ? ORDER BY created_at DESC LIMIT ?',
+        `SELECT id, delta, balance, reason, description, actor, created_at,
+                COALESCE(price_amount, 0) AS price_amount,
+                COALESCE(currency, 'TRY') AS currency
+         FROM dealer_credit_log WHERE dealer_id = ? ORDER BY created_at DESC LIMIT ?`,
         [dealer.id, lim]
     );
     res.json({ dealerId: dealer.id, name: dealer.name, balance: dealer.credits ?? 0, log: rows });
