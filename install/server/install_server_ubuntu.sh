@@ -620,8 +620,75 @@ case "${1:-help}" in
             alpine tar czf "/backup/license-server-data-$TS.tar.gz" -C /data . \
             && echo "License-server verisi yedegi: $BDIR/license-server-data-$TS.tar.gz"
         ;;
+    version)
+        REPO=$(cat "$INSTALL_DIR/.repo_path" 2>/dev/null || echo '')
+        SHA=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo 'git-yok')
+        BRANCH=$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '-')
+        echo "git    : $BRANCH @ $SHA"
+        echo "repo   : $REPO"
+        echo ""
+        echo "Container imajlari:"
+        $DC images 2>/dev/null | tail -n +2 | awk '{printf "  %-30s %s\n", $1, $3}'
+        ;;
+    health)
+        # JSON formatinda saglik raporu — tum servisler
+        LS_HC=$(docker inspect -f '{{.State.Health.Status}}' mailtrustai-license-server 2>/dev/null || echo 'unknown')
+        DL_HC=$(docker inspect -f '{{.State.Health.Status}}' mailtrustai-dealer 2>/dev/null || echo 'unknown')
+        DB_HC=$(docker inspect -f '{{.State.Health.Status}}' mailtrustai-mariadb 2>/dev/null || echo 'unknown')
+        LS_HTTP=$(curl -sf -o /dev/null -w '%{http_code}' --max-time 3 http://localhost:3200/api/health 2>/dev/null || echo '000')
+        DL_HTTP=$(curl -sf -o /dev/null -w '%{http_code}' --max-time 3 http://localhost:3100/api/health 2>/dev/null || echo '000')
+        OK='true'
+        for h in "$LS_HC" "$DL_HC" "$DB_HC"; do
+            [[ "$h" != 'healthy' ]] && OK='false'
+        done
+        [[ "$LS_HTTP" != '200' || "$DL_HTTP" != '200' ]] && OK='false'
+        printf '{"ok":%s,"license_server":{"health":"%s","http":"%s"},"dealer":{"health":"%s","http":"%s"},"mariadb":{"health":"%s"}}\n' \
+            "$OK" "$LS_HC" "$LS_HTTP" "$DL_HC" "$DL_HTTP" "$DB_HC"
+        [[ "$OK" == 'true' ]] || exit 1
+        ;;
+    doctor)
+        echo "=== MailTrustAI Sunucu Diyagnostik ==="
+        echo ""
+        echo "[1] Docker servisi"
+        if systemctl is-active --quiet docker 2>/dev/null; then echo "  OK  docker aktif"; else echo "  HATA docker aktif degil"; fi
+        if docker info >/dev/null 2>&1; then echo "  OK  docker daemon erisilebilir"; else echo "  HATA docker daemon erisilemiyor"; fi
+        echo ""
+        echo "[2] Servisler"
+        for c in mailtrustai-license-server mailtrustai-dealer mailtrustai-mariadb; do
+            ST=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || echo 'absent')
+            HC=$(docker inspect -f '{{.State.Health.Status}}' "$c" 2>/dev/null || echo '-')
+            printf "  %-30s state=%-10s health=%s\n" "$c" "$ST" "$HC"
+        done
+        echo ""
+        echo "[3] HTTP healthchecks"
+        for url in "http://localhost:3200/api/health|license-server" "http://localhost:3100/api/health|dealer"; do
+            U=${url%%|*}; N=${url##*|}
+            CODE=$(curl -sf -o /dev/null -w '%{http_code}' --max-time 3 "$U" 2>/dev/null || echo '000')
+            printf "  %-15s %s -> %s\n" "$N" "$U" "$CODE"
+        done
+        echo ""
+        echo "[4] .env kontrolu"
+        if [[ -f "$ENV_FILE" ]]; then
+            for k in DEALER_API_SECRET TOKEN_SECRET LICENSE_SIGNING_SECRET MARIADB_HOST MARIADB_DATABASE; do
+                if grep -q "^${k}=." "$ENV_FILE"; then
+                    V=$(grep "^${k}=" "$ENV_FILE" | cut -d= -f2- | head -c 30)
+                    [[ "$V" == "CHANGE_ME"* ]] && echo "  HATA $k = CHANGE_ME (default secret kullanilmamali!)" || echo "  OK  $k tanimli"
+                else
+                    echo "  HATA $k bos veya yok"
+                fi
+            done
+        else
+            echo "  HATA .env bulunamadi: $ENV_FILE"
+        fi
+        echo ""
+        echo "[5] Disk + bellek"
+        df -h "$INSTALL_DIR" 2>/dev/null | tail -1 | awk '{print "  disk : "$0}'
+        free -h 2>/dev/null | awk '/Mem:/ {print "  ram  : "$0}'
+        echo ""
+        echo "=== bitti ==="
+        ;;
     help|*)
-        echo "Kullanim: $0 {start|stop|restart|status|logs|upgrade|backup}"
+        echo "Kullanim: $0 {start|stop|restart|status|logs|upgrade|backup|version|health|doctor}"
         echo ""
         echo "  start    - Servisleri baslat"
         echo "  stop     - Servisleri durdur"
@@ -630,6 +697,9 @@ case "${1:-help}" in
         echo "  logs     - Tum servislerin loglarini takip et"
         echo "  upgrade  - Yeni surume yukselt (git pull + rebuild)"
         echo "  backup   - .env + MariaDB + license-server verisi yedekle"
+        echo "  version  - Kurulu git commit/branch + image listesi"
+        echo "  health   - JSON saglik raporu (3 servis, exit 0/1)"
+        echo "  doctor   - Detayli tani — docker/container/http/env"
         ;;
 esac
 CTLEOF

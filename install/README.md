@@ -198,12 +198,17 @@ sudo MODE=full UNATTENDED=true bash install/client/uninstall_client_ubuntu.sh
 
 ## 4. Sık Kullanılan Komutlar
 
+Tüm `ctl` araçları aynı komut setini sunar: `start | stop | restart | status | logs | update | backup | version | health | doctor`.
+
 ### Server (Linux)
 ```bash
 sudo /opt/mailtrustai/mailtrustai-ctl.sh status     # Container durumları
 sudo /opt/mailtrustai/mailtrustai-ctl.sh logs       # Canlı loglar
 sudo /opt/mailtrustai/mailtrustai-ctl.sh backup     # MariaDB + .env yedek
 sudo /opt/mailtrustai/mailtrustai-ctl.sh update     # Yeni sürüme yükselt
+sudo /opt/mailtrustai/mailtrustai-ctl.sh doctor     # Tanı (docker/container/env/http)
+sudo /opt/mailtrustai/mailtrustai-ctl.sh health     # JSON sağlık (cron/monitoring)
+sudo /opt/mailtrustai/mailtrustai-ctl.sh version    # Kurulu sürüm + image
 ```
 
 ### Client (Windows)
@@ -212,6 +217,9 @@ sudo /opt/mailtrustai/mailtrustai-ctl.sh update     # Yeni sürüme yükselt
 & 'C:\MailTrustAI\mailtrustai-ctl.ps1' logs
 & 'C:\MailTrustAI\mailtrustai-ctl.ps1' backup
 & 'C:\MailTrustAI\mailtrustai-ctl.ps1' update
+& 'C:\MailTrustAI\mailtrustai-ctl.ps1' doctor       # Tanı
+& 'C:\MailTrustAI\mailtrustai-ctl.ps1' health       # JSON sağlık
+& 'C:\MailTrustAI\mailtrustai-ctl.ps1' version
 ```
 
 ### Client (Linux)
@@ -220,6 +228,17 @@ sudo /opt/mailtrustai/mailtrustai-client-ctl.sh status
 sudo /opt/mailtrustai/mailtrustai-client-ctl.sh logs
 sudo /opt/mailtrustai/mailtrustai-client-ctl.sh backup
 sudo /opt/mailtrustai/mailtrustai-client-ctl.sh update
+sudo /opt/mailtrustai/mailtrustai-client-ctl.sh doctor    # Tanı
+sudo /opt/mailtrustai/mailtrustai-client-ctl.sh health    # JSON sağlık
+sudo /opt/mailtrustai/mailtrustai-client-ctl.sh version
+```
+
+### Monitoring entegrasyonu (cron örneği)
+
+```bash
+# /etc/cron.d/mailtrustai-watchdog — 5 dakikada bir health, fail ise mail
+*/5 * * * * root /opt/mailtrustai/mailtrustai-client-ctl.sh health >/dev/null || \
+    /opt/mailtrustai/mailtrustai-client-ctl.sh doctor | mail -s "MailTrustAI down" admin@firma.com
 ```
 
 ---

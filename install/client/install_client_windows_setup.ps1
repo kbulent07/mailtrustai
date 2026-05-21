@@ -485,8 +485,80 @@ switch ($Action) {
             alpine tar czf "/backup/customer-data-$ts.tar.gz" -C /data .
         Write-Host "Veri yedeği: $bdir\customer-data-$ts.tar.gz" -ForegroundColor Green
     }
+    'version' {
+        $repoFile = Join-Path $dir '.repo_path'
+        $repo = if (Test-Path $repoFile) { (Get-Content $repoFile -Raw).Trim() } else { '' }
+        $img  = (docker inspect -f '{{.Config.Image}}' mailtrustai-customer 2>$null)
+        if (-not $img) { $img = 'container-yok' }
+        $sha    = if ($repo) { (git -C $repo rev-parse --short HEAD 2>$null) } else { 'git-yok' }
+        $branch = if ($repo) { (git -C $repo rev-parse --abbrev-ref HEAD 2>$null) } else { '-' }
+        $cdate  = (docker inspect -f '{{.Created}}' $img 2>$null)
+        if ($cdate) { $cdate = $cdate.Split('T')[0] } else { $cdate = '-' }
+        Write-Host "image    : $img"
+        Write-Host "image_at : $cdate"
+        Write-Host "git      : $branch @ $sha"
+        Write-Host "repo     : $repo"
+    }
+    'health' {
+        $hc = (docker inspect -f '{{.State.Health.Status}}' mailtrustai-customer 2>$null)
+        if (-not $hc) { $hc = 'unknown' }
+        $st = (docker inspect -f '{{.State.Status}}' mailtrustai-customer 2>$null)
+        if (-not $st) { $st = 'absent' }
+        $up = (docker inspect -f '{{.State.StartedAt}}' mailtrustai-customer 2>$null)
+        if (-not $up) { $up = '-' }
+        $http = '000'
+        try {
+            $r = Invoke-WebRequest -Uri 'http://localhost:3000/healthz' -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
+            $http = [string]$r.StatusCode
+        } catch {}
+        $ok = if ($hc -eq 'healthy' -and $http -eq '200') { 'true' } else { 'false' }
+        Write-Output ('{0}"ok":{1},"docker_state":"{2}","docker_health":"{3}","http_status":"{4}","started_at":"{5}"{6}' -f '{', $ok, $st, $hc, $http, $up, '}')
+        if ($ok -ne 'true') { exit 1 }
+    }
+    'doctor' {
+        Write-Host "=== MailTrustAI Customer Diyagnostik ===`n"
+        Write-Host "[1] Docker servisi"
+        $svc = Get-Service -Name 'com.docker.service' -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -eq 'Running') { Write-Host "  OK  docker servisi calisiyor" }
+        else { Write-Host "  HATA docker servisi calismiyor veya bulunamadi" -ForegroundColor Red }
+        $di = docker info 2>$null
+        if ($LASTEXITCODE -eq 0) { Write-Host "  OK  docker daemon erisilebilir" }
+        else { Write-Host "  HATA docker daemon erisilemiyor" -ForegroundColor Red }
+        Write-Host ""
+        Write-Host "[2] Container"
+        $cs = docker ps --filter "name=^mailtrustai-customer$" --format "{{.Status}}" 2>$null
+        if ($cs) { Write-Host "  OK  container calisiyor: $cs" }
+        else { Write-Host "  HATA container calismiyor" -ForegroundColor Red }
+        Write-Host ""
+        Write-Host "[3] HTTP /healthz"
+        try {
+            $r = Invoke-WebRequest -Uri 'http://localhost:3000/healthz' -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
+            Write-Host "  OK  $($r.Content)"
+        } catch { Write-Host "  HATA /healthz cevap vermiyor: $_" -ForegroundColor Red }
+        Write-Host ""
+        Write-Host "[4] .env kontrolu"
+        if (Test-Path $env) {
+            $envText = Get-Content $env -Raw
+            foreach ($k in 'MSA_LICENSE_KEY','MSA_LICENSE_REMOTE_URL','MSA_ENC_PASSWORD','MSA_ENC_SALT','MSA_LICENSE_SECRET','MSA_LOCAL_ENCRYPTION_KEY') {
+                if ($envText -match "(?m)^$k=.+") { Write-Host "  OK  $k tanimli" }
+                else { Write-Host "  HATA $k bos veya yok" -ForegroundColor Red }
+            }
+        } else { Write-Host "  HATA .env bulunamadi: $env" -ForegroundColor Red }
+        Write-Host ""
+        Write-Host "[5] License-server erisimi"
+        if ($envText -and ($envText -match "(?m)^MSA_LICENSE_REMOTE_URL=(.+)")) {
+            $lsu = $Matches[1].Trim().Trim('"')
+            try {
+                $r = Invoke-WebRequest -Uri "$lsu/api/health" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
+                Write-Host "  OK  $lsu erisilebilir ($($r.StatusCode))"
+            } catch {
+                Write-Host "  UYARI $lsu erisilemiyor (grace cache devrede olabilir)" -ForegroundColor Yellow
+            }
+        } else { Write-Host "  UYARI MSA_LICENSE_REMOTE_URL .env'de yok" -ForegroundColor Yellow }
+        Write-Host "`n=== bitti ==="
+    }
     default   {
-        Write-Host "Kullanim: mailtrustai-ctl.ps1 {start|stop|restart|status|logs|upgrade|backup}"
+        Write-Host "Kullanim: mailtrustai-ctl.ps1 {start|stop|restart|status|logs|upgrade|backup|version|health|doctor}"
         Write-Host ""
         Write-Host "  start    - Servisi baslat"
         Write-Host "  stop     - Servisi durdur"
@@ -495,6 +567,9 @@ switch ($Action) {
         Write-Host "  logs     - Loglari takip et"
         Write-Host "  upgrade  - Yeni surume yukselt (git pull + rebuild)"
         Write-Host "  backup   - .env + customer-data yedekle"
+        Write-Host "  version  - Kurulu image + git commit + branch"
+        Write-Host "  health   - JSON saglik raporu (cron/monitoring, exit 0/1)"
+        Write-Host "  doctor   - Detayli tani — docker/container/env/license-server"
     }
 }
 '@
