@@ -935,6 +935,8 @@ router.get('/admin/stats', adminAuth, asyncH(async (req, res) => {
         'SELECT COUNT(DISTINCT license_id) AS c FROM activations WHERE last_heartbeat_at > ?',
         [Date.now() - onlineThreshold]
     );
+    const pendingTransfers = await get("SELECT COUNT(*) AS c FROM transfer_requests WHERE status = 'pending'");
+    const totalCredits = await get('SELECT COALESCE(SUM(credits),0) AS c FROM dealers');
 
     res.json({
         customers: total?.c || 0,
@@ -942,7 +944,9 @@ router.get('/admin/stats', adminAuth, asyncH(async (req, res) => {
         licensesExpired: expiredLic?.c || 0,
         licensesRevoked: revokedLic?.c || 0,
         dealers: dealers?.c || 0,
-        onlineNow: onlineRow?.c || 0
+        onlineNow: onlineRow?.c || 0,
+        pendingTransfers: pendingTransfers?.c || 0,
+        totalDealerCredits: totalCredits?.c || 0
     });
 }));
 

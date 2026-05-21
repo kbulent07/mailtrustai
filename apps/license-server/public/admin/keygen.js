@@ -254,6 +254,18 @@ function renderStats(s) {
     $('statRevoked').textContent   = s.licensesRevoked  ?? '—';
     $('statDealers').textContent   = s.dealers          ?? '—';
     $('statOnline').textContent    = s.onlineNow        ?? '—';
+    // Yeni kartlar
+    const pt = s.pendingTransfers ?? 0;
+    if ($('statPendingTransfers')) {
+        $('statPendingTransfers').textContent = pt;
+        // 0 ise nötr, >0 ise uyarı rengi
+        $('statPendingTransfers').className = 'stat-value ' + (pt > 0 ? 'warn' : '');
+        const card = $('statTransferCard');
+        if (card) card.style.borderColor = pt > 0 ? 'var(--warn)' : '';
+    }
+    if ($('statDealerCredits')) {
+        $('statDealerCredits').textContent = (s.totalDealerCredits ?? 0).toLocaleString('tr-TR');
+    }
 }
 
 // Tüm dealer <select>'lerini güncelle
