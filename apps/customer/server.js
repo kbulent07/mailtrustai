@@ -25,31 +25,25 @@ const licenseClient = require('@mailtrustai/license-client');
 const centralSync   = require('@mailtrustai/central-sync');
 const policyClient  = require('@mailtrustai/policy-client');
 
-// Eski (paylaşımlı) src/ taban modülleri — analyzer, mail, storage paketleri
-// üzerinden gelir. Ancak mevcut routes/api.js'i tutarlılık için kullanıyoruz;
-// içindeki license/dealer/admin/resellers route'ları aşağıda BLACKLIST ile
-// fiziksel olarak DEVRE DIŞI bırakılır.
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
+// Customer-only kod artık `@mailtrustai/customer-core` paketinden gelir.
+// (Fiziksel dosyalar şimdilik repo-root src/ altında — bridge pattern.)
+const core = require('@mailtrustai/customer-core');
 const customerApi = express.Router();
-const { setupWebSocket } = require(path.join(REPO_ROOT, 'src/routes/websocket'));
-const { resumeScanMailboxMonitors } = require(path.join(REPO_ROOT, 'src/services/scanMailboxService'));
-const { initThreatIntelFeed } = require(path.join(REPO_ROOT, 'src/integrations/threatIntel'));
-const { buildFingerprintJson } = require(path.join(REPO_ROOT, 'src/license/fingerprint'));
-const { loadSettings } = require(path.join(REPO_ROOT, 'src/storage/settingsStore'));
-const { checkAndSeedInitialPasswords } = require(path.join(REPO_ROOT, 'src/services/initialSetupService'));
-const customerUserStore = require(path.join(REPO_ROOT, 'src/storage/customerUserStore'));
-const metaRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/meta.routes'));
-const analyzeRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/analyze.routes'));
-const imapRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/imap.routes'));
-const monitorRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/monitor.routes'));
-const reportsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/reports.routes'));
-const listsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/lists.routes'));
-const statsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/stats.routes'));
-const customerAuthRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/customer.routes'));
-const { requireCustomerAdmin } = require(path.join(REPO_ROOT, 'src/middleware/customerAuth'));
-const customerUsersRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/customerUsers.routes'));
-const fpSuggestionsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/fpSuggestions.routes'));
-const settingsRoutes = require(path.join(REPO_ROOT, 'src/interfaces/http/routes/settings.routes'));
+const { setupWebSocket } = core.websocket();
+const { loadSettings } = core.storage.settingsStore();
+const { checkAndSeedInitialPasswords } = core.services.initialSetup();
+const customerUserStore = core.storage.customerUserStore();
+const metaRoutes = core.routes.meta();
+const analyzeRoutes = core.routes.analyze();
+const imapRoutes = core.routes.imap();
+const monitorRoutes = core.routes.monitor();
+const reportsRoutes = core.routes.reports();
+const listsRoutes = core.routes.lists();
+const statsRoutes = core.routes.stats();
+const customerAuthRoutes = core.routes.customer();
+const customerUsersRoutes = core.routes.customerUsers();
+const fpSuggestionsRoutes = core.routes.fpSuggestions();
+const settingsRoutes = core.routes.settings();
 
 const app = express();
 const server = http.createServer(app);
@@ -124,7 +118,7 @@ app.use((req, res, next) => {
 
 // Static — kök public/ klasörü. Bayi.html / keygen.html Dockerfile build
 // adımında imajdan SİLİNİR; ayrıca yukarıdaki HARD-GATE her ihtimale karşı 404 verir.
-const PUBLIC_DIR = path.join(REPO_ROOT, 'public');
+const PUBLIC_DIR = core.PUBLIC_DIR;
 app.use(express.static(PUBLIC_DIR, {
     etag: true, lastModified: true, maxAge: 0,
     setHeaders: (res) => { res.setHeader('Cache-Control', 'no-cache, must-revalidate'); }
@@ -139,122 +133,20 @@ app.get('/api/customer/license/status', asyncH((req, res) => {
     res.json({ snapshot: snap, grace });
 }));
 
-// Lisans anahtarı formatı: MSA-XXXX-XXXX-XXXX — max 128 karakter, yalnızca alfanümerik + tire.
-const LICENSE_KEY_RE = /^[A-Z0-9\-]{4,128}$/;
-
 app.post('/api/customer/license/activate', asyncH(async (req, res) => {
     const { licenseKey } = req.body || {};
-    if (!licenseKey || typeof licenseKey !== 'string') {
-        return res.status(400).json({ error: 'licenseKey gerekli' });
-    }
-    if (!LICENSE_KEY_RE.test(licenseKey)) {
-        return res.status(400).json({ error: 'licenseKey geçersiz format (A-Z, 0-9, tire, max 128 karakter)' });
-    }
+    if (!licenseKey) return res.status(400).json({ error: 'licenseKey gerekli' });
     const remoteUrl = env('MSA_LICENSE_REMOTE_URL');
     if (!remoteUrl) return res.status(503).json({ error: 'MSA_LICENSE_REMOTE_URL tanımlı değil' });
-    try {
-        const r = await licenseClient.activate({ remoteUrl, licenseKey });
-        res.json({ ok: true, snapshot: r });
-    } catch (e) {
-        // 409 → fingerprint transfer talebi — UI'ya geçirilir.
-        if (e.status === 409 && e.body) {
-            return res.status(409).json(e.body);
-        }
-        throw e;
-    }
-}));
-
-// Aylık/günlük tarama kullanım sayacı — lisans snapshot'ından limit alır.
-app.get('/api/customer/license/usage', asyncH(async (req, res) => {
-    const snap = licenseClient.getSnapshot();
-    const limits = snap?.limits || {};
-    const monthlyLimit = limits.monthlyScanCount ?? null;
-    const unlimited = monthlyLimit === null;
-
-    const { getMonthlyCount, getCurrentMonthKey } = require(path.join(REPO_ROOT, 'src/storage/monthlyCounter'));
-    const { getDailyCount } = require(path.join(REPO_ROOT, 'src/storage/dailyScansStore'));
-    const today = new Date().toISOString().slice(0, 10);
-    const monthlyCount = getMonthlyCount();
-    const dailyCount = getDailyCount(today);
-    const remaining = unlimited ? null : Math.max(0, monthlyLimit - monthlyCount);
-    res.json({
-        monthlyCount,
-        monthlyLimit: unlimited ? null : monthlyLimit,
-        remaining,
-        unlimited,
-        dailyCount,
-        monthKey: getCurrentMonthKey()
-    });
-}));
-
-// Cihaz parmak izi — aktivasyon sırasında fingerprint kontrolü için.
-// Admin yetkisi zorunlu: instanceId donanım parmak izi olup hassas bilgidir.
-//
-// UI iki yolu da çağırabilir:
-//   /api/license/fingerprint           → tam fingerprint JSON (buildFingerprintJson)
-//   /api/customer/license/fingerprint  → backward-compat (eski instanceId formatı)
-async function _fingerprintHandler(req, res) {
-    try {
-        const fp = buildFingerprintJson();
-        res.json(fp);
-    } catch (e) {
-        res.status(500).json({ error: e.message || 'Fingerprint oluşturulamadı' });
-    }
-}
-app.get('/api/license/fingerprint',          requireCustomerAdmin, asyncH(_fingerprintHandler));
-app.get('/api/customer/license/fingerprint', requireCustomerAdmin, asyncH(_fingerprintHandler));
-
-// ============================================================
-// License-server iletişim log'lari — UI'da "Loglar" butonu cagirir.
-// In-memory ring buffer (license-client.getLogs). PII scrub'li.
-// ============================================================
-app.get('/api/customer/license/logs', asyncH((req, res) => {
-    const since = Number(req.query?.since) || 0;
-    const level = req.query?.level || null;
-    const logs = licenseClient.getLogs({ since, level });
-    res.json({
-        count: logs.length,
-        bufferSize: 200,
-        now: Date.now(),
-        remoteUrl: env('MSA_LICENSE_REMOTE_URL') || null,
-        remoteUrlSet: !!env('MSA_LICENSE_REMOTE_URL'),
-        logs
-    });
-}));
-
-app.delete('/api/customer/license/logs', asyncH((req, res) => {
-    const removed = licenseClient.clearLogs();
-    res.json({ ok: true, removed });
-}));
-
-// Tani aracı: license-server'a basit GET /healthz testi.
-// "License-server ulasilamiyor" diyorsa kullanici hangi hatayi aldigini gorsun.
-app.get('/api/customer/license/ping', asyncH(async (req, res) => {
-    const remoteUrl = env('MSA_LICENSE_REMOTE_URL');
-    if (!remoteUrl) return res.status(503).json({ error: 'MSA_LICENSE_REMOTE_URL tanimli degil' });
-    const url = `${remoteUrl.replace(/\/+$/, '')}/healthz`;
-    const t0 = Date.now();
-    try {
-        const r = await require('@mailtrustai/shared').fetchJSON(url, { method: 'GET', timeoutMs: 8000 });
-        res.json({ ok: true, url, elapsed: Date.now() - t0, response: r });
-    } catch (e) {
-        res.status(502).json({
-            ok: false, url, elapsed: Date.now() - t0,
-            error: e.message, code: e.code, httpStatus: e.status
-        });
-    }
+    const r = await licenseClient.activate({ remoteUrl, licenseKey });
+    res.json({ ok: true, snapshot: r });
 }));
 
 app.post('/api/customer/license/validate', asyncH(async (req, res) => {
     const remoteUrl = env('MSA_LICENSE_REMOTE_URL');
     if (!remoteUrl) return res.status(503).json({ error: 'MSA_LICENSE_REMOTE_URL tanımlı değil' });
     const settings = (() => { try { return loadSettings(); } catch (_) { return {}; } })();
-    const bodyKey = req.body?.licenseKey;
-    // Body'den geliyorsa format kontrolü yap; settings'ten geliyorsa zaten doğrulanmış.
-    if (bodyKey !== undefined && bodyKey !== null && !LICENSE_KEY_RE.test(String(bodyKey))) {
-        return res.status(400).json({ error: 'licenseKey geçersiz format' });
-    }
-    const licenseKey = bodyKey || settings.activeLicenseKey;
+    const licenseKey = req.body?.licenseKey || settings.activeLicenseKey;
     if (!licenseKey) return res.status(400).json({ error: 'licenseKey yok' });
     const r = await licenseClient.validate({ remoteUrl, licenseKey });
     // Snapshot'ı dahil et: UI badge'i için plan/tier/features/limits gerekli.
@@ -280,7 +172,7 @@ app.get('/api/customer/feature/:name', (req, res) => {
 // /api/admin/restart — Docker restart-policy üzerinden servisi yeniden başlatır.
 // Yalnızca müşteri admin kullanıcıları çağırabilir.
 // ============================================================
-const { requireAdminAuth: _requireAdminAuth } = require(path.join(REPO_ROOT, 'src/middleware/adminAuth'));
+const { requireAdminAuth: _requireAdminAuth } = core.middleware.adminAuth();
 
 app.post('/api/admin/restart', _requireAdminAuth, (req, res) => {
     res.json({ ok: true, message: 'Servis yeniden başlatılıyor...' });
@@ -324,25 +216,6 @@ app.use('/api', customerApi);
 
 setupWebSocket(wss);
 
-// URLhaus + OpenPhish tehdit feed'ini başlat:
-// - Cache varsa hemen kullan
-// - Cache yoksa arka planda indir (24 saatlik TTL)
-// Hata atarsa sessizce geç (network erişimi olmayabilir)
-try {
-    initThreatIntelFeed();
-    logger.info('[ThreatIntel] Feed başlatıldı (URLhaus + OpenPhish)');
-} catch (e) {
-    logger.warn('[ThreatIntel] Feed başlatma hatası:', e.message);
-}
-
-// Sunucu hazır olduktan ~12s sonra scan mailbox monitörlerini yeniden başlat.
-// (WebSocket monitörleri 8s sonra resume ediyor; bu 4s gecikmeli çalışır.)
-setTimeout(() => {
-    resumeScanMailboxMonitors().catch(e =>
-        logger.error('[ScanMailbox] Resume hatası:', e.message)
-    );
-}, 12_000);
-
 app.use('/api', (req, res) => res.status(404).json({ error: `API endpoint bulunamadı: ${req.method} ${req.path}` }));
 app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
@@ -359,8 +232,8 @@ const PORT = envInt('PORT', 3000);
 function _gatherTelemetry() {
     // Sayaçları storage'tan çekmeye çalışır; başarısızsa 0 döner.
     try {
-        const monthly = require(path.join(REPO_ROOT, 'src/storage/monthlyCounter'));
-        const daily   = require(path.join(REPO_ROOT, 'src/storage/dailyScansStore'));
+        const monthly = core.storage.monthlyCounter();
+        const daily   = core.storage.dailyScansStore();
         const monthlyScanCount = (typeof monthly.getCurrentMonthCount === 'function') ? monthly.getCurrentMonthCount() : 0;
         const dailyScanCount   = (typeof daily.getTodayCount === 'function') ? daily.getTodayCount() : 0;
         const settings = (() => { try { return loadSettings(); } catch (_) { return {}; } })();
@@ -428,10 +301,10 @@ function startListening() {
         // Eski uzak doğrulayıcı kalıyor — geriye dönük uyumluluk
         if (remoteUrl) {
             try {
-                const { startBackgroundRefresh } = require(path.join(REPO_ROOT, 'src/license/remoteValidator'));
+                const { startBackgroundRefresh } = core.license.remoteValidator();
                 startBackgroundRefresh(() => {
                     try {
-                        const { listAutoMonitors } = require(path.join(REPO_ROOT, 'src/storage/autoMonitorState'));
+                        const { listAutoMonitors } = core.storage.autoMonitorState();
                         return listAutoMonitors().map(m => m.licenseKey).filter(Boolean);
                     } catch { return []; }
                 });

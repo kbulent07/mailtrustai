@@ -13,8 +13,10 @@ const SETTINGS_FILE = path.join(__dirname, '..', '..', 'data', 'settings.json');
 const ENC_PREFIX = 'enc:v1:';
 const SENSITIVE   = ['vtApiKey', 'claudeApiKey', 'openaiApiKey', 'otxApiKey', 'webhookUrl', 'systemSmtpPassword'];
 
+const { requireSecret } = require('@mailtrustai/shared');
+
 function _deriveKey() {
-    const secret   = process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#';
+    const secret   = requireSecret('MSA_LICENSE_SECRET', { devFallback: 'MSA_SECRET_2024_K3Y!@#' });
     const hostname = os.hostname();
     // PBKDF2: hostname + secret → 32 byte key (makineye özgü)
     return crypto.pbkdf2Sync(

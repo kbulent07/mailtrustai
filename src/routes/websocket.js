@@ -503,43 +503,85 @@ async function resumePersistedMonitors() {
 }
 
 // WebSocket bağlantısı için authentication kontrolü.
-// Kabul edilen yöntemler (en az biri geçerli olmalı):
-//   1) ?token=<adminToken|customerToken>  (Bearer benzeri JWT-benzeri token)
-//   2) ?license=<licenseKey>              (geçerli lisans anahtarı)
-//   3) Authorization: Bearer <token>      (upgrade request header)
-// Hiçbiri geçerli değilse bağlantı 1008 (policy violation) ile kapatılır.
+// Dönüş: doğrulama başarılıysa { method, ref }, değilse null.
+//   - method: 'admin-token' | 'customer-token' | 'license-key'
+//   - ref: token (ilk 8 karakter, audit log için) veya license key prefix
+// 'license-key' yöntemi DEPRECATED — proxy log'larında query string açıkta kalır.
+// Frontend tercihen ?token= (customer token) kullanmalı; ?license= yalnızca eski
+// kurulumlar için fallback ve gelecekte kaldırılacak.
 function _authenticateWsClient(req) {
     try {
         const { verifyAdminToken } = require('../middleware/adminAuth');
         const { verifyCustomerToken } = require('../middleware/customerAuth');
 
-        // 1) Authorization header (varsa)
         const authHeader = req.headers['authorization'] || '';
         const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
 
-        // 2) Query string parse
         const urlObj = new URL(req.url, 'http://localhost');
         const qToken = urlObj.searchParams.get('token') || '';
         const qLicense = urlObj.searchParams.get('license') || '';
 
-        const tokens = [bearerToken, qToken].filter(Boolean);
-        for (const t of tokens) {
-            if (verifyAdminToken(t) || verifyCustomerToken(t)) return true;
+        for (const t of [bearerToken, qToken].filter(Boolean)) {
+            if (verifyAdminToken(t))    return { method: 'admin-token',    ref: t.slice(0, 8) };
+            if (verifyCustomerToken(t)) return { method: 'customer-token', ref: t.slice(0, 8) };
         }
         if (qLicense) {
             const r = validateLicenseKey(qLicense);
-            if (r.valid) return true;
+            if (r.valid) {
+                if (!_licenseAuthWarned) {
+                    _licenseAuthWarned = true;
+                    console.warn('[ws] DEPRECATED: ?license= ile auth — proxy log leak riski. Frontend ?token= kullanmalı.');
+                }
+                return { method: 'license-key', ref: qLicense.slice(0, 8) };
+            }
         }
     } catch { /* sessiz */ }
-    return false;
+    return null;
 }
+let _licenseAuthWarned = false;
+
+// Per-IP connection rate limiter: pencere içinde yeni-bağlantı sayısını bağlar.
+// Aynı IP'den 60 sn'de 30+ bağlantı → 1013 ile reddedilir.
+const WS_CONN_WINDOW_MS = 60_000;
+const WS_CONN_MAX_PER_IP = 30;
+const _wsConnBuckets = new Map(); // ip → { count, resetAt }
+function _checkWsRate(ip) {
+    const now = Date.now();
+    const b = _wsConnBuckets.get(ip);
+    if (!b || b.resetAt <= now) {
+        _wsConnBuckets.set(ip, { count: 1, resetAt: now + WS_CONN_WINDOW_MS });
+        return true;
+    }
+    b.count += 1;
+    return b.count <= WS_CONN_MAX_PER_IP;
+}
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, b] of _wsConnBuckets) if (b.resetAt <= now) _wsConnBuckets.delete(ip);
+}, 5 * 60 * 1000).unref();
+
+// Bağlantı yaşı için periyodik re-auth: lisans/customer-token expire olduysa kop.
+const WS_REAUTH_INTERVAL_MS = 5 * 60 * 1000;
 
 function setupWebSocket(wss) {
     wss.on('connection', (ws, req) => {
-        if (!_authenticateWsClient(req)) {
+        const ip = (req.socket?.remoteAddress || req.headers['x-forwarded-for'] || 'unknown').toString();
+        if (!_checkWsRate(ip)) {
+            try { ws.close(1013, 'Try again later'); } catch {}
+            return;
+        }
+        const authCtx = _authenticateWsClient(req);
+        if (!authCtx) {
             try { ws.close(1008, 'Unauthorized'); } catch {}
             return;
         }
+        ws._authCtx = authCtx;
+        ws._reauthTimer = setInterval(() => {
+            if (!_authenticateWsClient(req)) {
+                try { ws.close(1008, 'Session expired'); } catch {}
+            }
+        }, WS_REAUTH_INTERVAL_MS);
+
         clients.add(ws);
         ws.send(JSON.stringify({
             type: 'monitor-status',
@@ -547,7 +589,10 @@ function setupWebSocket(wss) {
                 .filter(([, monitor]) => monitor?.isRunning?.())
                 .map(([email]) => email)
         }));
-        ws.on('close', () => clients.delete(ws));
+        ws.on('close', () => {
+            clients.delete(ws);
+            if (ws._reauthTimer) { clearInterval(ws._reauthTimer); ws._reauthTimer = null; }
+        });
 
         ws.on('message', async (data) => {
             try {

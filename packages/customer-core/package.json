@@ -1,0 +1,7 @@
+{
+  "name": "@mailtrustai/customer-core",
+  "version": "2.0.0",
+  "private": true,
+  "main": "index.js",
+  "description": "Customer self-hosted core: routes, storage, middleware, analysis, license adapter. Bridge package — fiziksel dosyalar şimdilik repo-root src/ altında; sonraki refactor adımı bu klasöre taşır."
+}

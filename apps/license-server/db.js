@@ -175,6 +175,69 @@ async function audit(actor, action, target, detail) {
     );
 }
 
+// =============================================================
+// Dialect-aware UPSERT helper.
+// Dialect-spesifik UPSERT cümlelerini (MariaDB `ON DUPLICATE KEY UPDATE` vs
+// SQLite `ON CONFLICT ... DO UPDATE`) çağıranlardan soyutlar. Route'larda
+// `isMaria ? '...' : '...'` branching'i sıfıra iner — yeni dialect (Postgres,
+// Drizzle, Knex) eklemek tek noktayı değiştirmekle yapılabilir.
+//
+// Parametreler:
+//   table       — tablo adı (string)
+//   columns     — { col: value, ... } — INSERT edilecek satır
+//   conflict    — { keys: ['id', ...], update: ['col1', 'col2'] }
+//                  keys: hangi kolon(lar) UNIQUE/PK ile çakışırsa update tetiklensin
+//                  update: çakışmada COALESCE(yeni, mevcut) ile güncellenecek kolonlar
+//                          (NULL gelirse mevcut korunur — UPSERT'lerin standart davranışı)
+//
+// Örnek:
+//   await upsert('customers',
+//     { id: 'c1', company_name: 'Acme', email: null, created_at: Date.now() },
+//     { keys: ['id'], update: ['company_name', 'email'] });
+// =============================================================
+function _escIdent(s) {
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s)) throw new Error(`unsafe identifier: ${s}`);
+    return DB_CLIENT === 'mariadb' ? `\`${s}\`` : `"${s}"`;
+}
+
+async function upsert(table, columns, conflict) {
+    if (!table || typeof table !== 'string') throw new Error('upsert: table gerekli');
+    if (!columns || typeof columns !== 'object') throw new Error('upsert: columns gerekli');
+    if (!conflict || !Array.isArray(conflict.keys) || conflict.keys.length === 0) {
+        throw new Error('upsert: conflict.keys gerekli');
+    }
+    const updateCols = Array.isArray(conflict.update) ? conflict.update : [];
+
+    const colNames = Object.keys(columns);
+    if (colNames.length === 0) throw new Error('upsert: en az bir kolon gerekli');
+
+    const escTable = _escIdent(table);
+    const escCols  = colNames.map(_escIdent).join(',');
+    const placeholders = colNames.map(() => '?').join(',');
+    const values = colNames.map((c) => columns[c]);
+
+    let sql;
+    if (DB_CLIENT === 'mariadb') {
+        const updateClause = updateCols.length === 0
+            ? `${_escIdent(conflict.keys[0])}=${_escIdent(conflict.keys[0])}` // no-op: DUPLICATE'i tetiklesin ama hiçbir şey değişmesin
+            : updateCols.map((c) => {
+                const esc = _escIdent(c);
+                return `${esc}=COALESCE(VALUES(${esc}), ${esc})`;
+            }).join(',');
+        sql = `INSERT INTO ${escTable}(${escCols}) VALUES(${placeholders}) ON DUPLICATE KEY UPDATE ${updateClause}`;
+    } else {
+        const conflictKeys = conflict.keys.map(_escIdent).join(',');
+        const updateClause = updateCols.length === 0
+            ? `${_escIdent(conflict.keys[0])}=${escTable}.${_escIdent(conflict.keys[0])}`
+            : updateCols.map((c) => {
+                const esc = _escIdent(c);
+                return `${esc}=COALESCE(excluded.${esc}, ${escTable}.${esc})`;
+            }).join(',');
+        sql = `INSERT INTO ${escTable}(${escCols}) VALUES(${placeholders}) ON CONFLICT(${conflictKeys}) DO UPDATE SET ${updateClause}`;
+    }
+    return run(sql, values);
+}
+
 module.exports = {
     DB_CLIENT,
     DB_PATH,
@@ -183,6 +246,7 @@ module.exports = {
     get,
     run,
     audit,
+    upsert,
     isMaria: DB_CLIENT === 'mariadb'
 };
 

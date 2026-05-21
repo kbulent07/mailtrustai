@@ -73,7 +73,7 @@ COPY --from=builder /build /app
 
 # Workspace paket symlink'leri + non-root kullanıcı oluştur
 RUN mkdir -p /app/node_modules/@mailtrustai \
-  && for p in analyzer central-sync license-client mail policy-client security shared storage; do \
+  && for p in analyzer central-sync customer-core license-client mail policy-client security shared storage; do \
         if [ -d "/app/packages/$p" ]; then \
             ln -sfn "/app/packages/$p" "/app/node_modules/@mailtrustai/$p"; \
         fi; \

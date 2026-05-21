@@ -16,6 +16,7 @@
     "@mailtrustai/policy-client": "*",
     "@mailtrustai/storage": "*",
     "@mailtrustai/security": "*",
-    "@mailtrustai/shared": "*"
+    "@mailtrustai/shared": "*",
+    "@mailtrustai/customer-core": "*"
   }
 }

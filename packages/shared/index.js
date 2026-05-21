@@ -87,18 +87,58 @@ function safeJSONReviver(key, value) {
     return value;
 }
 
-// Process-level prototype pollution koruması.
-// NOT: `Object.freeze(Object.prototype)` mysql2/long ve bazı eski paketleri
-// kırar (toString'i kendi prototype'ında shadow etmek isterler). Bu sebeple
-// freeze YAPILMAZ; gerçek koruma `safeJSONReviver` (express.json body parse
-// aşaması) tarafından sağlanır. `__proto__`, `constructor`, `prototype`
-// anahtarları reviver tarafından `undefined` döndürülerek payload'a hiç
-// dahil edilmez. Bu, `hasOwnProperty`+reviver kombosu zaten prototype
-// pollution için yeterli savunmadır.
+// Process-level prototype pollution koruması — OPT-IN, default kapalı.
+// Asıl savunma `safeJSONReviver` (request body parse aşaması) — `__proto__`,
+// `constructor`, `prototype` anahtarlarını payload'a hiç sokmaz, bu yeterli
+// savunmadır. Bu fonksiyon ek olarak Object/Array/Function.prototype'ları
+// dondurur (Object.freeze). Ancak bu, prototype'a property shadow eden 3rd
+// party paketleri (whatwg-url URL.prototype.toString, mysql2/long vb.) strict
+// mode'da bozar — bu sebeple MSA_HARDEN_PROTOTYPES=true ile opt-in.
+// Çağrı idempotent; sonucu {applied, reason} olarak döner.
+let _prototypesHardened = false;
 function hardenPrototypes() {
-    // Opt-in: alt seviye paket çakışması olmadığı durumlar için. Default no-op.
-    // Çağrılması zararsız — sadece reviver güvencesini görünür kılar.
+    if (_prototypesHardened) return { applied: false, reason: 'already-applied' };
+    const enabled = String(process.env.MSA_HARDEN_PROTOTYPES || 'false').toLowerCase() === 'true';
+    if (!enabled) return { applied: false, reason: 'disabled-default' };
+    try {
+        Object.freeze(Object.prototype);
+        Object.freeze(Array.prototype);
+        Object.freeze(Function.prototype);
+        _prototypesHardened = true;
+        return { applied: true };
+    } catch (e) {
+        logger.warn('[harden] prototype freeze başarısız (devam ediliyor):', e.message);
+        return { applied: false, reason: e.message };
+    }
 }
+
+// Zorunlu secret okuyucu — production'da fail-fast, development'ta loud-warning + opsiyonel fallback.
+// Bu fonksiyon, .env unutulduğunda prod'a sessiz fallback ile çıkmayı engeller (cross-tenant
+// token forge riski). Aynı isimle birden fazla kez çağrılabilir — sonuç cache'lenir.
+const _secretCache = new Map();
+function requireSecret(name, { devFallback = null } = {}) {
+    if (_secretCache.has(name)) return _secretCache.get(name);
+    const v = process.env[name];
+    if (typeof v === 'string' && v.length > 0) {
+        _secretCache.set(name, v);
+        return v;
+    }
+    const isProd = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+    if (isProd) {
+        logger.error(`[secret] FATAL: ${name} production'da zorunludur. .env dosyasına ekleyin.`);
+        process.exit(1);
+    }
+    if (devFallback != null) {
+        logger.warn(`[secret] WARN: ${name} tanımlı değil — DEV fallback kullanılıyor. PROD'A ÇIKMAZ.`);
+        _secretCache.set(name, devFallback);
+        return devFallback;
+    }
+    logger.error(`[secret] FATAL: ${name} tanımlı değil ve dev fallback verilmedi.`);
+    process.exit(1);
+}
+
+// Test/runtime izolasyonu için cache'i temizle (yalnızca testlerde kullan).
+function _resetSecretCacheForTests() { _secretCache.clear(); }
 
 // Graceful shutdown helper'ı: callback'leri sırayla çağırır, timeout sonra exit.
 function installShutdownHandlers(handlers = [], { timeoutMs = 15000, signals = ['SIGTERM', 'SIGINT'] } = {}) {
@@ -126,7 +166,8 @@ function installShutdownHandlers(handlers = [], { timeoutMs = 15000, signals = [
 module.exports = {
     logger, env, envBool, envInt, APP, AppError, asyncH,
     scrubPII, PII_KEYS, safeJSON, safeJSONReviver, hardenPrototypes,
-    installShutdownHandlers
+    installShutdownHandlers,
+    requireSecret, _resetSecretCacheForTests
 };
 
 // fetchJSON helper — lazy require ile circular dep'i önle.

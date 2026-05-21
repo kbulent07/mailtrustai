@@ -5,8 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+const { requireSecret } = require('@mailtrustai/shared');
+
 const COUNTER_FILE = path.join(__dirname, '..', '..', 'data', 'monthly-counts.json');
-const HMAC_SECRET = process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#';
+const HMAC_SECRET = requireSecret('MSA_LICENSE_SECRET', { devFallback: 'MSA_SECRET_2024_K3Y!@#' });
 
 function computeHmac(dataObj) {
     // Yalnızca sayım verilerini (underscore ile başlamayan anahtarlar) imzala

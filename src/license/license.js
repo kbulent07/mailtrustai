@@ -66,16 +66,8 @@ function isRevoked(key) {
     return loadRevocationList().includes(key);
 }
 
-let SECRET_KEY = process.env.MSA_LICENSE_SECRET;
-if (!SECRET_KEY) {
-    if (process.env.NODE_ENV === 'production') {
-        console.error('\n[License] FATAL: MSA_LICENSE_SECRET ortam değişkeni tanımlı değil.');
-        console.error('[License] Üretim ortamında bu değişken zorunludur. .env dosyasına ekleyin.\n');
-        process.exit(1);
-    }
-    console.warn('[License] WARNING: MSA_LICENSE_SECRET tanımlı değil — güvensiz varsayılan kullanılıyor (yalnızca geliştirme).');
-    SECRET_KEY = 'MSA_SECRET_2024_K3Y!@#';
-}
+const { requireSecret } = require('@mailtrustai/shared');
+const SECRET_KEY = requireSecret('MSA_LICENSE_SECRET', { devFallback: 'MSA_SECRET_2024_K3Y!@#' });
 
 const PLANS = { PRO: 'pro', ENT: 'enterprise' };
 const TIERS = {

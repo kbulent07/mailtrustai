@@ -9,6 +9,7 @@
 // ============================================================
 const crypto = require('crypto');
 const customerUserStore = require('../storage/customerUserStore');
+const { requireSecret } = require('@mailtrustai/shared');
 
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 saat
 

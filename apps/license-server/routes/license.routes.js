@@ -5,7 +5,11 @@ const { v4: uuid } = require('uuid');
 const { asyncH, safeJSON } = require('@mailtrustai/shared');
 const { sha256 } = require('@mailtrustai/security');
 const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX } = require('@mailtrustai/license-core');
-const { get, all, run, audit, isMaria } = require('../db');
+const { audit } = require('../db');
+const customerRepo   = require('../repositories/customerRepository');
+const licenseRepo    = require('../repositories/licenseRepository');
+const activationRepo = require('../repositories/activationRepository');
+const auditRepo      = require('../repositories/auditRepository');
 
 const router = express.Router();
 
@@ -37,47 +41,20 @@ router.post('/license/customers', asyncH(async (req, res) => {
     if (!customerId || typeof customerId !== 'string') {
         return badRequest(res, 'customerId gerekli');
     }
-    const upsertSql = isMaria
-        ? `INSERT INTO customers(id,dealer_id,company_name,email,created_at,
-                tax_office,tax_number,billing_address,
-                contact_name,contact_email,contact_phone,
-                address,phone)
-           VALUES(?,?,?,?,?, ?,?,?, ?,?,?, ?,?)
-           ON DUPLICATE KEY UPDATE
-             dealer_id       = COALESCE(VALUES(dealer_id), dealer_id),
-             company_name    = COALESCE(VALUES(company_name), company_name),
-             email           = COALESCE(VALUES(email), email),
-             tax_office      = COALESCE(VALUES(tax_office), tax_office),
-             tax_number      = COALESCE(VALUES(tax_number), tax_number),
-             billing_address = COALESCE(VALUES(billing_address), billing_address),
-             contact_name    = COALESCE(VALUES(contact_name), contact_name),
-             contact_email   = COALESCE(VALUES(contact_email), contact_email),
-             contact_phone   = COALESCE(VALUES(contact_phone), contact_phone),
-             address         = COALESCE(VALUES(address), address),
-             phone           = COALESCE(VALUES(phone), phone)`
-        : `INSERT INTO customers(id,dealer_id,company_name,email,created_at,
-                tax_office,tax_number,billing_address,
-                contact_name,contact_email,contact_phone,
-                address,phone)
-           VALUES(?,?,?,?,?, ?,?,?, ?,?,?, ?,?)
-           ON CONFLICT(id) DO UPDATE SET
-             dealer_id       = COALESCE(excluded.dealer_id, customers.dealer_id),
-             company_name    = COALESCE(excluded.company_name, customers.company_name),
-             email           = COALESCE(excluded.email, customers.email),
-             tax_office      = COALESCE(excluded.tax_office, customers.tax_office),
-             tax_number      = COALESCE(excluded.tax_number, customers.tax_number),
-             billing_address = COALESCE(excluded.billing_address, customers.billing_address),
-             contact_name    = COALESCE(excluded.contact_name, customers.contact_name),
-             contact_email   = COALESCE(excluded.contact_email, customers.contact_email),
-             contact_phone   = COALESCE(excluded.contact_phone, customers.contact_phone),
-             address         = COALESCE(excluded.address, customers.address),
-             phone           = COALESCE(excluded.phone, customers.phone)`;
-    await run(upsertSql, [
-        customerId, dealerId || null, companyName || null, email || null, Date.now(),
-        taxOffice || null, taxNumber || null, billingAddress || null,
-        contactName || null, contactEmail || null, contactPhone || null,
-        address || null, phone || null
-    ]);
+    await customerRepo.upsertFull({
+        id:              customerId,
+        dealer_id:       dealerId       || null,
+        company_name:    companyName    || null,
+        email:           email          || null,
+        tax_office:      taxOffice      || null,
+        tax_number:      taxNumber      || null,
+        billing_address: billingAddress || null,
+        contact_name:    contactName    || null,
+        contact_email:   contactEmail   || null,
+        contact_phone:   contactPhone   || null,
+        address:         address        || null,
+        phone:           phone          || null
+    });
     await audit(dealerId || 'admin', 'customer.create', customerId,
         { companyName, email, source: dealerId ? 'dealer' : 'admin' });
     res.json({
@@ -113,18 +90,7 @@ router.post('/license/create', asyncH(async (req, res) => {
         : (rawLabel.slice(0, 128) || null);
 
     // UPSERT: dealer transferi/şirket adı güncellemesi mümkün.
-    const upsertSql = isMaria
-        ? `INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)
-           ON DUPLICATE KEY UPDATE
-             dealer_id    = COALESCE(VALUES(dealer_id), dealer_id),
-             company_name = COALESCE(VALUES(company_name), company_name),
-             email        = COALESCE(VALUES(email), email)`
-        : `INSERT INTO customers(id,dealer_id,company_name,email,created_at) VALUES(?,?,?,?,?)
-           ON CONFLICT(id) DO UPDATE SET
-             dealer_id    = COALESCE(excluded.dealer_id,   customers.dealer_id),
-             company_name = COALESCE(excluded.company_name, customers.company_name),
-             email        = COALESCE(excluded.email,       customers.email)`;
-    await run(upsertSql, [customerId, dealerId || null, companyName || null, email || null, Date.now()]);
+    await customerRepo.upsertSlim({ id: customerId, dealerId, companyName, email });
 
     // tier varsa planDef'in tarama limitini tier ile override et
     const planDef = getPlan(plan, tier);
@@ -133,11 +99,22 @@ router.post('/license/create', asyncH(async (req, res) => {
     const issuedAt = Date.now();
     const expiresAt = issuedAt + validDays * 86400 * 1000;
 
-    await run(
-        `INSERT INTO licenses(id,customer_id,dealer_id,license_key_hash,license_key_masked,plan,tier,status,issued_at,expires_at,grace_days,features_json,limits_json,label)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, customerId, dealerId || null, keyHash, `${key.slice(0, 8)}…${key.slice(-4)}`, plan, planDef.tier, 'active', issuedAt, expiresAt, planDef.graceDays, JSON.stringify(planDef.features), JSON.stringify(planDef.limits), licenseLabel]
-    );
+    await licenseRepo.insertLicense({
+        id,
+        customer_id:        customerId,
+        dealer_id:          dealerId || null,
+        license_key_hash:   keyHash,
+        license_key_masked: `${key.slice(0, 8)}…${key.slice(-4)}`,
+        plan,
+        tier:               planDef.tier,
+        status:             'active',
+        issued_at:          issuedAt,
+        expires_at:         expiresAt,
+        grace_days:         planDef.graceDays,
+        features_json:      JSON.stringify(planDef.features),
+        limits_json:        JSON.stringify(planDef.limits),
+        label:              licenseLabel
+    });
 
     await audit(dealerId || 'admin', 'license.create', id, { customerId, plan, tier: planDef.tier, label: licenseLabel });
     res.json({ ok: true, id, licenseKey: key, plan, tier: planDef.tier, expiresAt, label: licenseLabel, features: planDef.features, limits: planDef.limits });
@@ -152,7 +129,7 @@ router.post('/license/activate', asyncH(async (req, res) => {
     if (instanceId.length > 128 || licenseKey.length > 512) return badRequest(res, 'alan çok uzun');
 
     const keyHash = sha256(licenseKey);
-    const license = await get('SELECT * FROM licenses WHERE license_key_hash = ?', [keyHash]);
+    const license = await licenseRepo.findByKeyHash(keyHash);
     if (!license) {
         await audit(null, 'license.activate.fail', null, { reason: 'unknown-key' });
         return res.status(404).json({ error: 'lisans bulunamadı' });
@@ -212,43 +189,33 @@ router.post('/license/activate', asyncH(async (req, res) => {
     const maxAct = Number(limits.maxActivations) > 0 ? Number(limits.maxActivations) : DEFAULT_MAX_ACTIVATIONS;
 
     // TOCTOU önlemi: önce UPSERT yap, sonra count kontrol; aşıldıysa rollback.
-    // Aynı instanceId için yeniden activate idempotent (UPSERT). Yeni instanceId
-    // limit aşıyorsa eklenen satırı sil. Bu yaklaşım iki paralel /activate'te
-    // bile en fazla 1 fazla geçici satır yaratır ve hemen temizler.
+    // Aynı (license_id, instance_id) için UPSERT idempotent. Yeni instanceId
+    // limit aşıyorsa eklenen satır son 5sn içinde olduğundan silinir. Bu
+    // yaklaşım iki paralel /activate'te bile en fazla 1 fazla geçici satır
+    // yaratır ve hemen temizler.
     const activationId = uuid();
-    const sql = isMaria
-        ? `INSERT INTO activations(id,license_id,instance_id,hostname_hash,app_version,build_version,node_version,environment,activated_at,last_heartbeat_at)
-           VALUES(?,?,?,?,?,?,?,?,?,?)
-           ON DUPLICATE KEY UPDATE
-               hostname_hash=VALUES(hostname_hash),
-               app_version=VALUES(app_version),
-               build_version=VALUES(build_version),
-               node_version=VALUES(node_version),
-               environment=VALUES(environment),
-               last_heartbeat_at=VALUES(last_heartbeat_at)`
-        : `INSERT INTO activations(id,license_id,instance_id,hostname_hash,app_version,build_version,node_version,environment,activated_at,last_heartbeat_at)
-           VALUES(?,?,?,?,?,?,?,?,?,?)
-           ON CONFLICT(license_id,instance_id) DO UPDATE SET
-               hostname_hash=excluded.hostname_hash,
-               app_version=excluded.app_version,
-               build_version=excluded.build_version,
-               node_version=excluded.node_version,
-               environment=excluded.environment,
-               last_heartbeat_at=excluded.last_heartbeat_at`;
-    await run(sql, [activationId, license.id, instanceId, hostnameHash || null, appVersion || null, buildVersion || null, nodeVersion || null, environment || null, Date.now(), Date.now()]);
+    const now = Date.now();
+    await activationRepo.upsertActivation({
+        id:                activationId,
+        license_id:        license.id,
+        instance_id:       instanceId,
+        hostname_hash:     hostnameHash || null,
+        app_version:       appVersion   || null,
+        build_version:     buildVersion || null,
+        node_version:      nodeVersion  || null,
+        environment:       environment  || null,
+        activated_at:      now,
+        last_heartbeat_at: now
+    });
 
-    // Post-insert count: limit aşıldıysa eklenen satırı geri al (sadece bu instance yeni eklendiyse).
-    const countRow = await get('SELECT COUNT(*) AS c FROM activations WHERE license_id=?', [license.id]);
-    if ((countRow?.c || 0) > maxAct) {
-        // Bu instance daha önce vardıysa UPSERT idempotent — count zaten <= maxAct olmalıydı.
-        // Bu noktaya geldiysek bu çağrı sınırı aşan yeni instance'tır → temizle.
-        await run('DELETE FROM activations WHERE license_id=? AND instance_id=? AND activated_at>=?',
-            [license.id, instanceId, Date.now() - 5000]);
+    const count = await activationRepo.countByLicense(license.id);
+    if (count > maxAct) {
+        await activationRepo.deleteRecentByInstance(license.id, instanceId);
         await audit(license.customer_id, 'license.activate.fail', license.id, { reason: 'max-activations', max: maxAct });
         return res.status(403).json({ error: `maksimum aktivasyon aşıldı (${maxAct})` });
     }
 
-    const activation = await get('SELECT id FROM activations WHERE license_id=? AND instance_id=?', [license.id, instanceId]);
+    const activation = await activationRepo.findByLicenseAndInstance(license.id, instanceId);
 
     await audit(license.customer_id, 'license.activate', license.id, { instanceId, appVersion });
     res.json({
@@ -274,13 +241,10 @@ router.post('/license/validate', asyncH(async (req, res) => {
     if (!assertHash(res, licenseKeyHash)) return;
     if (typeof instanceId !== 'string' || instanceId.length > 128) return badRequest(res, 'instanceId geçersiz');
 
-    const license = await get('SELECT * FROM licenses WHERE license_key_hash = ?', [licenseKeyHash]);
+    const license = await licenseRepo.findByKeyHash(licenseKeyHash);
     if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
 
-    const activation = await get(
-        'SELECT id FROM activations WHERE license_id=? AND instance_id=?',
-        [license.id, instanceId]
-    );
+    const activation = await activationRepo.findByLicenseAndInstance(license.id, instanceId);
     if (!activation) {
         await audit(license.customer_id, 'license.validate.fail', license.id, { reason: 'no-activation', instanceId });
         return res.status(403).json({ error: 'aktivasyon bulunamadı' });
@@ -305,7 +269,7 @@ router.post('/license/heartbeat', asyncH(async (req, res) => {
     if (!assertHash(res, licenseKeyHash)) return;
     if (typeof instanceId !== 'string' || instanceId.length > 128) return badRequest(res, 'instanceId geçersiz');
 
-    const license = await get('SELECT id FROM licenses WHERE license_key_hash = ?', [licenseKeyHash]);
+    const license = await licenseRepo.findByKeyHash(licenseKeyHash);
     if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
 
     // Tüm body'yi değil — sadece güvenli telemetri alanlarını sakla (server-side whitelist).
@@ -317,8 +281,7 @@ router.post('/license/heartbeat', asyncH(async (req, res) => {
     for (const k of SAFE_KEYS) {
         if (Object.prototype.hasOwnProperty.call(req.body || {}, k)) safePayload[k] = req.body[k];
     }
-    await run('UPDATE activations SET last_heartbeat_at=?, last_payload_json=? WHERE license_id=? AND instance_id=?',
-        [Date.now(), JSON.stringify(safePayload), license.id, instanceId]);
+    await activationRepo.updateHeartbeat(license.id, instanceId, JSON.stringify(safePayload));
     res.json({ ok: true, serverTime: Date.now() });
 }));
 
@@ -333,12 +296,12 @@ function assertOwnership(license, dealerId) {
 router.post('/license/revoke', asyncH(async (req, res) => {
     const { id, licenseKeyHash, reason, dealerId } = req.body || {};
     const license = id
-        ? await get('SELECT * FROM licenses WHERE id=?', [id])
-        : await get('SELECT * FROM licenses WHERE license_key_hash=?', [licenseKeyHash]);
+        ? await licenseRepo.findById(id)
+        : await licenseRepo.findByKeyHash(licenseKeyHash);
     if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
 
     assertOwnership(license, dealerId);
-    await run('UPDATE licenses SET status=? WHERE id=?', ['revoked', license.id]);
+    await licenseRepo.setStatus(license.id, 'revoked');
     await audit(dealerId || 'admin', 'license.revoke', license.id, { reason });
     res.json({ ok: true });
 }));
@@ -348,12 +311,12 @@ router.post('/license/renew', asyncH(async (req, res) => {
     const days = Number(addDays);
     if (!Number.isFinite(days) || days <= 0 || days > 36500) return badRequest(res, 'addDays geçersiz');
 
-    const license = await get('SELECT * FROM licenses WHERE id=?', [id]);
+    const license = await licenseRepo.findById(id);
     if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
 
     assertOwnership(license, dealerId);
     const expiresAt = Math.max(license.expires_at || Date.now(), Date.now()) + days * 86400 * 1000;
-    await run('UPDATE licenses SET expires_at=?, status=? WHERE id=?', [expiresAt, 'active', license.id]);
+    await licenseRepo.extendExpiry(license.id, expiresAt);
     await audit(dealerId || 'admin', 'license.renew', license.id, { addDays: days, newExpiry: expiresAt });
     res.json({ ok: true, expiresAt });
 }));
@@ -365,10 +328,7 @@ router.get('/license/customer/:id', asyncH(async (req, res) => {
     const dealerId = req.query.dealerId;
     if (!dealerId) return res.status(400).json({ error: 'dealerId query param zorunlu' });
 
-    const rows = await all(
-        'SELECT id, plan, tier, status, issued_at, expires_at FROM licenses WHERE customer_id=? AND dealer_id=?',
-        [req.params.id, dealerId]
-    );
+    const rows = await licenseRepo.listByCustomerAndDealer(req.params.id, dealerId);
     res.json({ customerId: req.params.id, dealerId, licenses: rows });
 }));
 
@@ -481,21 +441,11 @@ router.get('/license/audit', asyncH(async (req, res) => {
     const dealerId = req.query.dealerId;
     const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 1000);
 
-    let rows;
-    if (dealerId) {
-        // Dealer'a kısıtlı: kendi audit'leri ve kendi customer'larındaki olaylar.
-        rows = await all(
-            `SELECT a.* FROM audit_log a
-             WHERE a.actor = ?
-                OR a.target IN (SELECT id FROM licenses WHERE dealer_id = ?)
-                OR a.actor  IN (SELECT id FROM customers WHERE dealer_id = ?)
-             ORDER BY a.id DESC LIMIT ?`,
-            [dealerId, dealerId, dealerId, limit]
-        );
-    } else {
-        // Admin (Bearer token doğrulanmış); tam erişim.
-        rows = await all('SELECT * FROM audit_log ORDER BY id DESC LIMIT ?', [limit]);
-    }
+    // Dealer scope: yalnızca kendi audit'leri ve kendi müşterileri/lisanslarındaki olaylar.
+    // Admin (Bearer token doğrulanmış): tam erişim.
+    const rows = dealerId
+        ? await auditRepo.listForDealer(dealerId, { limit })
+        : await auditRepo.listAll({ limit });
     res.json({ entries: rows });
 }));
 

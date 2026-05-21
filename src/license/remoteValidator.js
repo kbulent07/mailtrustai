@@ -31,8 +31,10 @@ function _normalizeRemoteUrl(raw) {
         return v;
     }
 }
+const { requireSecret } = require('@mailtrustai/shared');
+
 const REMOTE_URL = _normalizeRemoteUrl(process.env.MSA_LICENSE_REMOTE_URL);
-const SHARED_SECRET = process.env.MSA_LICENSE_SECRET || 'MSA_SECRET_2024_K3Y!@#';
+const SHARED_SECRET = requireSecret('MSA_LICENSE_SECRET', { devFallback: 'MSA_SECRET_2024_K3Y!@#' });
 const CACHE_FILE = path.join(__dirname, '..', '..', 'data', 'license-remote-cache.json');
 const GRACE_PERIOD_MS = parseInt(process.env.MSA_LICENSE_GRACE_MS) || 72 * 60 * 60 * 1000;
 const REFRESH_INTERVAL_MS = parseInt(process.env.MSA_LICENSE_REFRESH_MS) || 6 * 60 * 60 * 1000;
