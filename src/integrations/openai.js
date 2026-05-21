@@ -3,6 +3,7 @@
 // ============================================================
 const fetch = require('node-fetch');
 const { recordCall } = require('../storage/llmUsageStore');
+const { redact, truncate } = require('../utils/logSafe');
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/responses';
 
@@ -121,7 +122,7 @@ ${context}
         if (!analysis) {
             recordCall({ provider: 'openai', model: resolvedModel, purpose: 'analysis', success: false });
             // Kısaltılmış yanıtı logla (debug için)
-            console.warn('[OpenAI] JSON parse başarısız. Ham metin (ilk 300 karakter):', rawText.slice(0, 300));
+            console.warn('[OpenAI] JSON parse başarısız. Ham metin (ilk 300 karakter):', redact(truncate(rawText, 300)));
             return { success: false, error: 'OpenAI yanıtı geçerli JSON içermiyor (token limiti aşıldı olabilir)' };
         }
 
@@ -395,7 +396,7 @@ Respond with EXACTLY this JSON shape:
         const verdict = parseJsonSafe(rawText);
         if (!verdict) {
             recordCall({ provider: 'openai', model: resolvedModel, purpose: 'adjudicate', success: false });
-            console.warn('[OpenAI Adjudicate] JSON parse başarısız. Ham metin (ilk 300):', rawText.slice(0, 300));
+            console.warn('[OpenAI Adjudicate] JSON parse başarısız. Ham metin (ilk 300):', redact(truncate(rawText, 300)));
             return { success: false, error: 'AI hâkim yanıtı geçerli JSON içermiyor' };
         }
 
@@ -567,7 +568,7 @@ Respond with EXACTLY this JSON shape:
         const report = parseJsonSafe(rawText);
         if (!report) {
             recordCall({ provider: 'openai', model: resolvedModel, purpose: 'deep-analysis', success: false });
-            console.warn('[OpenAI Deep] JSON parse başarısız. Ham metin (ilk 400):', rawText.slice(0, 400));
+            console.warn('[OpenAI Deep] JSON parse başarısız. Ham metin (ilk 400):', redact(truncate(rawText, 400)));
             return { success: false, error: 'AI derinlemesine inceleme yanıtı geçerli JSON içermiyor' };
         }
 
