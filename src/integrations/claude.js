@@ -12,6 +12,9 @@ const CLAUDE_MODEL = process.env.MSA_LOCKED_CLAUDE_MODEL
                   || 'claude-haiku-4-5-20251001';
 const MAX_EMAIL_CHARS = 10000;
 
+// Network timeout — hung request'in kuyrugun sismesine engel olur.
+const CLAUDE_TIMEOUT_MS = Math.max(5000, Number(process.env.MSA_CLAUDE_TIMEOUT_MS) || 30000);
+
 function sanitizeForPrompt(text) {
     // Prevent prompt injection: collapse delimiter sequences an attacker might embed
     return String(text || '')
@@ -59,7 +62,7 @@ Provide your analysis in EXACTLY the following JSON format (return raw JSON only
             temperature: 0.2,
             system: 'You are an expert security analyst. You must output ONLY valid JSON.',
             messages: [{ role: 'user', content: prompt }]
-        });
+        }, { timeout: CLAUDE_TIMEOUT_MS });
 
         const responseText = msg.content[0].text;
 
