@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MailTrustAI — Bayi Paneli</title>
+    <style>
+        /* ── Reset + Tema ─────────────────────────────────────────── */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+        body {
+            background: #0b1020; color: #e6e9f0;
+            --bg: #0b1020; --surface: #141a2e; --surface-2: #1c2340;
+            --border: #2a3354; --text: #e6e9f0; --muted: #8b95b3;
+            --primary: #6366f1; --primary-hover: #4f46e5;
+            --ok: #10b981; --warn: #f59e0b; --err: #ef4444;
+        }
+        .hidden { display: none !important; }
+        .muted  { color: var(--muted); font-size: .9em; }
+        code    { font-family: ui-monospace, Menlo, Consolas, monospace;
+                  background: #0e1428; padding: 1px 6px; border-radius: 4px; font-size: .85em; }
+
+        /* ── Login ────────────────────────────────────────────────── */
+        .login-wrap { display: flex; align-items: center; justify-content: center;
+                      min-height: 100vh; padding: 24px; }
+        .login-card { background: var(--surface); border: 1px solid var(--border);
+                      border-radius: 12px; padding: 40px 32px;
+                      width: 100%; max-width: 400px;
+                      box-shadow: 0 10px 50px rgba(0,0,0,.4); }
+        .brand { text-align: center; margin-bottom: 28px; }
+        .brand .logo { font-size: 44px; }
+        .brand h1 { font-size: 20px; margin: 8px 0 4px; }
+        .login-card label { display: block; margin: 14px 0 6px;
+                            font-size: .85em; color: var(--muted); }
+        .login-card input { width: 100%; padding: 11px 13px;
+                            border: 1px solid var(--border);
+                            background: var(--bg); color: var(--text);
+                            border-radius: 7px; font-size: 1em; }
+        .login-card input:focus { outline: none; border-color: var(--primary); }
+        .login-card button.submit-btn {
+            width: 100%; margin-top: 18px; padding: 12px;
+            background: var(--primary); color: #fff; border: none;
+            border-radius: 8px; font-size: 1em; cursor: pointer; }
+        .login-card button.submit-btn:hover { background: var(--primary-hover); }
+        .login-card .error-msg { color: var(--err); margin-top: 8px;
+                                 font-size: .85em; min-height: 1.1em; }
+
+        /* ── App shell ────────────────────────────────────────────── */
+        .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+        .topbar { display: flex; justify-content: space-between; align-items: center;
+                  padding: 12px 20px; background: var(--surface);
+                  border-bottom: 1px solid var(--border); flex-shrink: 0; }
+        .topbar-brand { font-size: 1em; font-weight: 600; }
+        .topbar-right { display: flex; gap: 8px; align-items: center; }
+        .topbar-right button { background: transparent; color: var(--text);
+                               border: 1px solid var(--border);
+                               padding: 6px 14px; border-radius: 6px;
+                               cursor: pointer; font-size: .85em; }
+        .topbar-right button:hover { background: var(--surface-2); }
+        .dealer-info-pill { font-size: .8em; color: var(--muted);
+                            border: 1px solid var(--border);
+                            padding: 4px 12px; border-radius: 20px; }
+        .dealer-credits { color: var(--ok); font-weight: 700; }
+
+        /* ── Tabs ─────────────────────────────────────────────────── */
+        .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border);
+                background: var(--surface); padding: 0 20px; }
+        .tab-btn { background: none; border: none; color: var(--muted);
+                   padding: 14px 18px; cursor: pointer; font-size: .9em;
+                   border-bottom: 2px solid transparent; transition: color .15s; }
+        .tab-btn.active { color: var(--text); border-bottom-color: var(--primary); }
+        .tab-btn:hover { color: var(--text); }
+
+        .main-content { flex: 1; padding: 24px 20px; overflow-y: auto; max-width: 1200px; width: 100%; }
+
+        /* ── Cards / Tables ──────────────────────────────────────── */
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .section-title { font-size: 1.15em; font-weight: 600; margin-bottom: 16px; }
+        .card { background: var(--surface); border: 1px solid var(--border);
+                border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+        .stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+        .stat-chip { background: var(--surface-2); border: 1px solid var(--border);
+                     border-radius: 8px; padding: 12px 18px; min-width: 120px; }
+        .stat-chip .lbl { font-size: .75em; color: var(--muted); margin-bottom: 4px; }
+        .stat-chip .val { font-size: 1.3em; font-weight: 700; }
+
+        table { width: 100%; border-collapse: collapse; font-size: .85em; }
+        th { text-align: left; padding: 10px 12px; color: var(--muted);
+             border-bottom: 1px solid var(--border); font-weight: 600;
+             font-size: .8em; text-transform: uppercase; letter-spacing: .04em; }
+        td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(255,255,255,.02); }
+        .loading, .empty-msg { text-align: center; color: var(--muted);
+                               padding: 24px; font-style: italic; }
+        .err-msg { text-align: center; color: var(--err); padding: 16px; }
+
+        /* ── Tags / Badges ───────────────────────────────────────── */
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 4px;
+               font-size: .75em; font-weight: 600; text-transform: uppercase;
+               letter-spacing: .05em; }
+        .tag-pro        { background: #312e81; color: #a5b4fc; }
+        .tag-enterprise { background: #1e3a5f; color: #93c5fd; }
+        .tag-demo       { background: #1f2937; color: #9ca3af; }
+        .tag-active     { background: #064e3b; color: #6ee7b7; }
+        .tag-expired    { background: #451a03; color: #fcd34d; }
+        .tag-revoked    { background: #450a0a; color: #fca5a5; }
+        .tag-monthly    { background: #1e293b; color: #94a3b8; }
+        .tag-annual     { background: #0c2340; color: #7dd3fc; }
+        .tag-online     { background: #064e3b; color: #6ee7b7; }
+        .tag-offline    { background: #3b0764; color: #d8b4fe; }
+
+        /* ── Price table cells ───────────────────────────────────── */
+        .price-val { font-size: 1.15em; font-weight: 700; color: var(--text); }
+        .price-sub { font-size: .78em; color: var(--muted); }
+        .included-credits { color: var(--ok); font-weight: 600; }
+        .extra-price      { color: var(--warn); }
+
+        /* ── Toast ───────────────────────────────────────────────── */
+        #toast-host { position: fixed; bottom: 20px; right: 20px;
+                      display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
+        .toast { display: flex; align-items: center; gap: 10px;
+                 background: var(--surface-2); border: 1px solid var(--border);
+                 border-radius: 8px; padding: 12px 16px;
+                 font-size: .88em; min-width: 220px; max-width: 360px;
+                 animation: fadeIn .2s ease; }
+        .toast.success { border-color: var(--ok); }
+        .toast.error   { border-color: var(--err); }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+        /* ── Customer accordion ──────────────────────────────────── */
+        .customer-block { background: var(--surface); border: 1px solid var(--border);
+                          border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+        .customer-header { display: flex; align-items: center; gap: 12px;
+                           padding: 12px 16px; cursor: pointer;
+                           user-select: none; flex-wrap: wrap; }
+        .customer-header:hover { background: var(--surface-2); }
+        .customer-name { font-weight: 600; flex: 1; }
+        .customer-body { padding: 0 16px 14px; }
+
+        /* ── Responsive ──────────────────────────────────────────── */
+        @media (max-width: 600px) {
+            .tabs { padding: 0 8px; }
+            .tab-btn { padding: 12px 10px; font-size: .8em; }
+            .main-content { padding: 16px 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ======== LOGIN ======== -->
+<div id="loginScreen" class="login-wrap">
+    <div class="login-card">
+        <div class="brand">
+            <div class="logo">🤝</div>
+            <h1>MailTrustAI</h1>
+            <p class="muted">Bayi Paneli</p>
+        </div>
+        <form id="loginForm">
+            <label for="dealerId">Bayi ID</label>
+            <input type="text" id="dealerId" placeholder="bayi-xxxx" autocomplete="username" required>
+            <label for="dealerPw">Parola</label>
+            <input type="password" id="dealerPw" placeholder="••••••••" autocomplete="current-password" required>
+            <button type="submit" class="submit-btn">🔓 Giriş Yap</button>
+            <div id="loginError" class="error-msg"></div>
+        </form>
+    </div>
+</div>
+
+<!-- ======== DASHBOARD ======== -->
+<div id="dashboard" class="hidden app-shell">
+    <header class="topbar">
+        <span class="topbar-brand">🤝 MailTrustAI · <strong>Bayi Paneli</strong></span>
+        <div class="topbar-right">
+            <span class="dealer-info-pill" id="dealerNamePill">—</span>
+            <span class="dealer-info-pill">Kredi: <span id="dealerCredits" class="dealer-credits">—</span></span>
+            <button id="logoutBtn">Çıkış</button>
+        </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+        <button class="tab-btn active" data-tab="pricing" role="tab">💰 Fiyatlandırma</button>
+        <button class="tab-btn" data-tab="customers" role="tab">👥 Müşterilerim</button>
+    </nav>
+
+    <div class="main-content">
+
+        <!-- ===== FİYATLANDIRMA ===== -->
+        <div class="tab-panel active" id="panel-pricing">
+            <div class="section-title">💰 Güncel Fiyat Tablosu</div>
+            <div id="pricingInfo" class="card" style="font-size:.85em;line-height:1.7;margin-bottom:16px;color:#94a3b8">
+                Yükleniyor...
+            </div>
+            <div style="overflow-x:auto">
+                <table id="pricingTable">
+                    <thead>
+                        <tr>
+                            <th>Plan</th>
+                            <th>Dönem</th>
+                            <th>Lisans Ücreti</th>
+                            <th>Dahil Tarama</th>
+                            <th>Ek Tarama Birim Fiyatı</th>
+                            <th>Notlar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pricingBody">
+                        <tr><td colspan="6" class="loading">Yükleniyor...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p style="margin-top:16px;font-size:.75em;color:#475569;line-height:1.6">
+                ℹ️ Bu fiyatlar hizmet sağlayıcınız tarafından belirlenmektedir ve bildirimde bulunulmaksızın değiştirilebilir.
+                1 tarama = 1 kredi esasıyla çalışır. Dahil kredi aşıldığında ek birim fiyat uygulanır.
+            </p>
+        </div>
+
+        <!-- ===== MÜŞTERİLERİM ===== -->
+        <div class="tab-panel" id="panel-customers">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+                <div class="section-title" style="margin-bottom:0">👥 Müşterilerim</div>
+                <button id="refreshCustomersBtn" style="font-size:.8em;background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer">↻ Yenile</button>
+            </div>
+
+            <!-- İstatistikler -->
+            <div class="stat-row" id="customerStats" style="display:none">
+                <div class="stat-chip"><div class="lbl">Toplam Müşteri</div><div class="val" id="statTotalCustomers">—</div></div>
+                <div class="stat-chip"><div class="lbl">Aktif Lisans</div><div class="val" style="color:var(--ok)" id="statActiveL">—</div></div>
+                <div class="stat-chip"><div class="lbl">Süresi Dolan</div><div class="val" style="color:var(--warn)" id="statExpiredL">—</div></div>
+            </div>
+
+            <div id="customerList">
+                <div class="loading">Yükleniyor...</div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="toast-host"></div>
+<script src="/dealer/dealer.js"></script>
+</body>
+</html>

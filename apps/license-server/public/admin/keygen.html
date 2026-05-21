@@ -53,6 +53,7 @@
             <a class="nav-item" data-tab="dealers" data-perm="dealers:read">👥 <span>Bayiler</span></a>
             <a class="nav-item" data-tab="create" data-perm="licenses:write">🔑 <span>Lisans Üret</span></a>
             <a class="nav-item" data-tab="manage" data-perm="licenses:read">⚙️ <span>Lisans Yönet</span></a>
+            <a class="nav-item" data-tab="pricing" data-perm="pricing:read">💰 <span>Fiyatlandırma</span></a>
             <a class="nav-item" data-tab="audit" data-perm="audit:read">📜 <span>Audit Log</span></a>
             <a class="nav-item" data-tab="transfers" data-perm="transfers:read">🔁 <span>Transferler</span></a>
             <a class="nav-item" data-tab="users" data-perm="users:manage">👮 <span>Kullanıcılar</span></a>
@@ -421,6 +422,69 @@
                         • <strong>Destek</strong>: müşteri görüntüleme + transfer onay/red + audit
                     </div>
                 </div>
+            </div>
+        </section>
+
+        <!-- =========== TAB: FİYATLANDIRMA =========== -->
+        <section class="tab-content" data-tab="pricing">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+                <h2>💰 Fiyatlandırma Planları</h2>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <span class="muted" style="font-size:12px">1 tarama = 1 kredi</span>
+                    <a href="/dealer" target="_blank" style="font-size:12px;color:var(--primary);text-decoration:none;border:1px solid var(--primary);border-radius:5px;padding:4px 10px">🔗 Bayi Paneli</a>
+                    <button id="pricingReloadBtn" class="action-btn" title="Yenile">↻ Yenile</button>
+                </div>
+            </div>
+
+            <!-- Enterprise çarpanı + kredi birimi ayarı -->
+            <div class="form-card" style="margin-bottom:18px" id="pricingSettingsCard" data-perm="pricing:write">
+                <h3 style="margin-bottom:12px">⚙️ Genel Ayarlar</h3>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
+                    <div class="field">
+                        <label for="pricingMultiplier">Enterprise Çarpanı
+                            <span class="muted" style="font-size:11px">(Enterprise = Pro × çarpan)</span>
+                        </label>
+                        <input type="number" id="pricingMultiplier" min="1" max="10" step="0.01" style="width:110px" placeholder="1.20">
+                    </div>
+                    <div class="field">
+                        <label for="pricingCreditUnit">Kredi Birimi Adı</label>
+                        <input type="text" id="pricingCreditUnit" maxlength="32" style="width:120px" placeholder="tarama">
+                    </div>
+                    <button id="pricingSettingsSaveBtn" class="primary" style="height:38px;align-self:flex-end">💾 Kaydet</button>
+                    <div id="pricingSettingsResult" class="result" role="status" aria-live="polite" style="align-self:center"></div>
+                </div>
+                <p class="muted" style="margin-top:10px;font-size:11px">
+                    💡 Enterprise planın fiyatını tablo'dan manuel de girebilirsiniz — veya Pro fiyatını değiştirince
+                    "Enterprise'ı Hesapla" butonuyla otomatik çarpanı uygulayabilirsiniz.
+                </p>
+            </div>
+
+            <!-- Fiyat planları tablosu -->
+            <div class="table-wrap" style="overflow-x:auto">
+                <table id="pricingTable">
+                    <thead>
+                        <tr>
+                            <th>Plan</th>
+                            <th>Dönem</th>
+                            <th>Para Birimi</th>
+                            <th>Lisans Ücreti</th>
+                            <th>Dahil Kredi</th>
+                            <th>Ek Kredi Birim Fiyatı</th>
+                            <th>Notlar</th>
+                            <th>Durum</th>
+                            <th data-perm="pricing:write">İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pricingTableBody">
+                        <tr><td colspan="9" class="loading">Yükleniyor...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top:10px;font-size:12px;color:#64748b;line-height:1.7">
+                ℹ️ Bu sayfadaki fiyatlar <strong>bilgilendirme amaçlıdır</strong> — lisans üretimi veya faturalandırma
+                otomasyonu bu tabloya bağlı değildir. Bayiler fiyatları
+                <a href="/dealer" target="_blank" style="color:var(--primary)">Bayi Paneli</a>'nden görür.
             </div>
         </section>
 

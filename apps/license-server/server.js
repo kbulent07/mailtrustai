@@ -28,8 +28,9 @@ const policyRoutes = require('./routes/policy.routes');
 const listsRoutes = require('./routes/lists.routes');
 const apiPolicyRoutes = require('./routes/apiPolicy.routes');
 const customerSync = require('./routes/customerSync.routes');
-const dealerAuth = require('./routes/dealerAuth.routes');
-const adminRoutes = require('./routes/admin.routes');
+const dealerAuth   = require('./routes/dealerAuth.routes');
+const dealerRoutes = require('./routes/dealer.routes');
+const adminRoutes  = require('./routes/admin.routes');
 const { createRateLimiters } = require('./middleware/rateLimit');
 const path = require('path');
 
@@ -84,7 +85,10 @@ const PUBLIC_PREFIXES = [
     '/api/dealer/auth/',
     // /api/admin/* admin.routes.js kendi adminAuth middleware'iyle korur (ADMIN_PANEL_TOKEN).
     // Global DEALER_API_SECRET kontrolünden hariç tutulur.
-    '/api/admin/'
+    '/api/admin/',
+    // /api/dealer/* dealer.routes.js kendi session auth middleware'iyle korur.
+    // Fiyatlandırma (/api/dealer/pricing) oturum gerektirmez (bayiler URL paylaşabilir).
+    '/api/dealer/'
 ];
 
 function isPublic(p) {
@@ -129,6 +133,7 @@ app.use((req, res, next) => {
 
 app.use('/api', customerSync);
 app.use('/api', dealerAuth);
+app.use('/api', dealerRoutes);  // /api/dealer/* — bayi panel endpoint'leri
 app.use('/api', adminRoutes);   // /api/admin/* — geliştirici paneli
 app.use('/api', licenseRoutes);
 app.use('/api', centralRoutes);
@@ -141,6 +146,7 @@ app.use('/api', apiPolicyRoutes.router);
 // /admin/* → apps/license-server/public/admin/*
 // /admin   → keygen.html
 // ============================================================
+// ─── Admin Panel ─────────────────────────────────────────────────────────────
 const ADMIN_PUBLIC_DIR = path.join(__dirname, 'public', 'admin');
 app.use('/admin', express.static(ADMIN_PUBLIC_DIR, {
     etag: true, lastModified: true, maxAge: 0,
@@ -148,6 +154,15 @@ app.use('/admin', express.static(ADMIN_PUBLIC_DIR, {
 }));
 app.get('/admin', (req, res) => res.sendFile(path.join(ADMIN_PUBLIC_DIR, 'keygen.html')));
 app.get('/keygen.html', (req, res) => res.redirect('/admin/'));
+
+// ─── Bayi Panel ──────────────────────────────────────────────────────────────
+const DEALER_PUBLIC_DIR = path.join(__dirname, 'public', 'dealer');
+app.use('/dealer', express.static(DEALER_PUBLIC_DIR, {
+    etag: true, lastModified: true, maxAge: 0,
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache, must-revalidate')
+}));
+app.get('/dealer', (req, res) => res.sendFile(path.join(DEALER_PUBLIC_DIR, 'index.html')));
+app.get('/dealer/', (req, res) => res.sendFile(path.join(DEALER_PUBLIC_DIR, 'index.html')));
 
 app.use('/api', (req, res) => res.status(404).json({ error: `API endpoint bulunamadı: ${req.method} ${req.path}` }));
 app.use((err, req, res, next) => {

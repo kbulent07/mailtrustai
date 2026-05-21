@@ -979,4 +979,112 @@ router.delete('/admin/owner-users/:id', adminAuth, requirePerm('users:manage'), 
     res.json({ ok: true });
 }));
 
+// ============================================================
+// FİYATLANDIRMA YÖNETİMİ
+// ============================================================
+
+const VALID_PLANS   = ['demo', 'pro', 'enterprise'];
+const VALID_PERIODS = ['monthly', 'annual'];
+
+// GET /api/admin/pricing — tüm planlar + genel ayarlar
+router.get('/admin/pricing', adminAuth, requirePerm('pricing:read'), asyncH(async (req, res) => {
+    const plans = await all('SELECT * FROM pricing_plans ORDER BY plan, billing_period, currency');
+    const multRow = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'pricing_enterprise_multiplier'");
+    const unitRow = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'pricing_credit_unit'");
+    res.json({
+        plans: plans || [],
+        settings: {
+            enterpriseMultiplier: parseFloat(multRow?.setting_value || '1.20'),
+            creditUnit:           unitRow?.setting_value || 'tarama'
+        }
+    });
+}));
+
+// PUT /api/admin/pricing/:id — plan güncelle
+router.put('/admin/pricing/:id', adminAuth, requirePerm('pricing:write'), asyncH(async (req, res) => {
+    const plan = await get('SELECT * FROM pricing_plans WHERE id = ?', [req.params.id]);
+    if (!plan) return res.status(404).json({ error: 'fiyat planı bulunamadı' });
+
+    const {
+        base_price, included_credits, extra_credit_price,
+        notes, is_active
+    } = req.body || {};
+
+    const bp  = base_price          != null ? Number(base_price)          : plan.base_price;
+    const ic  = included_credits    != null ? Number(included_credits)    : plan.included_credits;
+    const ecp = extra_credit_price  != null ? Number(extra_credit_price)  : plan.extra_credit_price;
+    const act = is_active            != null ? (is_active ? 1 : 0)        : plan.is_active;
+    const nt  = notes                != null ? String(notes).slice(0,256) : plan.notes;
+
+    if (!Number.isFinite(bp)  || bp  < 0) return res.status(400).json({ error: 'base_price geçersiz' });
+    if (!Number.isFinite(ic)  || ic  < 0) return res.status(400).json({ error: 'included_credits geçersiz' });
+    if (!Number.isFinite(ecp) || ecp < 0) return res.status(400).json({ error: 'extra_credit_price geçersiz' });
+
+    await run(
+        `UPDATE pricing_plans
+         SET base_price=?, included_credits=?, extra_credit_price=?,
+             notes=?, is_active=?, updated_at=?, updated_by=?
+         WHERE id=?`,
+        [bp, Math.round(ic), ecp, nt, act, Date.now(), req.actor || 'admin', req.params.id]
+    );
+    await audit(req.actor, 'pricing.update', req.params.id, { bp, ic, ecp, act });
+    res.json({ ok: true });
+}));
+
+// PUT /api/admin/pricing/settings — enterprise çarpanı + kredi birimi
+router.put('/admin/pricing/settings', adminAuth, requirePerm('pricing:write'), asyncH(async (req, res) => {
+    const { enterpriseMultiplier, creditUnit } = req.body || {};
+    const ts = Date.now();
+
+    if (enterpriseMultiplier != null) {
+        const m = Number(enterpriseMultiplier);
+        if (!Number.isFinite(m) || m < 1 || m > 10)
+            return res.status(400).json({ error: 'enterpriseMultiplier 1-10 arasında olmalı' });
+        const upsert = isMaria
+            ? `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=VALUES(updated_at)`
+            : `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value, updated_at=excluded.updated_at`;
+        await run(upsert, ['pricing_enterprise_multiplier', String(m.toFixed(4)), ts]);
+    }
+
+    if (creditUnit != null) {
+        const cu = String(creditUnit).trim().slice(0, 32) || 'tarama';
+        const upsert = isMaria
+            ? `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=VALUES(updated_at)`
+            : `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value, updated_at=excluded.updated_at`;
+        await run(upsert, ['pricing_credit_unit', cu, ts]);
+    }
+
+    await audit(req.actor, 'pricing.settings.update', null, { enterpriseMultiplier, creditUnit });
+    res.json({ ok: true });
+}));
+
+// POST /api/admin/pricing — yeni plan ekle (opsiyonel, standart planlar migration'da geliyor)
+router.post('/admin/pricing', adminAuth, requirePerm('pricing:write'), asyncH(async (req, res) => {
+    const { plan, billing_period, currency = 'TRY',
+            base_price = 0, included_credits = 0, extra_credit_price = 0,
+            notes, is_active = 1 } = req.body || {};
+
+    if (!VALID_PLANS.includes(plan))
+        return res.status(400).json({ error: `plan geçersiz. Geçerli: ${VALID_PLANS.join(', ')}` });
+    if (!VALID_PERIODS.includes(billing_period))
+        return res.status(400).json({ error: `billing_period geçersiz. Geçerli: ${VALID_PERIODS.join(', ')}` });
+
+    const bp  = Number(base_price);
+    const ic  = Number(included_credits);
+    const ecp = Number(extra_credit_price);
+    if (!Number.isFinite(bp)  || bp  < 0) return res.status(400).json({ error: 'base_price geçersiz' });
+    if (!Number.isFinite(ic)  || ic  < 0) return res.status(400).json({ error: 'included_credits geçersiz' });
+    if (!Number.isFinite(ecp) || ecp < 0) return res.status(400).json({ error: 'extra_credit_price geçersiz' });
+
+    const id  = `pp-${plan.slice(0,3)}-${billing_period === 'monthly' ? 'm' : 'a'}-${String(currency).toLowerCase()}-${Date.now()}`;
+    await run(
+        `INSERT INTO pricing_plans(id,plan,billing_period,currency,base_price,included_credits,extra_credit_price,notes,is_active,updated_at,updated_by)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, plan, billing_period, String(currency).toUpperCase().slice(0,8),
+         bp, Math.round(ic), ecp, notes || null, is_active ? 1 : 0, Date.now(), req.actor || 'admin']
+    );
+    await audit(req.actor, 'pricing.create', id, { plan, billing_period, currency });
+    res.status(201).json({ ok: true, id });
+}));
+
 module.exports = router;

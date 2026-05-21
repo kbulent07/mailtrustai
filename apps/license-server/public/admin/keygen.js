@@ -137,6 +137,7 @@ function activateTab(tabName) {
     if (tabName === 'transfers') loadAdminTransfers();
     if (tabName === 'security')  loadSecurityStatus();
     if (tabName === 'users')     loadOwnerUsers();
+    if (tabName === 'pricing')   loadPricing();
 }
 
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -1281,6 +1282,144 @@ async function ownerUserDelete(id, email) {
         showToast('Silindi.', 'success'); loadOwnerUsers(); }
     catch (e) { showToast('Hata: ' + e.message, 'error'); }
 }
+
+// ================================================================
+// FİYATLANDIRMA — pricing tab
+// ================================================================
+let _pricingData = null; // { plans, settings }
+
+const PLAN_LABELS   = { demo: '🆓 Demo', pro: '⭐ Pro', enterprise: '🏢 Enterprise' };
+const PERIOD_LABELS = { monthly: 'Aylık', annual: 'Yıllık' };
+
+async function loadPricing() {
+    const tbody  = $('pricingTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="9" class="loading">Yükleniyor...</td></tr>';
+    try {
+        const r = await api('/api/admin/pricing');
+        _pricingData = r;
+
+        // Ayarları forma yükle
+        const mult = $('pricingMultiplier');
+        const unit = $('pricingCreditUnit');
+        if (mult) mult.value = r.settings?.enterpriseMultiplier ?? 1.20;
+        if (unit) unit.value = r.settings?.creditUnit ?? 'tarama';
+
+        renderPricingTable(r.plans || []);
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="9" class="error">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+function renderPricingTable(plans) {
+    const tbody   = $('pricingTableBody');
+    const canEdit = currentPerms.includes('pricing:write');
+    if (!plans.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Fiyat planı bulunamadı.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = plans.map(p => {
+        const planLabel   = PLAN_LABELS[p.plan]   || p.plan;
+        const periodLabel = PERIOD_LABELS[p.billing_period] || p.billing_period;
+        const statusBadge = p.is_active
+            ? '<span class="tag tag-online">✅ Aktif</span>'
+            : '<span class="tag tag-offline">⛔ Pasif</span>';
+        const actionCell = canEdit ? `
+            <button class="action-btn primary" data-act="pricing-save" data-id="${p.id}" title="Kaydet">💾</button>
+            <button class="action-btn ${p.is_active ? 'warn-btn' : ''}" data-act="pricing-toggle" data-id="${p.id}" data-active="${p.is_active ? 1 : 0}" title="${p.is_active ? 'Pasifleştir' : 'Aktifleştir'}">${p.is_active ? '⏸' : '▶'}</button>
+        ` : '—';
+        return `<tr data-pricing-id="${p.id}">
+            <td><strong>${escapeHtml(planLabel)}</strong></td>
+            <td>${escapeHtml(periodLabel)}</td>
+            <td>${escapeHtml(p.currency)}</td>
+            <td>${canEdit
+                ? `<input type="number" class="pricing-input" data-field="base_price" value="${p.base_price}" min="0" step="0.01" style="width:90px">`
+                : `<strong>${fmtPrice(p.base_price, p.currency)}</strong>`}
+            </td>
+            <td>${canEdit
+                ? `<input type="number" class="pricing-input" data-field="included_credits" value="${p.included_credits}" min="0" step="1" style="width:80px">`
+                : escapeHtml(String(p.included_credits))}
+            </td>
+            <td>${canEdit
+                ? `<input type="number" class="pricing-input" data-field="extra_credit_price" value="${p.extra_credit_price}" min="0" step="0.01" style="width:80px">`
+                : fmtPrice(p.extra_credit_price, p.currency)}
+            </td>
+            <td>${canEdit
+                ? `<input type="text" class="pricing-input" data-field="notes" value="${escapeHtml(p.notes || '')}" maxlength="256" style="width:160px">`
+                : escapeHtml(p.notes || '—')}
+            </td>
+            <td>${statusBadge}</td>
+            <td class="btn-group">${actionCell}</td>
+        </tr>`;
+    }).join('');
+
+    if (canEdit) {
+        tbody.querySelectorAll('[data-act="pricing-save"]').forEach(btn =>
+            btn.addEventListener('click', () => savePricingRow(btn.dataset.id))
+        );
+        tbody.querySelectorAll('[data-act="pricing-toggle"]').forEach(btn =>
+            btn.addEventListener('click', () => togglePricingRow(btn.dataset.id, btn.dataset.active === '1'))
+        );
+    }
+}
+
+function fmtPrice(val, currency = 'TRY') {
+    return Number(val).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
+}
+
+async function savePricingRow(id) {
+    const row = document.querySelector(`tr[data-pricing-id="${id}"]`);
+    if (!row) return;
+    const fields = {};
+    row.querySelectorAll('.pricing-input[data-field]').forEach(inp => {
+        const f = inp.dataset.field;
+        fields[f] = inp.type === 'number' ? Number(inp.value) : inp.value;
+    });
+    try {
+        await api(`/api/admin/pricing/${encodeURIComponent(id)}`, { method: 'PUT', body: fields });
+        showToast('Fiyat planı kaydedildi.', 'success');
+        loadPricing();
+    } catch (e) {
+        showToast('Kayıt hatası: ' + e.message, 'error');
+    }
+}
+
+async function togglePricingRow(id, isActive) {
+    try {
+        await api(`/api/admin/pricing/${encodeURIComponent(id)}`, {
+            method: 'PUT', body: { is_active: isActive ? 0 : 1 }
+        });
+        showToast(isActive ? 'Plan pasifleştirildi.' : 'Plan aktifleştirildi.', 'success');
+        loadPricing();
+    } catch (e) {
+        showToast('Hata: ' + e.message, 'error');
+    }
+}
+
+$('pricingSettingsSaveBtn')?.addEventListener('click', async () => {
+    const mult = parseFloat($('pricingMultiplier')?.value || '');
+    const unit = ($('pricingCreditUnit')?.value || '').trim();
+    const resEl = $('pricingSettingsResult');
+    resEl.textContent = '';
+    if (isNaN(mult) || mult < 1) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = 'Çarpan 1 veya üstü olmalı.';
+        return;
+    }
+    try {
+        await api('/api/admin/pricing/settings', {
+            method: 'PUT', body: { enterpriseMultiplier: mult, creditUnit: unit || 'tarama' }
+        });
+        resEl.style.color = '#34d399';
+        resEl.textContent = '✅ Ayarlar kaydedildi.';
+        loadPricing();
+    } catch (e) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = 'Hata: ' + e.message;
+    }
+});
+
+$('pricingReloadBtn')?.addEventListener('click', () => loadPricing());
 
 // ================================================================
 // BOOT: sessionStorage'da token varsa doğrula + rol/yetki geri yükle

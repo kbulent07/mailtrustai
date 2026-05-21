@@ -18,7 +18,9 @@ const PERMISSIONS = [
     'transfers:read',
     'transfers:write',  // onay / red
     'billing:read',     // fatura / finansal bilgi
-    'audit:read'
+    'audit:read',
+    'pricing:read',     // fiyatlandırma planlarını görüntüle
+    'pricing:write'     // fiyatlandırma planlarını düzenle
 ];
 
 // Rol → yetki listesi
@@ -31,21 +33,23 @@ const ROLE_PERMISSIONS = {
         'customers:read','customers:write',
         'transfers:read','transfers:write',
         'billing:read',
-        'audit:read'
+        'audit:read',
+        'pricing:read',  'pricing:write'
         // users:manage YOK
     ],
     'muhasebe': [
         'customers:read',
         'licenses:read',
         'billing:read',
-        'audit:read'
-        // hepsi salt-okunur / finansal
+        'audit:read',
+        'pricing:read'   // fiyatları görebilir, değiştiremez
     ],
     'support': [
         'customers:read',
         'licenses:read',
         'transfers:read', 'transfers:write',
-        'audit:read'
+        'audit:read',
+        'pricing:read'
     ]
 };
 
