@@ -7790,9 +7790,79 @@ async function loadListsPanel() {
         const data = await res.json();
         renderListItems('allowlist', data.allowlist || []);
         renderListItems('blocklist', data.blocklist || []);
+        _setListsSyncStatus('', '');
     } catch (e) {
         console.error('loadListsPanel error:', e);
+        showToast(_tLit('Liste yüklenemedi: ', 'List load failed: ') + e.message, 'error');
     }
+}
+
+// Merkez listesini indirir ve lokal girisleri koruyarak birlestirir.
+// Backend importLists(merge=true) kullanir — kullanicinin elle ekledigi
+// allowlist/blocklist girisleri SILINMEZ, yalniz yeni gelenler eklenir.
+async function syncListsFromCentral() {
+    const btnSelector = '[data-fn="syncListsFromCentral"]';
+    const btn = document.querySelector(btnSelector);
+    const original = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Senkronize ediliyor...'; }
+    _setListsSyncStatus(_tLit('☁ Merkez listesi indiriliyor...', '☁ Fetching central list...'), '#60a5fa');
+
+    try {
+        const res = await fetch('/api/lists/sync-from-central', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+
+        if (!res.ok) {
+            const msg = data.error || `HTTP ${res.status}`;
+            _setListsSyncStatus('✗ ' + msg, '#f87171');
+            showToast(_tLit('Merkezi liste güncelleme hatası: ', 'Central list sync error: ') + msg, 'error');
+            return;
+        }
+
+        const added = (data.allowlistAdded || 0) + (data.blocklistAdded || 0);
+        if (data.centralEmpty) {
+            _setListsSyncStatus(_tLit('ℹ Merkez listesi boş veya tanımsız.', 'ℹ Central list is empty.'), '#fbbf24');
+            showToast(_tLit('Merkez listesi boş', 'Central list empty'), 'info');
+        } else if (added === 0) {
+            _setListsSyncStatus(
+                _tLit('✓ Liste güncel — yeni giriş yok (lokal girişler korundu).',
+                      '✓ Up to date — no new entries (local entries preserved).'),
+                '#2ee59d'
+            );
+            showToast(_tLit('Zaten güncel — değişiklik yok', 'Already up to date'), 'success');
+        } else {
+            _setListsSyncStatus(
+                `✓ ${_tLit('Eklendi','Added')}: allowlist +${data.allowlistAdded || 0}, blocklist +${data.blocklistAdded || 0} (${_tLit('lokal girişler korundu','local entries preserved')})`,
+                '#2ee59d'
+            );
+            showToast(`✅ ${_tLit('Merkezden güncellendi','Synced from central')}: +${added}`, 'success');
+        }
+
+        // Listeyi yeniden render
+        if (data.lists) {
+            renderListItems('allowlist', data.lists.allowlist || []);
+            renderListItems('blocklist', data.lists.blocklist || []);
+        } else {
+            loadListsPanel();
+        }
+    } catch (e) {
+        _setListsSyncStatus('✗ ' + e.message, '#f87171');
+        showToast(_tLit('Ağ hatası: ', 'Network error: ') + e.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = original; }
+    }
+}
+
+function _setListsSyncStatus(text, color) {
+    const el = document.getElementById('listsSyncStatus');
+    if (!el) return;
+    if (!text) { el.style.display = 'none'; el.textContent = ''; return; }
+    el.style.display = '';
+    el.style.color = color || '';
+    el.textContent = text;
 }
 
 function renderListItems(type, items) {
