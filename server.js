@@ -3,6 +3,7 @@ const express = require('express');
 const http = require('http');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const cors = require('cors');
 const WebSocket = require('ws');
 const path = require('path');
 const apiRoutes = require('./src/routes/api');
@@ -55,6 +56,32 @@ if (CUSTOMER_ONLY) {
 
 // Security headers
 app.use(helmet({ contentSecurityPolicy: false }));
+
+// ─── CORS ─────────────────────────────────────────────────
+// MSA_ALLOWED_ORIGINS virgulle ayrilmis whitelist (ornek: https://app.x.com,https://admin.x.com)
+// Tanimsizsa same-origin/no-Origin disinda istekler reddedilir.
+// "*" verilirse tum origin'lere izin verilir (sadece dev/test icin onerilir).
+const ALLOWED_ORIGINS = String(process.env.MSA_ALLOWED_ORIGINS || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
+
+app.use(cors({
+    origin(origin, cb) {
+        // Tarayici disi/same-origin istekler (origin yok) her zaman gecer.
+        if (!origin) return cb(null, true);
+        if (ALLOWED_ORIGINS.includes('*')) return cb(null, true);
+        if (ALLOWED_ORIGINS.length === 0)   return cb(null, false); // default deny
+        if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+        return cb(null, false);
+    },
+    credentials: true,
+    methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+    allowedHeaders: ['Content-Type','Authorization','X-Requested-With']
+}));
+if (ALLOWED_ORIGINS.length === 0) {
+    console.log('[Security] CORS: same-origin only (MSA_ALLOWED_ORIGINS tanimsiz).');
+} else {
+    console.log(`[Security] CORS whitelist: ${ALLOWED_ORIGINS.join(', ')}`);
+}
 
 // Middleware
 app.use(express.json({ limit: '50mb' }));
