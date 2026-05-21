@@ -108,8 +108,13 @@ if (ALLOWED_ORIGINS.length === 0) {
 }
 
 // Middleware
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// JSON: 50mb → 5mb (buyuk dosya zaten multer üzerinden geliyor; .eml metin
+// payload'ı icin 5mb yeterli). MSA_JSON_BODY_LIMIT ile override edilebilir.
+// urlencoded form body kucuk olmali — DoS/ReDoS vektorunu daraltir.
+const JSON_LIMIT = process.env.MSA_JSON_BODY_LIMIT || '5mb';
+const URL_LIMIT  = process.env.MSA_URL_BODY_LIMIT  || '200kb';
+app.use(express.json({ limit: JSON_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: URL_LIMIT }));
 
 // no-cache yalnızca dinamik içerik (API + HTML sayfaları) için. Static asset'ler
 // (CSS/JS/PNG) tarayıcı tarafından önbelleklenebilsin → bandwidth ve hız.
