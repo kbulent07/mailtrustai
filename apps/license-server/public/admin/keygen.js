@@ -554,8 +554,10 @@ function renderDealersTable() {
             ? `<span style="color:#ef4444;font-weight:700">0</span>`
             : `<span style="color:#10b981;font-weight:700">${credits.toLocaleString('tr-TR')}</span>`;
         const creditBtn = canEdit
-            ? `<button class="action-btn" data-action="dealerCredit" data-id="${escapeHtml(d.id)}" data-name="${escapeHtml(d.name || d.id)}" data-credits="${credits}" title="Kredi yönet">💳 Kredi</button>`
+            ? `<button class="action-btn" data-action="dealerCredit" data-id="${escapeHtml(d.id)}" data-name="${escapeHtml(d.name || d.id)}" data-credits="${credits}" title="Kredi yükle / düş">💳 Kredi Yükle</button>`
             : '';
+        const pwBtn  = canEdit ? `<button class="action-btn" data-action="dealerPw" data-id="${escapeHtml(d.id)}">🔑 Parola</button>` : '';
+        const delBtn = canEdit ? `<button class="action-btn danger" data-action="dealerDel" data-id="${escapeHtml(d.id)}" data-name="${escapeHtml(d.name || d.id)}">🗑️ Sil</button>` : '';
         return `<tr>
         <td><code>${escapeHtml(d.id)}</code></td>
         <td>${escapeHtml(d.name || '—')}</td>
@@ -563,9 +565,7 @@ function renderDealersTable() {
         <td style="text-align:center">${creditBadge}</td>
         <td><small class="muted">${fmtDate(d.createdAt || d.created_at)}</small></td>
         <td class="btn-group">
-            ${creditBtn}
-            <button class="action-btn" data-action="dealerPw" data-id="${escapeHtml(d.id)}">🔑 Parola</button>
-            <button class="action-btn danger" data-action="dealerDel" data-id="${escapeHtml(d.id)}" data-name="${escapeHtml(d.name || d.id)}">🗑️ Sil</button>
+            ${creditBtn}${pwBtn}${delBtn}
         </td>
     </tr>`;
     }).join('');

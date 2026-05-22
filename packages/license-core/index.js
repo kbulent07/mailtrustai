@@ -21,15 +21,15 @@ function SECRET() {
 // Plan özellikleri belirler; tier aylık tarama kotasını belirler.
 // ============================================================
 const TIER_MATRIX = {
-    T1: { monthlyScanCount:      50, label: 'T1 (50/ay)' },
-    T2: { monthlyScanCount:     100, label: 'T2 (100/ay)' },
-    T3: { monthlyScanCount:     250, label: 'T3 (250/ay)' },
-    T4: { monthlyScanCount:     500, label: 'T4 (500/ay)' },
-    T5: { monthlyScanCount:    1000, label: 'T5 (1.000/ay)' },
-    T6: { monthlyScanCount:    2000, label: 'T6 (2.000/ay)' },
-    T7: { monthlyScanCount:    5000, label: 'T7 (5.000/ay)' },
-    T8: { monthlyScanCount:   10000, label: 'T8 (10.000/ay)' },
-    T9: { monthlyScanCount: 9999999, label: 'T9 (Sınırsız)' }
+    T1: { monthlyScanCount:    50, label: 'T1 (50/ay)' },
+    T2: { monthlyScanCount:   100, label: 'T2 (100/ay)' },
+    T3: { monthlyScanCount:   200, label: 'T3 (200/ay)' },
+    T4: { monthlyScanCount:   500, label: 'T4 (500/ay)' },
+    T5: { monthlyScanCount:  1000, label: 'T5 (1.000/ay)' },
+    T6: { monthlyScanCount:  2000, label: 'T6 (2.000/ay)' },
+    T7: { monthlyScanCount:  3000, label: 'T7 (3.000/ay)' },
+    T8: { monthlyScanCount:  5000, label: 'T8 (5.000/ay)' },
+    T9: { monthlyScanCount: 10000, label: 'T9 (10.000/ay)' }
 };
 
 // ============================================================
@@ -68,7 +68,7 @@ const PLAN_MATRIX = {
             batchScan: true, apiAccess: true
             // dailyLimit ve linkLimit JSON-Infinity uyumsuz — appState.js türetir
         },
-        limits: { monthlyScanCount: 9999999, mailboxCount: 1000, userCount: 1000 }
+        limits: { monthlyScanCount: 10000, mailboxCount: 1000, userCount: 1000 }
     }
 };
 
