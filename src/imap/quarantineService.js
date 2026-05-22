@@ -73,6 +73,8 @@ async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', d
     if (!account?.email) {
         return { attempted: true, moved: false, destinationFolder, error: 'Missing IMAP account email' };
     }
+    // Diskten taze credential — UI'dan şifre değiştirilince auth fail olmasın
+    const stored = loadCredentials().find(a => a.email === account.email) || account;
 
     let client = null;
     let lock = null;
@@ -81,7 +83,7 @@ async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', d
     let movedExternally = false;
 
     try {
-        client = await createConnection(account);
+        client = await createConnection(stored);
         await client.connect();
         // Sunucu delimiter'ine göre 'INBOX/foo' → 'INBOX.foo' gibi normalize et
         const resolvedDest = resolveFolderPath(client, destinationFolder);
@@ -93,7 +95,7 @@ async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', d
             try {
                 const m = await client.search({ uid: String(uid) }, { uid: true });
                 foundInSource = !!(m && m.length > 0);
-            } finally { tryLock.release(); }
+            } finally { try { await tryLock.release(); } catch (_) {} }
         } catch (_) { /* fall through to locator */ }
 
         // ─── BULUNAMADIYSA: Message-ID ile arama (dış kural taşımış olabilir) ─
@@ -164,7 +166,7 @@ async function moveMessageToQuarantine({ account, uid, sourceFolder = 'INBOX', d
             error: errMsg
         };
     } finally {
-        if (lock) lock.release();
+        if (lock) { try { await lock.release(); } catch (_) {} }
         if (client) await client.logout().catch(() => {});
     }
 }
@@ -217,10 +219,12 @@ async function ensureMailbox(client, destinationFolder) {
  */
 async function ensureFolderForAccount(account, folder) {
     if (!account?.email) return { ok: false, folder, error: 'no-account' };
+    // Diskten taze credential
+    const stored = loadCredentials().find(a => a.email === account.email) || account;
 
     let client = null;
     try {
-        client = await createConnection(account);
+        client = await createConnection(stored);
         await client.connect();
         // 'INBOX/foo' → sunucu delimiter'i `.` ise 'INBOX.foo' olarak normalize
         const resolved = resolveFolderPath(client, folder);

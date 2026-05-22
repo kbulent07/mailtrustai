@@ -75,7 +75,7 @@ async function findMessageByMessageId(client, messageId, opts = {}) {
             if (matches && matches.length > 0) {
                 return { folder: preferFolder, uid: Number(matches[0]) };
             }
-        } finally { lock.release(); }
+        } finally { try { await lock.release(); } catch (_) {} }
     } catch (_) { /* preferFolder erişilemiyor — diğerlerine geç */ }
 
     // Tüm klasörleri listele
@@ -110,7 +110,7 @@ async function findMessageByMessageId(client, messageId, opts = {}) {
                     );
                     return { folder: path, uid: Number(matches[0]) };
                 }
-            } finally { lock.release(); }
+            } finally { try { await lock.release(); } catch (_) {} }
         } catch (e) {
             // Bazı klasörler erişilemez (özel haklar, vb.) — sessizce geç
             continue;

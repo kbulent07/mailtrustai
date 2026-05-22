@@ -81,12 +81,24 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
-*(şu an aktif görev yok)*
+*(şu an aktif görev yok — B1, B2, B3, B5, B6, B7 tamamlandı)*
+
+### Bilinen Davranışlar (Bug Değil)
+- **DKIM imzası bozulması**: `markRiskySubject` etkinken bir mailin konusu APPEND ile değiştirilir → DKIM-Signature artık geçersizdir. Bu beklenen ve dokümante edilmiş davranıştır. Mail içeriği DEĞİŞMEMİŞTİR, sadece subject + 3 tracking header eklenmiştir. (UI checkbox'ında uyarı var.)
+
+### Açık Bug'lar (gelecek görev)
+- **B4** 🟠 Çift monitör analizi — `scanMailboxMonitor` + `websocket.js` aynı INBOX'u izliyor → AI/VT quota 2x. Ortak analiz cache veya tek-monitör refactoru gerekir.
+- **B8** 🟡 `_wsMonitorLastUid` baseline race (idempotent, küçük)
+- **B9** 🟡 `messageLocator` 30 folder × 30ms (Gmail X-GM-RAW ile hızlandırılabilir)
+- **B10** 🟡 `removeDecoration` locator desteği yok (INBOX dışında çalışmaz)
+- **B11** 🟡 `enrichWithAI` partial state (yarıda kalan VT call)
 
 ### Yapıldı (son tamamlananlar)
-- **Local Docker'da müşteri uygulamasını başlat** *(no-op)*
-  - Container `mailtrustai-customer` zaten **Up 18 min (healthy)** durumdaydı
-  - `http://localhost:3000/healthz` → HTTP 200 (8ms)
-  - Auto-monitor aktif, IMAP mailleri analiz ediyor (örnek log: uid=630995/630996, level=safe)
-  - Yeni başlatma/restart gerekmedi; yalnızca durum doğrulandı
-  - **Not**: lokal source (`C:\mailtrustai-source`) henüz origin/mainpaketler son commit'inde değil (4225ff8 vs 59a5111). Yeni özellikleri çalıştırmak için pull + rebuild + up gerekir.
+- **Derin hata analizi → 6 bug fix** (B1, B2, B3, B5, B6, B7)
+  - **B2** Decorator/Quarantine `stored` kullanır (taze credential) → şifre değişince auth fail çözüldü
+  - **B1** `monitor.js` exists handler closure ile `currClient` yakalar — async loop sırasında bağlantı değişirse break ile çıkar
+  - **B3** `_lastSeenExists` fallback — `prevCount` yoksa son görülen exists değeri kullanılır, toplu mail kaçırma giderildi
+  - **B5** Tüm `lock.release()` çağrıları `await` + try/catch ile defensive
+  - **B6** Self-loop koruması güçlendirildi — `X-MailTrustAI-Report-Id` HMAC-imzalı header (saldırgan üretemez) + subject prefix yedek check (HMAC test 6/6 ✓)
+  - **B7** DKIM bozulması UI'da uyarı + CLAUDE.md "Bilinen Davranışlar" notu
+- **Local Docker'da müşteri uygulamasını başlat** *(no-op — zaten healthy)*

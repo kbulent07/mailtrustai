@@ -3,7 +3,7 @@
 // ============================================================
 const { ImapMonitor } = require('./monitor');
 const { listEmails, fetchAndParseEmail } = require('./scanner');
-const { sendReportEmail } = require('../smtp/sender');
+const { sendReportEmail, REPORT_HEADER_NAME, verifyReportId } = require('../smtp/sender');
 const { buildReportHtml, isRisky } = require('../smtp/reportBuilder');
 const { recordScan } = require('../storage/scanHistory');
 const { incrementScanCounts, licenseUsageScope } = require('../services/appState');
@@ -116,12 +116,24 @@ class ScanMailboxMonitor {
                 return;
             }
 
-            // Loop koruması 2: konu başlığı bizim rapor ön ekimizi içeriyorsa atla.
-            // Bu, iletilenin aynı zamanda rapor alıcısı olduğu durumlarda döngüyü keser.
+            // Loop koruması 2: bizim ürettiğimiz rapor maili mi? (self-loop)
+            // İki katmanlı kontrol:
+            //  a) HMAC-imzalı X-MailTrustAI-Report-Id header (güçlü check —
+            //     saldırgan üretemez, sadece bu kurulum tarafından imzalanır)
+            //  b) Subject prefix (eski mailler/process restart sonrası yedek)
             const subject = String(email.subject || '');
-            if (subject.includes('[MailTrustAI Güvenlik Raporu]') ||
-                subject.includes('[MailTrustAI Security Report]')) {
-                console.log(`[ScanMailbox] Self-loop atlandı (rapor konusu): "${subject.slice(0, 80)}"`);
+            const hdrs = email.headers;
+            let reportId = null;
+            if (hdrs instanceof Map) {
+                reportId = hdrs.get(REPORT_HEADER_NAME.toLowerCase()) || hdrs.get(REPORT_HEADER_NAME);
+            } else if (hdrs && typeof hdrs === 'object') {
+                reportId = hdrs[REPORT_HEADER_NAME.toLowerCase()] || hdrs[REPORT_HEADER_NAME];
+            }
+            const isVerifiedReport = reportId && verifyReportId(String(reportId).trim());
+            const looksLikeReport  = subject.includes('[MailTrustAI Güvenlik Raporu]') ||
+                                     subject.includes('[MailTrustAI Security Report]');
+            if (isVerifiedReport || looksLikeReport) {
+                console.log(`[ScanMailbox] Self-loop atlandı (${isVerifiedReport ? 'HMAC-doğrulanmış' : 'subject-prefix'}): "${subject.slice(0, 80)}"`);
                 this.markProcessed(uid);
                 return;
             }

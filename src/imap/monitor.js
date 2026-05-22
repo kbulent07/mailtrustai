@@ -68,14 +68,32 @@ class ImapMonitor {
             this._reconnectAttempts = 0;
 
             this.client.on('exists', async (data) => {
+                // closure: handler tetiklendiği andaki client'ı yakala.
+                // Async fetch loop'u sırasında bağlantı koparsa this.client
+                // YENİ bir client'a atanır — eski handler bunu kullanmamalı,
+                // aksi halde mail kaybı veya çift işlem olur.
+                const currClient = this.client;
+                if (!currClient || !currClient.usable) return;
                 try {
-                    const curr = typeof data?.count === 'number' ? data.count : (this.client.mailbox?.exists || 0);
-                    const prev = typeof data?.prevCount === 'number' ? data.prevCount : Math.max(curr - 1, 0);
+                    const curr = typeof data?.count === 'number' ? data.count : (currClient.mailbox?.exists || 0);
+                    // prevCount yoksa _lastSeenExists fallback (toplu mail kaçırma fix)
+                    const prev = (typeof data?.prevCount === 'number')
+                        ? data.prevCount
+                        : (typeof this._lastSeenExists === 'number'
+                            ? this._lastSeenExists
+                            : Math.max(curr - 1, 0));
+                    this._lastSeenExists = curr;
+
                     if (curr <= prev) return;
 
                     // Aralıktaki TÜM mesajları sırayla işle (toplu mail almasında atlama olmasın)
                     const range = `${prev + 1}:${curr}`;
-                    for await (const msg of this.client.fetch(range, { source: true, envelope: true, uid: true })) {
+                    for await (const msg of currClient.fetch(range, { source: true, envelope: true, uid: true })) {
+                        // Her iterasyonda client hâlâ aynı mı kontrol et — koptu/yenilendi ise çık
+                        if (currClient !== this.client) {
+                            console.warn('[Monitor] exists handler: client değişti, eski iterasyon durduruluyor');
+                            break;
+                        }
                         if (!msg || !msg.source) continue;
                         try {
                             const parsed = await parseEmail(msg.source);
@@ -146,7 +164,7 @@ class ImapMonitor {
         this._reconnectTimer = setTimeout(async () => {
             if (this._stopping) return;
             // Eski client/lock temizle
-            if (this.lock) { try { this.lock.release(); } catch (_) {} this.lock = null; }
+            if (this.lock) { try { await this.lock.release(); } catch (_) {} this.lock = null; }
             if (this.client) { try { await this.client.logout(); } catch (_) {} this.client = null; }
 
             try {
