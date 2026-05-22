@@ -7,6 +7,9 @@ node_modules/
 .env.*.local
 .env.docker
 .env.docker.local
+.env.docker.pre-update.*
+.env.*.backup
+.env.backup.*
 
 # Şifreli kimlik bilgileri ve hassas veri dosyaları
 data/credentials.enc

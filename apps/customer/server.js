@@ -210,6 +210,20 @@ app.use(express.static(PUBLIC_DIR, {
 // ============================================================
 // Customer-only ek API'ler: lisans durumu (read-only) ve policy snapshot
 // ============================================================
+
+// License-server URL'i dinamik kaynak — onceligi settings > env.
+// UI'dan kullanici degistirirse settings.licenseRemoteUrl yazilir.
+// Bos olursa env (MSA_LICENSE_REMOTE_URL) fallback olarak kullanilir.
+function getActiveLicenseRemoteUrl() {
+    try {
+        const s = loadSettings();
+        if (s?.licenseRemoteUrl && String(s.licenseRemoteUrl).trim()) {
+            return String(s.licenseRemoteUrl).trim().replace(/\/$/, '');
+        }
+    } catch (_) { /* settings okunamadi - env fallback */ }
+    return (env('MSA_LICENSE_REMOTE_URL') || '').replace(/\/$/, '');
+}
+
 app.get('/api/customer/license/status', asyncH((req, res) => {
     const snap = licenseClient.getSnapshot();
     const grace = licenseClient.graceCheck();
@@ -219,23 +233,85 @@ app.get('/api/customer/license/status', asyncH((req, res) => {
 app.post('/api/customer/license/activate', asyncH(async (req, res) => {
     const { licenseKey } = req.body || {};
     if (!licenseKey) return res.status(400).json({ error: 'licenseKey gerekli' });
-    const remoteUrl = env('MSA_LICENSE_REMOTE_URL');
-    if (!remoteUrl) return res.status(503).json({ error: 'MSA_LICENSE_REMOTE_URL tanımlı değil' });
+    const remoteUrl = getActiveLicenseRemoteUrl();
+    if (!remoteUrl) return res.status(503).json({ error: 'License-server URL tanımlı değil. UI veya .env ile ayarlayın.' });
     const r = await licenseClient.activate({ remoteUrl, licenseKey });
     res.json({ ok: true, snapshot: r });
 }));
 
 app.post('/api/customer/license/validate', asyncH(async (req, res) => {
-    const remoteUrl = env('MSA_LICENSE_REMOTE_URL');
-    if (!remoteUrl) return res.status(503).json({ error: 'MSA_LICENSE_REMOTE_URL tanımlı değil' });
+    const remoteUrl = getActiveLicenseRemoteUrl();
+    if (!remoteUrl) return res.status(503).json({ error: 'License-server URL tanımlı değil.' });
     const settings = (() => { try { return loadSettings(); } catch (_) { return {}; } })();
     const licenseKey = req.body?.licenseKey || settings.activeLicenseKey;
     if (!licenseKey) return res.status(400).json({ error: 'licenseKey yok' });
     const r = await licenseClient.validate({ remoteUrl, licenseKey });
-    // Snapshot'ı dahil et: UI badge'i için plan/tier/features/limits gerekli.
-    // validate() cache'i güncelledikten sonra getSnapshot() güncel veriyi döner.
     const snapshot = licenseClient.getSnapshot();
     res.json({ ...r, snapshot });
+}));
+
+// ─── License-server URL UI yonetimi ───────────────────────────
+// GET  : mevcut URL'i + kaynagini (settings|env) doner
+// POST : URL'i settings'e yazar (env override eder)
+// GET ping: belirtilen veya aktif URL'e baglanti testi
+app.get('/api/customer/license/server-url', (req, res) => {
+    let envUrl = env('MSA_LICENSE_REMOTE_URL') || '';
+    let settingsUrl = '';
+    try { settingsUrl = String(loadSettings()?.licenseRemoteUrl || ''); } catch (_) {}
+    const active = getActiveLicenseRemoteUrl();
+    res.json({
+        active,
+        source: settingsUrl ? 'settings' : (envUrl ? 'env' : 'none'),
+        envUrl,
+        settingsUrl,
+        editable: true
+    });
+});
+
+app.post('/api/customer/license/server-url', asyncH((req, res) => {
+    const { url } = req.body || {};
+    const cleaned = String(url || '').trim().replace(/\/$/, '');
+    // Bos URL = settings'i temizle (env'e geri don)
+    if (cleaned && !/^https?:\/\//i.test(cleaned)) {
+        return res.status(400).json({ error: 'URL http:// veya https:// ile baslamali' });
+    }
+    const { saveSettings } = core.storage.settingsStore();
+    const current = (() => { try { return loadSettings(); } catch (_) { return {}; } })();
+    saveSettings({ ...current, licenseRemoteUrl: cleaned });
+    const active = getActiveLicenseRemoteUrl();
+    logger.info(`[license] server-url guncellendi -> ${active || '(bos, env fallback)'}`);
+    res.json({ ok: true, active, source: cleaned ? 'settings' : (env('MSA_LICENSE_REMOTE_URL') ? 'env' : 'none') });
+}));
+
+app.get('/api/customer/license/ping', asyncH(async (req, res) => {
+    const urlOverride = String(req.query.url || '').trim().replace(/\/$/, '');
+    const remoteUrl   = urlOverride || getActiveLicenseRemoteUrl();
+    if (!remoteUrl) {
+        return res.status(400).json({ ok: false, error: 'License-server URL tanımlı değil.' });
+    }
+    // /api/health (license-server) veya /healthz (genel) ikisinden birini dener
+    const candidates = ['/api/health', '/healthz'];
+    const started = Date.now();
+    for (const path of candidates) {
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 5000);
+            const r = await fetch(remoteUrl + path, { signal: controller.signal })
+                .finally(() => clearTimeout(timer));
+            if (r.ok) {
+                const elapsedMs = Date.now() - started;
+                let body = null;
+                try { body = await r.json(); } catch (_) {}
+                return res.json({ ok: true, url: remoteUrl, path, elapsedMs, body });
+            }
+        } catch (_) { /* sonraki path'i dene */ }
+    }
+    return res.status(502).json({
+        ok: false,
+        url: remoteUrl,
+        error: 'License-server cevap vermedi (/api/health ve /healthz denendi).',
+        elapsedMs: Date.now() - started
+    });
 }));
 
 app.get('/api/customer/policy/snapshot', (req, res) => {
@@ -354,8 +430,8 @@ function startListening() {
         logger.info(`🛡️  MailTrustAI Customer @ http://localhost:${PORT} (v${APP.VERSION})`);
 
         const syncEnabled = envBool('MSA_CENTRAL_SYNC_ENABLED', true);
-        const syncUrl     = env('MSA_CENTRAL_SYNC_URL') || env('MSA_LICENSE_REMOTE_URL');
-        const remoteUrl   = env('MSA_LICENSE_REMOTE_URL');
+        const syncUrl     = env('MSA_CENTRAL_SYNC_URL') || getActiveLicenseRemoteUrl();
+        const remoteUrl   = getActiveLicenseRemoteUrl();
         const presetKey   = env('MSA_LICENSE_KEY');
         const hbSec       = envInt('MSA_HEARTBEAT_INTERVAL_SECONDS', 300);
         const plSec       = envInt('MSA_POLICY_SYNC_INTERVAL_SECONDS', 900);

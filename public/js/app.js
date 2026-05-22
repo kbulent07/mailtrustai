@@ -3646,10 +3646,123 @@ function showImapBackgroundScanNotification(result, message) {
 // ============================================================
 function showLicenseModal() {
     document.getElementById('licenseModal').classList.remove('hidden');
+    // URL alanini guncel deger ile doldur (her acilista taze cek)
+    _loadLicenseServerUrlIntoModal();
 }
 
 function closeLicenseModal() {
     document.getElementById('licenseModal').classList.add('hidden');
+    // Edit modunda kapatilirsa toggle'i sifirla
+    _setLicenseServerUrlEditMode(false, /* discard */ true);
+}
+
+// ─── License-server URL yonetimi ───────────────────────────
+async function _loadLicenseServerUrlIntoModal() {
+    const input = document.getElementById('licenseServerUrlInput');
+    const info  = document.getElementById('licenseServerUrlInfo');
+    if (!input) return;
+    try {
+        const res = await fetch('/api/customer/license/server-url');
+        const data = await res.json();
+        input.value = data.active || '';
+        input.dataset.original = data.active || '';
+        if (info) {
+            const src = data.source === 'settings'
+                ? '⚙️ UI uzerinden ayarlanmis (kalici)'
+                : data.source === 'env'
+                    ? '🐳 .env dosyasindan (Docker default)'
+                    : '⚠ URL tanimsiz — sertifikalama yapilmasi icin girin';
+            info.innerHTML = `💡 ${src}. Degistirmek icin <strong>Düzenle</strong>.`;
+        }
+    } catch (e) {
+        input.value = '';
+        if (info) info.innerHTML = `❌ URL bilgisi alinamadi: ${esc(e.message)}`;
+    }
+    _setLicenseServerUrlEditMode(false);
+}
+
+function _setLicenseServerUrlEditMode(editing, discard = false) {
+    const input = document.getElementById('licenseServerUrlInput');
+    const btn   = document.getElementById('licenseServerUrlEditBtn');
+    if (!input || !btn) return;
+    if (editing) {
+        input.readOnly = false;
+        input.style.opacity = '1';
+        input.style.cursor = 'text';
+        btn.innerHTML = '💾 Kaydet';
+        btn.classList.remove('btn-ghost');
+        btn.classList.add('btn-primary');
+        input.focus();
+        input.select();
+    } else {
+        input.readOnly = true;
+        input.style.opacity = '0.75';
+        input.style.cursor = 'not-allowed';
+        btn.innerHTML = '✏️ Düzenle';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-ghost');
+        if (discard && input.dataset.original !== undefined) {
+            input.value = input.dataset.original;
+        }
+    }
+}
+
+async function toggleLicenseServerUrlEdit() {
+    const input = document.getElementById('licenseServerUrlInput');
+    const btn   = document.getElementById('licenseServerUrlEditBtn');
+    if (!input || !btn) return;
+    const editing = !input.readOnly;
+    if (!editing) {
+        // edit moduna gec
+        _setLicenseServerUrlEditMode(true);
+        return;
+    }
+    // Save modunda — backend'e yaz
+    const newUrl = input.value.trim();
+    const original = input.dataset.original || '';
+    if (newUrl === original) {
+        // Degisiklik yok, sadece read-only'ye don
+        _setLicenseServerUrlEditMode(false);
+        return;
+    }
+    if (newUrl && !/^https?:\/\//i.test(newUrl)) {
+        showToast(_tLit('URL http:// veya https:// ile baslamali', 'URL must start with http:// or https://'), 'warning');
+        return;
+    }
+    btn.disabled = true;
+    const prev = btn.innerHTML;
+    btn.innerHTML = '⏳ Kaydediliyor...';
+    try {
+        const res = await fetch('/api/customer/license/server-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: newUrl })
+        });
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+        if (!res.ok) {
+            showToast(`URL kaydedilemedi: ${data.error || 'HTTP ' + res.status}`, 'error');
+            btn.innerHTML = prev;
+            btn.disabled = false;
+            return;
+        }
+        // Basarili: input'u guncelle, read-only'ye gec
+        input.value = data.active || newUrl;
+        input.dataset.original = input.value;
+        showToast(_tLit('✅ License-server URL kaydedildi', '✅ License-server URL saved'), 'success');
+        const info = document.getElementById('licenseServerUrlInfo');
+        if (info) {
+            const src = data.source === 'settings' ? '⚙️ UI uzerinden ayarlanmis'
+                : data.source === 'env' ? '🐳 .env (Docker)'
+                : '⚠ tanimsiz';
+            info.innerHTML = `💡 ${src}. Degistirmek icin <strong>Düzenle</strong>.`;
+        }
+    } catch (e) {
+        showToast(`URL kaydedilemedi: ${e.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        _setLicenseServerUrlEditMode(false);
+    }
 }
 
 // ============================================================
@@ -3738,13 +3851,16 @@ async function pingLicenseServer() {
     const out = document.getElementById('licenseResult');
     if (out) out.innerHTML = '<div style="color:var(--text-secondary);margin-top:12px">🔌 License-server\'a ping atılıyor...</div>';
     try {
-        const t0 = Date.now();
-        const res = await fetch('/api/customer/license/ping');
+        // URL alani edit modundaysa o degeri test et (henuz kaydedilmemis olsa bile)
+        const input = document.getElementById('licenseServerUrlInput');
+        const probeUrl = input && !input.readOnly ? input.value.trim() : '';
+        const endpoint = probeUrl ? `/api/customer/license/ping?url=${encodeURIComponent(probeUrl)}` : '/api/customer/license/ping';
+        const res = await fetch(endpoint);
         const data = await res.json();
-        const elapsed = Date.now() - t0;
+        const ms = data.elapsedMs ?? data.elapsed ?? '?';
         const html = data.ok
             ? `<div style="background:rgba(16,185,129,0.12);border:1px solid #10b981;border-radius:8px;padding:12px;margin-top:12px">
-                ✅ <strong>License-server cevap verdi</strong> (${data.elapsed}ms)<br>
+                ✅ <strong>License-server cevap verdi</strong> (${ms}ms${data.path ? ' · ' + esc(data.path) : ''})<br>
                 <code style="font-size:11px">${esc(data.url)}</code>
             </div>`
             : `<div style="background:rgba(239,68,68,0.12);border:1px solid #ef4444;border-radius:8px;padding:12px;margin-top:12px">

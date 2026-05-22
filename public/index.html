@@ -1171,6 +1171,27 @@
                 💡 7 günlük Enterprise deneme için yöneticinizden trial lisans isteyin.
             </div>
         </div>
+
+        <!-- License-server URL — pasif goster, Edit/Save toggle ile duzenle -->
+        <div class="form-group">
+            <label class="form-label">🌐 License-Server URL</label>
+            <div style="display:flex;gap:8px;align-items:stretch">
+                <input class="form-input" id="licenseServerUrlInput"
+                       placeholder="http://licence.mailtrustai.com:3200"
+                       readonly
+                       style="flex:1;opacity:0.75;cursor:not-allowed">
+                <button type="button" class="btn btn-ghost btn-sm" id="licenseServerUrlEditBtn"
+                        data-fn="toggleLicenseServerUrlEdit"
+                        title="URL'i degistirmek icin tikla"
+                        style="white-space:nowrap">
+                    ✏️ Düzenle
+                </button>
+            </div>
+            <div id="licenseServerUrlInfo" style="font-size:11px;color:var(--text-secondary);margin-top:4px">
+                💡 Bu URL'e lisans dogrulama istekleri gonderilir.
+            </div>
+        </div>
+
         <div id="licenseResult" class="mb-16"></div>
         <div class="flex gap-16">
             <button class="btn btn-primary" data-fn="activateLicense">✅ <span data-i18n="btn_activate">Etkinleştir</span></button>
