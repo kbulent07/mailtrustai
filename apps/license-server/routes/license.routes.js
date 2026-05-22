@@ -104,8 +104,9 @@ router.post('/license/create', asyncH(async (req, res) => {
                 balance: dealer.credits ?? 0
             });
         }
-        // Güncel bakiyeyi oku ve işlem kütüğüne yaz.
-        const newBalance = (dealer.credits ?? 0) - 1;
+        // UPDATE sonrası gerçek bakiyeyi oku — stale pre-UPDATE değeri yerine kesin rakamı kullan.
+        const afterUpd   = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
+        const newBalance = afterUpd?.credits ?? 0;
         const { v4: _uuid } = require('uuid');
         await run(
             'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at) VALUES(?,?,?,?,?,?,?,?)',

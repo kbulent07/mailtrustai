@@ -287,8 +287,10 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
         });
     }
 
-    // Kredi hareketini kaydet (TRY tutarı: bu plan için extra_credit_price)
-    const newBalance = (dealer.credits ?? 0) - 1;
+    // UPDATE sonrası gerçek bakiyeyi DB'den oku — stale pre-UPDATE değeri yerine
+    // kesin rakamı kullan. Concurrent istekler aynı anda geçse bile log doğru olur.
+    const afterUpd   = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
+    const newBalance = afterUpd?.credits ?? 0;
     let priceAmount  = 0;
     let priceCurrency = 'TRY';
     try {

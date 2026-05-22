@@ -702,9 +702,11 @@ router.post('/admin/dealers/:id/credits', adminAuth, requirePerm('dealers:write'
         return res.status(400).json({ error: 'delta sıfırdan farklı tam sayı olmalı' });
 
     const currentCredits = dealer.credits ?? 0;
-    const newBalance     = currentCredits + d;
 
-    if (newBalance < 0)
+    // Pre-check: negatif sonuçlanacak düşme isteğini erken reddet.
+    // Race condition olsa bile atomik UPDATE aşağıda bakiyenin sıfırın altına
+    // düşmesini engeller (CASE WHEN koşulu).
+    if (currentCredits + d < 0)
         return res.status(400).json({ error: `Yetersiz bakiye. Mevcut: ${currentCredits}, İstenen düşme: ${Math.abs(d)}` });
 
     const desc        = description ? String(description).trim().slice(0, 512) : null;
@@ -712,7 +714,27 @@ router.post('/admin/dealers/:id/credits', adminAuth, requirePerm('dealers:write'
     const prcAmount   = priceAmount != null ? parseFloat(priceAmount) : 0;
     const prcCurrency = (reqCurrency && typeof reqCurrency === 'string') ? reqCurrency.trim().slice(0, 8) : 'TRY';
 
-    await run('UPDATE dealers SET credits = ? WHERE id = ?', [newBalance, dealer.id]);
+    // Atomik UPDATE: sabit değer yerine `credits + delta` — concurrent bayi/admin
+    // yazmaları birbirini ezmez. Negatife düşmeyi CASE WHEN ile önle.
+    const upd = await run(
+        `UPDATE dealers
+            SET credits = CASE WHEN credits + ? >= 0 THEN credits + ? ELSE credits END
+          WHERE id = ?`,
+        [d, d, dealer.id]
+    );
+    const changed = upd?.affectedRows ?? upd?.changes ?? 0;
+
+    // UPDATE sonrası gerçek bakiyeyi oku (concurrent güncelleme olsa bile doğru rakam).
+    const afterUpd   = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
+    const newBalance = afterUpd?.credits ?? 0;
+
+    // CASE WHEN koşulu nedeniyle hiç değişmemediyse bakiye zaten 0'daydı.
+    if (changed === 0 || newBalance === currentCredits) {
+        return res.status(400).json({
+            error: `Yetersiz bakiye. Mevcut: ${newBalance}, İstenen düşme: ${Math.abs(d)}`,
+            balance: newBalance
+        });
+    }
 
     const { v4: _uuid } = require('uuid');
     await run(
@@ -1133,7 +1155,37 @@ router.get('/admin/pricing', adminAuth, requirePerm('pricing:read'), asyncH(asyn
     });
 }));
 
+// PUT /api/admin/pricing/settings — enterprise çarpanı + kredi birimi
+// ÖNEMLI: Bu route /pricing/:id'den ÖNCE tanımlanmalı; aksi hâlde Express
+// "settings" kelimesini `:id` parametresi olarak yakalar ve bu handler'a asla ulaşılmaz.
+router.put('/admin/pricing/settings', adminAuth, requirePerm('pricing:write'), asyncH(async (req, res) => {
+    const { enterpriseMultiplier, creditUnit } = req.body || {};
+    const ts = Date.now();
+
+    if (enterpriseMultiplier != null) {
+        const m = Number(enterpriseMultiplier);
+        if (!Number.isFinite(m) || m < 1 || m > 10)
+            return res.status(400).json({ error: 'enterpriseMultiplier 1-10 arasında olmalı' });
+        const upsert = isMaria
+            ? `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=VALUES(updated_at)`
+            : `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value, updated_at=excluded.updated_at`;
+        await run(upsert, ['pricing_enterprise_multiplier', String(m.toFixed(4)), ts]);
+    }
+
+    if (creditUnit != null) {
+        const cu = String(creditUnit).trim().slice(0, 32) || 'tarama';
+        const upsert = isMaria
+            ? `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=VALUES(updated_at)`
+            : `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value, updated_at=excluded.updated_at`;
+        await run(upsert, ['pricing_credit_unit', cu, ts]);
+    }
+
+    await audit(req.actor, 'pricing.settings.update', null, { enterpriseMultiplier, creditUnit });
+    res.json({ ok: true });
+}));
+
 // PUT /api/admin/pricing/:id — plan güncelle
+// NOT: /pricing/settings daha yukarıda tanımlı olduğundan "settings" bu handler'a düşmez.
 router.put('/admin/pricing/:id', adminAuth, requirePerm('pricing:write'), asyncH(async (req, res) => {
     const plan = await get('SELECT * FROM pricing_plans WHERE id = ?', [req.params.id]);
     if (!plan) return res.status(404).json({ error: 'fiyat planı bulunamadı' });
@@ -1161,33 +1213,6 @@ router.put('/admin/pricing/:id', adminAuth, requirePerm('pricing:write'), asyncH
         [bp, Math.round(ic), ecp, nt, act, Date.now(), req.actor || 'admin', req.params.id]
     );
     await audit(req.actor, 'pricing.update', req.params.id, { bp, ic, ecp, act });
-    res.json({ ok: true });
-}));
-
-// PUT /api/admin/pricing/settings — enterprise çarpanı + kredi birimi
-router.put('/admin/pricing/settings', adminAuth, requirePerm('pricing:write'), asyncH(async (req, res) => {
-    const { enterpriseMultiplier, creditUnit } = req.body || {};
-    const ts = Date.now();
-
-    if (enterpriseMultiplier != null) {
-        const m = Number(enterpriseMultiplier);
-        if (!Number.isFinite(m) || m < 1 || m > 10)
-            return res.status(400).json({ error: 'enterpriseMultiplier 1-10 arasında olmalı' });
-        const upsert = isMaria
-            ? `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=VALUES(updated_at)`
-            : `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value, updated_at=excluded.updated_at`;
-        await run(upsert, ['pricing_enterprise_multiplier', String(m.toFixed(4)), ts]);
-    }
-
-    if (creditUnit != null) {
-        const cu = String(creditUnit).trim().slice(0, 32) || 'tarama';
-        const upsert = isMaria
-            ? `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=VALUES(updated_at)`
-            : `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value, updated_at=excluded.updated_at`;
-        await run(upsert, ['pricing_credit_unit', cu, ts]);
-    }
-
-    await audit(req.actor, 'pricing.settings.update', null, { enterpriseMultiplier, creditUnit });
     res.json({ ok: true });
 }));
 
