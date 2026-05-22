@@ -34,6 +34,7 @@ const customerApi = express.Router();
 const { setupWebSocket } = core.websocket();
 const { loadSettings } = core.storage.settingsStore();
 const { checkAndSeedInitialPasswords } = core.services.initialSetup();
+const { ensureSetupToken } = core.services.setupToken();
 const customerUserStore = core.storage.customerUserStore();
 const metaRoutes = core.routes.meta();
 const analyzeRoutes = core.routes.analyze();
@@ -421,6 +422,9 @@ const PORT = envInt('PORT', 3000);
 (async () => {
     try { await checkAndSeedInitialPasswords(); } catch (e) { logger.error('initial seed:', e.message); }
     try { await customerUserStore.migrateFromLegacySettings(); } catch (e) { logger.error('user migrate:', e.message); }
+    // İlk kurulum token'ını garanti et: admin yoksa ve env token boşsa otomatik
+    // üret + data/setup-token'a yaz, setup URL'ini logla (manuel docker-compose yolu).
+    try { ensureSetupToken({ port: PORT, logger }); } catch (e) { logger.error('setup token:', e.message); }
     startListening();
 })();
 

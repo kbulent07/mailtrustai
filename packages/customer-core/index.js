@@ -37,7 +37,8 @@ const storage = {
 };
 
 const services = {
-    initialSetup: lazy(() => _req('src/services/initialSetupService'))
+    initialSetup: lazy(() => _req('src/services/initialSetupService')),
+    setupToken:   lazy(() => _req('src/services/setupTokenService'))
 };
 
 const license = {
