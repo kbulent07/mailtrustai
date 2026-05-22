@@ -248,6 +248,28 @@ if (-not $SkipEnv) {
     $setupToken   = New-RandomHex 24
     $localEncKey  = New-RandomHex 32
 
+    # Fingerprint kaynaklarini host'tan oku — Linux paritelik.
+    # Cikti yoksa env'e eklenmez; fingerprint install_id + container default'lariyla
+    # yine skor 8/8 (en azindan zorunlu sinyallerle gecerli).
+    $hostMachineGuid = ''
+    try {
+        $hostMachineGuid = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction Stop).MachineGuid
+    } catch {}
+    $hostSystemUuid = ''
+    try {
+        $cs = Get-CimInstance Win32_ComputerSystemProduct -ErrorAction Stop
+        if ($cs -and $cs.UUID -and $cs.UUID -ne '00000000-0000-0000-0000-000000000000') {
+            $hostSystemUuid = $cs.UUID
+        }
+    } catch {}
+    $hostName = ''
+    try { $hostName = $env:COMPUTERNAME } catch {}
+
+    $fingerprintSection = '# === Fingerprint kaynaklari (host''tan) ==='
+    if ($hostMachineGuid) { $fingerprintSection += "`nHOST_MACHINE_ID=$hostMachineGuid" }
+    if ($hostSystemUuid)  { $fingerprintSection += "`nHOST_SYSTEM_UUID=$hostSystemUuid" }
+    if ($hostName)        { $fingerprintSection += "`nHOST_HOSTNAME=$hostName" }
+
     $envContent = @"
 # ============================================================
 # MailTrustAI Müşteri Yapılandırması
@@ -280,6 +302,8 @@ MSA_SETUP_TOKEN=$setupToken
 CUSTOMER_PORT=$Port
 NODE_ENV=production
 TRUST_PROXY=1
+
+$fingerprintSection
 "@
 
     Set-Content -Path $EnvFile -Value $envContent -Encoding UTF8
@@ -352,6 +376,9 @@ services:
       MSA_LICENSE_SECRET: `${MSA_LICENSE_SECRET}
       MSA_SETUP_TOKEN: `${MSA_SETUP_TOKEN:-}
       TRUST_PROXY: `${TRUST_PROXY:-1}
+      HOST_MACHINE_ID:  `${HOST_MACHINE_ID:-}
+      HOST_SYSTEM_UUID: `${HOST_SYSTEM_UUID:-}
+      HOST_HOSTNAME:    `${HOST_HOSTNAME:-}
     ports:
       - "`${CUSTOMER_PORT:-3000}:3000"
     volumes:
