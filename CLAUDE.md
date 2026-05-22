@@ -81,7 +81,12 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
-*(görev geldikçe bu bölüm güncellenir)*
+*(şu an aktif görev yok)*
 
 ### Yapıldı (son tamamlananlar)
-*(boş — henüz bu oturumda kaydedilen bir görev yok)*
+- **Local Docker'da müşteri uygulamasını başlat** *(no-op)*
+  - Container `mailtrustai-customer` zaten **Up 18 min (healthy)** durumdaydı
+  - `http://localhost:3000/healthz` → HTTP 200 (8ms)
+  - Auto-monitor aktif, IMAP mailleri analiz ediyor (örnek log: uid=630995/630996, level=safe)
+  - Yeni başlatma/restart gerekmedi; yalnızca durum doğrulandı
+  - **Not**: lokal source (`C:\mailtrustai-source`) henüz origin/mainpaketler son commit'inde değil (4225ff8 vs 59a5111). Yeni özellikleri çalıştırmak için pull + rebuild + up gerekir.
