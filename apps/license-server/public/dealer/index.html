@@ -406,6 +406,41 @@
     </div>
 </div>
 
+<!-- ── Ek Tarama Paketi Modalı ──────────────────────────────── -->
+<div id="topupModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:1000">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 24px;width:100%;max-width:440px;box-shadow:0 8px 40px rgba(0,0,0,.5)">
+        <h3 style="margin:0 0 4px;font-size:1.05em">📦 Ek Tarama Paketi Ekle</h3>
+        <p style="font-size:.82em;color:var(--muted);margin:0 0 16px">
+            Lisans: <code id="topupLicId">—</code><br>
+            Müşteri: <strong id="topupCustName">—</strong>
+        </p>
+        <p style="font-size:.82em;color:var(--muted);margin:0 0 8px">
+            Mevcut Ek Tarama: <strong id="topupCurrentExtra" style="color:var(--ok)">0</strong>
+        </p>
+        <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Paket Boyutu <span style="color:#ef4444">*</span></label>
+        <select id="topupTier" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:14px">
+            <option value="T1">+50 tarama — 1 Kredi</option>
+            <option value="T2">+100 tarama — 1 Kredi</option>
+            <option value="T3">+200 tarama — 1 Kredi</option>
+            <option value="T4">+500 tarama — 1 Kredi</option>
+            <option value="T5" selected>+1.000 tarama — 1 Kredi</option>
+            <option value="T6">+2.000 tarama — 1 Kredi</option>
+            <option value="T7">+3.000 tarama — 1 Kredi</option>
+            <option value="T8">+5.000 tarama — 1 Kredi</option>
+            <option value="T9">+10.000 tarama — 1 Kredi</option>
+        </select>
+        <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);border-radius:7px;padding:10px 12px;font-size:.82em;color:#94a3b8;margin-bottom:14px">
+            💡 <strong>1 kredi</strong> düşer. Müşteri sistemi 6 saat içinde otomatik güncellenir
+            (veya siz yeniden doğrulama tetikleyebilirsiniz).
+        </div>
+        <div id="topupResult" style="font-size:.83em;min-height:18px;margin-bottom:10px"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button id="topupCancel" style="padding:7px 16px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">İptal</button>
+            <button id="topupConfirm" style="padding:7px 18px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:600">📦 Ekle (1 Kredi)</button>
+        </div>
+    </div>
+</div>
+
 <div id="toast-host"></div>
 <script src="/dealer/dealer.js"></script>
 </body>

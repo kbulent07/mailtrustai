@@ -290,6 +290,14 @@ async function loadCustomers() {
                 if (arrow) arrow.textContent = body?.classList.contains('hidden') ? '▶' : '▼';
             });
         });
+
+        // Ek tarama butonları — event delegation
+        listDiv.querySelectorAll('.btn-topup').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openTopupModal(btn.dataset.lid, btn.dataset.cname, Number(btn.dataset.extra));
+            });
+        });
     } catch (e) {
         listDiv.innerHTML = `<div class="err-msg">Yüklenemedi: ${escapeHtml(e.message)}</div>`;
     }
@@ -307,9 +315,9 @@ function buildCustomerBlock(c) {
         : `<div style="overflow-x:auto"><table style="margin-top:8px">
             <thead><tr>
                 <th>Lisans</th><th>Plan</th><th>Durum</th>
-                <th>Bitiş</th><th>Son Bağlantı</th>
+                <th>Bitiş</th><th>Son Bağlantı</th><th>Aksiyon</th>
             </tr></thead>
-            <tbody>${c.licenses.map(l => buildLicenseRow(l)).join('')}</tbody>
+            <tbody>${c.licenses.map(l => buildLicenseRow(l, c)).join('')}</tbody>
            </table></div>`;
 
     const cid   = escapeHtml(c.id);
@@ -334,7 +342,7 @@ function buildCustomerBlock(c) {
     </div>`;
 }
 
-function buildLicenseRow(l) {
+function buildLicenseRow(l, customer) {
     const planTag    = `<span class="tag tag-${l.plan || 'demo'}">${escapeHtml(l.plan || '—')}</span>`;
     const now        = Date.now();
     const isExpired  = l.expiresAt && l.expiresAt < now;
@@ -366,15 +374,80 @@ function buildLicenseRow(l) {
         expiryCell = `${fmtDate(l.expiresAt)}${daysLeft !== null ? `<br><span class="muted" style="font-size:.75em">${daysLeft} gün</span>` : ''}`;
     }
 
+    // Ek tarama göstergesi
+    const extraBadge = (l.extraScans > 0)
+        ? `<br><span style="font-size:.72em;color:#a78bfa">+${l.extraScans.toLocaleString('tr-TR')} ek tarama</span>`
+        : '';
+
+    // Topup butonu — sadece aktif lisanslar için
+    const topupBtn = (l.status === 'active' && !isExpired)
+        ? `<button
+               class="btn-topup"
+               data-lid="${escapeHtml(l.id)}"
+               data-cname="${escapeHtml(customer?.companyName || customer?.id || '—')}"
+               data-extra="${l.extraScans || 0}"
+               style="font-size:.72em;padding:3px 9px;border-radius:5px;border:1px solid #a78bfa;background:transparent;color:#a78bfa;cursor:pointer;white-space:nowrap">
+               📦 Ek Tarama
+           </button>`
+        : '';
+
     return `<tr${expireSoon ? ' style="background:rgba(245,158,11,.05)"' : ''}>
         <td><code style="font-size:.8em">${escapeHtml(l.keyMasked || l.id)}</code>
-            ${l.label ? `<br><span class="muted" style="font-size:.75em">${escapeHtml(l.label)}</span>` : ''}</td>
+            ${l.label ? `<br><span class="muted" style="font-size:.75em">${escapeHtml(l.label)}</span>` : ''}
+            ${extraBadge}</td>
         <td>${planTag}</td>
         <td>${statusTag} ${onlineBadge}</td>
         <td>${expiryCell}</td>
         <td><span class="muted">${l.lastHeartbeatAt ? timeAgo(l.lastHeartbeatAt) : '—'}</span></td>
+        <td>${topupBtn}</td>
     </tr>`;
 }
+
+// ─── EK TARAMA PAKETİ MODALI ──────────────────────────────────────────────────
+let _topupLicenseId = null;
+
+function openTopupModal(licenseId, custName, currentExtra) {
+    _topupLicenseId = licenseId;
+    $('topupLicId').textContent          = licenseId;
+    $('topupCustName').textContent        = custName || '—';
+    $('topupCurrentExtra').textContent    = (currentExtra || 0).toLocaleString('tr-TR');
+    $('topupResult').textContent          = '';
+    $('topupTier').value                  = 'T5';
+    $('topupModal').classList.remove('hidden');
+}
+
+$('topupCancel')?.addEventListener('click', () => $('topupModal').classList.add('hidden'));
+$('topupModal')?.addEventListener('click', (e) => {
+    if (e.target === $('topupModal')) $('topupModal').classList.add('hidden');
+});
+
+$('topupConfirm')?.addEventListener('click', async () => {
+    const tier    = $('topupTier').value;
+    const resEl   = $('topupResult');
+    const btn     = $('topupConfirm');
+    resEl.textContent = '';
+    btn.disabled = true; btn.textContent = '⏳';
+    try {
+        const r = await api(`/api/dealer/licenses/${encodeURIComponent(_topupLicenseId)}/topup`, {
+            method: 'POST',
+            body:   { topupTier: tier }
+        });
+        resEl.style.color = '#34d399';
+        resEl.textContent = `✅ ${r.scanAmount.toLocaleString('tr-TR')} tarama eklendi. Toplam ek: ${r.newExtraScans.toLocaleString('tr-TR')} | Kalan kredi: ${r.remainingCredits}`;
+        $('topupCurrentExtra').textContent = r.newExtraScans.toLocaleString('tr-TR');
+        // Topbar krediyi güncelle
+        $('dealerCredits').textContent = r.remainingCredits.toLocaleString('tr-TR');
+        _refreshTopbarTry();
+        showToast(`📦 ${r.scanAmount.toLocaleString('tr-TR')} ek tarama eklendi!`, 'success');
+        // Müşteri listesini yenile
+        setTimeout(() => { $('topupModal').classList.add('hidden'); loadCustomers(); }, 1500);
+    } catch (e) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = 'Hata: ' + (e.message || 'işlem başarısız');
+    } finally {
+        btn.disabled = false; btn.textContent = '📦 Ekle (1 Kredi)';
+    }
+});
 
 $('refreshCustomersBtn')?.addEventListener('click', loadCustomers);
 $('refreshCreditsBtn')?.addEventListener('click', loadCreditLog);

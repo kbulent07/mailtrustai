@@ -523,6 +523,19 @@ function startListening() {
             }
         })();
 
+        // Periyodik validate: ek tarama paketi ve lisans değişikliklerini 6 saatte bir yansıt.
+        const VALIDATE_INTERVAL_MS = envInt('MSA_VALIDATE_INTERVAL_HOURS', 6) * 3600 * 1000;
+        if (presetKey && remoteUrl) {
+            setInterval(async () => {
+                try {
+                    await licenseClient.validate({ remoteUrl, licenseKey: presetKey });
+                    logger.info('[license] periyodik validate tamam.');
+                } catch (e) {
+                    logger.warn('[license] periyodik validate başarısız (grace devam):', e.message);
+                }
+            }, VALIDATE_INTERVAL_MS).unref();
+        }
+
         // Eski uzak doğrulayıcı kalıyor — geriye dönük uyumluluk
         if (remoteUrl) {
             try {

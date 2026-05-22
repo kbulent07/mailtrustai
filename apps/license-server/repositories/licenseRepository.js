@@ -41,11 +41,16 @@ async function extendExpiry(id, expiresAt) {
     return run('UPDATE licenses SET expires_at=?, status=? WHERE id=?', [expiresAt, 'active', id]);
 }
 
+async function addExtraScans(id, amount) {
+    return run('UPDATE licenses SET extra_scans = extra_scans + ? WHERE id = ?', [amount, id]);
+}
+
 module.exports = {
     findByKeyHash,
     findById,
     listByCustomerAndDealer,
     insertLicense,
     setStatus,
-    extendExpiry
+    extendExpiry,
+    addExtraScans
 };

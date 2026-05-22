@@ -221,6 +221,11 @@ router.post('/license/activate', asyncH(async (req, res) => {
 
     // maxActivations limiti.
     const limits = safeJSON(license.limits_json, {});
+    // extra_scans varsa tier kotasının üzerine topla
+    const extraScans = license.extra_scans || 0;
+    if (extraScans > 0 && typeof limits.monthlyScanCount === 'number') {
+        limits.monthlyScanCount = limits.monthlyScanCount + extraScans;
+    }
     const maxAct = Number(limits.maxActivations) > 0 ? Number(limits.maxActivations) : DEFAULT_MAX_ACTIVATIONS;
 
     // TOCTOU önlemi: önce UPSERT yap, sonra count kontrol; aşıldıysa rollback.
@@ -266,6 +271,7 @@ router.post('/license/activate', asyncH(async (req, res) => {
         offlineGraceDaysOverride: license.offline_grace_days_override ?? null,
         features: safeJSON(license.features_json, {}),
         limits,
+        extraScans,
         licenseStatus: license.status
     });
 }));
@@ -285,7 +291,12 @@ router.post('/license/validate', asyncH(async (req, res) => {
         return res.status(403).json({ error: 'aktivasyon bulunamadı' });
     }
 
-    const expired = license.expires_at && license.expires_at < Date.now();
+    const expired     = license.expires_at && license.expires_at < Date.now();
+    const valLimits   = safeJSON(license.limits_json, {});
+    const valExtra    = license.extra_scans || 0;
+    if (valExtra > 0 && typeof valLimits.monthlyScanCount === 'number') {
+        valLimits.monthlyScanCount = valLimits.monthlyScanCount + valExtra;
+    }
     res.json({
         licenseStatus: expired ? 'expired' : license.status,
         plan: license.plan,
@@ -294,7 +305,8 @@ router.post('/license/validate', asyncH(async (req, res) => {
         graceDays: license.grace_days,
         offlineGraceDaysOverride: license.offline_grace_days_override ?? null,
         features: safeJSON(license.features_json, {}),
-        limits: safeJSON(license.limits_json, {})
+        limits: valLimits,
+        extraScans: valExtra
     });
 }));
 
