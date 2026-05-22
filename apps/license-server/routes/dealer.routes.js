@@ -342,6 +342,31 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
     });
 }));
 
+// ─── POST /api/dealer/licenses/:id/revoke — Kendi lisansını iptal et ─────────
+// Sadece bu bayiye ait lisanslar iptal edilebilir.
+// Kredi iadesi yapılmaz (iş kuralı); admin manuel iade ekleyebilir.
+router.post('/dealer/licenses/:id/revoke', dealerSessionAuth, asyncH(async (req, res) => {
+    const { dealerId } = req.dealerSession;
+    const { reason }   = req.body || {};
+
+    const license = await get(
+        'SELECT id, dealer_id, customer_id, plan, status FROM licenses WHERE id = ?',
+        [req.params.id]
+    );
+    if (!license) return res.status(404).json({ error: 'Lisans bulunamadı' });
+    if (license.dealer_id !== dealerId) return res.status(403).json({ error: 'Bu lisans size ait değil' });
+    if (license.status === 'revoked') return res.status(409).json({ error: 'Lisans zaten iptal edilmiş' });
+
+    await run("UPDATE licenses SET status = 'revoked' WHERE id = ?", [license.id]);
+    // İptal edilen lisansın aktivasyonlarını da kaldır
+    await run("DELETE FROM activations WHERE license_id = ?", [license.id]);
+
+    await audit(dealerId, 'license.revoke', license.id, {
+        reason: reason || 'dealer-panel', customerId: license.customer_id
+    });
+    res.json({ ok: true, message: 'Lisans iptal edildi ve aktivasyonlar silindi.' });
+}));
+
 // ─── GET /api/dealer/transfers — Bayinin müşterilerinin transfer talepleri ─────
 // ?status=pending|approved|rejected|all   (varsayılan: pending)
 // ?limit=100 (max 500)

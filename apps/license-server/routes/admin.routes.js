@@ -532,6 +532,35 @@ router.get('/admin/licenses', adminAuth, requirePerm('licenses:read'), asyncH(as
 }));
 
 // ============================================================
+// ============================================================
+// GET /api/admin/licenses/expiring-soon
+// ?days=30   — kaç gün içinde biteceğini filtreler (1-365, varsayılan 30)
+// ?limit=100 — max kayıt
+// Aktif lisanslardan expires_at < now + days * 86400000 olanları döner.
+// ============================================================
+router.get('/admin/licenses/expiring-soon', adminAuth, requirePerm('licenses:read'), asyncH(async (req, res) => {
+    const days  = Math.min(Math.max(Number(req.query.days)  || 30, 1), 365);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+    const now    = Date.now();
+    const cutoff = now + days * 86400 * 1000;
+
+    const rows = await all(
+        `SELECT l.id, l.customer_id, l.dealer_id, l.plan, l.tier, l.status,
+                l.license_key_masked, l.expires_at, l.label,
+                c.company_name, c.email AS customer_email,
+                d.name AS dealer_name
+         FROM licenses l
+         LEFT JOIN customers c ON c.id = l.customer_id
+         LEFT JOIN dealers   d ON d.id = l.dealer_id
+         WHERE l.status = 'active'
+           AND l.expires_at IS NOT NULL
+           AND l.expires_at > ? AND l.expires_at <= ?
+         ORDER BY l.expires_at ASC LIMIT ?`,
+        [now, cutoff, limit]
+    );
+    res.json({ days, count: rows.length, licenses: rows || [] });
+}));
+
 // GET /api/admin/licenses/:id/heartbeats
 // Bir lisansın haberleşme geçmişi (heartbeat_log tablosundan).
 // Query params:
@@ -944,7 +973,12 @@ router.get('/admin/stats', adminAuth, asyncH(async (req, res) => {
         [Date.now() - onlineThreshold]
     );
     const pendingTransfers = await get("SELECT COUNT(*) AS c FROM transfer_requests WHERE status = 'pending'");
-    const totalCredits = await get('SELECT COALESCE(SUM(credits),0) AS c FROM dealers');
+    const totalCredits     = await get('SELECT COALESCE(SUM(credits),0) AS c FROM dealers');
+    const cutoff30 = Date.now() + 30 * 86400 * 1000;
+    const expiringSoon30   = await get(
+        "SELECT COUNT(*) AS c FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at > ? AND expires_at <= ?",
+        [Date.now(), cutoff30]
+    );
 
     res.json({
         customers: total?.c || 0,
@@ -954,7 +988,8 @@ router.get('/admin/stats', adminAuth, asyncH(async (req, res) => {
         dealers: dealers?.c || 0,
         onlineNow: onlineRow?.c || 0,
         pendingTransfers: pendingTransfers?.c || 0,
-        totalDealerCredits: totalCredits?.c || 0
+        totalDealerCredits: totalCredits?.c || 0,
+        expiringSoon30: expiringSoon30?.c || 0
     });
 }));
 

@@ -290,6 +290,27 @@ async function loadCustomers() {
                 if (arrow) arrow.textContent = body?.classList.contains('hidden') ? '▶' : '▼';
             });
         });
+
+        // Lisans iptal butonları
+        listDiv.querySelectorAll('.btn-revoke-lic').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const lid = btn.dataset.lid;
+                if (!confirm('Bu lisansı iptal etmek istediğinizden emin misiniz?\nAktivasyon kayıtları silinir, geri alınamaz.')) return;
+                const reason = prompt('İptal nedeni (opsiyonel):') ?? '';
+                btn.disabled = true; btn.textContent = '⏳';
+                try {
+                    const r = await api(`/api/dealer/licenses/${encodeURIComponent(lid)}/revoke`, {
+                        method: 'POST', body: { reason: reason || undefined }
+                    });
+                    showToast(r.message || 'Lisans iptal edildi.', 'success');
+                    loadCustomers();
+                } catch (err) {
+                    showToast('Hata: ' + err.message, 'error');
+                    btn.disabled = false; btn.textContent = '🚫 İptal';
+                }
+            });
+        });
     } catch (e) {
         listDiv.innerHTML = `<div class="err-msg">Yüklenemedi: ${escapeHtml(e.message)}</div>`;
     }
@@ -366,9 +387,22 @@ function buildLicenseRow(l) {
         expiryCell = `${fmtDate(l.expiresAt)}${daysLeft !== null ? `<br><span class="muted" style="font-size:.75em">${daysLeft} gün</span>` : ''}`;
     }
 
+    // İptal butonu — sadece aktif/süresi dolmuş lisanslarda
+    const canRevoke = (l.status === 'active' || l.status === 'expired' || isExpired);
+    const revokeBtn = canRevoke
+        ? `<button class="btn-revoke-lic"
+               data-lid="${escapeHtml(l.id)}"
+               style="font-size:.72em;padding:3px 9px;border-radius:5px;border:1px solid #7f1d1d;
+                      background:rgba(127,29,29,.3);color:#fca5a5;cursor:pointer;margin-top:4px"
+               title="Bu lisansı iptal et">
+               🚫 İptal
+           </button>`
+        : (l.status === 'revoked' ? '<span style="font-size:.72em;color:#6b7280">İptal edildi</span>' : '');
+
     return `<tr${expireSoon ? ' style="background:rgba(245,158,11,.05)"' : ''}>
         <td><code style="font-size:.8em">${escapeHtml(l.keyMasked || l.id)}</code>
-            ${l.label ? `<br><span class="muted" style="font-size:.75em">${escapeHtml(l.label)}</span>` : ''}</td>
+            ${l.label ? `<br><span class="muted" style="font-size:.75em">${escapeHtml(l.label)}</span>` : ''}
+            <br>${revokeBtn}</td>
         <td>${planTag}</td>
         <td>${statusTag} ${onlineBadge}</td>
         <td>${expiryCell}</td>
