@@ -268,6 +268,7 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
       <a class="nav-item" data-tab="customers">👤 <span>Müşteriler</span></a>
       <a class="nav-item" data-tab="create">🔑 <span>Lisans Üret</span></a>
       <a class="nav-item" data-tab="manage">⚙️ <span>Lisans Yönet</span></a>
+      <a class="nav-item" data-tab="pricing">💰 <span>Fiyatlandırma</span></a>
       <a class="nav-item" data-tab="log">📜 <span>Log</span></a>
       <a class="nav-item" data-tab="transfers" id="transfersNavItem">🔁 <span>Transferler</span></a>
     </aside>
@@ -399,6 +400,22 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
             <tbody id="manageBody"><tr><td colspan="5" class="loading">Yükleniyor...</td></tr></tbody>
           </table>
         </div>
+      </section>
+
+      <!-- ===== TAB: FİYATLANDIRMA ===== -->
+      <section class="tab-content" data-tab="pricing">
+        <h2>💰 Fiyatlandırma — Plan × Tier</h2>
+        <div id="pricingInfo" class="muted" style="margin-bottom:14px;line-height:1.7">Yükleniyor...</div>
+        <div class="filters"><button id="pricingRefreshBtn">↻ Yenile</button></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Plan</th><th>Tier</th><th>Kapasite (tarama/ay)</th><th>Kredi Maliyeti</th><th>Dönem</th><th>Liste Fiyatı</th><th>Notlar</th>
+            </tr></thead>
+            <tbody id="pricingBody"><tr><td colspan="7" class="loading">Yükleniyor...</td></tr></tbody>
+          </table>
+        </div>
+        <p class="muted" style="margin-top:8px;font-size:.85em">💡 Kredi maliyeti tier'a göre değişir. Fiyatlar KDV hariçtir. T9 (Özel) yalnızca merkez tarafından üretilir.</p>
       </section>
 
       <!-- ===== TAB: LOG ===== -->
@@ -707,9 +724,51 @@ function activateTab(name) {
   if (name === 'log') loadLog();
   if (name === 'manage') renderManageTable();
   if (name === 'transfers') loadTransfers();
+  if (name === 'pricing') loadPricing();
 }
 document.querySelectorAll('.nav-item').forEach(el =>
   el.addEventListener('click', () => activateTab(el.dataset.tab)));
+
+// ================================================================
+// FİYATLANDIRMA — Plan × Tier matrisi
+// ================================================================
+const PRICE_PLAN_LABELS   = { demo: '🆓 Demo', pro: '⭐ Pro', enterprise: '🏢 Enterprise' };
+const PRICE_PERIOD_LABELS = { monthly: 'Aylık', annual: 'Yıllık' };
+function fmtPrice(val, currency = 'TRY') {
+  return Number(val || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
+}
+async function loadPricing() {
+  const tbody = $('pricingBody');
+  const info  = $('pricingInfo');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7" class="loading">Yükleniyor...</td></tr>';
+  try {
+    const r = await api('/api/dealer/pricing');
+    const pricing = r.pricing || [];
+    const tiers   = r.tierMatrix || [];
+    const unit    = r.creditUnit || 'tarama';
+    const capOf    = (t) => { const x = tiers.find(v => v.tier === t); return x ? Number(x.monthlyScanCount).toLocaleString('tr-TR') : '—'; };
+    const creditOf = (t) => { const x = tiers.find(v => v.tier === t); return x ? (x.creditCost ?? '—') : '—'; };
+    if (info) info.innerHTML =
+      `<strong>Model:</strong> Plan (özellik) × Tier (kapasite) &nbsp;|&nbsp; <strong>Birim:</strong> ${escapeHtml(unit)} &nbsp;|&nbsp; <strong>Satır:</strong> ${pricing.length}`;
+    if (!pricing.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="loading">Aktif fiyat satırı bulunmuyor.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = pricing.map(p => `<tr>
+      <td><strong>${escapeHtml(PRICE_PLAN_LABELS[p.plan] || p.plan)}</strong></td>
+      <td><strong>${escapeHtml(p.tier)}</strong></td>
+      <td>${escapeHtml(capOf(p.tier))} ${escapeHtml(unit)}</td>
+      <td class="muted">${escapeHtml(String(creditOf(p.tier)))} kredi</td>
+      <td>${escapeHtml(PRICE_PERIOD_LABELS[p.billing_period] || p.billing_period)}</td>
+      <td><strong>${fmtPrice(p.price, p.currency)}</strong></td>
+      <td class="muted">${escapeHtml(p.notes || '—')}</td>
+    </tr>`).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7" class="loading">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+$('pricingRefreshBtn')?.addEventListener('click', loadPricing);
 
 // ================================================================
 // MÜŞTERİLER YÜKLEMESİ

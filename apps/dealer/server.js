@@ -210,6 +210,12 @@ app.get('/api/dealer/me', requireDealer, (req, res) => {
     res.json({ dealerId: req.dealer.dealerId });
 });
 
+// Fiyatlandırma — Plan × Tier matrisi + tier kredi maliyeti (license-server'dan)
+app.get('/api/dealer/pricing', requireDealer, asyncH(async (req, res) => {
+    const result = await ls.getPricing();
+    res.json(result);
+}));
+
 // ============================================================
 // Transfer Talepleri — Bayi sadece kendi lisanslarının transferlerini görür/yönetir
 // ============================================================
