@@ -391,14 +391,40 @@ const PORT = envInt('PORT', 3000);
 
 function _gatherTelemetry() {
     // Sayaçları storage'tan çekmeye çalışır; başarısızsa 0 döner.
+    // NOT: Onceki kod yanlis fonksiyon adlari cagiriyordu (getCurrentMonthCount /
+    // getTodayCount). Storage modullerinde bu adlar yok — dogru API:
+    //   monthlyCounter.getMonthlyCount(monthKey, scope='global')
+    //   dailyScansStore.getDailyCount(dateKey, scope='global'), todayKey()
+    //   scanHistory.countScanHistory(), .loadScanHistory() (son tarama tarihi icin)
     try {
         const monthly = core.storage.monthlyCounter();
         const daily   = core.storage.dailyScansStore();
-        const monthlyScanCount = (typeof monthly.getCurrentMonthCount === 'function') ? monthly.getCurrentMonthCount() : 0;
-        const dailyScanCount   = (typeof daily.getTodayCount === 'function') ? daily.getTodayCount() : 0;
+        const scans   = core.storage.scanHistory();
         const settings = (() => { try { return loadSettings(); } catch (_) { return {}; } })();
+
+        const monthlyScanCount = typeof monthly.getMonthlyCount === 'function' ? monthly.getMonthlyCount() : 0;
+        const dailyScanCount   = typeof daily.getDailyCount === 'function' ? daily.getDailyCount(daily.todayKey?.()) : 0;
+        const totalScanCount   = typeof scans.countScanHistory === 'function' ? scans.countScanHistory() : 0;
+
+        // Son tarama tarihi — scan_history en son entry'sinden ISO timestamp
+        let lastScanAt = null;
+        try {
+            const hist = scans.loadScanHistory?.() || [];
+            if (hist.length) {
+                const latest = hist.reduce((a, b) => (new Date(a.timestamp || 0) > new Date(b.timestamp || 0) ? a : b));
+                lastScanAt = latest?.timestamp || null;
+            }
+        } catch (_) { /* sessiz */ }
+
         return {
-            counters: { monthlyScanCount, dailyScanCount, mailboxCount: (settings.mailboxes || []).length || 0, userCount: 1 },
+            counters: {
+                monthlyScanCount,
+                dailyScanCount,
+                totalScanCount,
+                mailboxCount:    (settings.mailboxes || []).length || 0,
+                userCount: 1
+            },
+            lastScanAt,
             services: {
                 imapMonitor:  settings.autoMonitorEnabled ? 'running' : 'stopped',
                 smtpReporter: settings.smtp?.host ? 'configured' : 'not_configured',

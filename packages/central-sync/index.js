@@ -20,7 +20,8 @@ const HEARTBEAT_KEYS = [
     'licenseKeyHash', 'customerId', 'dealerId', 'activationId', 'instanceId',
     'appVersion', 'buildVersion', 'nodeVersion', 'environment', 'hostnameHash',
     'lastHeartbeatAt', 'healthStatus', 'enabledFeatures', 'monthlyScanCount',
-    'dailyScanCount', 'mailboxCount', 'userCount', 'licenseStatus', 'plan', 'tier',
+    'dailyScanCount', 'totalScanCount', 'lastScanAt',
+    'mailboxCount', 'userCount', 'licenseStatus', 'plan', 'tier',
     'localPolicyVersion', 'localWhitelistVersion', 'localBlacklistVersion',
     'localApiConfigVersion', 'errorSummary', 'services'
 ];
@@ -59,7 +60,7 @@ async function _withRetry(fn, label) {
     }
 }
 
-function _baseTelemetry({ counters = {}, services = {} } = {}) {
+function _baseTelemetry({ counters = {}, services = {}, lastScanAt = null } = {}) {
     const lic = licenseClient.getSnapshot() || {};
     const envLicenseKey = env('MSA_LICENSE_KEY', '');
     const state = getState();
@@ -82,6 +83,8 @@ function _baseTelemetry({ counters = {}, services = {} } = {}) {
         // Sayaçlar (mail içeriği değil, agregat)
         monthlyScanCount: counters.monthlyScanCount || 0,
         dailyScanCount:   counters.dailyScanCount   || 0,
+        totalScanCount:   counters.totalScanCount   || 0,
+        lastScanAt:       lastScanAt || null,
         mailboxCount:     counters.mailboxCount     || 0,
         userCount:        counters.userCount        || 0,
         // Versiyon hash'leri

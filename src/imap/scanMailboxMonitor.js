@@ -6,6 +6,15 @@ const { listEmails, fetchAndParseEmail } = require('./scanner');
 const { sendReportEmail } = require('../smtp/sender');
 const { buildReportHtml, isRisky } = require('../smtp/reportBuilder');
 const { recordScan } = require('../storage/scanHistory');
+const { incrementScanCounts, licenseUsageScope } = require('../services/appState');
+
+// scanMailbox monitor — kayitli lisans key'i ile scope hesapla
+function _bumpScanCounters() {
+    try {
+        const key = (require('../storage/settingsStore').loadSettings()?.activeLicenseKey || '').trim();
+        incrementScanCounts({ usageScope: key ? licenseUsageScope(key) : 'unlicensed' });
+    } catch (e) { console.warn('[ScanMailbox] incrementScanCounts failed:', e.message); }
+}
 const { maybeMoveMessageToQuarantine } = require('./quarantineService');
 const { maybeDecorateSubject } = require('./subjectDecoratorService');
 const { getImapSenderSkipInfo } = require('./scanExclusions');
@@ -195,6 +204,7 @@ class ScanMailboxMonitor {
                     autoReplySkipped: true,
                     autoReplySkipReason: 'non-risky-message'
                 });
+                _bumpScanCounters();
                 this.markProcessed(uid);
                 return;
             }
@@ -220,6 +230,7 @@ class ScanMailboxMonitor {
                 autoReplyTo: recipient,
                 ...(sendResult.success ? {} : { autoReplyError: sendResult.error })
             });
+            _bumpScanCounters();
             this.markProcessed(uid);
 
             // Diagnostic için son durumu kaydet

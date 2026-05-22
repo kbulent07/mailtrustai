@@ -48,10 +48,18 @@ router.get('/license/usage', (req, res) => {
             }
         } catch (_) { /* ignore */ }
     }
-    const monthlyCount = getMonthlyCount(undefined, usageScope);
-    const remaining    = unlimited ? null : Math.max(0, monthlyLimit - monthlyCount);
+    // Hem license-scoped hem global sayim — UI 'remaining' icin license-scoped'i
+    // kullanir (quota dogru takip), ama monthlyCount ve dailyCount kullaniciya
+    // genel olarak gosterilir (eski davranis ile uyumlu).
+    const monthlyScoped = getMonthlyCount(undefined, usageScope);
+    const monthlyGlobal = getMonthlyCount(undefined, 'global');
+    const dailyGlobal   = getDailyCount(today);
+    const remaining     = unlimited ? null : Math.max(0, monthlyLimit - monthlyScoped);
     res.json({
-        monthlyCount, monthKey: getCurrentMonthKey(), dailyCount: getDailyCount(today),
+        monthlyCount: monthlyGlobal,
+        monthlyScopedCount: monthlyScoped,
+        monthKey: getCurrentMonthKey(),
+        dailyCount: dailyGlobal,
         monthlyLimit: unlimited ? null : monthlyLimit,
         remaining,
         unlimited

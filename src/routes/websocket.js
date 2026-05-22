@@ -406,6 +406,12 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     // o monitör mail gönderimini üstlenir.
 
     recordScan(result);
+    // Sayaclari arttir — monthly/daily limit kotalari + heartbeat telemetri
+    // icin kritik. license.usageScope ile scope-aware artiyor.
+    try {
+        const { incrementScanCounts, licenseUsageScope } = require('../services/appState');
+        incrementScanCounts({ usageScope: license?.licenseKey ? licenseUsageScope(license.licenseKey) : 'unlicensed' });
+    } catch (e) { console.warn('[WS-Monitor] incrementScanCounts failed:', e.message); }
     broadcast({ type: 'new-email-scanned', result });
 
     // UID baseline'ı güncelle — yukarıdaki effectiveUid'i tekrar kullan

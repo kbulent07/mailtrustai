@@ -4045,24 +4045,27 @@ function updateLicenseBadge(info) {
     const tier = info.tier || '';
     let label = tier ? `${labels[info.plan] || 'Free'}-${tier}` : (labels[info.plan] || 'Free');
 
-    // Sona erme uyarısı
+    // Kalan gun — her zaman goster (sadece uyari durumunda degil)
     const daysLeft = info.daysLeft ?? (info.expiryDate
         ? Math.ceil((new Date(info.expiryDate) - Date.now()) / 86400000) : null);
     if (daysLeft !== null) {
         if (daysLeft <= 0) {
-            label += ' ❌';
+            label += ' ❌ 0g';
             badge.style.borderColor = '#ef4444';
             badge.title = 'Lisans süresi dolmuş!';
         } else if (daysLeft <= 3) {
-            label += ` ⚠️${daysLeft}g`;
+            label += ` ⚠️ ${daysLeft}g`;
             badge.style.borderColor = '#ef4444';
             badge.title = `Lisans ${daysLeft} gün içinde sona eriyor!`;
             showExpiryAlert(daysLeft, info);
         } else if (daysLeft <= 7) {
-            label += ` ⚠️${daysLeft}g`;
+            label += ` ⚠️ ${daysLeft}g`;
             badge.style.borderColor = '#f59e0b';
             badge.title = `Lisans ${daysLeft} gün içinde sona eriyor.`;
             showExpiryAlert(daysLeft, info);
+        } else {
+            label += ` · ${daysLeft}g`;
+            badge.title = `Lisans süresi: ${daysLeft} gün`;
         }
     }
 
@@ -5685,7 +5688,10 @@ function timeAgo(dateStr) {
 // ============================================================
 async function loadLicenseUsage() {
     try {
-        const res = await fetch('/api/customer/license/usage');
+        // NOT: Endpoint /api/license/usage'dadir (licenseCustomer.routes.js).
+        // Onceki kod /api/customer/license/usage cagiriyordu — bu yol YOK, 404 doner
+        // ve usageCounter sessizce hidden kalir.
+        const res = await fetch('/api/license/usage');
         if (!res.ok) return;
         const data = await res.json();
         const counter = document.getElementById('usageCounter');

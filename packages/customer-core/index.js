@@ -32,7 +32,8 @@ const storage = {
     customerUserStore: lazy(() => _req('src/storage/customerUserStore')),
     monthlyCounter:    lazy(() => _req('src/storage/monthlyCounter')),
     dailyScansStore:   lazy(() => _req('src/storage/dailyScansStore')),
-    autoMonitorState:  lazy(() => _req('src/storage/autoMonitorState'))
+    autoMonitorState:  lazy(() => _req('src/storage/autoMonitorState')),
+    scanHistory:       lazy(() => _req('src/storage/scanHistory'))
 };
 
 const services = {
