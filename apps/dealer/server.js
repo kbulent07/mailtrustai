@@ -150,7 +150,7 @@ app.post('/api/dealer/customers/create', requireDealer, asyncH(async (req, res) 
 
 // Müşteri + lisans oluştur (mevcut akış)
 app.post('/api/dealer/customers', requireDealer, asyncH(async (req, res) => {
-    const { customerId, companyName, email, plan = 'pro', tier, validDays = 365 } = req.body || {};
+    const { customerId, companyName, email, plan = 'pro', tier, validDays = 365, trial } = req.body || {};
     if (!customerId || typeof customerId !== 'string') return res.status(400).json({ error: 'customerId gerekli' });
     const result = await ls.createLicense({
         customerId,
@@ -159,7 +159,8 @@ app.post('/api/dealer/customers', requireDealer, asyncH(async (req, res) => {
         tier,
         companyName,
         email,
-        validDays
+        validDays,
+        trial: trial === true || trial === 'true'   // deneme bayrağını license-server'a ilet
     });
     res.json(result);
 }));
