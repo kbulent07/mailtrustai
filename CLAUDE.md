@@ -81,7 +81,7 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
-*(şu an aktif görev yok — B1, B2, B3, B5, B6, B7 tamamlandı)*
+*(şu an aktif görev yok)*
 
 ### Bilinen Davranışlar (Bug Değil)
 - **DKIM imzası bozulması**: `markRiskySubject` etkinken bir mailin konusu APPEND ile değiştirilir → DKIM-Signature artık geçersizdir. Bu beklenen ve dokümante edilmiş davranıştır. Mail içeriği DEĞİŞMEMİŞTİR, sadece subject + 3 tracking header eklenmiştir. (UI checkbox'ında uyarı var.)
@@ -94,6 +94,11 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 - **B11** 🟡 `enrichWithAI` partial state (yarıda kalan VT call)
 
 ### Yapıldı (son tamamlananlar)
+- **Lisans uzatma akışı araştırıldı (sadece dokümantasyon — kod değişmedi)**
+  - Endpoint: `POST /api/license/renew` (bayi-akışı) + `POST /api/admin/licenses/:id/renew` (admin override)
+  - DB: `UPDATE licenses SET expires_at = MAX(expires_at, NOW) + days*86400000, status='active'`
+  - Tetikleyici: keygen.html `renewModal` (admin) veya bayi panelinden `/api/dealer/license/renew`
+  - Customer'a iletim: `licenseClient.validate()` (6 saatte bir) → yeni `expiresAt` cache'lenir
 - **Derin hata analizi → 6 bug fix** (B1, B2, B3, B5, B6, B7)
   - **B2** Decorator/Quarantine `stored` kullanır (taze credential) → şifre değişince auth fail çözüldü
   - **B1** `monitor.js` exists handler closure ile `currClient` yakalar — async loop sırasında bağlantı değişirse break ile çıkar
