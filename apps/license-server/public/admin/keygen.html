@@ -491,6 +491,38 @@
                 otomasyonu bu tabloya bağlı değildir. Bayiler fiyatları
                 <a href="/dealer" target="_blank" style="color:var(--primary)">Bayi Paneli</a>'nden görür.
             </div>
+
+            <!-- =========== Plan & Tier Matrisi (salt-okunur, license-core) =========== -->
+            <div style="margin-top:28px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <h2 style="margin:0">🧩 Plan &amp; Tier Matrisi</h2>
+                <span class="muted" style="font-size:12px">Lisansın özellik seti ve tarama kotası — kod tarafından sabit (license-core), salt-okunur.</span>
+            </div>
+
+            <!-- Tier kotaları -->
+            <h3 style="margin:18px 0 8px">📊 Tier — Aylık Tarama Kotası</h3>
+            <div class="table-wrap" style="overflow-x:auto">
+                <table id="tierMatrixTable">
+                    <thead><tr><th>Tier</th><th>Aylık Tarama</th><th>Etiket</th></tr></thead>
+                    <tbody id="tierMatrixBody">
+                        <tr><td colspan="3" class="loading">Yükleniyor...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Plan özellik seti -->
+            <h3 style="margin:22px 0 8px">⭐ Plan — Özellik Seti</h3>
+            <p class="muted" style="font-size:12px;margin:0 0 8px">
+                ✓ = özellik açık, — = kapalı. Varsayılan tier ve grace (offline tolerans) gün sayısı da gösterilir.
+                Lisans üretirken farklı bir tier seçilirse aylık kota o tier'a göre belirlenir.
+            </p>
+            <div class="table-wrap" style="overflow-x:auto">
+                <table id="planMatrixTable">
+                    <thead><tr id="planMatrixHead"></tr></thead>
+                    <tbody id="planMatrixBody">
+                        <tr><td class="loading">Yükleniyor...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </section>
 
         <!-- =========== TAB: GÜVENLİK =========== -->

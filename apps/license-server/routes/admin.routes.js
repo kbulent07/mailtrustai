@@ -1146,12 +1146,30 @@ router.get('/admin/pricing', adminAuth, requirePerm('pricing:read'), asyncH(asyn
     const plans = await all('SELECT * FROM pricing_plans ORDER BY plan, billing_period, currency');
     const multRow = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'pricing_enterprise_multiplier'");
     const unitRow = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'pricing_credit_unit'");
+
+    // Plan/Tier matrisi (license-core) — salt-okunur referans. Fiyatlandırma
+    // sayfasında özellik seti + tarama kotalarını göstermek için.
+    const planMatrix = Object.entries(PLAN_MATRIX).map(([key, def]) => ({
+        plan:        key,
+        defaultTier: def.tier,
+        graceDays:   def.graceDays,
+        limits:      def.limits,
+        features:    def.features
+    }));
+    const tierMatrix = Object.entries(TIER_MATRIX).map(([key, def]) => ({
+        tier:             key,
+        monthlyScanCount: def.monthlyScanCount,
+        label:            def.label
+    }));
+
     res.json({
         plans: plans || [],
         settings: {
             enterpriseMultiplier: parseFloat(multRow?.setting_value || '1.20'),
             creditUnit:           unitRow?.setting_value || 'tarama'
-        }
+        },
+        planMatrix,
+        tierMatrix
     });
 }));
 
