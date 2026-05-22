@@ -283,6 +283,41 @@ app.post('/api/customer/license/server-url', asyncH((req, res) => {
     res.json({ ok: true, active, source: cleaned ? 'settings' : (env('MSA_LICENSE_REMOTE_URL') ? 'env' : 'none') });
 }));
 
+// ─── License-client iletisim log buffer (UI'daki Loglar modali icin) ─────
+// In-memory ring buffer (license-client._logBuffer). Container restart'inda silinir.
+app.get('/api/customer/license/logs', (req, res) => {
+    try {
+        const since = Number(req.query.since) || 0;
+        const level = req.query.level ? String(req.query.level) : null;
+        const logs = (typeof licenseClient.getLogs === 'function')
+            ? licenseClient.getLogs({ since, level })
+            : [];
+        const remoteUrl = getActiveLicenseRemoteUrl();
+        res.json({
+            ok: true,
+            now:           Date.now(),
+            remoteUrl,
+            remoteUrlSet:  !!remoteUrl,
+            bufferSize:    Number(process.env.MSA_LICENSE_LOG_BUFFER_SIZE) || 200,
+            count:         logs.length,
+            logs
+        });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message, logs: [], count: 0 });
+    }
+});
+
+app.delete('/api/customer/license/logs', (req, res) => {
+    try {
+        const removed = (typeof licenseClient.clearLogs === 'function')
+            ? licenseClient.clearLogs()
+            : 0;
+        res.json({ ok: true, removed });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 app.get('/api/customer/license/ping', asyncH(async (req, res) => {
     const urlOverride = String(req.query.url || '').trim().replace(/\/$/, '');
     const remoteUrl   = urlOverride || getActiveLicenseRemoteUrl();
