@@ -7,9 +7,15 @@ node_modules/
 .env.*.local
 .env.docker
 .env.docker.local
-.env.docker.pre-update.*
+# Genis pattern — .env.docker.example HARIC her .env.docker.* yedek/varyantini
+# yakalar (.env.docker.pre-update.*, .env.docker.rotate-bak vb. tum suffix'ler).
+.env.docker.*
+!.env.docker.example
+# Diger backup/temp env varyantlari
 .env.*.backup
 .env.backup.*
+.env.*.bak
+.env.bak.*
 
 # Şifreli kimlik bilgileri ve hassas veri dosyaları
 data/credentials.enc
