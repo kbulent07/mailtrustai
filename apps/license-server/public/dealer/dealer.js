@@ -620,10 +620,10 @@ $('createLicModal')?.addEventListener('click', e => {
 });
 
 $('clicPlan')?.addEventListener('change', function() {
-    // Demo seçilince süreyi 14 ile sınırla
+    // Demo seçilince süreyi 7 ile sınırla
     if (this.value === 'demo') {
         const daysEl = $('clicDays');
-        if (daysEl && Number(daysEl.value) > 14) daysEl.value = '14';
+        if (daysEl && Number(daysEl.value) > 7) daysEl.value = '7';
     }
     // Maliyet tahminini güncelle
     _updateClicCostEstimate(this.value);

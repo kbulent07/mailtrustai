@@ -256,8 +256,8 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
     if (!PLAN_MATRIX[plan]) {
         return res.status(400).json({ error: `Geçersiz plan: ${plan}. Geçerli: ${Object.keys(PLAN_MATRIX).join(', ')}` });
     }
-    if (plan === 'demo' && validDays > 14) {
-        return res.status(400).json({ error: 'Demo lisans en fazla 14 gün olabilir.' });
+    if (plan === 'demo' && validDays > 7) {
+        return res.status(400).json({ error: 'Demo lisans en fazla 7 gün olabilir.' });
     }
     if (tier && !TIER_MATRIX[tier]) {
         return res.status(400).json({ error: `Geçersiz tier: ${tier}` });

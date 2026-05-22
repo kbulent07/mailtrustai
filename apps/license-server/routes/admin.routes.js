@@ -834,7 +834,7 @@ const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX } = require('@mail
 router.post('/admin/licenses', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
     const { customerId, dealerId, plan = 'pro', tier, companyName, email, label } = req.body || {};
     const isTrial    = req.body?.trial === true || req.body?.trial === 'true';
-    const validDaysNum = Number(req.body?.validDays ?? (isTrial ? 14 : 365));
+    const validDaysNum = Number(req.body?.validDays ?? (isTrial ? 7 : 365));
     if (!customerId) return res.status(400).json({ error: 'customerId gerekli' });
     if (!Number.isFinite(validDaysNum) || validDaysNum <= 0 || validDaysNum > 36500) {
         return res.status(400).json({ error: 'validDays 1..36500 olmalı' });
@@ -842,8 +842,11 @@ router.post('/admin/licenses', adminAuth, requirePerm('licenses:write'), asyncH(
     if (!PLAN_MATRIX[plan]) {
         return res.status(400).json({ error: `plan geçersiz: ${plan}` });
     }
-    if (isTrial && validDaysNum > 14) {
-        return res.status(400).json({ error: 'Deneme lisansı en fazla 14 gün olabilir.' });
+    if (plan === 'demo' && validDaysNum > 7) {
+        return res.status(400).json({ error: 'Demo lisans en fazla 7 gün olabilir.' });
+    }
+    if (isTrial && validDaysNum > 7) {
+        return res.status(400).json({ error: 'Deneme lisansı en fazla 7 gün olabilir.' });
     }
     if (tier && !TIER_MATRIX[tier]) {
         return res.status(400).json({ error: `tier geçersiz: ${tier}. Geçerli: T1..T9` });

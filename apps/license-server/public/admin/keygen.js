@@ -775,16 +775,16 @@ async function confirmDeleteDealer(id, name) {
 // ================================================================
 // LİSANS ÜRETME SEKMESİ
 // ================================================================
-// Deneme checkbox → validDays'i otomatik 14'e klampla.
+// Deneme checkbox → validDays'i otomatik 7'ye klampla.
 $('newLicTrial')?.addEventListener('change', () => {
     const days = $('newLicDays');
     if (!days) return;
     if ($('newLicTrial').checked) {
-        days.max = '14';
-        if (!days.value || Number(days.value) > 14) days.value = '14';
+        days.max = '7';
+        if (!days.value || Number(days.value) > 7) days.value = '7';
     } else {
         days.max = '36500';
-        if (Number(days.value) === 14) days.value = '365';
+        if (Number(days.value) === 7) days.value = '365';
     }
 });
 
@@ -810,8 +810,8 @@ $('licenseCreateForm').addEventListener('submit', async (e) => {
 
     if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
     if (!body.validDays || body.validDays < 1) { resEl.textContent = 'Geçerli bir gün sayısı girin.'; resEl.className = 'result err'; return; }
-    if (body.trial && body.validDays > 14) {
-        resEl.textContent = 'Deneme lisansı en fazla 14 gün olabilir.'; resEl.className = 'result err'; return;
+    if (body.trial && body.validDays > 7) {
+        resEl.textContent = 'Deneme lisansı en fazla 7 gün olabilir.'; resEl.className = 'result err'; return;
     }
 
     try {

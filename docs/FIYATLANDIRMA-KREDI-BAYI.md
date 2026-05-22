@@ -36,7 +36,7 @@ Kaynak: `packages/license-core/index.js`. **Bu paket customer image'a girmez.**
 ### 2.1 Planlar (özellik seti)
 | Plan | Varsayılan Tier | Grace (gün) | Öne çıkan özellikler |
 |------|-----------------|-------------|----------------------|
-| `demo` | — | — | Sınırlı deneme (en fazla 14 gün) |
+| `demo` | — | — | Sınırlı deneme (en fazla 7 gün) |
 | `pro` | T5 (1.000/ay) | 3 | imapMonitor, quarantine, multiMailbox, VirusTotal, deepAi, pdfReport. **Kapalı:** apiAccess, autoMonitor, realtimeAlert, siemWebhook, jsonReport, localAi |
 | `enterprise` | T9 (sınırsız) | 7 | Pro + apiAccess, autoMonitor, realtimeAlert, siemWebhook, jsonReport, localAi, inboxScan, batchScan, centralApiProxy |
 
@@ -198,7 +198,7 @@ Müşteriler `customers.dealer_id` ile bayiye bağlıdır; lisanslar `licenses.d
 
 ```
 1) Girdi doğrula: customerId, plan ∈ {demo,pro,enterprise}, validDays (1..36500)
-   - demo/trial → max 14 gün
+   - demo/trial → max 7 gün
    - tier verilirse TIER_MATRIX'te olmalı
 2) dealerId varsa → KREDİ KES (atomik, credits>0). 0 ise 402.
    (Admin panelinden dealerId'siz üretimde kredi kesilmez.)
