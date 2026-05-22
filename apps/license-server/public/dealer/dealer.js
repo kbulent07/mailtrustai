@@ -72,10 +72,11 @@ function activateTab(tabName) {
     document.querySelectorAll('.tab-panel').forEach(p =>
         p.classList.toggle('active', p.id === `panel-${tabName}`)
     );
-    if (tabName === 'pricing')   loadPricing();
-    if (tabName === 'customers') loadCustomers();
-    if (tabName === 'transfers') loadTransfers();
-    if (tabName === 'credits')   loadCreditLog();
+    if (tabName === 'pricing')    loadPricing();
+    if (tabName === 'customers')  loadCustomers();
+    if (tabName === 'transfers')  loadTransfers();
+    if (tabName === 'topupcodes') loadTopupCodes();
+    if (tabName === 'credits')    loadCreditLog();
 }
 
 document.querySelectorAll('.tab-btn').forEach(b =>
@@ -547,6 +548,112 @@ async function doTransferAction(id, action, reason) {
         if (resEl) { resEl.style.color = '#f87171'; resEl.textContent = 'Hata: ' + e.message; }
     }
 }
+
+// ─── TOPUP KODLARI ───────────────────────────────────────────────────────────
+const TIER_SCAN_LABELS = {
+    T1:'50', T2:'100', T3:'200', T4:'500',
+    T5:'1.000', T6:'2.000', T7:'3.000', T8:'5.000', T9:'10.000'
+};
+
+async function loadTopupCodes() {
+    const tbody = $('topupCodesBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Yükleniyor...</td></tr>';
+    const usedFilter = $('topupCodeFilter')?.value ?? '';
+    try {
+        const url = usedFilter !== '' ? `/api/dealer/topup-codes?used=${encodeURIComponent(usedFilter)}` : '/api/dealer/topup-codes';
+        const r = await api(url);
+        const codes = r.codes || [];
+        if (!codes.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">Henüz topup kodu üretilmedi.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = codes.map(c => {
+            const usedTag = c.used
+                ? `<span class="tag tag-revoked">Kullanıldı</span>`
+                : `<span class="tag tag-active">Aktif</span>`;
+            const expCell = c.expires_at
+                ? (c.expires_at < Date.now()
+                    ? `<span style="color:#f87171">${fmtDate(c.expires_at)} (doldu)</span>`
+                    : fmtDate(c.expires_at))
+                : '<span class="muted">Süresiz</span>';
+            const custCell = c.company_name
+                ? escapeHtml(c.company_name)
+                : (c.customer_id ? `<span class="muted">${escapeHtml(c.customer_id)}</span>` : '<span class="muted">Tüm müşteriler</span>');
+            return `<tr>
+                <td><code style="font-size:.95em;letter-spacing:.08em;color:#a5b4fc">${escapeHtml(c.code)}</code></td>
+                <td>+${TIER_SCAN_LABELS[c.tier] || c.scan_amount} tarama<br><span class="muted" style="font-size:.75em">${escapeHtml(c.tier)}</span></td>
+                <td>${custCell}</td>
+                <td>${expCell}</td>
+                <td>${usedTag}${c.used && c.used_at ? `<br><span class="muted" style="font-size:.75em">${fmtDate(c.used_at)}</span>` : ''}</td>
+                <td style="white-space:nowrap">${fmtDate(c.created_at)}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="err-msg">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+$('refreshTopupCodesBtn')?.addEventListener('click', loadTopupCodes);
+$('topupCodeFilter')?.addEventListener('change', loadTopupCodes);
+
+// ─── Kod Üret Modalı ─────────────────────────────────────────────────────────
+function openGenCodeModal() {
+    $('genCodeResult')?.classList.add('hidden');
+    $('genCodeError').textContent    = '';
+    $('genCodeCustomerId').value     = '';
+    $('genCodeValidDays').value      = '';
+    $('genCodeTier').value           = 'T5';
+    $('genCodeConfirm').disabled     = false;
+    $('genCodeConfirm').textContent  = '🎟️ Kod Üret (1 Kredi)';
+    $('genCodeModal').classList.remove('hidden');
+}
+
+$('generateTopupCodeBtn')?.addEventListener('click', openGenCodeModal);
+$('genCodeCancel')?.addEventListener('click', () => $('genCodeModal').classList.add('hidden'));
+$('genCodeModal')?.addEventListener('click', (e) => {
+    if (e.target === $('genCodeModal')) $('genCodeModal').classList.add('hidden');
+});
+
+$('genCodeCopyBtn')?.addEventListener('click', () => {
+    const code = $('genCodeValue')?.textContent || '';
+    if (!code) return;
+    navigator.clipboard?.writeText(code).then(() => showToast('Kod panoya kopyalandı!', 'success')).catch(() => {
+        prompt('Kodu kopyalayın:', code);
+    });
+});
+
+$('genCodeConfirm')?.addEventListener('click', async () => {
+    const tier       = $('genCodeTier').value;
+    const customerId = ($('genCodeCustomerId').value || '').trim() || undefined;
+    const validDays  = ($('genCodeValidDays').value || '').trim();
+    const errEl      = $('genCodeError');
+    const btn        = $('genCodeConfirm');
+    errEl.textContent = '';
+    btn.disabled = true; btn.textContent = '⏳';
+    try {
+        const body = { tier };
+        if (customerId) body.customerId = customerId;
+        if (validDays)  body.validDays  = Number(validDays);
+        const r = await api('/api/dealer/topup-codes', { method: 'POST', body });
+
+        $('genCodeValue').textContent   = r.code;
+        $('genCodeScanAmt').textContent = `+${(r.scanAmount || 0).toLocaleString('tr-TR')} ek tarama`;
+        $('genCodeResult').classList.remove('hidden');
+
+        $('dealerCredits').textContent = r.remainingCredits.toLocaleString('tr-TR');
+        _refreshTopbarTry();
+        showToast(`🎟️ Kod üretildi: ${r.code}`, 'success');
+
+        // Tabloda görünsün
+        if ($('panel-topupcodes')?.classList.contains('active')) loadTopupCodes();
+
+        btn.disabled = true; btn.textContent = '✅ Üretildi';
+    } catch (e) {
+        errEl.textContent = 'Hata: ' + (e.message || 'işlem başarısız');
+        btn.disabled = false; btn.textContent = '🎟️ Kod Üret (1 Kredi)';
+    }
+});
 
 // ─── KREDİ HAREKETLERİ ───────────────────────────────────────────────────────
 async function loadCreditLog() {

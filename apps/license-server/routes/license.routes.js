@@ -390,6 +390,81 @@ router.get('/license/customer/:id', asyncH(async (req, res) => {
     res.json({ customerId: req.params.id, dealerId, licenses: rows });
 }));
 
+// ─── POST /api/license/redeem-topup — Müşteri topup kodunu aktive eder ────────
+// body: { licenseKeyHash, instanceId, code }
+// Kod geçerliyse licenses.extra_scans += scan_amount, kod kullanıldı olarak işaretlenir.
+router.post('/license/redeem-topup', asyncH(async (req, res) => {
+    const { licenseKeyHash, instanceId, code } = req.body || {};
+    if (!licenseKeyHash || !instanceId || !code) {
+        return badRequest(res, 'licenseKeyHash, instanceId ve code gerekli');
+    }
+    if (!assertHash(res, licenseKeyHash)) return;
+    if (typeof instanceId !== 'string' || instanceId.length > 128) return badRequest(res, 'instanceId geçersiz');
+
+    const codeStr = String(code).toUpperCase().replace(/\s/g, '');
+
+    // Kodu bul
+    const topupCode = await get(
+        'SELECT * FROM topup_codes WHERE code = ?',
+        [codeStr]
+    );
+    if (!topupCode) return res.status(404).json({ error: 'Kod bulunamadı' });
+    if (topupCode.used) return res.status(409).json({ error: 'Bu kod zaten kullanılmış' });
+    if (topupCode.expires_at && topupCode.expires_at < Date.now()) {
+        return res.status(410).json({ error: 'Kodun geçerlilik süresi dolmuş' });
+    }
+
+    // Lisansı bul
+    const license = await licenseRepo.findByKeyHash(licenseKeyHash);
+    if (!license) return res.status(404).json({ error: 'Lisans bulunamadı' });
+    if (license.status !== 'active') {
+        return res.status(400).json({ error: 'Yalnızca aktif lisanslara kod uygulanabilir' });
+    }
+    if (license.expires_at && license.expires_at < Date.now()) {
+        return res.status(400).json({ error: 'Lisansın süresi dolmuş' });
+    }
+
+    // Aktivasyon kaydı var mı?
+    const activation = await activationRepo.findByLicenseAndInstance(license.id, instanceId);
+    if (!activation) {
+        return res.status(403).json({ error: 'Bu instance için aktivasyon bulunamadı. Önce lisansı aktive edin.' });
+    }
+
+    // Koda müşteri kısıtlaması var mı?
+    if (topupCode.customer_id && topupCode.customer_id !== license.customer_id) {
+        return res.status(403).json({ error: 'Bu kod farklı bir müşteriye aittir' });
+    }
+
+    // Aynı dealer'a ait mi? (güvenlik)
+    if (topupCode.dealer_id !== license.dealer_id) {
+        return res.status(403).json({ error: 'Bu kod lisansınızın bayisine ait değil' });
+    }
+
+    const scanAmount = topupCode.scan_amount;
+    const now        = Date.now();
+
+    // Atomik: extra_scans arttır + kodu kullanıldı olarak işaretle
+    await run('UPDATE licenses SET extra_scans = extra_scans + ? WHERE id = ?', [scanAmount, license.id]);
+    await run(
+        'UPDATE topup_codes SET used=1, used_by_license_id=?, used_at=? WHERE id=?',
+        [license.id, now, topupCode.id]
+    );
+
+    const afterLicense = await get('SELECT extra_scans FROM licenses WHERE id = ?', [license.id]);
+
+    await audit(license.customer_id, 'license.topup.redeem', license.id, {
+        code: codeStr, tier: topupCode.tier, scanAmount, dealerId: topupCode.dealer_id
+    });
+
+    res.json({
+        ok:            true,
+        code:          codeStr,
+        tier:          topupCode.tier,
+        scanAmount,
+        newExtraScans: afterLicense?.extra_scans ?? 0
+    });
+}));
+
 // ============================================================
 // Transfer Talepleri — Bayi (Bearer) veya Admin (adminAuth) erişir.
 // ============================================================

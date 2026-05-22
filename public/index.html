@@ -1199,6 +1199,24 @@
             <button class="btn btn-ghost" data-fn="showLicenseLogs" title="Lisans server ile iletisim loglarini goster">📋 Loglar</button>
             <button class="btn btn-ghost" data-fn="closeLicenseModal">❌ <span data-i18n="btn_close">Kapat</span></button>
         </div>
+
+        <!-- Topup kodu girişi — bayiden alınan kodu gir -->
+        <hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
+        <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">🎟️ Ek Tarama Paketi Kodu</label>
+            <div style="display:flex;gap:8px;align-items:stretch">
+                <input class="form-input" id="topupCodeInput" placeholder="XXXX-XXXX"
+                       maxlength="12" style="flex:1;font-family:ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase">
+                <button type="button" class="btn btn-primary btn-sm" id="topupCodeRedeemBtn"
+                        data-fn="redeemTopupCode" style="white-space:nowrap">
+                    ✅ Uygula
+                </button>
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">
+                💡 Bayinizden aldığınız tek kullanımlık kodu girin. Ek tarama hakkı lisansınıza anında eklenir.
+            </div>
+            <div id="topupCodeResult" style="margin-top:8px;font-size:13px;min-height:16px"></div>
+        </div>
     </div>
 </div>
 

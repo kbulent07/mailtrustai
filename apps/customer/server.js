@@ -308,6 +308,43 @@ app.get('/api/customer/license/logs', (req, res) => {
     }
 });
 
+// ─── POST /api/customer/license/redeem-topup — Topup kodunu kullan ───────────
+// Müşteri panel "Kodu Gir" kutusundan gelen kodu license-server'a iletir.
+// Başarılı olunca validate() çağrılır → cache anında güncellenir (6 saat beklemez).
+app.post('/api/customer/license/redeem-topup', asyncH(async (req, res) => {
+    const remoteUrl = getActiveLicenseRemoteUrl();
+    if (!remoteUrl) return res.status(503).json({ error: 'License-server URL tanımlı değil.' });
+
+    const settings  = (() => { try { return loadSettings(); } catch (_) { return {}; } })();
+    const licKey    = settings.activeLicenseKey || env('MSA_LICENSE_KEY');
+    if (!licKey) return res.status(400).json({ error: 'Aktif lisans anahtarı bulunamadı.' });
+
+    const code = String(req.body?.code || '').trim().toUpperCase().replace(/\s/g, '');
+    if (!code) return res.status(400).json({ error: 'code gerekli' });
+
+    const { sha256 } = require('@mailtrustai/security');
+    const { fetchJSON } = require('@mailtrustai/shared');
+
+    const result = await fetchJSON(`${remoteUrl.replace(/\/+$/, '')}/api/license/redeem-topup`, {
+        method: 'POST',
+        body: {
+            licenseKeyHash: sha256(licKey),
+            instanceId:     licenseClient.instanceFingerprint(),
+            code
+        },
+        timeoutMs: 15000
+    });
+
+    logger.info(`[license] topup kodu kullanıldı: ${code}, +${result.scanAmount} tarama eklendi`);
+
+    // Cache'i anında güncelle — 6 saat beklemeden yeni bakiyeyi yansıt
+    try {
+        await licenseClient.validate({ remoteUrl, licenseKey: licKey });
+    } catch (_) { /* sessizce geç, redeem başarılı oldu */ }
+
+    res.json(result);
+}));
+
 app.delete('/api/customer/license/logs', (req, res) => {
     try {
         const removed = (typeof licenseClient.clearLogs === 'function')
