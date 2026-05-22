@@ -37,14 +37,40 @@ router.get('/license/usage', (req, res) => {
     let monthlyLimit = 30;
     let usageScope   = 'unlicensed';
     let unlimited    = false;
-    if (key) {
+    let daysLeft     = null;
+    let expiresAt    = null;
+
+    // Onceligi license-client snapshot (server-side dogrulanmis lisans)
+    // Fallback: legacy validateLicenseKey HMAC
+    try {
+        const licenseClient = require('@mailtrustai/license-client');
+        const snap = licenseClient.getSnapshot?.();
+        if (snap && snap.licenseStatus === 'active') {
+            const ml = snap.limits?.monthlyScanCount;
+            if (typeof ml === 'number' && ml > 0) {
+                monthlyLimit = ml;
+                unlimited    = ml >= 1e9;
+            }
+            if (snap.expiresAt) {
+                expiresAt = snap.expiresAt;
+                daysLeft  = Math.max(0, Math.ceil((snap.expiresAt - Date.now()) / 86400000));
+            }
+            if (snap.licenseKeyHash) {
+                usageScope = String(snap.licenseKeyHash).slice(0, 16);
+            }
+        }
+    } catch (_) { /* license-client yok ya da snapshot bos — legacy fallback'e gec */ }
+
+    // Legacy HMAC fallback (snapshot yoksa veya license-client yuklu degilse)
+    if (usageScope === 'unlicensed' && key) {
         try {
             const v = validateLicenseKey(key);
             if (v.valid) {
-                monthlyLimit = v.monthlyLimit ?? 30;
-                unlimited    = monthlyLimit === Infinity;
+                if (monthlyLimit === 30) monthlyLimit = v.monthlyLimit ?? 30;
+                if (!unlimited)          unlimited    = monthlyLimit === Infinity;
                 const crypto = require('crypto');
                 usageScope   = crypto.createHash('sha256').update(key).digest('hex').slice(0, 16);
+                if (daysLeft === null && v.daysLeft !== undefined) daysLeft = v.daysLeft;
             }
         } catch (_) { /* ignore */ }
     }
@@ -62,7 +88,10 @@ router.get('/license/usage', (req, res) => {
         dailyCount: dailyGlobal,
         monthlyLimit: unlimited ? null : monthlyLimit,
         remaining,
-        unlimited
+        unlimited,
+        // UI badge'i icin: kalan gun + expiry timestamp
+        daysLeft,
+        expiresAt
     });
 });
 

@@ -5724,6 +5724,20 @@ async function loadLicenseUsage() {
         counter.style.border = `1px solid ${color}40`;
         counter.style.borderRadius = '5px';
         counter.style.padding = '2px 8px';
+
+        // Usage endpoint snapshot'tan kalan gun de verir — badge'i de guncelle
+        // (license validate cagrilmadiginda bile gun bilgisi gozuksun)
+        if (data.daysLeft !== undefined && data.daysLeft !== null) {
+            const badge = document.getElementById('licenseBadge');
+            if (badge) {
+                const existingLabel = badge.textContent || '';
+                // Eger badge "·  ?g" / "⚠️ ?g" / "❌ ?g" kismi yoksa ekle
+                if (!/[·⚠️❌]\s*\d+g\b/.test(existingLabel)) {
+                    badge.textContent = existingLabel + ` · ${data.daysLeft}g`;
+                    badge.title = `Lisans süresi: ${data.daysLeft} gün`;
+                }
+            }
+        }
     } catch {}
 }
 
