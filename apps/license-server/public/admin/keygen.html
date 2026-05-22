@@ -287,18 +287,22 @@
                     </label>
                 </div>
                 <div>
-                    <label for="newLicTier">Tarama Tieri *</label>
+                    <label for="newLicTier">Tarama Seviyesi (Tier) *</label>
                     <select id="newLicTier" required>
                         <option value="T1">T1 — 50/ay</option>
                         <option value="T2">T2 — 100/ay</option>
-                        <option value="T3">T3 — 200/ay</option>
+                        <option value="T3">T3 — 250/ay</option>
                         <option value="T4">T4 — 500/ay</option>
                         <option value="T5" selected>T5 — 1.000/ay</option>
-                        <option value="T6">T6 — 2.000/ay</option>
-                        <option value="T7">T7 — 3.000/ay</option>
-                        <option value="T8">T8 — 5.000/ay</option>
-                        <option value="T9">T9 — 10.000/ay</option>
+                        <option value="T6">T6 — 2.500/ay</option>
+                        <option value="T7">T7 — 5.000/ay</option>
+                        <option value="T8">T8 — 10.000/ay</option>
+                        <option value="T9">T9 — Özel / Custom (admin)</option>
                     </select>
+                </div>
+                <div id="newLicCustomScanWrap" style="display:none">
+                    <label for="newLicCustomScan">Özel Kapasite (aylık tarama) *</label>
+                    <input type="number" id="newLicCustomScan" min="1" max="100000000" placeholder="örn: 25000" autocomplete="off">
                 </div>
                 <div>
                     <label for="newLicDays">Geçerlilik (gün) *</label>
@@ -471,18 +475,19 @@
                     <thead>
                         <tr>
                             <th>Plan</th>
+                            <th>Tier</th>
+                            <th>Kapasite (tarama/ay)</th>
+                            <th>Bayi Kredi</th>
                             <th>Dönem</th>
                             <th>Para Birimi</th>
-                            <th>Lisans Ücreti</th>
-                            <th>Dahil Kredi</th>
-                            <th>Ek Kredi Birim Fiyatı</th>
+                            <th>Liste Fiyatı</th>
                             <th>Notlar</th>
                             <th>Durum</th>
                             <th data-perm="pricing:write">İşlem</th>
                         </tr>
                     </thead>
                     <tbody id="pricingTableBody">
-                        <tr><td colspan="9" class="loading">Yükleniyor...</td></tr>
+                        <tr><td colspan="10" class="loading">Yükleniyor...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -503,9 +508,9 @@
             <h3 style="margin:18px 0 8px">📊 Tier — Aylık Tarama Kotası</h3>
             <div class="table-wrap" style="overflow-x:auto">
                 <table id="tierMatrixTable">
-                    <thead><tr><th>Tier</th><th>Aylık Tarama</th><th>Etiket</th></tr></thead>
+                    <thead><tr><th>Tier</th><th>Aylık Tarama</th><th>Bayi Kredi Maliyeti</th><th>Etiket</th></tr></thead>
                     <tbody id="tierMatrixBody">
-                        <tr><td colspan="3" class="loading">Yükleniyor...</td></tr>
+                        <tr><td colspan="4" class="loading">Yükleniyor...</td></tr>
                     </tbody>
                 </table>
             </div>

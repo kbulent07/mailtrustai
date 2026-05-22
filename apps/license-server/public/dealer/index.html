@@ -226,15 +226,16 @@
                     <thead>
                         <tr>
                             <th>Plan</th>
+                            <th>Tier</th>
+                            <th>Kapasite (tarama/ay)</th>
+                            <th>Kredi Maliyeti</th>
                             <th>Dönem</th>
-                            <th>Lisans Ücreti</th>
-                            <th>Dahil Tarama</th>
-                            <th>Ek Tarama Birim Fiyatı</th>
+                            <th>Liste Fiyatı</th>
                             <th>Notlar</th>
                         </tr>
                     </thead>
                     <tbody id="pricingBody">
-                        <tr><td colspan="6" class="loading">Yükleniyor...</td></tr>
+                        <tr><td colspan="7" class="loading">Yükleniyor...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -422,10 +423,19 @@
         <p style="font-size:.82em;color:var(--muted);margin:0 0 16px">Müşteri: <strong id="clicCustomerName">—</strong></p>
         <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Plan <span style="color:#ef4444">*</span></label>
         <select id="clicPlan" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:10px">
-            <option value="demo">Demo (max 7 gün)</option>
-            <option value="basic">Basic</option>
-            <option value="pro" selected>Pro</option>
-            <option value="enterprise">Enterprise</option>
+            <option value="pro" selected>Pro — Gelişmiş özellikler</option>
+            <option value="enterprise">Enterprise — Tüm özellikler + API</option>
+        </select>
+        <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Tarama Seviyesi (Tier) <span style="color:#ef4444">*</span></label>
+        <select id="clicTier" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:10px">
+            <option value="T1">T1 — 50/ay</option>
+            <option value="T2">T2 — 100/ay</option>
+            <option value="T3">T3 — 250/ay</option>
+            <option value="T4">T4 — 500/ay</option>
+            <option value="T5" selected>T5 — 1.000/ay</option>
+            <option value="T6">T6 — 2.500/ay</option>
+            <option value="T7">T7 — 5.000/ay</option>
+            <option value="T8">T8 — 10.000/ay</option>
         </select>
         <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Süre (gün)</label>
         <input type="number" id="clicDays" value="365" min="1" max="36500" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:10px">
@@ -433,7 +443,7 @@
         <input type="text" id="clicLabel" maxlength="128" placeholder="ör: Ana lisans 2026" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:12px">
         <!-- Maliyet tahmini — JS tarafından doldurulur -->
         <div id="clicCostEstimate" class="cost-estimate-box">
-            💡 Bu lisans <strong>1 kredi</strong> düşer
+            💡 Bu lisans <strong id="clicCostCredits">1 kredi</strong> düşer
             <span id="clicCostTry" style="margin-left:auto"></span>
         </div>
         <div id="clicResult" style="font-size:.83em;min-height:18px;margin-bottom:10px"></div>
@@ -458,18 +468,17 @@
         <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Paket Boyutu <span style="color:#ef4444">*</span></label>
         <select id="topupTier" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:14px">
             <option value="T1">+50 tarama — 1 Kredi</option>
-            <option value="T2">+100 tarama — 1 Kredi</option>
-            <option value="T3">+200 tarama — 1 Kredi</option>
-            <option value="T4">+500 tarama — 1 Kredi</option>
-            <option value="T5" selected>+1.000 tarama — 1 Kredi</option>
-            <option value="T6">+2.000 tarama — 1 Kredi</option>
-            <option value="T7">+3.000 tarama — 1 Kredi</option>
-            <option value="T8">+5.000 tarama — 1 Kredi</option>
-            <option value="T9">+10.000 tarama — 1 Kredi</option>
+            <option value="T2">+100 tarama — 2 Kredi</option>
+            <option value="T3">+250 tarama — 3 Kredi</option>
+            <option value="T4">+500 tarama — 4 Kredi</option>
+            <option value="T5" selected>+1.000 tarama — 5 Kredi</option>
+            <option value="T6">+2.500 tarama — 7 Kredi</option>
+            <option value="T7">+5.000 tarama — 9 Kredi</option>
+            <option value="T8">+10.000 tarama — 12 Kredi</option>
         </select>
         <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);border-radius:7px;padding:10px 12px;font-size:.82em;color:#94a3b8;margin-bottom:14px">
-            💡 <strong>1 kredi</strong> düşer. Müşteri sistemi 6 saat içinde otomatik güncellenir
-            (veya siz yeniden doğrulama tetikleyebilirsiniz).
+            💡 Kredi maliyeti seçilen pakete göre değişir (yukarıda gösterilir). Müşteri sistemi 6 saat içinde
+            otomatik güncellenir (veya siz yeniden doğrulama tetikleyebilirsiniz).
         </div>
         <div id="topupResult" style="font-size:.83em;min-height:18px;margin-bottom:10px"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end">
@@ -483,19 +492,18 @@
 <div id="genCodeModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:1000">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 24px;width:100%;max-width:460px;box-shadow:0 8px 40px rgba(0,0,0,.5)">
         <h3 style="margin:0 0 4px;font-size:1.05em">🎟️ Ek Tarama Kodu Üret</h3>
-        <p style="font-size:.82em;color:var(--muted);margin:0 0 16px">Müşteriye verilecek tek kullanımlık kod üretir. <strong>1 kredi</strong> düşer.</p>
+        <p style="font-size:.82em;color:var(--muted);margin:0 0 16px">Müşteriye verilecek tek kullanımlık kod üretir. Kredi maliyeti seçilen pakete göre değişir.</p>
 
         <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Paket Boyutu <span style="color:#ef4444">*</span></label>
         <select id="genCodeTier" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:.9em;box-sizing:border-box;margin-bottom:12px">
-            <option value="T1">+50 tarama</option>
-            <option value="T2">+100 tarama</option>
-            <option value="T3">+200 tarama</option>
-            <option value="T4">+500 tarama</option>
-            <option value="T5" selected>+1.000 tarama</option>
-            <option value="T6">+2.000 tarama</option>
-            <option value="T7">+3.000 tarama</option>
-            <option value="T8">+5.000 tarama</option>
-            <option value="T9">+10.000 tarama</option>
+            <option value="T1">+50 tarama — 1 Kredi</option>
+            <option value="T2">+100 tarama — 2 Kredi</option>
+            <option value="T3">+250 tarama — 3 Kredi</option>
+            <option value="T4">+500 tarama — 4 Kredi</option>
+            <option value="T5" selected>+1.000 tarama — 5 Kredi</option>
+            <option value="T6">+2.500 tarama — 7 Kredi</option>
+            <option value="T7">+5.000 tarama — 9 Kredi</option>
+            <option value="T8">+10.000 tarama — 12 Kredi</option>
         </select>
 
         <label style="font-size:.82em;color:var(--muted);display:block;margin-bottom:4px">Müşteri Kısıtı <span style="color:var(--muted);font-weight:400">(opsiyonel)</span></label>

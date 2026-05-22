@@ -857,7 +857,7 @@ router.delete('/admin/dealers/:id', adminAuth, requirePerm('dealers:write'), asy
 // LİSANS YÖNETİMİ (admin direkt)
 // ============================================================
 const { sha256 } = require('@mailtrustai/security');
-const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX } = require('@mailtrustai/license-core');
+const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX, isAdminOnlyTier } = require('@mailtrustai/license-core');
 
 // POST /api/admin/licenses — admin'in direkt lisans uretmesi
 router.post('/admin/licenses', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
@@ -879,6 +879,13 @@ router.post('/admin/licenses', adminAuth, requirePerm('licenses:write'), asyncH(
     }
     if (tier && !TIER_MATRIX[tier]) {
         return res.status(400).json({ error: `tier geçersiz: ${tier}. Geçerli: T1..T9` });
+    }
+    // T9 (Özel/Custom): admin kapasiteyi kendisi belirler.
+    const customScanCount = Number(req.body?.customScanCount ?? req.body?.monthlyScanCount);
+    if (tier && isAdminOnlyTier(tier)) {
+        if (!Number.isFinite(customScanCount) || customScanCount <= 0) {
+            return res.status(400).json({ error: 'T9 (Özel) için customScanCount (aylık tarama kapasitesi) gerekli' });
+        }
     }
     const rawLabel = (typeof label === 'string' && label.trim()) ? label.trim() : '';
     const labelClean = isTrial
@@ -903,7 +910,7 @@ router.post('/admin/licenses', adminAuth, requirePerm('licenses:write'), asyncH(
              email        = COALESCE(excluded.email,       customers.email)`;
     await run(upsertSql, [customerId, dealerId || null, companyName || null, email || null, Date.now()]);
 
-    const planDef = getPlan(plan, tier);
+    const planDef = getPlan(plan, tier, { customScanCount });
     const { key, keyHash } = generateLicenseKey({ customerId, dealerId, plan });
     const id = uuid();
     const issuedAt = Date.now();
@@ -1176,17 +1183,18 @@ router.delete('/admin/owner-users/:id', adminAuth, requirePerm('users:manage'), 
 // FİYATLANDIRMA YÖNETİMİ
 // ============================================================
 
-const VALID_PLANS   = ['demo', 'pro', 'enterprise'];
+const VALID_PLANS   = ['pro', 'enterprise'];
 const VALID_PERIODS = ['monthly', 'annual'];
+const VALID_TIERS   = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'];
 
-// GET /api/admin/pricing — tüm planlar + genel ayarlar
+// GET /api/admin/pricing — Plan × Tier fiyat matrisi + genel ayarlar
 router.get('/admin/pricing', adminAuth, requirePerm('pricing:read'), asyncH(async (req, res) => {
-    const plans = await all('SELECT * FROM pricing_plans ORDER BY plan, billing_period, currency');
+    const pricing = await all('SELECT * FROM tier_pricing ORDER BY plan, tier, billing_period, currency');
     const multRow = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'pricing_enterprise_multiplier'");
     const unitRow = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'pricing_credit_unit'");
 
     // Plan/Tier matrisi (license-core) — salt-okunur referans. Fiyatlandırma
-    // sayfasında özellik seti + tarama kotalarını göstermek için.
+    // sayfasında özellik seti + tarama kapasitelerini + kredi maliyetini göstermek için.
     const planMatrix = Object.entries(PLAN_MATRIX).map(([key, def]) => ({
         plan:        key,
         defaultTier: def.tier,
@@ -1197,11 +1205,14 @@ router.get('/admin/pricing', adminAuth, requirePerm('pricing:read'), asyncH(asyn
     const tierMatrix = Object.entries(TIER_MATRIX).map(([key, def]) => ({
         tier:             key,
         monthlyScanCount: def.monthlyScanCount,
+        creditCost:       def.creditCost,
+        adminOnly:        !!def.adminOnly,
+        custom:           !!def.custom,
         label:            def.label
     }));
 
     res.json({
-        plans: plans || [],
+        pricing: pricing || [],
         settings: {
             enterpriseMultiplier: parseFloat(multRow?.setting_value || '1.20'),
             creditUnit:           unitRow?.setting_value || 'tarama'
@@ -1240,64 +1251,58 @@ router.put('/admin/pricing/settings', adminAuth, requirePerm('pricing:write'), a
     res.json({ ok: true });
 }));
 
-// PUT /api/admin/pricing/:id — plan güncelle
+// PUT /api/admin/pricing/:id — tek bir Plan×Tier fiyat satırını güncelle
 // NOT: /pricing/settings daha yukarıda tanımlı olduğundan "settings" bu handler'a düşmez.
 router.put('/admin/pricing/:id', adminAuth, requirePerm('pricing:write'), asyncH(async (req, res) => {
-    const plan = await get('SELECT * FROM pricing_plans WHERE id = ?', [req.params.id]);
-    if (!plan) return res.status(404).json({ error: 'fiyat planı bulunamadı' });
+    const row = await get('SELECT * FROM tier_pricing WHERE id = ?', [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'fiyat satırı bulunamadı' });
 
-    const {
-        base_price, included_credits, extra_credit_price,
-        notes, is_active
-    } = req.body || {};
+    const { price, notes, is_active } = req.body || {};
 
-    const bp  = base_price          != null ? Number(base_price)          : plan.base_price;
-    const ic  = included_credits    != null ? Number(included_credits)    : plan.included_credits;
-    const ecp = extra_credit_price  != null ? Number(extra_credit_price)  : plan.extra_credit_price;
-    const act = is_active            != null ? (is_active ? 1 : 0)        : plan.is_active;
-    const nt  = notes                != null ? String(notes).slice(0,256) : plan.notes;
+    const pr  = price     != null ? Number(price)              : row.price;
+    const act = is_active != null ? (is_active ? 1 : 0)        : row.is_active;
+    const nt  = notes     != null ? String(notes).slice(0,256) : row.notes;
 
-    if (!Number.isFinite(bp)  || bp  < 0) return res.status(400).json({ error: 'base_price geçersiz' });
-    if (!Number.isFinite(ic)  || ic  < 0) return res.status(400).json({ error: 'included_credits geçersiz' });
-    if (!Number.isFinite(ecp) || ecp < 0) return res.status(400).json({ error: 'extra_credit_price geçersiz' });
+    if (!Number.isFinite(pr) || pr < 0) return res.status(400).json({ error: 'price geçersiz' });
 
     await run(
-        `UPDATE pricing_plans
-         SET base_price=?, included_credits=?, extra_credit_price=?,
-             notes=?, is_active=?, updated_at=?, updated_by=?
+        `UPDATE tier_pricing
+         SET price=?, notes=?, is_active=?, updated_at=?, updated_by=?
          WHERE id=?`,
-        [bp, Math.round(ic), ecp, nt, act, Date.now(), req.actor || 'admin', req.params.id]
+        [pr, nt, act, Date.now(), req.actor || 'admin', req.params.id]
     );
-    await audit(req.actor, 'pricing.update', req.params.id, { bp, ic, ecp, act });
+    await audit(req.actor, 'pricing.update', req.params.id, { price: pr, is_active: act });
     res.json({ ok: true });
 }));
 
-// POST /api/admin/pricing — yeni plan ekle (opsiyonel, standart planlar migration'da geliyor)
+// POST /api/admin/pricing — yeni Plan×Tier fiyat satırı ekle (matris zaten migration'dan gelir)
 router.post('/admin/pricing', adminAuth, requirePerm('pricing:write'), asyncH(async (req, res) => {
-    const { plan, billing_period, currency = 'TRY',
-            base_price = 0, included_credits = 0, extra_credit_price = 0,
-            notes, is_active = 1 } = req.body || {};
+    const { plan, tier, billing_period, currency = 'TRY',
+            price = 0, notes, is_active = 1 } = req.body || {};
 
     if (!VALID_PLANS.includes(plan))
         return res.status(400).json({ error: `plan geçersiz. Geçerli: ${VALID_PLANS.join(', ')}` });
+    if (!VALID_TIERS.includes(tier))
+        return res.status(400).json({ error: `tier geçersiz. Geçerli: ${VALID_TIERS.join(', ')}` });
     if (!VALID_PERIODS.includes(billing_period))
         return res.status(400).json({ error: `billing_period geçersiz. Geçerli: ${VALID_PERIODS.join(', ')}` });
 
-    const bp  = Number(base_price);
-    const ic  = Number(included_credits);
-    const ecp = Number(extra_credit_price);
-    if (!Number.isFinite(bp)  || bp  < 0) return res.status(400).json({ error: 'base_price geçersiz' });
-    if (!Number.isFinite(ic)  || ic  < 0) return res.status(400).json({ error: 'included_credits geçersiz' });
-    if (!Number.isFinite(ecp) || ecp < 0) return res.status(400).json({ error: 'extra_credit_price geçersiz' });
+    const pr = Number(price);
+    if (!Number.isFinite(pr) || pr < 0) return res.status(400).json({ error: 'price geçersiz' });
 
-    const id  = `pp-${plan.slice(0,3)}-${billing_period === 'monthly' ? 'm' : 'a'}-${String(currency).toLowerCase()}-${Date.now()}`;
-    await run(
-        `INSERT INTO pricing_plans(id,plan,billing_period,currency,base_price,included_credits,extra_credit_price,notes,is_active,updated_at,updated_by)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, plan, billing_period, String(currency).toUpperCase().slice(0,8),
-         bp, Math.round(ic), ecp, notes || null, is_active ? 1 : 0, Date.now(), req.actor || 'admin']
+    const cur = String(currency).toUpperCase().slice(0,8);
+    const id  = `tp-${plan.slice(0,3)}-${tier.toLowerCase()}-${billing_period === 'monthly' ? 'm' : 'a'}-${cur.toLowerCase()}`;
+    const upsertSql = isMaria
+        ? `INSERT INTO tier_pricing(id,plan,tier,billing_period,currency,price,notes,is_active,updated_at,updated_by)
+           VALUES(?,?,?,?,?,?,?,?,?,?)
+           ON DUPLICATE KEY UPDATE price=VALUES(price), notes=VALUES(notes), is_active=VALUES(is_active), updated_at=VALUES(updated_at), updated_by=VALUES(updated_by)`
+        : `INSERT INTO tier_pricing(id,plan,tier,billing_period,currency,price,notes,is_active,updated_at,updated_by)
+           VALUES(?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(plan,tier,billing_period,currency) DO UPDATE SET price=excluded.price, notes=excluded.notes, is_active=excluded.is_active, updated_at=excluded.updated_at, updated_by=excluded.updated_by`;
+    await run(upsertSql,
+        [id, plan, tier, billing_period, cur, pr, notes || null, is_active ? 1 : 0, Date.now(), req.actor || 'admin']
     );
-    await audit(req.actor, 'pricing.create', id, { plan, billing_period, currency });
+    await audit(req.actor, 'pricing.create', id, { plan, tier, billing_period, currency: cur });
     res.status(201).json({ ok: true, id });
 }));
 

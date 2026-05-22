@@ -132,6 +132,20 @@ function showDashboard() {
 
 // ─── Bayi bilgisi + kredi ─────────────────────────────────────────────────────
 
+/** Kredi başına yaklaşık TRY değeri — Pro aylık satırların (fiyat / tier kredi maliyeti) en düşüğü */
+function _approxTryPerCredit() {
+    const pricing = _pricingCache?.pricing || [];
+    const tiers   = _pricingCache?.tierMatrix || [];
+    const ratios  = [];
+    for (const p of pricing) {
+        if (p.plan !== 'pro' || p.billing_period !== 'monthly') continue;
+        const t = tiers.find(x => x.tier === p.tier);
+        const cost = t?.creditCost;
+        if (cost > 0 && p.price > 0) ratios.push(p.price / cost);
+    }
+    return ratios.length ? Math.min(...ratios) : null;
+}
+
 /** Topbar'daki TRY eşdeğer gösterimini günceller */
 function _refreshTopbarTry() {
     const tryEl    = $('dealerCreditsTry');
@@ -139,8 +153,7 @@ function _refreshTopbarTry() {
     if (!tryEl || !_pricingCache) return;
     const credits  = parseInt((credText || '0').replace(/\D/g, ''), 10);
     if (isNaN(credits)) return;
-    // Pro planın birim fiyatı üzerinden yaklaşık değer göster
-    const unitPrice = _planUnitPrice('pro');
+    const unitPrice = _approxTryPerCredit();
     if (unitPrice && unitPrice > 0 && credits > 0) {
         tryEl.textContent = `(≈ ${fmtPrice(credits * unitPrice, 'TRY')})`;
     } else {
@@ -167,26 +180,36 @@ const PERIOD_LABELS = { monthly: 'Aylık', annual: 'Yıllık' };
 // Fiyat planlarını önbellekte tut — modalda ve kredi logunda kullanılır
 let _pricingCache = null; // { plans: [], enterpriseMultiplier, creditUnit }
 
-/** Belirli bir plan için en düşük extra_credit_price döner (TRY/kredi) */
-function _planUnitPrice(plan) {
-    if (!_pricingCache || !_pricingCache.plans.length) return null;
-    const matching = _pricingCache.plans.filter(p => p.plan === plan && p.extra_credit_price > 0);
-    if (!matching.length) return null;
-    return Math.min(...matching.map(p => p.extra_credit_price));
+/** Tier kredi maliyetini license-core matrisinden döner */
+function _tierCreditCost(tier) {
+    const t = (_pricingCache?.tierMatrix || []).find(x => x.tier === tier);
+    return t ? (t.creditCost ?? 1) : 1;
 }
 
-/** Lisans Üret modalındaki maliyet tahminini günceller */
-function _updateClicCostEstimate(plan) {
-    const tryEl = $('clicCostTry');
-    if (!tryEl) return;
-    const unitPrice = _planUnitPrice(plan);
-    if (unitPrice && unitPrice > 0) {
-        tryEl.textContent = `≈ ${fmtPrice(unitPrice, 'TRY')} / kredi`;
-    } else if (plan === 'demo') {
-        tryEl.textContent = '(ücretsiz)';
-        tryEl.style.color = '#6ee7b7';
-    } else {
-        tryEl.textContent = '';
+/** Plan + tier için liste fiyatlarını (aylık/yıllık) döner */
+function _tierPrices(plan, tier) {
+    const rows = (_pricingCache?.pricing || []).filter(p => p.plan === plan && p.tier === tier);
+    const monthly = rows.find(r => r.billing_period === 'monthly');
+    const annual  = rows.find(r => r.billing_period === 'annual');
+    return { monthly, annual };
+}
+
+/** Lisans Üret modalındaki maliyet tahminini günceller (kredi + liste fiyatı) */
+function _updateClicCostEstimate() {
+    const credEl = $('clicCostCredits');
+    const tryEl  = $('clicCostTry');
+    const plan   = $('clicPlan')?.value || 'pro';
+    const tier   = $('clicTier')?.value || 'T5';
+    const cost   = _tierCreditCost(tier);
+    if (credEl) credEl.textContent = `${cost} kredi`;
+    const btn = $('clicCreate');
+    if (btn) btn.textContent = `🔑 Üret (${cost} Kredi)`;
+    if (tryEl) {
+        const { monthly, annual } = _tierPrices(plan, tier);
+        const parts = [];
+        if (monthly) parts.push(`${fmtPrice(monthly.price, monthly.currency)}/ay`);
+        if (annual)  parts.push(`${fmtPrice(annual.price, annual.currency)}/yıl`);
+        tryEl.textContent = parts.length ? `≈ ${parts.join(' · ')}` : '';
     }
 }
 
@@ -194,51 +217,51 @@ async function loadPricing() {
     const tbody   = $('pricingBody');
     const infoDiv = $('pricingInfo');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="6" class="loading">Yükleniyor...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="loading">Yükleniyor...</td></tr>';
     try {
         const r = await api('/api/dealer/pricing');
-        const plans = r.plans || [];
-        const mult  = r.enterpriseMultiplier || 1.20;
-        const unit  = r.creditUnit || 'tarama';
+        const pricing    = r.pricing || [];
+        const tierMatrix = r.tierMatrix || [];
+        const mult       = r.enterpriseMultiplier || 1.20;
+        const unit       = r.creditUnit || 'tarama';
 
-        // Önbelleğe al
-        _pricingCache = { plans, enterpriseMultiplier: mult, creditUnit: unit };
-        // Topbar TRY değerini güncelle (kredi sayısı zaten yüklüyse)
+        // Önbelleğe al (maliyet tahmini + topbar için)
+        _pricingCache = { pricing, tierMatrix, enterpriseMultiplier: mult, creditUnit: unit };
         _refreshTopbarTry();
+
+        const capOf    = (tier) => { const t = tierMatrix.find(x => x.tier === tier); return t ? Number(t.monthlyScanCount).toLocaleString('tr-TR') : '—'; };
+        const creditOf = (tier) => { const t = tierMatrix.find(x => x.tier === tier); return t ? (t.creditCost ?? '—') : '—'; };
 
         if (infoDiv) {
             infoDiv.innerHTML =
-                `<strong>Kredi Birimi:</strong> 1 ${escapeHtml(unit)} = 1 kredi &nbsp;|&nbsp;
-                 <strong>Enterprise Çarpanı:</strong> Pro × ${mult.toFixed(2)} &nbsp;|&nbsp;
-                 <strong>Toplam Plan:</strong> ${plans.length} &nbsp;|&nbsp;
-                 <span style="color:#94a3b8;font-size:.9em">Fiyatlar KDV hariçtir.</span>`;
+                `<strong>Model:</strong> Plan (özellik) × Tier (kapasite) &nbsp;|&nbsp;
+                 <strong>Birim:</strong> ${escapeHtml(unit)} &nbsp;|&nbsp;
+                 <strong>Satır:</strong> ${pricing.length} &nbsp;|&nbsp;
+                 <span style="color:#94a3b8;font-size:.9em">Kredi maliyeti tier'a göre değişir. Fiyatlar KDV hariçtir. T9 (Özel) yalnız merkez.</span>`;
         }
 
-        if (!plans.length) {
-            tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">Aktif fiyat planı bulunmuyor.</td></tr>';
+        if (!pricing.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-msg">Aktif fiyat satırı bulunmuyor.</td></tr>';
             return;
         }
 
-        tbody.innerHTML = plans.map(p => {
+        tbody.innerHTML = pricing.map(p => {
             const planTag   = `<span class="tag tag-${p.plan}">${escapeHtml(PLAN_LABELS[p.plan] || p.plan)}</span>`;
             const periodTag = `<span class="tag tag-${p.billing_period}">${escapeHtml(PERIOD_LABELS[p.billing_period] || p.billing_period)}</span>`;
-            const priceCell = `<span class="price-val">${fmtPrice(p.base_price, p.currency)}</span>
+            const priceCell = `<span class="price-val">${fmtPrice(p.price, p.currency)}</span>
                                <br><span class="price-sub">${p.billing_period === 'monthly' ? 'ay' : 'yıl'}</span>`;
-            const credCell  = `<span class="included-credits">${Number(p.included_credits).toLocaleString('tr-TR')} ${escapeHtml(unit)}</span>`;
-            const extraCell = p.extra_credit_price > 0
-                ? `<span class="extra-price">${fmtPrice(p.extra_credit_price, p.currency)} / ${escapeHtml(unit)}</span>`
-                : '<span class="muted">—</span>';
             return `<tr>
                 <td>${planTag}</td>
+                <td><strong>${escapeHtml(p.tier)}</strong></td>
+                <td>${escapeHtml(capOf(p.tier))} ${escapeHtml(unit)}</td>
+                <td class="muted">${escapeHtml(String(creditOf(p.tier)))} kredi</td>
                 <td>${periodTag}</td>
                 <td>${priceCell}</td>
-                <td>${credCell}</td>
-                <td>${extraCell}</td>
                 <td class="muted">${escapeHtml(p.notes || '—')}</td>
             </tr>`;
         }).join('');
     } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="6" class="err-msg">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="err-msg">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
     }
 }
 
@@ -817,9 +840,10 @@ function openCreateLicModal(customerId, customerName) {
     $('clicCustomerName').textContent = decodeURIComponent ? customerName : customerName;
     $('clicResult').textContent = '';
     $('clicPlan').value  = 'pro';
+    if ($('clicTier')) $('clicTier').value = 'T5';
     $('clicDays').value  = '365';
     $('clicLabel').value = '';
-    _updateClicCostEstimate('pro');
+    _updateClicCostEstimate();
     $('createLicModal').style.display = 'flex';
 }
 
@@ -832,20 +856,14 @@ $('createLicModal')?.addEventListener('click', e => {
     if (e.target === $('createLicModal')) closeCreateLicModal();
 });
 
-$('clicPlan')?.addEventListener('change', function() {
-    // Demo seçilince süreyi 7 ile sınırla
-    if (this.value === 'demo') {
-        const daysEl = $('clicDays');
-        if (daysEl && Number(daysEl.value) > 7) daysEl.value = '7';
-    }
-    // Maliyet tahminini güncelle
-    _updateClicCostEstimate(this.value);
-});
+$('clicPlan')?.addEventListener('change', _updateClicCostEstimate);
+$('clicTier')?.addEventListener('change', _updateClicCostEstimate);
 
 $('clicCreate')?.addEventListener('click', async () => {
     const resEl = $('clicResult');
     if (!_clicCustomerId) return;
     const plan     = $('clicPlan')?.value  || 'pro';
+    const tier     = $('clicTier')?.value  || 'T5';
     const validDays= Number($('clicDays')?.value) || 365;
     const label    = ($('clicLabel')?.value || '').trim();
 
@@ -855,7 +873,7 @@ $('clicCreate')?.addEventListener('click', async () => {
     try {
         const r = await api('/api/dealer/licenses', {
             method: 'POST',
-            body: { customerId: _clicCustomerId, plan, validDays, label: label || undefined }
+            body: { customerId: _clicCustomerId, plan, tier, validDays, label: label || undefined }
         });
         resEl.style.color = '#34d399';
         resEl.textContent = `✅ Lisans üretildi! Kalan kredi: ${r.remainingCredits}`;

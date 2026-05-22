@@ -4,7 +4,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { asyncH, safeJSON } = require('@mailtrustai/shared');
 const { sha256 } = require('@mailtrustai/security');
-const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX } = require('@mailtrustai/license-core');
+const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX, isAdminOnlyTier } = require('@mailtrustai/license-core');
 const { get, run, all, audit } = require('../db');
 const customerRepo   = require('../repositories/customerRepository');
 const licenseRepo    = require('../repositories/licenseRepository');
@@ -84,23 +84,45 @@ router.post('/license/create', asyncH(async (req, res) => {
         return badRequest(res, `tier geçersiz: ${tier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`);
     }
 
-    // ─── Bayi kredi kontrolü — bayiyle üretiliyorsa 1 kredi kesilir ─────────
+    // ─── T9 (custom) yalnızca merkezi admin tarafından üretilebilir ─────────
+    // Bayi (dealerId) T9 üretemez. Admin T9 üretirken kapasiteyi kendisi belirler.
+    if (tier && isAdminOnlyTier(tier) && dealerId) {
+        return res.status(403).json({
+            error: `${tier} (Özel/Custom) seviyesi yalnızca merkezi admin tarafından üretilebilir.`,
+            code:  'TIER_ADMIN_ONLY'
+        });
+    }
+
+    // T9 custom kapasitesi (yalnız admin path'inde anlamlı)
+    const customScanCount = Number(req.body?.customScanCount ?? req.body?.monthlyScanCount);
+    if (tier && isAdminOnlyTier(tier)) {
+        if (!Number.isFinite(customScanCount) || customScanCount <= 0) {
+            return badRequest(res, 'T9 (Özel) için customScanCount (aylık tarama kapasitesi) gerekli');
+        }
+    }
+
+    // tier varsa planDef'in tarama limitini tier ile override et (T9 → customScanCount)
+    const planDef    = getPlan(plan, tier, { customScanCount });
+    const creditCost = planDef.creditCost || 1;
+
+    // ─── Bayi kredi kontrolü — bayiyle üretiliyorsa tier kadar kredi kesilir ─
     // Admin panelinden (dealerId olmadan) üretimde kredi kontrolü yapılmaz.
     if (dealerId) {
         const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [String(dealerId)]);
         if (!dealer) return badRequest(res, `bayi bulunamadı: ${dealerId}`);
 
-        // Atomik kredi düşme: credits > 0 koşuluyla — race condition koruması.
+        // Atomik kredi düşme: credits >= maliyet koşuluyla — race condition koruması.
         const upd = await run(
-            'UPDATE dealers SET credits = credits - 1 WHERE id = ? AND credits > 0',
-            [dealer.id]
+            'UPDATE dealers SET credits = credits - ? WHERE id = ? AND credits >= ?',
+            [creditCost, dealer.id, creditCost]
         );
         const changed = upd?.affectedRows ?? upd?.changes ?? 0;
         if (changed === 0) {
-            await audit(dealerId, 'dealer.credit.insufficient', null, { customerId, plan });
+            await audit(dealerId, 'dealer.credit.insufficient', null, { customerId, plan, tier: planDef.tier, creditCost });
             return res.status(402).json({
-                error: 'Yetersiz kredi. Lütfen yöneticinizle iletişime geçin.',
+                error: `Yetersiz kredi (gereken: ${creditCost}). Lütfen yöneticinizle iletişime geçin.`,
                 code:  'INSUFFICIENT_CREDITS',
+                required: creditCost,
                 balance: dealer.credits ?? 0
             });
         }
@@ -110,11 +132,11 @@ router.post('/license/create', asyncH(async (req, res) => {
         const { v4: _uuid } = require('uuid');
         await run(
             'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at) VALUES(?,?,?,?,?,?,?,?)',
-            [_uuid(), dealer.id, -1, newBalance, 'license.create',
-             `Lisans üretimi: müşteri=${customerId}, plan=${plan}`, 'system', Date.now()]
+            [_uuid(), dealer.id, -creditCost, newBalance, 'license.create',
+             `Lisans üretimi: müşteri=${customerId}, plan=${plan} ${planDef.tier} (${creditCost} kredi)`, 'system', Date.now()]
         );
         await audit(dealerId, 'dealer.credit.deduct', dealer.id,
-            { delta: -1, newBalance, customerId, plan });
+            { delta: -creditCost, newBalance, customerId, plan, tier: planDef.tier });
     }
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -127,8 +149,6 @@ router.post('/license/create', asyncH(async (req, res) => {
     // UPSERT: dealer transferi/şirket adı güncellemesi mümkün.
     await customerRepo.upsertSlim({ id: customerId, dealerId, companyName, email });
 
-    // tier varsa planDef'in tarama limitini tier ile override et
-    const planDef = getPlan(plan, tier);
     const { key, keyHash } = generateLicenseKey({ customerId, dealerId, plan });
     const id = uuid();
     const issuedAt = Date.now();

@@ -76,25 +76,27 @@ test('topup: mutlu yol — kredi düşer, extra_scans artar, credit log yazılı
         const token = await login(port, 'tu-dlr1', pw);
         const auth  = { authorization: `Bearer ${token}` };
 
+        // T2 kredi maliyeti = 2 (license-core TIER_MATRIX). Bayi 5 → 3.
         const r = await http_(port, 'POST', '/api/dealer/licenses/tu-lic1/topup', { topupTier: 'T2' }, auth);
         assert.strictEqual(r.status, 200, JSON.stringify(r.body));
         assert.strictEqual(r.body.ok,               true);
         assert.strictEqual(r.body.topupTier,        'T2');
         assert.strictEqual(r.body.scanAmount,       100);
+        assert.strictEqual(r.body.creditCost,       2);
         assert.strictEqual(r.body.newExtraScans,    100);
-        assert.strictEqual(r.body.remainingCredits, 4);
+        assert.strictEqual(r.body.remainingCredits, 3);
 
         // DB doğrulama
         const lic = db.prepare('SELECT extra_scans FROM licenses WHERE id = ?').get('tu-lic1');
         assert.strictEqual(lic.extra_scans, 100, 'extra_scans DB\'de güncellenmedi');
 
         const dlr = db.prepare('SELECT credits FROM dealers WHERE id = ?').get('tu-dlr1');
-        assert.strictEqual(dlr.credits, 4, 'kredi düşmedi');
+        assert.strictEqual(dlr.credits, 3, 'kredi tier maliyeti kadar düşmedi');
 
         const log = db.prepare("SELECT * FROM dealer_credit_log WHERE dealer_id = ? AND reason = 'scan.topup'").get('tu-dlr1');
         assert.ok(log, 'scan.topup log kaydı bulunamadı');
-        assert.strictEqual(log.delta,   -1);
-        assert.strictEqual(log.balance,  4);
+        assert.strictEqual(log.delta,   -2);
+        assert.strictEqual(log.balance,  3);
     } finally {
         await new Promise((r) => srv.close(r));
     }

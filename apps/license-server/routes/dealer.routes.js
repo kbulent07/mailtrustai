@@ -19,7 +19,7 @@ const crypto  = require('crypto');
 const bcrypt  = require('bcrypt');
 const { v4: uuid } = require('uuid');
 const { asyncH, envInt } = require('@mailtrustai/shared');
-const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX } = require('@mailtrustai/license-core');
+const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX, isAdminOnlyTier, tierCreditCost } = require('@mailtrustai/license-core');
 const { all, get, run, upsert, audit } = require('../db');
 
 const router = express.Router();
@@ -111,13 +111,26 @@ router.post('/dealer/logout', asyncH(async (req, res) => {
 // ─── GET /api/dealer/pricing — oturum gerektirmez (bayiler URL'yi paylaşabilir) ─
 // Aktif fiyat planlarını + enterprise çarpanı + kredi birim adını döner.
 router.get('/dealer/pricing', asyncH(async (req, res) => {
-    const plans = await all(
-        'SELECT id, plan, billing_period, currency, base_price, included_credits, extra_credit_price, notes FROM pricing_plans WHERE is_active = 1 ORDER BY plan, billing_period, currency'
+    const pricing = await all(
+        'SELECT id, plan, tier, billing_period, currency, price, notes FROM tier_pricing WHERE is_active = 1 ORDER BY plan, tier, billing_period, currency'
     );
     const multRow = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'pricing_enterprise_multiplier'");
     const unitRow = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'pricing_credit_unit'");
+
+    // Tier matrisi: kapasite + bayi kredi maliyeti (license-core, salt-okunur).
+    // Bayi paneli "hangi tier kaç kredi" tablosunu bundan render eder. T9 (admin-only) hariç.
+    const tierMatrix = Object.entries(TIER_MATRIX)
+        .filter(([, def]) => !def.adminOnly)
+        .map(([key, def]) => ({
+            tier:             key,
+            monthlyScanCount: def.monthlyScanCount,
+            creditCost:       def.creditCost,
+            label:            def.label
+        }));
+
     res.json({
-        plans:                plans || [],
+        pricing:              pricing || [],
+        tierMatrix,
         enterpriseMultiplier: parseFloat(multRow?.setting_value || '1.20'),
         creditUnit:           unitRow?.setting_value || 'tarama'
     });
@@ -265,6 +278,13 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
     if (tier && !TIER_MATRIX[tier]) {
         return res.status(400).json({ error: `Geçersiz tier: ${tier}` });
     }
+    // T9 (Özel/Custom) bayi tarafından üretilemez — yalnız merkezi admin.
+    if (tier && isAdminOnlyTier(tier)) {
+        return res.status(403).json({
+            error: `${tier} (Özel/Custom) seviyesi yalnızca merkezi admin tarafından üretilebilir.`,
+            code:  'TIER_ADMIN_ONLY'
+        });
+    }
 
     // Müşteri bu bayiye ait mi?
     const customer = await get('SELECT id, dealer_id FROM customers WHERE id = ?', [customerId.trim()]);
@@ -273,19 +293,24 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
         return res.status(403).json({ error: 'Bu müşteri size ait değil' });
     }
 
-    // Atomik kredi düşme: race condition koruması
+    // Tier'a göre kredi maliyeti
+    const planDef    = getPlan(plan, tier);
+    const creditCost = planDef.creditCost || 1;
+
+    // Atomik kredi düşme: credits >= maliyet koşuluyla — race condition koruması
     const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [dealerId]);
     if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
 
     const upd = await run(
-        'UPDATE dealers SET credits = credits - 1 WHERE id = ? AND credits > 0',
-        [dealer.id]
+        'UPDATE dealers SET credits = credits - ? WHERE id = ? AND credits >= ?',
+        [creditCost, dealer.id, creditCost]
     );
     const changed = upd?.affectedRows ?? upd?.changes ?? 0;
     if (changed === 0) {
         return res.status(402).json({
-            error: 'Yetersiz kredi. Yöneticinizden kredi yüklemesini isteyin.',
+            error: `Yetersiz kredi (gereken: ${creditCost}). Yöneticinizden kredi yüklemesini isteyin.`,
             code:  'INSUFFICIENT_CREDITS',
+            required: creditCost,
             balance: dealer.credits ?? 0
         });
     }
@@ -312,13 +337,12 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
 
     await run(
         'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at,price_amount,currency) VALUES(?,?,?,?,?,?,?,?,?,?)',
-        [uuid(), dealer.id, -1, newBalance, 'license.create',
-         `Lisans üretimi (bayi paneli): müşteri=${customerId}, plan=${plan}`, 'dealer-panel', Date.now(),
+        [uuid(), dealer.id, -creditCost, newBalance, 'license.create',
+         `Lisans üretimi (bayi paneli): müşteri=${customerId}, plan=${plan} ${planDef.tier} (${creditCost} kredi)`, 'dealer-panel', Date.now(),
          priceAmount, priceCurrency]
     );
 
     // Lisansı üret
-    const planDef = getPlan(plan, tier);
     const { key, keyHash } = generateLicenseKey({ customerId: customerId.trim(), dealerId, plan });
     const id        = uuid();
     const issuedAt  = Date.now();
@@ -342,6 +366,7 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
         licenseKey: key,
         plan,
         tier:       planDef.tier,
+        creditCost,
         expiresAt,
         remainingCredits: newBalance
     });
@@ -479,6 +504,13 @@ router.post('/dealer/licenses/:id/topup', dealerSessionAuth, asyncH(async (req, 
             error: `Geçersiz topupTier: ${topupTier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`
         });
     }
+    // T9 (Özel/Custom) ek-tarama paketi olarak satılamaz.
+    if (isAdminOnlyTier(topupTier)) {
+        return res.status(403).json({
+            error: `${topupTier} (Özel/Custom) ek tarama paketi olarak kullanılamaz.`,
+            code:  'TIER_ADMIN_ONLY'
+        });
+    }
 
     const license = await get(
         'SELECT id, dealer_id, customer_id, status, extra_scans FROM licenses WHERE id = ?',
@@ -491,20 +523,22 @@ router.post('/dealer/licenses/:id/topup', dealerSessionAuth, asyncH(async (req, 
     }
 
     const scanAmount = TIER_MATRIX[topupTier].monthlyScanCount;
+    const creditCost = tierCreditCost(topupTier);
 
     // Atomik kredi düşme
     const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [dealerId]);
     if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
 
     const upd = await run(
-        'UPDATE dealers SET credits = credits - 1 WHERE id = ? AND credits > 0',
-        [dealer.id]
+        'UPDATE dealers SET credits = credits - ? WHERE id = ? AND credits >= ?',
+        [creditCost, dealer.id, creditCost]
     );
     const changed = upd?.affectedRows ?? upd?.changes ?? 0;
     if (changed === 0) {
         return res.status(402).json({
-            error: 'Yetersiz kredi. Yöneticinizden kredi yüklemesini isteyin.',
+            error: `Yetersiz kredi (gereken: ${creditCost}). Yöneticinizden kredi yüklemesini isteyin.`,
             code:  'INSUFFICIENT_CREDITS',
+            required: creditCost,
             balance: dealer.credits ?? 0
         });
     }
@@ -523,13 +557,13 @@ router.post('/dealer/licenses/:id/topup', dealerSessionAuth, asyncH(async (req, 
         `INSERT INTO dealer_credit_log
             (id,dealer_id,delta,balance,reason,description,actor,created_at,price_amount,currency)
          VALUES(?,?,?,?,?,?,?,?,?,?)`,
-        [uuid(), dealer.id, -1, newBalance, 'scan.topup',
-         `Ek tarama paketi: lisans=${licenseId}, müşteri=${license.customer_id}, tier=${topupTier} (+${scanAmount} tarama)`,
+        [uuid(), dealer.id, -creditCost, newBalance, 'scan.topup',
+         `Ek tarama paketi: lisans=${licenseId}, müşteri=${license.customer_id}, tier=${topupTier} (+${scanAmount} tarama, ${creditCost} kredi)`,
          'dealer-panel', Date.now(), 0, 'TRY']
     );
 
     await audit(dealerId, 'license.topup', licenseId, {
-        customerId: license.customer_id, topupTier, scanAmount
+        customerId: license.customer_id, topupTier, scanAmount, creditCost
     });
 
     res.json({
@@ -537,6 +571,7 @@ router.post('/dealer/licenses/:id/topup', dealerSessionAuth, asyncH(async (req, 
         licenseId,
         topupTier,
         scanAmount,
+        creditCost,
         newExtraScans:    afterLicense?.extra_scans ?? 0,
         remainingCredits: newBalance
     });
@@ -566,6 +601,13 @@ router.post('/dealer/topup-codes', dealerSessionAuth, asyncH(async (req, res) =>
             error: `Geçersiz tier: ${tier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`
         });
     }
+    // T9 (Özel/Custom) ek-tarama kodu olarak üretilemez.
+    if (isAdminOnlyTier(tier)) {
+        return res.status(403).json({
+            error: `${tier} (Özel/Custom) ek tarama kodu olarak üretilemez.`,
+            code:  'TIER_ADMIN_ONLY'
+        });
+    }
 
     // Opsiyonel müşteri kısıtlaması
     if (customerId) {
@@ -583,15 +625,17 @@ router.post('/dealer/topup-codes', dealerSessionAuth, asyncH(async (req, res) =>
     const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [dealerId]);
     if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
 
+    const creditCost = tierCreditCost(tier);
     const upd = await run(
-        'UPDATE dealers SET credits = credits - 1 WHERE id = ? AND credits > 0',
-        [dealer.id]
+        'UPDATE dealers SET credits = credits - ? WHERE id = ? AND credits >= ?',
+        [creditCost, dealer.id, creditCost]
     );
     const changed = upd?.affectedRows ?? upd?.changes ?? 0;
     if (changed === 0) {
         return res.status(402).json({
-            error: 'Yetersiz kredi.',
+            error: `Yetersiz kredi (gereken: ${creditCost}).`,
             code:  'INSUFFICIENT_CREDITS',
+            required: creditCost,
             balance: dealer.credits ?? 0
         });
     }
@@ -614,12 +658,12 @@ router.post('/dealer/topup-codes', dealerSessionAuth, asyncH(async (req, res) =>
         `INSERT INTO dealer_credit_log
             (id,dealer_id,delta,balance,reason,description,actor,created_at,price_amount,currency)
          VALUES(?,?,?,?,?,?,?,?,?,?)`,
-        [uuid(), dealerId, -1, newBalance, 'code.generate',
-         `Topup kodu üretimi: ${codeStr}, tier=${tier} (+${scanAmount} tarama)${customerId ? `, müşteri=${customerId}` : ''}`,
+        [uuid(), dealerId, -creditCost, newBalance, 'code.generate',
+         `Topup kodu üretimi: ${codeStr}, tier=${tier} (+${scanAmount} tarama, ${creditCost} kredi)${customerId ? `, müşteri=${customerId}` : ''}`,
          'dealer-panel', now, 0, 'TRY']
     );
 
-    await audit(dealerId, 'topup.code.create', id, { tier, scanAmount, customerId: customerId || null });
+    await audit(dealerId, 'topup.code.create', id, { tier, scanAmount, creditCost, customerId: customerId || null });
 
     res.json({
         ok:               true,
@@ -627,6 +671,7 @@ router.post('/dealer/topup-codes', dealerSessionAuth, asyncH(async (req, res) =>
         code:             codeStr,
         tier,
         scanAmount,
+        creditCost,
         customerId:       customerId || null,
         expiresAt,
         remainingCredits: newBalance

@@ -17,19 +17,26 @@ function SECRET() {
 }
 
 // ============================================================
-// TIER MATRIX — Tarama sayısı limitleri (T1–T9)
-// Plan özellikleri belirler; tier aylık tarama kotasını belirler.
+// TIER MATRIX — Mail tarama kapasitesi seviyeleri (1–9)
+// Plan (pro/enterprise) hangi özelliklerin açık olduğunu belirler;
+// tier (T1–T9) aylık mail tarama kapasitesini belirler.
+// Pro 5 ile Enterprise 5 AYNI kapasiteye sahiptir; fark özelliklerdedir.
+//
+//   creditCost : Bayi bu tier'da lisans/ek-paket üretirken düşülen kredi.
+//   adminOnly  : Yalnızca merkezi admin üretebilir; bayi panelinde gizli.
+//   custom     : Kapasite sabit değil — admin lisans üretirken belirler.
 // ============================================================
 const TIER_MATRIX = {
-    T1: { monthlyScanCount:    50, label: 'T1 (50/ay)' },
-    T2: { monthlyScanCount:   100, label: 'T2 (100/ay)' },
-    T3: { monthlyScanCount:   200, label: 'T3 (200/ay)' },
-    T4: { monthlyScanCount:   500, label: 'T4 (500/ay)' },
-    T5: { monthlyScanCount:  1000, label: 'T5 (1.000/ay)' },
-    T6: { monthlyScanCount:  2000, label: 'T6 (2.000/ay)' },
-    T7: { monthlyScanCount:  3000, label: 'T7 (3.000/ay)' },
-    T8: { monthlyScanCount:  5000, label: 'T8 (5.000/ay)' },
-    T9: { monthlyScanCount: 10000, label: 'T9 (10.000/ay)' }
+    T1: { monthlyScanCount:    50, creditCost:  1, label: 'T1 (50/ay)' },
+    T2: { monthlyScanCount:   100, creditCost:  2, label: 'T2 (100/ay)' },
+    T3: { monthlyScanCount:   250, creditCost:  3, label: 'T3 (250/ay)' },
+    T4: { monthlyScanCount:   500, creditCost:  4, label: 'T4 (500/ay)' },
+    T5: { monthlyScanCount:  1000, creditCost:  5, label: 'T5 (1.000/ay)' },
+    T6: { monthlyScanCount:  2500, creditCost:  7, label: 'T6 (2.500/ay)' },
+    T7: { monthlyScanCount:  5000, creditCost:  9, label: 'T7 (5.000/ay)' },
+    T8: { monthlyScanCount: 10000, creditCost: 12, label: 'T8 (10.000/ay)' },
+    // T9 = özel (custom). Kapasite admin tarafından belirlenir, bayi üretemez.
+    T9: { monthlyScanCount: null, creditCost: 0, adminOnly: true, custom: true, label: 'T9 (Özel / Custom)' }
 };
 
 // ============================================================
@@ -55,7 +62,7 @@ const PLAN_MATRIX = {
         limits: { monthlyScanCount: 1000, mailboxCount: 10, userCount: 10 }
     },
     enterprise: {
-        tier: 'T9',
+        tier: 'T8',
         graceDays: 7,
         features: {
             manualUpload: true, headerAnalysis: true, attachmentScan: true,
@@ -76,16 +83,42 @@ const PLAN_MATRIX = {
  * Plan + tier birleşimi için final tanımı döner.
  * @param {string} plan  - 'pro' | 'enterprise'
  * @param {string} [tier] - 'T1'…'T9' (yoksa plan varsayılanı)
+ * @param {object} [opts] - { customScanCount } — yalnız T9 (custom) için kapasite
  */
-function getPlan(plan, tier) {
+function getPlan(plan, tier, opts = {}) {
     const base = PLAN_MATRIX[plan] || PLAN_MATRIX.pro;
     const t    = (tier && TIER_MATRIX[tier]) ? tier : base.tier;
-    const scanCount = TIER_MATRIX[t]?.monthlyScanCount ?? base.limits.monthlyScanCount;
+    const tierDef = TIER_MATRIX[t] || {};
+
+    // T9 (custom): kapasite admin tarafından verilir. Verilmezse plan tabanına düş.
+    let scanCount;
+    if (tierDef.custom) {
+        const c = Number(opts.customScanCount);
+        scanCount = (Number.isFinite(c) && c > 0) ? c : base.limits.monthlyScanCount;
+    } else {
+        scanCount = tierDef.monthlyScanCount ?? base.limits.monthlyScanCount;
+    }
+
     return {
         ...base,
         tier: t,
+        creditCost: tierDef.creditCost ?? 1,
         limits: { ...base.limits, monthlyScanCount: scanCount }
     };
+}
+
+/**
+ * Bir tier'ın bayi kredi maliyetini döner (T9 = 0, çünkü bayi üretemez).
+ */
+function tierCreditCost(tier) {
+    return TIER_MATRIX[tier]?.creditCost ?? 1;
+}
+
+/**
+ * Tier yalnızca admin tarafından mı üretilebilir? (T9 custom)
+ */
+function isAdminOnlyTier(tier) {
+    return !!TIER_MATRIX[tier]?.adminOnly;
 }
 
 function getTier(tier) { return TIER_MATRIX[tier] || null; }
@@ -110,6 +143,6 @@ function verifyActivationSig({ payload, sig }) {
 
 module.exports = {
     PLAN_MATRIX, TIER_MATRIX,
-    getPlan, getTier,
+    getPlan, getTier, tierCreditCost, isAdminOnlyTier,
     generateLicenseKey, signActivation, verifyActivationSig
 };

@@ -810,6 +810,15 @@ $('licenseCreateForm').addEventListener('submit', async (e) => {
         trial      : $('newLicTrial')?.checked || false
     };
 
+    // T9 (Özel/Custom): kapasiteyi admin girer.
+    if (body.tier === 'T9') {
+        const cs = Number($('newLicCustomScan')?.value);
+        if (!Number.isFinite(cs) || cs < 1) {
+            resEl.textContent = 'T9 (Özel) için aylık tarama kapasitesi girin.'; resEl.className = 'result err'; return;
+        }
+        body.customScanCount = cs;
+    }
+
     if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
     if (!body.validDays || body.validDays < 1) { resEl.textContent = 'Geçerli bir gün sayısı girin.'; resEl.className = 'result err'; return; }
     if (body.trial && body.validDays > 7) {
@@ -840,6 +849,12 @@ $('licenseCreateForm').addEventListener('submit', async (e) => {
         resEl.textContent = 'Hata: ' + err.message;
         resEl.className   = 'result err';
     }
+});
+
+// T9 (Özel/Custom) seçilince kapasite alanını göster/gizle.
+$('newLicTier')?.addEventListener('change', (e) => {
+    const wrap = $('newLicCustomScanWrap');
+    if (wrap) wrap.style.display = (e.target.value === 'T9') ? '' : 'none';
 });
 
 $('copyKeyBtn').addEventListener('click', async () => {
@@ -1442,10 +1457,22 @@ async function ownerUserDelete(id, email) {
 // ================================================================
 // FİYATLANDIRMA — pricing tab
 // ================================================================
-let _pricingData = null; // { plans, settings }
+let _pricingData = null; // { pricing, settings, tierMatrix, planMatrix }
+let _tierMatrix  = [];   // license-core tier matrisi (kapasite + kredi maliyeti)
 
 const PLAN_LABELS   = { demo: '🆓 Demo', pro: '⭐ Pro', enterprise: '🏢 Enterprise' };
 const PERIOD_LABELS = { monthly: 'Aylık', annual: 'Yıllık' };
+
+function _tierCapacity(tier) {
+    const t = _tierMatrix.find(x => x.tier === tier);
+    if (!t) return '—';
+    if (t.custom || t.monthlyScanCount == null) return 'Özel';
+    return Number(t.monthlyScanCount).toLocaleString('tr-TR');
+}
+function _tierCredit(tier) {
+    const t = _tierMatrix.find(x => x.tier === tier);
+    return t ? (t.creditCost ?? '—') : '—';
+}
 
 async function loadPricing() {
     const tbody  = $('pricingTableBody');
@@ -1461,7 +1488,8 @@ async function loadPricing() {
         if (mult) mult.value = r.settings?.enterpriseMultiplier ?? 1.20;
         if (unit) unit.value = r.settings?.creditUnit ?? 'tarama';
 
-        renderPricingTable(r.plans || []);
+        _tierMatrix = r.tierMatrix || [];
+        renderPricingTable(r.pricing || []);
         renderTierMatrix(r.tierMatrix || []);
         renderPlanMatrix(r.planMatrix || []);
     } catch (e) {
@@ -1475,12 +1503,16 @@ function renderTierMatrix(tiers) {
     if (!tb) return;
     if (!tiers.length) { tb.innerHTML = '<tr><td colspan="3" class="loading">Veri yok.</td></tr>'; return; }
     tb.innerHTML = tiers.map(t => {
-        const cnt = t.monthlyScanCount >= 9999999
-            ? '∞ Sınırsız'
+        const cnt = (t.custom || t.monthlyScanCount == null)
+            ? 'Özel (admin belirler)'
             : Number(t.monthlyScanCount).toLocaleString('tr-TR') + ' / ay';
+        const credit = t.adminOnly
+            ? '<span class="muted">— (admin)</span>'
+            : `<strong>${escapeHtml(String(t.creditCost ?? '—'))}</strong> kredi`;
         return `<tr>
             <td><strong>${escapeHtml(t.tier)}</strong></td>
             <td>${escapeHtml(cnt)}</td>
+            <td>${credit}</td>
             <td class="muted">${escapeHtml(t.label || '—')}</td>
         </tr>`;
     }).join('');
@@ -1548,14 +1580,14 @@ function renderPlanMatrix(planMatrix) {
     body.innerHTML = metaHtml + featHtml;
 }
 
-function renderPricingTable(plans) {
+function renderPricingTable(rows) {
     const tbody   = $('pricingTableBody');
     const canEdit = currentPerms.includes('pricing:write');
-    if (!plans.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Fiyat planı bulunamadı.</td></tr>';
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">Fiyat matrisi bulunamadı.</td></tr>';
         return;
     }
-    tbody.innerHTML = plans.map(p => {
+    tbody.innerHTML = rows.map(p => {
         const planLabel   = PLAN_LABELS[p.plan]   || p.plan;
         const periodLabel = PERIOD_LABELS[p.billing_period] || p.billing_period;
         const statusBadge = p.is_active
@@ -1567,22 +1599,17 @@ function renderPricingTable(plans) {
         ` : '—';
         return `<tr data-pricing-id="${p.id}">
             <td><strong>${escapeHtml(planLabel)}</strong></td>
+            <td><strong>${escapeHtml(p.tier)}</strong></td>
+            <td>${escapeHtml(_tierCapacity(p.tier))}</td>
+            <td class="muted">${escapeHtml(String(_tierCredit(p.tier)))} kredi</td>
             <td>${escapeHtml(periodLabel)}</td>
             <td>${escapeHtml(p.currency)}</td>
             <td>${canEdit
-                ? `<input type="number" class="pricing-input" data-field="base_price" value="${p.base_price}" min="0" step="0.01" style="width:90px">`
-                : `<strong>${fmtPrice(p.base_price, p.currency)}</strong>`}
+                ? `<input type="number" class="pricing-input" data-field="price" value="${p.price}" min="0" step="0.01" style="width:100px">`
+                : `<strong>${fmtPrice(p.price, p.currency)}</strong>`}
             </td>
             <td>${canEdit
-                ? `<input type="number" class="pricing-input" data-field="included_credits" value="${p.included_credits}" min="0" step="1" style="width:80px">`
-                : escapeHtml(String(p.included_credits))}
-            </td>
-            <td>${canEdit
-                ? `<input type="number" class="pricing-input" data-field="extra_credit_price" value="${p.extra_credit_price}" min="0" step="0.01" style="width:80px">`
-                : fmtPrice(p.extra_credit_price, p.currency)}
-            </td>
-            <td>${canEdit
-                ? `<input type="text" class="pricing-input" data-field="notes" value="${escapeHtml(p.notes || '')}" maxlength="256" style="width:160px">`
+                ? `<input type="text" class="pricing-input" data-field="notes" value="${escapeHtml(p.notes || '')}" maxlength="256" style="width:150px">`
                 : escapeHtml(p.notes || '—')}
             </td>
             <td>${statusBadge}</td>
