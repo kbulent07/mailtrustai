@@ -152,8 +152,8 @@ app.use('/admin', express.static(ADMIN_PUBLIC_DIR, {
     etag: true, lastModified: true, maxAge: 0,
     setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache, must-revalidate')
 }));
-app.get('/admin', (req, res) => res.sendFile(path.join(ADMIN_PUBLIC_DIR, 'keygen.html')));
-app.get('/keygen.html', (req, res) => res.redirect('/admin/'));
+app.get(['/admin', '/admin/'], (req, res) => res.sendFile(path.join(ADMIN_PUBLIC_DIR, 'keygen.html')));
+app.get('/keygen.html', (req, res) => res.redirect(301, '/admin/'));
 
 // ─── Bayi Panel ──────────────────────────────────────────────────────────────
 const DEALER_PUBLIC_DIR = path.join(__dirname, 'public', 'dealer');

@@ -20,7 +20,8 @@ const HEARTBEAT_KEYS = [
     'licenseKeyHash', 'customerId', 'dealerId', 'activationId', 'instanceId',
     'appVersion', 'buildVersion', 'nodeVersion', 'environment', 'hostnameHash',
     'lastHeartbeatAt', 'healthStatus', 'enabledFeatures', 'monthlyScanCount',
-    'dailyScanCount', 'mailboxCount', 'userCount', 'licenseStatus', 'plan', 'tier',
+    'dailyScanCount', 'totalScanCount', 'lastScanAt',
+    'mailboxCount', 'userCount', 'licenseStatus', 'plan', 'tier',
     'localPolicyVersion', 'localWhitelistVersion', 'localBlacklistVersion',
     'localApiConfigVersion', 'errorSummary', 'services'
 ];
@@ -59,7 +60,7 @@ async function _withRetry(fn, label) {
     }
 }
 
-function _baseTelemetry({ counters = {}, services = {} } = {}) {
+function _baseTelemetry({ counters = {}, services = {}, lastScanAt = null } = {}) {
     const lic = licenseClient.getSnapshot() || {};
     const envLicenseKey = env('MSA_LICENSE_KEY', '');
     const state = getState();
@@ -82,6 +83,8 @@ function _baseTelemetry({ counters = {}, services = {} } = {}) {
         // Sayaçlar (mail içeriği değil, agregat)
         monthlyScanCount: counters.monthlyScanCount || 0,
         dailyScanCount:   counters.dailyScanCount   || 0,
+        totalScanCount:   counters.totalScanCount   || 0,
+        lastScanAt:       lastScanAt || null,
         mailboxCount:     counters.mailboxCount     || 0,
         userCount:        counters.userCount        || 0,
         // Versiyon hash'leri
@@ -152,7 +155,22 @@ async function sendHeartbeat({ syncUrl, gather }) {
     }
     return _withRetry(async () => {
         const payload = sanitizeHeartbeatPayload(_baseTelemetry(gather ? await gather() : {}));
-        return await _fetch('POST', syncUrl, '/api/customer-sync/heartbeat', payload);
+        const res = await _fetch('POST', syncUrl, '/api/customer-sync/heartbeat', payload);
+
+        // HEARTBEAT-PIGGYBACK: sunucu güncel lisans snapshot'ı döndürdüyse
+        // license-client cache'ini hemen güncelle → uzatma 5 dk içinde yansır.
+        // (Aksi halde validate'in 6 saatlik döngüsünü beklemek gerekirdi.)
+        if (res && res.license && typeof licenseClient.applyServerSnapshot === 'function') {
+            try {
+                const r = licenseClient.applyServerSnapshot(res.license);
+                if (r.applied) {
+                    logger.info('[central-sync] heartbeat: lisans cache guncellendi: ' + r.changed.join(' · '));
+                }
+            } catch (e) {
+                logger.warn('[central-sync] heartbeat applyServerSnapshot hatasi:', e.message);
+            }
+        }
+        return res;
     }, 'heartbeat');
 }
 

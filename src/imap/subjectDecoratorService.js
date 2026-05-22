@@ -271,7 +271,9 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
     let movedExternally = false;
 
     try {
-        client = await createConnection(account);
+        // stored: diskten taze (güncel şifre) — UI'dan şifre değiştirilince
+        // monitor in-memory eski şifreyle kalmasın diye onu kullanırız.
+        client = await createConnection(stored || account);
         await client.connect();
 
         // ─── 1) ÖNCE: tercih edilen klasörde mail hâlâ var mı? ──────────────
@@ -281,7 +283,7 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
             try {
                 const m = await client.search({ uid: String(uid) }, { uid: true });
                 foundInPreferred = !!(m && m.length > 0);
-            } finally { tryLock.release(); }
+            } finally { try { await tryLock.release(); } catch (_) {} }
         } catch (_) { /* tercih klasörü erişilemiyor — locator'a düş */ }
 
         // ─── 2) BULUNAMADIYSA: Message-ID ile tüm klasörlerde ara ───────────
@@ -406,7 +408,7 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
         console.error(`[SubjectDecorator] Hata: ${error.message}`);
         return { attempted: true, decorated: false, error: error.message };
     } finally {
-        if (lock) { try { lock.release(); } catch (_) {} }
+        if (lock) { try { await lock.release(); } catch (_) {} }
         if (client) { await client.logout().catch(() => {}); }
     }
 }
@@ -430,11 +432,13 @@ async function removeDecoration({ account, uid, folder = 'INBOX' }) {
     }
 
     const { parseEmail } = require('../analysis/parser');
+    // Diskten taze credential — şifre değişmişse de auth yapabil
+    const stored = loadCredentials().find(a => a.email === account.email) || account;
 
     let client = null;
     let lock = null;
     try {
-        client = await createConnection(account);
+        client = await createConnection(stored);
         await client.connect();
         lock = await client.getMailboxLock(folder);
 
@@ -508,7 +512,7 @@ async function removeDecoration({ account, uid, folder = 'INBOX' }) {
         console.error(`[SubjectDecorator] removeDecoration hata: ${error.message}`);
         return { attempted: true, restored: false, error: error.message };
     } finally {
-        if (lock) { try { lock.release(); } catch (_) {} }
+        if (lock) { try { await lock.release(); } catch (_) {} }
         if (client) { await client.logout().catch(() => {}); }
     }
 }

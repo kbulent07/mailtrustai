@@ -9,6 +9,7 @@ const customerAuth = require('../../../middleware/customerAuth');
 const { requireAdminAuth } = require('../../../middleware/adminAuth');
 const { validateLicenseKey } = require('../../../license/license');
 const { cleanupInitialCredsFile } = require('../../../services/initialSetupService');
+const { clearPersistedSetupToken } = require('../../../services/setupTokenService');
 const customerUserStore = require('../../../storage/customerUserStore');
 const { sendSystemEmail } = require('../../../smtp/sender');
 
@@ -132,6 +133,7 @@ router.post('/customer/setup', async (req, res) => {
         });
         console.log(`[Setup] İlk müşteri admin oluşturuldu: ${admin.email} (kaynak: ${isLocal ? 'localhost' : 'setup-token'})`);
         cleanupInitialCredsFile();
+        clearPersistedSetupToken(); // admin oluştu → kalıcı setup-token'ı sil (sızıntı yüzeyini kapat)
         res.json({ success: true, token, expiresIn: 12 * 3600, email: admin.email, role: 'admin' });
     } catch (e) {
         res.status(500).json({ error: e.message });

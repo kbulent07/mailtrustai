@@ -173,8 +173,48 @@ router.post('/customer-sync/bootstrap', asyncH(async (req, res) => {
 }));
 
 router.post('/customer-sync/heartbeat', asyncH(async (req, res) => {
-    await persistHeartbeat(req.body || {});
-    res.json({ ok: true, serverTime: Date.now() });
+    const body = req.body || {};
+    await persistHeartbeat(body);
+
+    // Heartbeat-piggyback: cevap olarak güncel lisans snapshot'ı da gönder.
+    // Bu sayede müşteri ek bir validate çağrısı YAPMADAN (5 dakikada bir)
+    // yeni expires_at / status / extraScans bilgisini alır → uzatma anlık yansır.
+    // Defansif: licenseKeyHash yoksa yalnız ok döner (eski client uyumlu).
+    const out = { ok: true, serverTime: Date.now() };
+    try {
+        if (body.licenseKeyHash) {
+            const license = await get(
+                `SELECT id, customer_id, dealer_id, plan, tier, status,
+                        expires_at, grace_days, offline_grace_days_override,
+                        features_json, limits_json, extra_scans
+                 FROM licenses WHERE license_key_hash = ?`,
+                [body.licenseKeyHash]
+            );
+            if (license) {
+                const expired = license.expires_at && license.expires_at < Date.now();
+                const limits  = safeJSON(license.limits_json, {});
+                const extra   = license.extra_scans || 0;
+                if (extra > 0 && typeof limits.monthlyScanCount === 'number') {
+                    limits.monthlyScanCount = limits.monthlyScanCount + extra;
+                }
+                out.license = {
+                    licenseStatus: expired ? 'expired' : license.status,
+                    plan:          license.plan,
+                    tier:          license.tier,
+                    expiresAt:     license.expires_at,
+                    graceDays:     license.grace_days,
+                    offlineGraceDaysOverride: license.offline_grace_days_override ?? null,
+                    features:      safeJSON(license.features_json, {}),
+                    limits,
+                    extraScans:    extra
+                };
+            }
+        }
+    } catch (e) {
+        // Snapshot oluşturma hatası heartbeat'i bozmasın — ana ok zaten döndü
+        console.warn('[customer-sync/heartbeat] license snapshot hatası:', e.message);
+    }
+    res.json(out);
 }));
 
 function _safeNum(v) {

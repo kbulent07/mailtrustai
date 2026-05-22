@@ -5,7 +5,7 @@ const { v4: uuid } = require('uuid');
 const { asyncH, safeJSON } = require('@mailtrustai/shared');
 const { sha256 } = require('@mailtrustai/security');
 const { generateLicenseKey, getPlan, PLAN_MATRIX, TIER_MATRIX } = require('@mailtrustai/license-core');
-const { audit } = require('../db');
+const { get, run, all, audit } = require('../db');
 const customerRepo   = require('../repositories/customerRepository');
 const licenseRepo    = require('../repositories/licenseRepository');
 const activationRepo = require('../repositories/activationRepository');
@@ -66,19 +66,19 @@ router.post('/license/customers', asyncH(async (req, res) => {
 router.post('/license/create', asyncH(async (req, res) => {
     const { customerId, dealerId, plan = 'pro', tier, companyName, email, label } = req.body || {};
     const isTrial   = req.body?.trial === true || req.body?.trial === 'true';
-    const validDays = Number(req.body?.validDays ?? (isTrial ? 14 : 365));
+    const validDays = Number(req.body?.validDays ?? (isTrial ? 7 : 365));
     if (!customerId) return badRequest(res, 'customerId gerekli');
     if (!Number.isFinite(validDays) || validDays <= 0 || validDays > 36500) {
         return badRequest(res, 'validDays geçersiz (1..36500)');
     }
-    if (plan === 'demo' && validDays > 14) {
-        return badRequest(res, 'Demo lisans maksimum 14 gün olabilir.');
+    if (plan === 'demo' && validDays > 7) {
+        return badRequest(res, 'Demo lisans maksimum 7 gün olabilir.');
     }
     if (!PLAN_MATRIX[plan]) {
         return badRequest(res, `plan geçersiz: ${plan}. Geçerli: ${Object.keys(PLAN_MATRIX).join(', ')}`);
     }
-    if (isTrial && validDays > 14) {
-        return badRequest(res, 'Deneme lisansı en fazla 14 gün olabilir.');
+    if (isTrial && validDays > 7) {
+        return badRequest(res, 'Deneme lisansı en fazla 7 gün olabilir.');
     }
     if (tier && !TIER_MATRIX[tier]) {
         return badRequest(res, `tier geçersiz: ${tier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`);
@@ -104,8 +104,9 @@ router.post('/license/create', asyncH(async (req, res) => {
                 balance: dealer.credits ?? 0
             });
         }
-        // Güncel bakiyeyi oku ve işlem kütüğüne yaz.
-        const newBalance = (dealer.credits ?? 0) - 1;
+        // UPDATE sonrası gerçek bakiyeyi oku — stale pre-UPDATE değeri yerine kesin rakamı kullan.
+        const afterUpd   = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
+        const newBalance = afterUpd?.credits ?? 0;
         const { v4: _uuid } = require('uuid');
         await run(
             'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at) VALUES(?,?,?,?,?,?,?,?)',
@@ -220,6 +221,11 @@ router.post('/license/activate', asyncH(async (req, res) => {
 
     // maxActivations limiti.
     const limits = safeJSON(license.limits_json, {});
+    // extra_scans varsa tier kotasının üzerine topla
+    const extraScans = license.extra_scans || 0;
+    if (extraScans > 0 && typeof limits.monthlyScanCount === 'number') {
+        limits.monthlyScanCount = limits.monthlyScanCount + extraScans;
+    }
     const maxAct = Number(limits.maxActivations) > 0 ? Number(limits.maxActivations) : DEFAULT_MAX_ACTIVATIONS;
 
     // TOCTOU önlemi: önce UPSERT yap, sonra count kontrol; aşıldıysa rollback.
@@ -265,6 +271,7 @@ router.post('/license/activate', asyncH(async (req, res) => {
         offlineGraceDaysOverride: license.offline_grace_days_override ?? null,
         features: safeJSON(license.features_json, {}),
         limits,
+        extraScans,
         licenseStatus: license.status
     });
 }));
@@ -284,7 +291,18 @@ router.post('/license/validate', asyncH(async (req, res) => {
         return res.status(403).json({ error: 'aktivasyon bulunamadı' });
     }
 
-    const expired = license.expires_at && license.expires_at < Date.now();
+    const expired     = license.expires_at && license.expires_at < Date.now();
+    const valLimits   = safeJSON(license.limits_json, {});
+    const valExtra    = license.extra_scans || 0;
+    if (valExtra > 0 && typeof valLimits.monthlyScanCount === 'number') {
+        valLimits.monthlyScanCount = valLimits.monthlyScanCount + valExtra;
+    }
+
+    // A) Sunucu tarafı iz: ne zaman, kaç extra_scans iletildi?
+    // "Müşteri bakiyeyi ne zaman çekti?" sorusunu cevaplayabilmek için
+    // activations.extra_scans_sent / extra_scans_sent_at güncellenir.
+    await activationRepo.updateExtraScansSent(license.id, instanceId, valExtra);
+
     res.json({
         licenseStatus: expired ? 'expired' : license.status,
         plan: license.plan,
@@ -293,7 +311,8 @@ router.post('/license/validate', asyncH(async (req, res) => {
         graceDays: license.grace_days,
         offlineGraceDaysOverride: license.offline_grace_days_override ?? null,
         features: safeJSON(license.features_json, {}),
-        limits: safeJSON(license.limits_json, {})
+        limits: valLimits,
+        extraScans: valExtra
     });
 }));
 
@@ -369,6 +388,81 @@ router.get('/license/customer/:id', asyncH(async (req, res) => {
 
     const rows = await licenseRepo.listByCustomerAndDealer(req.params.id, dealerId);
     res.json({ customerId: req.params.id, dealerId, licenses: rows });
+}));
+
+// ─── POST /api/license/redeem-topup — Müşteri topup kodunu aktive eder ────────
+// body: { licenseKeyHash, instanceId, code }
+// Kod geçerliyse licenses.extra_scans += scan_amount, kod kullanıldı olarak işaretlenir.
+router.post('/license/redeem-topup', asyncH(async (req, res) => {
+    const { licenseKeyHash, instanceId, code } = req.body || {};
+    if (!licenseKeyHash || !instanceId || !code) {
+        return badRequest(res, 'licenseKeyHash, instanceId ve code gerekli');
+    }
+    if (!assertHash(res, licenseKeyHash)) return;
+    if (typeof instanceId !== 'string' || instanceId.length > 128) return badRequest(res, 'instanceId geçersiz');
+
+    const codeStr = String(code).toUpperCase().replace(/\s/g, '');
+
+    // Kodu bul
+    const topupCode = await get(
+        'SELECT * FROM topup_codes WHERE code = ?',
+        [codeStr]
+    );
+    if (!topupCode) return res.status(404).json({ error: 'Kod bulunamadı' });
+    if (topupCode.used) return res.status(409).json({ error: 'Bu kod zaten kullanılmış' });
+    if (topupCode.expires_at && topupCode.expires_at < Date.now()) {
+        return res.status(410).json({ error: 'Kodun geçerlilik süresi dolmuş' });
+    }
+
+    // Lisansı bul
+    const license = await licenseRepo.findByKeyHash(licenseKeyHash);
+    if (!license) return res.status(404).json({ error: 'Lisans bulunamadı' });
+    if (license.status !== 'active') {
+        return res.status(400).json({ error: 'Yalnızca aktif lisanslara kod uygulanabilir' });
+    }
+    if (license.expires_at && license.expires_at < Date.now()) {
+        return res.status(400).json({ error: 'Lisansın süresi dolmuş' });
+    }
+
+    // Aktivasyon kaydı var mı?
+    const activation = await activationRepo.findByLicenseAndInstance(license.id, instanceId);
+    if (!activation) {
+        return res.status(403).json({ error: 'Bu instance için aktivasyon bulunamadı. Önce lisansı aktive edin.' });
+    }
+
+    // Koda müşteri kısıtlaması var mı?
+    if (topupCode.customer_id && topupCode.customer_id !== license.customer_id) {
+        return res.status(403).json({ error: 'Bu kod farklı bir müşteriye aittir' });
+    }
+
+    // Aynı dealer'a ait mi? (güvenlik)
+    if (topupCode.dealer_id !== license.dealer_id) {
+        return res.status(403).json({ error: 'Bu kod lisansınızın bayisine ait değil' });
+    }
+
+    const scanAmount = topupCode.scan_amount;
+    const now        = Date.now();
+
+    // Atomik: extra_scans arttır + kodu kullanıldı olarak işaretle
+    await run('UPDATE licenses SET extra_scans = extra_scans + ? WHERE id = ?', [scanAmount, license.id]);
+    await run(
+        'UPDATE topup_codes SET used=1, used_by_license_id=?, used_at=? WHERE id=?',
+        [license.id, now, topupCode.id]
+    );
+
+    const afterLicense = await get('SELECT extra_scans FROM licenses WHERE id = ?', [license.id]);
+
+    await audit(license.customer_id, 'license.topup.redeem', license.id, {
+        code: codeStr, tier: topupCode.tier, scanAmount, dealerId: topupCode.dealer_id
+    });
+
+    res.json({
+        ok:            true,
+        code:          codeStr,
+        tier:          topupCode.tier,
+        scanAmount,
+        newExtraScans: afterLicense?.extra_scans ?? 0
+    });
 }));
 
 // ============================================================

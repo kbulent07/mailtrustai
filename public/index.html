@@ -653,6 +653,24 @@
                     </div>
                 </div>
 
+                <!-- Lisans Anlık Yenileme -->
+                <div class="card" id="licenseRevalidateCard">
+                    <div class="card-header">
+                        <span class="card-title">🔄 Lisansı Şimdi Yenile</span>
+                    </div>
+                    <div style="padding: 12px 0">
+                        <p class="text-muted" style="font-size:13px;margin-bottom:10px">
+                            Lisansınız bayinizden yenilendiyse (örn. süre uzatma, ek tarama paketi)
+                            <strong>5 dakika içinde otomatik</strong> yansır.
+                            Hemen güncellemek için aşağıdaki butona tıklayın.
+                        </p>
+                        <button class="btn btn-primary btn-sm" id="btnRevalidateLicense" data-fn="revalidateLicenseNow">
+                            ⚡ <span>Lisansı Şimdi Yenile</span>
+                        </button>
+                        <div id="revalidateStatus" style="margin-top:10px;font-size:12px"></div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -1115,10 +1133,12 @@
     </div>
 
     <!-- ALLOWLIST / BLOCKLIST PANELİ -->
-    <div class="card mt-24" id="listsPanel" class="hidden">
+    <div class="card mt-24 hidden" id="listsPanel">
         <div class="card-header">
             <span class="card-title">🛡️ Allowlist / Blocklist Yönetimi</span>
-            <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+            <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
+                <button class="btn btn-ghost btn-sm" data-fn="loadListsPanel" title="Listeyi yeniden yükle (lokal)">↻ Listeyi Göster</button>
+                <button class="btn btn-primary btn-sm" data-fn="syncListsFromCentral" title="Merkezi listeyi indir ve lokal girişleri koruyarak birleştir">☁ Merkezden Güncelle</button>
                 <button class="btn btn-ghost btn-sm" data-fn="exportLists" title="Listeyi JSON olarak dışa aktar">📤 Dışa Aktar</button>
                 <label class="btn btn-ghost btn-sm" title="JSON dosyasından içe aktar" style="cursor:pointer;margin:0">
                     📥 İçe Aktar
@@ -1127,6 +1147,7 @@
                 <button class="btn btn-ghost btn-sm" onclick="document.getElementById('listsPanel').style.display='none'">✕</button>
             </div>
         </div>
+        <div id="listsSyncStatus" style="display:none;padding:6px 0;font-size:13px"></div>
         <div id="listsImportStatus" style="display:none;padding:6px 0;font-size:13px"></div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 0;border-bottom:1px solid var(--border,#2a2a3e);flex-wrap:wrap">
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
@@ -1168,12 +1189,51 @@
                 💡 7 günlük Enterprise deneme için yöneticinizden trial lisans isteyin.
             </div>
         </div>
+
+        <!-- License-server URL — pasif goster, Edit/Save toggle ile duzenle -->
+        <div class="form-group">
+            <label class="form-label">🌐 License-Server URL</label>
+            <div style="display:flex;gap:8px;align-items:stretch">
+                <input class="form-input" id="licenseServerUrlInput"
+                       placeholder="http://licence.mailtrustai.com:3200"
+                       readonly
+                       style="flex:1;opacity:0.75;cursor:not-allowed">
+                <button type="button" class="btn btn-ghost btn-sm" id="licenseServerUrlEditBtn"
+                        data-fn="toggleLicenseServerUrlEdit"
+                        title="URL'i degistirmek icin tikla"
+                        style="white-space:nowrap">
+                    ✏️ Düzenle
+                </button>
+            </div>
+            <div id="licenseServerUrlInfo" style="font-size:11px;color:var(--text-secondary);margin-top:4px">
+                💡 Bu URL'e lisans dogrulama istekleri gonderilir.
+            </div>
+        </div>
+
         <div id="licenseResult" class="mb-16"></div>
         <div class="flex gap-16">
             <button class="btn btn-primary" data-fn="activateLicense">✅ <span data-i18n="btn_activate">Etkinleştir</span></button>
             <button class="btn btn-ghost" data-fn="pingLicenseServer" title="License-server'a baglanti testi">🔌 Baglanti Testi</button>
             <button class="btn btn-ghost" data-fn="showLicenseLogs" title="Lisans server ile iletisim loglarini goster">📋 Loglar</button>
             <button class="btn btn-ghost" data-fn="closeLicenseModal">❌ <span data-i18n="btn_close">Kapat</span></button>
+        </div>
+
+        <!-- Topup kodu girişi — bayiden alınan kodu gir -->
+        <hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
+        <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">🎟️ Ek Tarama Paketi Kodu</label>
+            <div style="display:flex;gap:8px;align-items:stretch">
+                <input class="form-input" id="topupCodeInput" placeholder="XXXX-XXXX"
+                       maxlength="12" style="flex:1;font-family:ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase">
+                <button type="button" class="btn btn-primary btn-sm" id="topupCodeRedeemBtn"
+                        data-fn="redeemTopupCode" style="white-space:nowrap">
+                    ✅ Uygula
+                </button>
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">
+                💡 Bayinizden aldığınız tek kullanımlık kodu girin. Ek tarama hakkı lisansınıza anında eklenir.
+            </div>
+            <div id="topupCodeResult" style="margin-top:8px;font-size:13px;min-height:16px"></div>
         </div>
     </div>
 </div>
@@ -1267,6 +1327,7 @@
             </label>
             <div style="font-size:11px;opacity:0.7;margin-top:4px;padding-left:26px">
                 Mail listesinde riskli mailler bir bakışta ayırt edilir. Etiket geri alınabilir (kullanıcı veya admin tek tıkla kaldırabilir). Quarantine veya mailreports'a taşınan mailler etiketlenmez.
+                <br><span style="color:#f59e0b">⚠ Not:</span> Konu değiştirildiği için <strong>DKIM imzası geçersiz olur</strong> — bu beklenen davranıştır, mail içeriği değişmemiştir.
             </div>
         </div>
 

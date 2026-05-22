@@ -11,7 +11,7 @@
     Bayinizden aldığınız lisans anahtarı (ör: MSA-XXXX-XXXX-XXXX).
 
 .PARAMETER LicenseServerUrl
-    License-server'ın genel URL'i (ör: https://license.firma.com).
+    License-server'ın genel URL'i (ör: http://license.mailtrustai.com:3200).
 
 .PARAMETER InstallDir
     Kurulum dizini. Varsayılan: C:\MailTrustAI
@@ -33,7 +33,7 @@
     # Parametrelerle:
     powershell -ExecutionPolicy Bypass -File install\client\install_client_windows_setup.ps1 `
         -LicenseKey "MSA-XXXX-XXXX-XXXX" `
-        -LicenseServerUrl "https://license.firma.com"
+        -LicenseServerUrl "http://license.mailtrustai.com:3200"
 
     # Hazır image tar dosyasıyla:
     powershell -ExecutionPolicy Bypass -File install\client\install_client_windows_setup.ps1 `
@@ -192,9 +192,12 @@ if (-not $LicenseKey) {
     if (-not $LicenseKey) { Fatal "Lisans anahtarı zorunludur." }
 }
 
+# License-server URL — sabit default mailtrustai.com altyapisina baglanir.
+# Override: -LicenseServerUrl parametresi veya prompt'ta yeni URL girilebilir.
+$DefaultLicenseServerUrl = 'http://license.mailtrustai.com:3200'
 if (-not $LicenseServerUrl) {
-    $LicenseServerUrl = Read-Input "License-server URL'i (ör: https://license.firma.com)"
-    if (-not $LicenseServerUrl) { Fatal "License-server URL'i zorunludur." }
+    $LicenseServerUrl = Read-Input "License-server URL'i" $DefaultLicenseServerUrl
+    if (-not $LicenseServerUrl) { $LicenseServerUrl = $DefaultLicenseServerUrl }
 }
 $LicenseServerUrl = $LicenseServerUrl.TrimEnd('/')
 
@@ -245,6 +248,28 @@ if (-not $SkipEnv) {
     $setupToken   = New-RandomHex 24
     $localEncKey  = New-RandomHex 32
 
+    # Fingerprint kaynaklarini host'tan oku — Linux paritelik.
+    # Cikti yoksa env'e eklenmez; fingerprint install_id + container default'lariyla
+    # yine skor 8/8 (en azindan zorunlu sinyallerle gecerli).
+    $hostMachineGuid = ''
+    try {
+        $hostMachineGuid = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction Stop).MachineGuid
+    } catch {}
+    $hostSystemUuid = ''
+    try {
+        $cs = Get-CimInstance Win32_ComputerSystemProduct -ErrorAction Stop
+        if ($cs -and $cs.UUID -and $cs.UUID -ne '00000000-0000-0000-0000-000000000000') {
+            $hostSystemUuid = $cs.UUID
+        }
+    } catch {}
+    $hostName = ''
+    try { $hostName = $env:COMPUTERNAME } catch {}
+
+    $fingerprintSection = '# === Fingerprint kaynaklari (host''tan) ==='
+    if ($hostMachineGuid) { $fingerprintSection += "`nHOST_MACHINE_ID=$hostMachineGuid" }
+    if ($hostSystemUuid)  { $fingerprintSection += "`nHOST_SYSTEM_UUID=$hostSystemUuid" }
+    if ($hostName)        { $fingerprintSection += "`nHOST_HOSTNAME=$hostName" }
+
     $envContent = @"
 # ============================================================
 # MailTrustAI Müşteri Yapılandırması
@@ -277,6 +302,8 @@ MSA_SETUP_TOKEN=$setupToken
 CUSTOMER_PORT=$Port
 NODE_ENV=production
 TRUST_PROXY=1
+
+$fingerprintSection
 "@
 
     Set-Content -Path $EnvFile -Value $envContent -Encoding UTF8
@@ -349,6 +376,9 @@ services:
       MSA_LICENSE_SECRET: `${MSA_LICENSE_SECRET}
       MSA_SETUP_TOKEN: `${MSA_SETUP_TOKEN:-}
       TRUST_PROXY: `${TRUST_PROXY:-1}
+      HOST_MACHINE_ID:  `${HOST_MACHINE_ID:-}
+      HOST_SYSTEM_UUID: `${HOST_SYSTEM_UUID:-}
+      HOST_HOSTNAME:    `${HOST_HOSTNAME:-}
     ports:
       - "`${CUSTOMER_PORT:-3000}:3000"
     volumes:
@@ -485,8 +515,80 @@ switch ($Action) {
             alpine tar czf "/backup/customer-data-$ts.tar.gz" -C /data .
         Write-Host "Veri yedeği: $bdir\customer-data-$ts.tar.gz" -ForegroundColor Green
     }
+    'version' {
+        $repoFile = Join-Path $dir '.repo_path'
+        $repo = if (Test-Path $repoFile) { (Get-Content $repoFile -Raw).Trim() } else { '' }
+        $img  = (docker inspect -f '{{.Config.Image}}' mailtrustai-customer 2>$null)
+        if (-not $img) { $img = 'container-yok' }
+        $sha    = if ($repo) { (git -C $repo rev-parse --short HEAD 2>$null) } else { 'git-yok' }
+        $branch = if ($repo) { (git -C $repo rev-parse --abbrev-ref HEAD 2>$null) } else { '-' }
+        $cdate  = (docker inspect -f '{{.Created}}' $img 2>$null)
+        if ($cdate) { $cdate = $cdate.Split('T')[0] } else { $cdate = '-' }
+        Write-Host "image    : $img"
+        Write-Host "image_at : $cdate"
+        Write-Host "git      : $branch @ $sha"
+        Write-Host "repo     : $repo"
+    }
+    'health' {
+        $hc = (docker inspect -f '{{.State.Health.Status}}' mailtrustai-customer 2>$null)
+        if (-not $hc) { $hc = 'unknown' }
+        $st = (docker inspect -f '{{.State.Status}}' mailtrustai-customer 2>$null)
+        if (-not $st) { $st = 'absent' }
+        $up = (docker inspect -f '{{.State.StartedAt}}' mailtrustai-customer 2>$null)
+        if (-not $up) { $up = '-' }
+        $http = '000'
+        try {
+            $r = Invoke-WebRequest -Uri 'http://localhost:3000/healthz' -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
+            $http = [string]$r.StatusCode
+        } catch {}
+        $ok = if ($hc -eq 'healthy' -and $http -eq '200') { 'true' } else { 'false' }
+        Write-Output ('{0}"ok":{1},"docker_state":"{2}","docker_health":"{3}","http_status":"{4}","started_at":"{5}"{6}' -f '{', $ok, $st, $hc, $http, $up, '}')
+        if ($ok -ne 'true') { exit 1 }
+    }
+    'doctor' {
+        Write-Host "=== MailTrustAI Customer Diyagnostik ===`n"
+        Write-Host "[1] Docker servisi"
+        $svc = Get-Service -Name 'com.docker.service' -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -eq 'Running') { Write-Host "  OK  docker servisi calisiyor" }
+        else { Write-Host "  HATA docker servisi calismiyor veya bulunamadi" -ForegroundColor Red }
+        $di = docker info 2>$null
+        if ($LASTEXITCODE -eq 0) { Write-Host "  OK  docker daemon erisilebilir" }
+        else { Write-Host "  HATA docker daemon erisilemiyor" -ForegroundColor Red }
+        Write-Host ""
+        Write-Host "[2] Container"
+        $cs = docker ps --filter "name=^mailtrustai-customer$" --format "{{.Status}}" 2>$null
+        if ($cs) { Write-Host "  OK  container calisiyor: $cs" }
+        else { Write-Host "  HATA container calismiyor" -ForegroundColor Red }
+        Write-Host ""
+        Write-Host "[3] HTTP /healthz"
+        try {
+            $r = Invoke-WebRequest -Uri 'http://localhost:3000/healthz' -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
+            Write-Host "  OK  $($r.Content)"
+        } catch { Write-Host "  HATA /healthz cevap vermiyor: $_" -ForegroundColor Red }
+        Write-Host ""
+        Write-Host "[4] .env kontrolu"
+        if (Test-Path $env) {
+            $envText = Get-Content $env -Raw
+            foreach ($k in 'MSA_LICENSE_KEY','MSA_LICENSE_REMOTE_URL','MSA_ENC_PASSWORD','MSA_ENC_SALT','MSA_LICENSE_SECRET','MSA_LOCAL_ENCRYPTION_KEY') {
+                if ($envText -match "(?m)^$k=.+") { Write-Host "  OK  $k tanimli" }
+                else { Write-Host "  HATA $k bos veya yok" -ForegroundColor Red }
+            }
+        } else { Write-Host "  HATA .env bulunamadi: $env" -ForegroundColor Red }
+        Write-Host ""
+        Write-Host "[5] License-server erisimi"
+        if ($envText -and ($envText -match "(?m)^MSA_LICENSE_REMOTE_URL=(.+)")) {
+            $lsu = $Matches[1].Trim().Trim('"')
+            try {
+                $r = Invoke-WebRequest -Uri "$lsu/api/health" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
+                Write-Host "  OK  $lsu erisilebilir ($($r.StatusCode))"
+            } catch {
+                Write-Host "  UYARI $lsu erisilemiyor (grace cache devrede olabilir)" -ForegroundColor Yellow
+            }
+        } else { Write-Host "  UYARI MSA_LICENSE_REMOTE_URL .env'de yok" -ForegroundColor Yellow }
+        Write-Host "`n=== bitti ==="
+    }
     default   {
-        Write-Host "Kullanim: mailtrustai-ctl.ps1 {start|stop|restart|status|logs|upgrade|backup}"
+        Write-Host "Kullanim: mailtrustai-ctl.ps1 {start|stop|restart|status|logs|upgrade|backup|version|health|doctor}"
         Write-Host ""
         Write-Host "  start    - Servisi baslat"
         Write-Host "  stop     - Servisi durdur"
@@ -495,6 +597,9 @@ switch ($Action) {
         Write-Host "  logs     - Loglari takip et"
         Write-Host "  upgrade  - Yeni surume yukselt (git pull + rebuild)"
         Write-Host "  backup   - .env + customer-data yedekle"
+        Write-Host "  version  - Kurulu image + git commit + branch"
+        Write-Host "  health   - JSON saglik raporu (cron/monitoring, exit 0/1)"
+        Write-Host "  doctor   - Detayli tani — docker/container/env/license-server"
     }
 }
 '@

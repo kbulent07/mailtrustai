@@ -132,6 +132,26 @@ if ! diff -q "$COMPOSE_SRC" "$COMPOSE_FILE" &>/dev/null; then
 fi
 ok "Compose senkron."
 
+# ----- 5b. .env'e fingerprint kaynaklarini ekle (eksik ise) -----
+# v2.0.1+ install'da yazilan HOST_MACHINE_ID/HOST_SYSTEM_UUID/HOST_HOSTNAME
+# eski kurulumlarda yok. Update sirasinda da olusturalim.
+add_if_missing() {
+    local key="$1" value="$2"
+    [[ -z "$value" ]] && return 0
+    if ! grep -qE "^${key}=" "$ENV_FILE"; then
+        printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+        info "  .env'e eklendi: $key"
+    fi
+}
+if [[ -r /etc/machine-id ]]; then
+    add_if_missing 'HOST_MACHINE_ID' "$(cat /etc/machine-id 2>/dev/null | tr -d '[:space:]')"
+fi
+if [[ -r /sys/class/dmi/id/product_uuid ]]; then
+    UUID_VAL="$(cat /sys/class/dmi/id/product_uuid 2>/dev/null | tr -d '[:space:]')"
+    add_if_missing 'HOST_SYSTEM_UUID' "$UUID_VAL"
+fi
+add_if_missing 'HOST_HOSTNAME' "$(hostname 2>/dev/null | tr -d '[:space:]')"
+
 # ----- 6. Build + up -----
 step "6/7  Image rebuild + container restart..."
 DOCKER_COMPOSE_CMD="docker compose"

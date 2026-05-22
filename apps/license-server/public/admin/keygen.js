@@ -554,8 +554,10 @@ function renderDealersTable() {
             ? `<span style="color:#ef4444;font-weight:700">0</span>`
             : `<span style="color:#10b981;font-weight:700">${credits.toLocaleString('tr-TR')}</span>`;
         const creditBtn = canEdit
-            ? `<button class="action-btn" data-action="dealerCredit" data-id="${escapeHtml(d.id)}" data-name="${escapeHtml(d.name || d.id)}" data-credits="${credits}" title="Kredi yönet">💳 Kredi</button>`
+            ? `<button class="action-btn" data-action="dealerCredit" data-id="${escapeHtml(d.id)}" data-name="${escapeHtml(d.name || d.id)}" data-credits="${credits}" title="Kredi yükle / düş">💳 Kredi Yükle</button>`
             : '';
+        const pwBtn  = canEdit ? `<button class="action-btn" data-action="dealerPw" data-id="${escapeHtml(d.id)}">🔑 Parola</button>` : '';
+        const delBtn = canEdit ? `<button class="action-btn danger" data-action="dealerDel" data-id="${escapeHtml(d.id)}" data-name="${escapeHtml(d.name || d.id)}">🗑️ Sil</button>` : '';
         return `<tr>
         <td><code>${escapeHtml(d.id)}</code></td>
         <td>${escapeHtml(d.name || '—')}</td>
@@ -563,17 +565,17 @@ function renderDealersTable() {
         <td style="text-align:center">${creditBadge}</td>
         <td><small class="muted">${fmtDate(d.createdAt || d.created_at)}</small></td>
         <td class="btn-group">
-            ${creditBtn}
-            <button class="action-btn" data-action="dealerPw" data-id="${escapeHtml(d.id)}">🔑 Parola</button>
-            <button class="action-btn danger" data-action="dealerDel" data-id="${escapeHtml(d.id)}" data-name="${escapeHtml(d.name || d.id)}">🗑️ Sil</button>
+            ${creditBtn}${pwBtn}${delBtn}
         </td>
     </tr>`;
     }).join('');
 
     tbody.querySelectorAll('button.action-btn').forEach(btn => {
-        if      (btn.dataset.action === 'dealerCredit') openCreditModal(btn.dataset.id, btn.dataset.name, Number(btn.dataset.credits));
-        else if (btn.dataset.action === 'dealerPw')     openDealerPwModal(btn.dataset.id);
-        else if (btn.dataset.action === 'dealerDel')    confirmDeleteDealer(btn.dataset.id, btn.dataset.name);
+        btn.addEventListener('click', () => {
+            if      (btn.dataset.action === 'dealerCredit') openCreditModal(btn.dataset.id, btn.dataset.name, Number(btn.dataset.credits));
+            else if (btn.dataset.action === 'dealerPw')     openDealerPwModal(btn.dataset.id);
+            else if (btn.dataset.action === 'dealerDel')    confirmDeleteDealer(btn.dataset.id, btn.dataset.name);
+        });
     });
 }
 
@@ -775,16 +777,16 @@ async function confirmDeleteDealer(id, name) {
 // ================================================================
 // LİSANS ÜRETME SEKMESİ
 // ================================================================
-// Deneme checkbox → validDays'i otomatik 14'e klampla.
+// Deneme checkbox → validDays'i otomatik 7'ye klampla.
 $('newLicTrial')?.addEventListener('change', () => {
     const days = $('newLicDays');
     if (!days) return;
     if ($('newLicTrial').checked) {
-        days.max = '14';
-        if (!days.value || Number(days.value) > 14) days.value = '14';
+        days.max = '7';
+        if (!days.value || Number(days.value) > 7) days.value = '7';
     } else {
         days.max = '36500';
-        if (Number(days.value) === 14) days.value = '365';
+        if (Number(days.value) === 7) days.value = '365';
     }
 });
 
@@ -810,8 +812,8 @@ $('licenseCreateForm').addEventListener('submit', async (e) => {
 
     if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
     if (!body.validDays || body.validDays < 1) { resEl.textContent = 'Geçerli bir gün sayısı girin.'; resEl.className = 'result err'; return; }
-    if (body.trial && body.validDays > 14) {
-        resEl.textContent = 'Deneme lisansı en fazla 14 gün olabilir.'; resEl.className = 'result err'; return;
+    if (body.trial && body.validDays > 7) {
+        resEl.textContent = 'Deneme lisansı en fazla 7 gün olabilir.'; resEl.className = 'result err'; return;
     }
 
     try {
@@ -1460,9 +1462,90 @@ async function loadPricing() {
         if (unit) unit.value = r.settings?.creditUnit ?? 'tarama';
 
         renderPricingTable(r.plans || []);
+        renderTierMatrix(r.tierMatrix || []);
+        renderPlanMatrix(r.planMatrix || []);
     } catch (e) {
         tbody.innerHTML = `<tr><td colspan="9" class="error">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
     }
+}
+
+// ── Plan & Tier matrisi (salt-okunur, license-core) ──────────────────────────
+function renderTierMatrix(tiers) {
+    const tb = $('tierMatrixBody');
+    if (!tb) return;
+    if (!tiers.length) { tb.innerHTML = '<tr><td colspan="3" class="loading">Veri yok.</td></tr>'; return; }
+    tb.innerHTML = tiers.map(t => {
+        const cnt = t.monthlyScanCount >= 9999999
+            ? '∞ Sınırsız'
+            : Number(t.monthlyScanCount).toLocaleString('tr-TR') + ' / ay';
+        return `<tr>
+            <td><strong>${escapeHtml(t.tier)}</strong></td>
+            <td>${escapeHtml(cnt)}</td>
+            <td class="muted">${escapeHtml(t.label || '—')}</td>
+        </tr>`;
+    }).join('');
+}
+
+// Özellik anahtarlarının insan-okunur etiketleri
+const FEATURE_LABELS = {
+    manualUpload: 'Manuel yükleme', headerAnalysis: 'Başlık analizi', attachmentScan: 'Ek tarama',
+    contentAnalysis: 'İçerik analizi', virusTotal: 'VirusTotal', pdfReport: 'PDF rapor',
+    jsonReport: 'JSON rapor', imapMonitor: 'IMAP izleme', deepAi: 'Derin AI', quarantine: 'Karantina',
+    siemWebhook: 'SIEM webhook', multiMailbox: 'Çoklu posta kutusu', localAi: 'Yerel AI',
+    centralApiProxy: 'Merkezi API proxy', centralListSync: 'Liste senkron', centralPolicySync: 'Politika senkron',
+    scanMailbox: 'Posta kutusu tara', realtimeAlert: 'Anlık uyarı', imapConnection: 'IMAP bağlantısı',
+    inboxScan: 'Gelen kutusu tarama', autoMonitor: 'Otomatik izleme', batchScan: 'Toplu tarama', apiAccess: 'API erişimi'
+};
+
+function _featCell(val) {
+    if (val === true)  return '<td style="text-align:center;color:#22c55e;font-weight:700">✓</td>';
+    if (val === false || val == null) return '<td style="text-align:center;color:#64748b">—</td>';
+    // string (ör. contentAnalysis:'advanced') veya sayı
+    return `<td style="text-align:center;color:#e2e8f0">${escapeHtml(String(val))}</td>`;
+}
+
+function renderPlanMatrix(planMatrix) {
+    const head = $('planMatrixHead');
+    const body = $('planMatrixBody');
+    if (!head || !body) return;
+    if (!planMatrix.length) { body.innerHTML = '<tr><td class="loading">Veri yok.</td></tr>'; return; }
+
+    // Başlık: Özellik | <plan1> | <plan2> ...
+    head.innerHTML = '<th>Özellik</th>' + planMatrix.map(p =>
+        `<th style="text-align:center">${escapeHtml(PLAN_LABELS[p.plan] || p.plan)}</th>`
+    ).join('');
+
+    // Üst meta satırları: varsayılan tier + grace + aylık kota
+    const metaRows = [
+        ['Varsayılan Tier', planMatrix.map(p => `<td style="text-align:center"><strong>${escapeHtml(p.defaultTier || '—')}</strong></td>`)],
+        ['Grace (offline gün)', planMatrix.map(p => `<td style="text-align:center">${p.graceDays ?? '—'}</td>`)],
+        ['Aylık tarama (limit)', planMatrix.map(p => {
+            const n = p.limits?.monthlyScanCount;
+            const txt = (n >= 9999999) ? '∞' : (n != null ? Number(n).toLocaleString('tr-TR') : '—');
+            return `<td style="text-align:center">${escapeHtml(txt)}</td>`;
+        })],
+        ['Posta kutusu / Kullanıcı', planMatrix.map(p =>
+            `<td style="text-align:center">${p.limits?.mailboxCount ?? '—'} / ${p.limits?.userCount ?? '—'}</td>`)]
+    ];
+
+    // Özellik satırları — tüm planlardaki anahtarların birleşimi
+    const allFeatureKeys = [];
+    planMatrix.forEach(p => Object.keys(p.features || {}).forEach(k => {
+        if (!allFeatureKeys.includes(k)) allFeatureKeys.push(k);
+    }));
+
+    const metaHtml = metaRows.map(([label, cells]) =>
+        `<tr style="background:rgba(148,163,184,0.06)">
+            <td><strong>${escapeHtml(label)}</strong></td>${cells.join('')}
+        </tr>`).join('');
+
+    const featHtml = allFeatureKeys.map(k =>
+        `<tr>
+            <td>${escapeHtml(FEATURE_LABELS[k] || k)}</td>
+            ${planMatrix.map(p => _featCell(p.features?.[k])).join('')}
+        </tr>`).join('');
+
+    body.innerHTML = metaHtml + featHtml;
 }
 
 function renderPricingTable(plans) {

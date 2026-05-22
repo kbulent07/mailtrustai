@@ -9,7 +9,8 @@
 #   sudo bash install/client/install_client_ubuntu.sh
 #
 # Tek satir parametreli:
-#   sudo LICENSE_KEY="MTAI-PRO-XXXX" LICENSE_SERVER_URL="https://license.firma.com" \
+#   sudo LICENSE_KEY="MTAI-PRO-XXXX" \  # LICENSE_SERVER_URL opsiyonel — bos brakirsaniz \
+#   #                                     varsayilan http://license.mailtrustai.com:3200 kullanilir
 #       bash install/client/install_client_ubuntu.sh
 #
 # Sirayla yapar:
@@ -147,13 +148,17 @@ if [[ -z "${LICENSE_KEY:-}" ]]; then
 fi
 [[ -n "${LICENSE_KEY:-}" ]] || fatal "Lisans anahtari zorunludur. (Non-interactive modda LICENSE_KEY=... olarak gecin.)"
 
-# License-server URL
+# License-server URL — sabit default mailtrustai.com altyapisina baglanir.
+# Override icin LICENSE_SERVER_URL env'den verilebilir veya interaktif soruda
+# baska bir URL yazilabilir.
+DEFAULT_LICENSE_SERVER_URL="http://license.mailtrustai.com:3200"
 if [[ -z "${LICENSE_SERVER_URL:-}" ]]; then
     if [[ "$IS_INTERACTIVE" == "true" ]]; then
-        read -rp "  License-server URL (or: https://license.firma.com): " LICENSE_SERVER_URL || LICENSE_SERVER_URL=""
+        read -rp "  License-server URL [${DEFAULT_LICENSE_SERVER_URL}]: " LICENSE_SERVER_URL || LICENSE_SERVER_URL=""
     fi
+    # Bos kaldiysa default kullan (hem interaktif hem non-interactive)
+    LICENSE_SERVER_URL="${LICENSE_SERVER_URL:-$DEFAULT_LICENSE_SERVER_URL}"
 fi
-[[ -n "${LICENSE_SERVER_URL:-}" ]] || fatal "LICENSE_SERVER_URL zorunludur."
 LICENSE_SERVER_URL="${LICENSE_SERVER_URL%/}"  # son slash'i temizle
 
 # Port
@@ -237,7 +242,26 @@ if [[ "$SKIP_ENV" == "false" ]]; then
         printf '# === Port & Ortam ===\n'
         printf 'CUSTOMER_PORT=%s\n' "$CUSTOMER_PORT"
         printf 'NODE_ENV=production\n'
-        printf 'TRUST_PROXY=1\n'
+        printf 'TRUST_PROXY=1\n\n'
+        # === Fingerprint kaynaklari (host'tan okunur) ===
+        # Container icindeki fingerprint.js bunlari env'den okur ve hash'ler.
+        # /etc/machine-id Linux'ta her zaman var.
+        # /sys/class/dmi/id/product_uuid bare-metal/VM'de var (root gerek);
+        # container'da Docker Desktop Windows'ta mount edilemiyor (KB: ).
+        # Skor modeli: install_id (4) + os_machine_id (4) = 8 zorunlu eşik;
+        # system_uuid (3) bonus — yoksa lisans yine geçerli.
+        if [[ -r /etc/machine-id ]]; then
+            HOST_MID="$(cat /etc/machine-id 2>/dev/null | tr -d '[:space:]')"
+            printf '# === Fingerprint (host'\''tan) ===\n'
+            printf 'HOST_MACHINE_ID=%s\n' "$HOST_MID"
+        fi
+        if [[ -r /sys/class/dmi/id/product_uuid ]]; then
+            HOST_UUID="$(cat /sys/class/dmi/id/product_uuid 2>/dev/null | tr -d '[:space:]')"
+            [[ -n "$HOST_UUID" ]] && printf 'HOST_SYSTEM_UUID=%s\n' "$HOST_UUID"
+        fi
+        # Hostname — container icinde os.hostname() icin override
+        HOST_HN="$(hostname 2>/dev/null | tr -d '[:space:]')"
+        [[ -n "$HOST_HN" ]] && printf 'HOST_HOSTNAME=%s\n' "$HOST_HN"
     } > "$TMP_ENV"
 
     chmod 600 "$TMP_ENV"
@@ -347,8 +371,86 @@ case "\${1:-help}" in
         cp "\$ENV_FILE" "\$BDIR/.env.\$TS"
         echo "Yedek: \$BDIR/.env.\$TS"
         ;;
+    version)
+        # Kurulu container'in image ve git commit bilgisini goster
+        REPO=\$(cat "\$DIR/.repo_path" 2>/dev/null || echo '')
+        IMG=\$(docker inspect -f '{{.Config.Image}}' mailtrustai-customer 2>/dev/null || echo 'container-yok')
+        SHA=\$(git -C "\$REPO" rev-parse --short HEAD 2>/dev/null || echo 'git-yok')
+        BRANCH=\$(git -C "\$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '-')
+        CDATE=\$(docker inspect -f '{{.Created}}' "\$IMG" 2>/dev/null | cut -dT -f1 || echo '-')
+        echo "image    : \$IMG"
+        echo "image_at : \$CDATE"
+        echo "git      : \$BRANCH @ \$SHA"
+        echo "repo     : \$REPO"
+        ;;
+    health)
+        # JSON formatinda saglik durumu — cron/monitoring icin
+        HC=\$(docker inspect -f '{{.State.Health.Status}}' mailtrustai-customer 2>/dev/null || echo 'unknown')
+        ST=\$(docker inspect -f '{{.State.Status}}' mailtrustai-customer 2>/dev/null || echo 'absent')
+        UP=\$(docker inspect -f '{{.State.StartedAt}}' mailtrustai-customer 2>/dev/null || echo '-')
+        HTTP=\$(curl -sf -o /dev/null -w '%{http_code}' --max-time 3 http://localhost:3000/healthz 2>/dev/null || echo '000')
+        OK='true'
+        [[ "\$HC" != 'healthy' || "\$HTTP" != '200' ]] && OK='false'
+        printf '{"ok":%s,"docker_state":"%s","docker_health":"%s","http_status":"%s","started_at":"%s"}\n' \
+            "\$OK" "\$ST" "\$HC" "\$HTTP" "\$UP"
+        [[ "\$OK" == 'true' ]] || exit 1
+        ;;
+    doctor)
+        # Tani: docker, container, port, env, license-server erisimi
+        echo "=== MailTrustAI Customer Diyagnostik ==="
+        echo ""
+        echo "[1] Docker servisi"
+        if systemctl is-active --quiet docker 2>/dev/null; then echo "  OK  docker aktif"; else echo "  HATA docker aktif degil"; fi
+        if docker info >/dev/null 2>&1; then echo "  OK  docker daemon erisilebilir"; else echo "  HATA docker daemon erisilemiyor"; fi
+        echo ""
+        echo "[2] Container"
+        if docker ps --filter name=^mailtrustai-customer\$ --format '{{.Status}}' | grep -q .; then
+            echo "  OK  container calisiyor: \$(docker ps --filter name=^mailtrustai-customer\$ --format '{{.Status}}')"
+        else
+            echo "  HATA container calismiyor"
+        fi
+        echo ""
+        echo "[3] HTTP /healthz"
+        HC=\$(curl -sf --max-time 3 http://localhost:3000/healthz 2>/dev/null || echo '')
+        if [[ -n "\$HC" ]]; then echo "  OK  \$HC"; else echo "  HATA /healthz cevap vermiyor"; fi
+        echo ""
+        echo "[4] .env kontrolu"
+        if [[ -f "\$ENV_FILE" ]]; then
+            for k in MSA_LICENSE_KEY MSA_LICENSE_REMOTE_URL MSA_ENC_PASSWORD MSA_ENC_SALT MSA_LICENSE_SECRET MSA_LOCAL_ENCRYPTION_KEY; do
+                if grep -q "^\${k}=." "\$ENV_FILE"; then echo "  OK  \$k tanimli"; else echo "  HATA \$k bos veya yok"; fi
+            done
+        else
+            echo "  HATA .env bulunamadi: \$ENV_FILE"
+        fi
+        echo ""
+        echo "[5] License-server erisimi"
+        LSU=\$(grep '^MSA_LICENSE_REMOTE_URL=' "\$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"')
+        if [[ -n "\$LSU" ]]; then
+            CODE=\$(curl -sf -o /dev/null -w '%{http_code}' --max-time 5 "\$LSU/api/health" 2>/dev/null || echo '000')
+            if [[ "\$CODE" == '200' ]]; then echo "  OK  \$LSU erisilebilir (200)"; else echo "  UYARI \$LSU yanit: \$CODE (grace cache devrede olabilir)"; fi
+        else
+            echo "  UYARI MSA_LICENSE_REMOTE_URL .env'de yok"
+        fi
+        echo ""
+        echo "[6] Disk + bellek"
+        df -h "\$DIR" 2>/dev/null | tail -1 | awk '{print "  disk : "\$0}'
+        free -h 2>/dev/null | awk '/Mem:/ {print "  ram  : "\$0}'
+        echo ""
+        echo "=== bitti ==="
+        ;;
     help|*)
-        echo "Kullanim: \$0 {start|stop|restart|status|logs|update|backup}"
+        echo "Kullanim: \$0 {start|stop|restart|status|logs|update|backup|version|health|doctor}"
+        echo ""
+        echo "  start    Container'i baslat"
+        echo "  stop     Container'i durdur"
+        echo "  restart  Yeniden baslat"
+        echo "  status   Container durumu (docker compose ps)"
+        echo "  logs     Canli loglar (Ctrl+C cikis)"
+        echo "  update   Repo pull + image rebuild + restart"
+        echo "  backup   .env yedegi al"
+        echo "  version  Kurulu image + git commit + branch"
+        echo "  health   JSON saglik raporu (cron/monitoring icin, exit 0/1)"
+        echo "  doctor   Detayli tani — docker/container/env/license-server"
         ;;
 esac
 CTLEOF

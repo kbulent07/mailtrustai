@@ -61,22 +61,43 @@ function getOrCreateInstallId() {
     } catch { return ''; }
 }
 
-function getOsMachineId() {
-    // Linux: /etc/machine-id (Docker'da volume mount ile gelir)
-    if (fs.existsSync(HOST_MACHINE_ID_FILE)) {
-        return fs.readFileSync(HOST_MACHINE_ID_FILE, 'utf8').trim();
+// Onceligi yuksekten dusuge: explicit volume → docker-compose mount → container icindeki dosya → env → null
+function _firstReadable(paths) {
+    for (const p of paths) {
+        try { if (p && fs.existsSync(p)) { const v = fs.readFileSync(p, 'utf8').trim(); if (v) return v; } }
+        catch (_) { /* yetki/erisim hatasi - sonrakine gec */ }
     }
-    // Fallback: .env
-    return (process.env.HOST_MACHINE_ID || '').trim();
+    return '';
+}
+
+function getOsMachineId() {
+    // Linux:
+    //   1) data/host_machine_id   — kurulum scripti yazar (kalici)
+    //   2) /host/machine-id       — docker-compose volume mount (ro)
+    //   3) /etc/machine-id        — container kendi machine-id'si (recreate'te degisir)
+    //   4) /var/lib/dbus/machine-id — eski sistemler
+    //   5) HOST_MACHINE_ID env    — manuel override
+    const v = _firstReadable([
+        HOST_MACHINE_ID_FILE,
+        '/host/machine-id',
+        '/etc/machine-id',
+        '/var/lib/dbus/machine-id'
+    ]);
+    return v || (process.env.HOST_MACHINE_ID || '').trim();
 }
 
 function getSystemUuid() {
-    // Linux: /sys/class/dmi/id/product_uuid (root gerektirir, setup.sh ile dosyaya yazılır)
-    // Windows: wmic csproduct get uuid (setup.ps1 ile yazılır)
-    if (fs.existsSync(HOST_SYSTEM_UUID_FILE)) {
-        return fs.readFileSync(HOST_SYSTEM_UUID_FILE, 'utf8').trim();
-    }
-    return (process.env.HOST_SYSTEM_UUID || '').trim();
+    // Linux:
+    //   1) data/host_system_uuid           — kurulum scripti yazar (kalici)
+    //   2) /host/system-uuid               — docker-compose volume mount (root host'ta okur)
+    //   3) /sys/class/dmi/id/product_uuid  — container icinden (her zaman erisilemez)
+    //   4) HOST_SYSTEM_UUID env            — manuel override
+    const v = _firstReadable([
+        HOST_SYSTEM_UUID_FILE,
+        '/host/system-uuid',
+        '/sys/class/dmi/id/product_uuid'
+    ]);
+    return v || (process.env.HOST_SYSTEM_UUID || '').trim();
 }
 
 function getHostname() {

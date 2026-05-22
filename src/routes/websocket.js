@@ -23,6 +23,7 @@ const { analyzeWithOpenAI } = require('../integrations/openai');
 const { scanAttachments: vtScan } = require('../integrations/virustotal');
 const { maybeMoveMessageToQuarantine, maybeMoveScannedMailToCollection } = require('../imap/quarantineService');
 const { maybeDecorateSubject, isAlreadyDecorated, PREFIX_HIGH, PREFIX_MEDIUM } = require('../imap/subjectDecoratorService');
+const { REPORT_HEADER_NAME, verifyReportId } = require('../smtp/sender');
 const { getImapSenderSkipInfo } = require('../imap/scanExclusions');
 const crypto = require('crypto');
 
@@ -265,12 +266,20 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     const subject = String(email?.subject || '');
 
     // ─── Rapor maili tespiti ───────────────────────────────────────────────
-    // MailTrustAI tarafından gönderilen güvenlik raporu mailleri:
-    //   • Analiz yapmaz (self-loop koruması)
-    //   • collectScannedMails ayarı açıksa → mailreports klasörüne taşır
-    const isReportMail =
-        subject.includes('[MailTrustAI Güvenlik Raporu]') ||
-        subject.includes('[MailTrustAI Security Report]');
+    // İki katmanlı kontrol:
+    //  a) HMAC-imzalı X-MailTrustAI-Report-Id header (güçlü)
+    //  b) Subject prefix (yedek — eski mailler ve restart sonrası)
+    const _hdrs = email.headers;
+    let _reportId = null;
+    if (_hdrs instanceof Map) {
+        _reportId = _hdrs.get(REPORT_HEADER_NAME.toLowerCase()) || _hdrs.get(REPORT_HEADER_NAME);
+    } else if (_hdrs && typeof _hdrs === 'object') {
+        _reportId = _hdrs[REPORT_HEADER_NAME.toLowerCase()] || _hdrs[REPORT_HEADER_NAME];
+    }
+    const _isVerifiedReport = _reportId && verifyReportId(String(_reportId).trim());
+    const _looksLikeReport  = subject.includes('[MailTrustAI Güvenlik Raporu]') ||
+                              subject.includes('[MailTrustAI Security Report]');
+    const isReportMail = _isVerifiedReport || _looksLikeReport;
 
     if (isReportMail) {
         console.log(`[WS-Monitor][${source}] Rapor maili tespit edildi: ${account.email} uid=${uid} "${subject.slice(0, 60)}"`);
@@ -406,6 +415,12 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     // o monitör mail gönderimini üstlenir.
 
     recordScan(result);
+    // Sayaclari arttir — monthly/daily limit kotalari + heartbeat telemetri
+    // icin kritik. license.usageScope ile scope-aware artiyor.
+    try {
+        const { incrementScanCounts, licenseUsageScope } = require('../services/appState');
+        incrementScanCounts({ usageScope: license?.licenseKey ? licenseUsageScope(license.licenseKey) : 'unlicensed' });
+    } catch (e) { console.warn('[WS-Monitor] incrementScanCounts failed:', e.message); }
     broadcast({ type: 'new-email-scanned', result });
 
     // UID baseline'ı güncelle — yukarıdaki effectiveUid'i tekrar kullan

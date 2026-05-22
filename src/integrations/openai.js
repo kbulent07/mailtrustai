@@ -3,11 +3,22 @@
 // ============================================================
 const fetch = require('node-fetch');
 const { recordCall } = require('../storage/llmUsageStore');
+const { redact, truncate } = require('../utils/logSafe');
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/responses';
 
 // Varsayılan model — .env veya ayarlar üzerinden geçersiz kılınabilir
 const OPENAI_MODEL = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini';
+
+// Network timeout — hung request'leri abort eder.
+const OPENAI_TIMEOUT_MS = Math.max(5000, Number(process.env.MSA_OPENAI_TIMEOUT_MS) || 30000);
+
+function fetchWithTimeout(url, opts = {}, ms = OPENAI_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return fetch(url, { ...opts, signal: controller.signal })
+        .finally(() => clearTimeout(timer));
+}
 
 // Kullanıcıya sunulacak hazır model listesi
 const AVAILABLE_OPENAI_MODELS = [
@@ -70,7 +81,7 @@ ${context}
 `.trim();
 
     try {
-        const response = await fetch(OPENAI_API_URL, {
+        const response = await fetchWithTimeout(OPENAI_API_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -110,7 +121,7 @@ ${context}
         if (!analysis) {
             recordCall({ provider: 'openai', model: resolvedModel, purpose: 'analysis', success: false });
             // Kısaltılmış yanıtı logla (debug için)
-            console.warn('[OpenAI] JSON parse başarısız. Ham metin (ilk 300 karakter):', rawText.slice(0, 300));
+            console.warn('[OpenAI] JSON parse başarısız. Ham metin (ilk 300 karakter):', redact(truncate(rawText, 300)));
             return { success: false, error: 'OpenAI yanıtı geçerli JSON içermiyor (token limiti aşıldı olabilir)' };
         }
 
@@ -354,7 +365,7 @@ Respond with EXACTLY this JSON shape:
 `.trim();
 
     try {
-        const response = await fetch(OPENAI_API_URL, {
+        const response = await fetchWithTimeout(OPENAI_API_URL, {
             method: 'POST',
             headers: {
                 'Content-Type':  'application/json',
@@ -384,7 +395,7 @@ Respond with EXACTLY this JSON shape:
         const verdict = parseJsonSafe(rawText);
         if (!verdict) {
             recordCall({ provider: 'openai', model: resolvedModel, purpose: 'adjudicate', success: false });
-            console.warn('[OpenAI Adjudicate] JSON parse başarısız. Ham metin (ilk 300):', rawText.slice(0, 300));
+            console.warn('[OpenAI Adjudicate] JSON parse başarısız. Ham metin (ilk 300):', redact(truncate(rawText, 300)));
             return { success: false, error: 'AI hâkim yanıtı geçerli JSON içermiyor' };
         }
 
@@ -525,7 +536,7 @@ Respond with EXACTLY this JSON shape:
 `.trim();
 
     try {
-        const response = await fetch(OPENAI_API_URL, {
+        const response = await fetchWithTimeout(OPENAI_API_URL, {
             method: 'POST',
             headers: {
                 'Content-Type':  'application/json',
@@ -538,7 +549,7 @@ Respond with EXACTLY this JSON shape:
                 instructions,
                 input: prompt
             })
-        });
+        }, OPENAI_TIMEOUT_MS * 2);  // deep-analysis uzun cevap → 2x timeout
 
         const data = await response.json();
         if (!response.ok) {
@@ -555,7 +566,7 @@ Respond with EXACTLY this JSON shape:
         const report = parseJsonSafe(rawText);
         if (!report) {
             recordCall({ provider: 'openai', model: resolvedModel, purpose: 'deep-analysis', success: false });
-            console.warn('[OpenAI Deep] JSON parse başarısız. Ham metin (ilk 400):', rawText.slice(0, 400));
+            console.warn('[OpenAI Deep] JSON parse başarısız. Ham metin (ilk 400):', redact(truncate(rawText, 400)));
             return { success: false, error: 'AI derinlemesine inceleme yanıtı geçerli JSON içermiyor' };
         }
 

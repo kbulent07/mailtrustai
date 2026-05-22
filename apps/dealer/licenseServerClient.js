@@ -16,12 +16,32 @@ function _token() { return env('DEALER_API_TOKEN') || ''; }
 function _timeout() { return envInt('LICENSE_SERVER_TIMEOUT_MS', 15000); }
 
 async function _req(method, p, body) {
-    return fetchJSON(`${_base()}${p}`, {
-        method,
-        body,
-        headers: { authorization: `Bearer ${_token()}` },
-        timeoutMs: _timeout()
-    });
+    try {
+        return await fetchJSON(`${_base()}${p}`, {
+            method,
+            body,
+            headers: { authorization: `Bearer ${_token()}` },
+            timeoutMs: _timeout()
+        });
+    } catch (e) {
+        // Upstream (license-server) hatalarını bayinin KENDİ oturum hatasından ayır.
+        // license-server 401/403 → DEALER_API_TOKEN uyumsuzluğu / yapılandırma sorunu.
+        // Bunu olduğu gibi 401 olarak browser'a geçirirsek SPA "oturumum doldu" sanıp
+        // sayfayı yeniler (logout401 → location.reload) → açık modal/pencere kapanır.
+        // 502'ye remap et: net hata mesajı, gereksiz reload yok.
+        if (e.status === 401 || e.status === 403) {
+            const err = new Error('license-server kimlik doğrulamayı reddetti — DEALER_API_TOKEN uyumsuz olabilir.');
+            err.status = 502;
+            throw err;
+        }
+        // Timeout (license-server yanıt vermiyor) → 504, yine reload tetiklemez.
+        if (e.code === 'TIMEOUT') {
+            const err = new Error('license-server zaman aşımı — merkezi sunucu yanıt vermiyor (ağ/erişim sorunu olabilir).');
+            err.status = 504;
+            throw err;
+        }
+        throw e;
+    }
 }
 
 // Auth çağrısı dealer'ın kendi password'unu license-server'a yollar; bearer GEREKMEZ.

@@ -13,11 +13,14 @@
 # KULLANIM (parametreli — tam otomatik):
 #   curl -fsSL .../install/quick-client.sh | sudo bash -s -- \
 #        --license=MTAI-PRO-XXXX-XXXX \
-#        --server=https://license.firma.com \
-#        --port=3000
+#        [--server=http://license.mailtrustai.com:3200] \  # opsiyonel: default budur
+#        [--port=3000]
 #
 # Env ile de gecilebilir:
-#   curl -fsSL .../quick-client.sh | sudo LICENSE_KEY=... LICENSE_SERVER_URL=... bash
+#   curl -fsSL .../quick-client.sh | sudo LICENSE_KEY=... bash
+#
+# Default license-server: http://license.mailtrustai.com:3200
+# (MailTrustAI merkezi sunucusu — domain mailtrustai.com altyapisina baglanir)
 # ============================================================
 set -euo pipefail
 

@@ -10,6 +10,7 @@
 //   GET  /api/dealer/customers          → bayinin müşterileri + lisanslar (oturum gerekir)
 //   POST /api/dealer/customers          → yeni müşteri ekle / güncelle (oturum gerekir)
 //   POST /api/dealer/licenses           → kendi müşterisine lisans üret (kredi kesilir)
+//   POST /api/dealer/licenses/:id/topup → aktif lisansa ek tarama paketi ekle (1 kredi kesilir)
 //   GET  /api/dealer/credit-log         → kendi kredi hareketleri
 //   POST /api/dealer/logout             → oturumu kapat
 
@@ -162,6 +163,7 @@ router.get('/dealer/customers', dealerSessionAuth, asyncH(async (req, res) => {
             l.expires_at,
             l.license_key_masked,
             l.label,
+            l.extra_scans,
             a.last_heartbeat_at,
             a.activated_at
          FROM customers c
@@ -193,6 +195,7 @@ router.get('/dealer/customers', dealerSessionAuth, asyncH(async (req, res) => {
                 expiresAt:        row.expires_at,
                 keyMasked:        row.license_key_masked,
                 label:            row.label,
+                extraScans:       row.extra_scans || 0,
                 lastHeartbeatAt:  row.last_heartbeat_at,
                 activatedAt:      row.activated_at
             });
@@ -256,8 +259,8 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
     if (!PLAN_MATRIX[plan]) {
         return res.status(400).json({ error: `Geçersiz plan: ${plan}. Geçerli: ${Object.keys(PLAN_MATRIX).join(', ')}` });
     }
-    if (plan === 'demo' && validDays > 14) {
-        return res.status(400).json({ error: 'Demo lisans en fazla 14 gün olabilir.' });
+    if (plan === 'demo' && validDays > 7) {
+        return res.status(400).json({ error: 'Demo lisans en fazla 7 gün olabilir.' });
     }
     if (tier && !TIER_MATRIX[tier]) {
         return res.status(400).json({ error: `Geçersiz tier: ${tier}` });
@@ -287,8 +290,10 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
         });
     }
 
-    // Kredi hareketini kaydet (TRY tutarı: bu plan için extra_credit_price)
-    const newBalance = (dealer.credits ?? 0) - 1;
+    // UPDATE sonrası gerçek bakiyeyi DB'den oku — stale pre-UPDATE değeri yerine
+    // kesin rakamı kullan. Concurrent istekler aynı anda geçse bile log doğru olur.
+    const afterUpd   = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
+    const newBalance = afterUpd?.credits ?? 0;
     let priceAmount  = 0;
     let priceCurrency = 'TRY';
     try {
@@ -459,6 +464,198 @@ router.post('/dealer/transfers/:id/reject', dealerSessionAuth, asyncH(async (req
     }
     await audit(dealerId, 'license.transfer.rejected', tr.license_id, { transferId: tr.id, reason });
     res.json({ ok: true, message: 'Transfer reddedildi.' });
+}));
+
+// ─── POST /api/dealer/licenses/:id/topup — Ek tarama paketi ekle ────────────
+// body: { topupTier: 'T1'|'T2'|...'T9' }
+// 1 kredi düşer, licenses.extra_scans += TIER_MATRIX[topupTier].monthlyScanCount
+router.post('/dealer/licenses/:id/topup', dealerSessionAuth, asyncH(async (req, res) => {
+    const { dealerId } = req.dealerSession;
+    const licenseId    = req.params.id;
+    const { topupTier } = req.body || {};
+
+    if (!topupTier || !TIER_MATRIX[topupTier]) {
+        return res.status(400).json({
+            error: `Geçersiz topupTier: ${topupTier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`
+        });
+    }
+
+    const license = await get(
+        'SELECT id, dealer_id, customer_id, status, extra_scans FROM licenses WHERE id = ?',
+        [licenseId]
+    );
+    if (!license) return res.status(404).json({ error: 'Lisans bulunamadı' });
+    if (license.dealer_id !== dealerId) return res.status(403).json({ error: 'Bu lisans size ait değil' });
+    if (license.status !== 'active') {
+        return res.status(400).json({ error: 'Yalnızca aktif lisanslara ek tarama paketi eklenebilir' });
+    }
+
+    const scanAmount = TIER_MATRIX[topupTier].monthlyScanCount;
+
+    // Atomik kredi düşme
+    const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [dealerId]);
+    if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
+
+    const upd = await run(
+        'UPDATE dealers SET credits = credits - 1 WHERE id = ? AND credits > 0',
+        [dealer.id]
+    );
+    const changed = upd?.affectedRows ?? upd?.changes ?? 0;
+    if (changed === 0) {
+        return res.status(402).json({
+            error: 'Yetersiz kredi. Yöneticinizden kredi yüklemesini isteyin.',
+            code:  'INSUFFICIENT_CREDITS',
+            balance: dealer.credits ?? 0
+        });
+    }
+
+    // extra_scans artır
+    await run(
+        'UPDATE licenses SET extra_scans = extra_scans + ? WHERE id = ?',
+        [scanAmount, licenseId]
+    );
+
+    const afterDealer  = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
+    const afterLicense = await get('SELECT extra_scans FROM licenses WHERE id = ?', [licenseId]);
+    const newBalance   = afterDealer?.credits ?? 0;
+
+    await run(
+        `INSERT INTO dealer_credit_log
+            (id,dealer_id,delta,balance,reason,description,actor,created_at,price_amount,currency)
+         VALUES(?,?,?,?,?,?,?,?,?,?)`,
+        [uuid(), dealer.id, -1, newBalance, 'scan.topup',
+         `Ek tarama paketi: lisans=${licenseId}, müşteri=${license.customer_id}, tier=${topupTier} (+${scanAmount} tarama)`,
+         'dealer-panel', Date.now(), 0, 'TRY']
+    );
+
+    await audit(dealerId, 'license.topup', licenseId, {
+        customerId: license.customer_id, topupTier, scanAmount
+    });
+
+    res.json({
+        ok:               true,
+        licenseId,
+        topupTier,
+        scanAmount,
+        newExtraScans:    afterLicense?.extra_scans ?? 0,
+        remainingCredits: newBalance
+    });
+}));
+
+// ─── Topup kodu üretici ───────────────────────────────────────────────────────
+function _generateTopupCode() {
+    // Karıştırılabilecek karakterler hariç (0/O, 1/I/L)
+    const CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+        if (i === 4) code += '-';
+        code += CHARS[Math.floor(Math.random() * CHARS.length)];
+    }
+    return code; // XXXX-XXXX
+}
+
+// ─── POST /api/dealer/topup-codes — Tek kullanımlık topup kodu üret ──────────
+// body: { tier, customerId?, validDays? }
+// 1 kredi kesilir, kod üretilir ve müşteriye verilebilir.
+router.post('/dealer/topup-codes', dealerSessionAuth, asyncH(async (req, res) => {
+    const { dealerId } = req.dealerSession;
+    const { tier, customerId, validDays } = req.body || {};
+
+    if (!tier || !TIER_MATRIX[tier]) {
+        return res.status(400).json({
+            error: `Geçersiz tier: ${tier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`
+        });
+    }
+
+    // Opsiyonel müşteri kısıtlaması
+    if (customerId) {
+        const cust = await get('SELECT dealer_id FROM customers WHERE id = ?', [customerId]);
+        if (!cust) return res.status(404).json({ error: 'Müşteri bulunamadı' });
+        if (cust.dealer_id !== dealerId) return res.status(403).json({ error: 'Bu müşteri size ait değil' });
+    }
+
+    const expDays = validDays ? Number(validDays) : null;
+    if (expDays !== null && (!Number.isFinite(expDays) || expDays < 1 || expDays > 3650)) {
+        return res.status(400).json({ error: 'validDays 1..3650 arasında olmalı' });
+    }
+
+    // Atomik kredi düşme
+    const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [dealerId]);
+    if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
+
+    const upd = await run(
+        'UPDATE dealers SET credits = credits - 1 WHERE id = ? AND credits > 0',
+        [dealer.id]
+    );
+    const changed = upd?.affectedRows ?? upd?.changes ?? 0;
+    if (changed === 0) {
+        return res.status(402).json({
+            error: 'Yetersiz kredi.',
+            code:  'INSUFFICIENT_CREDITS',
+            balance: dealer.credits ?? 0
+        });
+    }
+
+    const afterDealer = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
+    const newBalance  = afterDealer?.credits ?? 0;
+    const scanAmount  = TIER_MATRIX[tier].monthlyScanCount;
+    const codeStr     = _generateTopupCode();
+    const id          = uuid();
+    const now         = Date.now();
+    const expiresAt   = expDays ? now + expDays * 86400 * 1000 : null;
+
+    await run(
+        `INSERT INTO topup_codes(id,code,dealer_id,customer_id,tier,scan_amount,expires_at,used,created_at)
+         VALUES(?,?,?,?,?,?,?,0,?)`,
+        [id, codeStr, dealerId, customerId || null, tier, scanAmount, expiresAt, now]
+    );
+
+    await run(
+        `INSERT INTO dealer_credit_log
+            (id,dealer_id,delta,balance,reason,description,actor,created_at,price_amount,currency)
+         VALUES(?,?,?,?,?,?,?,?,?,?)`,
+        [uuid(), dealerId, -1, newBalance, 'code.generate',
+         `Topup kodu üretimi: ${codeStr}, tier=${tier} (+${scanAmount} tarama)${customerId ? `, müşteri=${customerId}` : ''}`,
+         'dealer-panel', now, 0, 'TRY']
+    );
+
+    await audit(dealerId, 'topup.code.create', id, { tier, scanAmount, customerId: customerId || null });
+
+    res.json({
+        ok:               true,
+        id,
+        code:             codeStr,
+        tier,
+        scanAmount,
+        customerId:       customerId || null,
+        expiresAt,
+        remainingCredits: newBalance
+    });
+}));
+
+// ─── GET /api/dealer/topup-codes — Bayinin ürettiği kodları listele ───────────
+// ?limit=50   ?used=all|0|1
+router.get('/dealer/topup-codes', dealerSessionAuth, asyncH(async (req, res) => {
+    const { dealerId } = req.dealerSession;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const usedFilter = req.query.used; // '0', '1', undefined/''
+
+    let sql = `SELECT tc.id, tc.code, tc.tier, tc.scan_amount, tc.customer_id,
+                      tc.expires_at, tc.used, tc.used_by_license_id, tc.used_at,
+                      tc.created_at, c.company_name
+               FROM topup_codes tc
+               LEFT JOIN customers c ON c.id = tc.customer_id
+               WHERE tc.dealer_id = ?`;
+    const params = [dealerId];
+
+    if (usedFilter === '0') { sql += ' AND tc.used = 0'; }
+    else if (usedFilter === '1') { sql += ' AND tc.used = 1'; }
+
+    sql += ' ORDER BY tc.created_at DESC LIMIT ?';
+    params.push(limit);
+
+    const rows = await all(sql, params);
+    res.json({ count: rows.length, codes: rows || [] });
 }));
 
 // ─── GET /api/dealer/credit-log — Bayi kendi kredi hareketlerini görür ────────

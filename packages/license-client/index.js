@@ -245,7 +245,42 @@ async function validate({ remoteUrl, licenseKey }) {
         const prev = readCache() || {};
         const next = { ...prev, ...r, lastValidatedAt: Date.now(), lastValidationOk: true };
         writeCache(next);
-        _log('info', 'validate() basarili', { status: r.licenseStatus });
+
+        // B) Müşteri tarafı iz: sunucudan gelen extra_scans önceki cache'den farklıysa logla.
+        // Bu log, müşteri kontrol panelindeki "Loglar" modali üzerinden görüntülenebilir
+        // ve yönetici/bayi için "bakiye ne zaman iletildi?" sorusunu yanıtlar.
+        const prevExtra = typeof prev.extraScans === 'number' ? prev.extraScans : 0;
+        const newExtra  = typeof r.extraScans   === 'number' ? r.extraScans   : 0;
+        if (newExtra !== prevExtra) {
+            const diff = newExtra - prevExtra;
+            if (diff > 0) {
+                _log('info',
+                    `Ek tarama bakiyesi guncellendi: ${prevExtra} → ${newExtra} (+${diff} tarama)`,
+                    {
+                        prevExtraScans:   prevExtra,
+                        newExtraScans:    newExtra,
+                        diff,
+                        monthlyScanCount: r.limits?.monthlyScanCount
+                    }
+                );
+            } else {
+                _log('info',
+                    `Ek tarama bakiyesi degisti: ${prevExtra} → ${newExtra} (${diff} tarama)`,
+                    {
+                        prevExtraScans:   prevExtra,
+                        newExtraScans:    newExtra,
+                        diff,
+                        monthlyScanCount: r.limits?.monthlyScanCount
+                    }
+                );
+            }
+        }
+
+        _log('info', 'validate() basarili', {
+            status:        r.licenseStatus,
+            extraScans:    newExtra,
+            monthlyScanCount: r.limits?.monthlyScanCount
+        });
         return { ok: true, status: r.licenseStatus, fromCache: false };
     } catch (e) {
         logger.warn('validate başarısız, grace kontrolüne düşülüyor:', e.message);
@@ -290,6 +325,64 @@ function featureEnabled(feature) {
     return !!c.features[feature];
 }
 
+/**
+ * Sunucudan gelen taze lisans snapshot'ını cache'e merge eder.
+ * Heartbeat-piggyback ile çağrılır: central-sync sendHeartbeat cevabında
+ * { license: {...} } varsa burada işlenir → expiresAt / status / extraScans
+ * anlık güncellenir (validate çağrısı beklemeden).
+ *
+ * @param {object} snap - { licenseStatus, expiresAt, plan, tier, features,
+ *                          limits, extraScans, graceDays, ... }
+ * @returns {object} { applied: boolean, changed: string[] }
+ */
+function applyServerSnapshot(snap) {
+    if (!snap || typeof snap !== 'object') return { applied: false, changed: [] };
+    const prev = readCache();
+    if (!prev) {
+        _log('warn', 'applyServerSnapshot: cache yok, snapshot yazilamadi (önce activate gerekli)');
+        return { applied: false, changed: [], reason: 'no-cache' };
+    }
+
+    // Karşılaştır + sadece DEĞİŞEN alanları logla → gürültüsüz
+    const fields = ['licenseStatus', 'plan', 'tier', 'expiresAt',
+                    'graceDays', 'offlineGraceDaysOverride', 'extraScans'];
+    const changed = [];
+    const next = { ...prev };
+    for (const k of fields) {
+        if (snap[k] !== undefined && snap[k] !== prev[k]) {
+            next[k] = snap[k];
+            changed.push(`${k}: ${prev[k]} → ${snap[k]}`);
+        }
+    }
+    // Features / limits: object — şu an "varsa replace" mantığı (sunucu authoritative)
+    if (snap.features && typeof snap.features === 'object') {
+        const prevJson = JSON.stringify(prev.features || {});
+        const nextJson = JSON.stringify(snap.features);
+        if (prevJson !== nextJson) {
+            next.features = snap.features;
+            changed.push('features (değişti)');
+        }
+    }
+    if (snap.limits && typeof snap.limits === 'object') {
+        const prevJson = JSON.stringify(prev.limits || {});
+        const nextJson = JSON.stringify(snap.limits);
+        if (prevJson !== nextJson) {
+            next.limits = snap.limits;
+            changed.push('limits (değişti)');
+        }
+    }
+
+    if (!changed.length) return { applied: false, changed: [] };
+
+    next.lastValidatedAt = Date.now();
+    next.lastValidationOk = true;
+    writeCache(next);
+    _log('info', 'Lisans snapshot heartbeat-piggyback ile guncellendi: ' + changed.join(' · '), {
+        changed, source: 'heartbeat'
+    });
+    return { applied: true, changed };
+}
+
 function getSnapshot() {
     const c = readCache();
     if (!c) return null;
@@ -323,6 +416,7 @@ function getSnapshot() {
 module.exports = {
     activate, validate, graceCheck, featureEnabled, instanceFingerprint,
     getSnapshot, readCache, writeCache,
+    applyServerSnapshot,
     // Yeni: log buffer API
     getLogs, clearLogs
 };

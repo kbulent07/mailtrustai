@@ -51,11 +51,25 @@ services:
       # Ilk admin kullanici kurulumu — browser'dan ?setup_token=... ile.
       # Container disindan setup yapilirken zorunlu (localhost'tan istisna).
       MSA_SETUP_TOKEN: ${MSA_SETUP_TOKEN:-}
+      # Fingerprint kaynaklari — install scripti host'tan okuyup .env.docker'a yazar.
+      # /etc/machine-id ve /sys/.../product_uuid mount edemiyorsa env fallback'i kullanir.
+      HOST_MACHINE_ID:  ${HOST_MACHINE_ID:-}
+      HOST_SYSTEM_UUID: ${HOST_SYSTEM_UUID:-}
+      HOST_HOSTNAME:    ${HOST_HOSTNAME:-}
     ports:
       - "${CUSTOMER_PORT:-3000}:3000"
     volumes:
       - customer-data:/app/data
       - customer-logs:/app/logs
+      # Fingerprint icin host machine-id (read-only).
+      # /etc/machine-id Linux production'da her zaman vardir.
+      # Docker Desktop Windows'ta Linux VM'in machine-id'sini verir (yine stabil).
+      - /etc/machine-id:/host/machine-id:ro
+      # NOT: system_uuid (/sys/class/dmi/id/product_uuid) Docker Desktop Windows'ta
+      # mount edilemez ("operation not permitted"). Linux production'da install
+      # scripti host'tan okuyup data/host_system_uuid'e yazar. Manuel override:
+      # HOST_SYSTEM_UUID env. Bu sinyal yoksa: install_id + os_machine_id ile
+      # zaten skor 8/8 — lisans gecerli.
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s

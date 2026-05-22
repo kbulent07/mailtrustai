@@ -79,10 +79,25 @@ async function updateHeartbeat(licenseId, instanceId, payloadJson, meta = {}) {
     } catch (_) { /* migration henüz uygulanmadıysa sessizce geç */ }
 }
 
+/**
+ * validate() endpoint'i her çağrıldığında iletilen extra_scans değerini ve
+ * zamanını kaydeder. Yönetici "müşteri bakiyeyi ne zaman çekti?" sorusunu
+ * activations.extra_scans_sent / extra_scans_sent_at üzerinden cevaplayabilir.
+ */
+async function updateExtraScansSent(licenseId, instanceId, extraScansSent) {
+    try {
+        await run(
+            'UPDATE activations SET extra_scans_sent=?, extra_scans_sent_at=? WHERE license_id=? AND instance_id=?',
+            [extraScansSent, Date.now(), licenseId, instanceId]
+        );
+    } catch (_) { /* migration henüz uygulanmadıysa sessizce geç */ }
+}
+
 module.exports = {
     upsertActivation,
     findByLicenseAndInstance,
     countByLicense,
     deleteRecentByInstance,
-    updateHeartbeat
+    updateHeartbeat,
+    updateExtraScansSent
 };

@@ -72,10 +72,11 @@ function activateTab(tabName) {
     document.querySelectorAll('.tab-panel').forEach(p =>
         p.classList.toggle('active', p.id === `panel-${tabName}`)
     );
-    if (tabName === 'pricing')   loadPricing();
-    if (tabName === 'customers') loadCustomers();
-    if (tabName === 'transfers') loadTransfers();
-    if (tabName === 'credits')   loadCreditLog();
+    if (tabName === 'pricing')    loadPricing();
+    if (tabName === 'customers')  loadCustomers();
+    if (tabName === 'transfers')  loadTransfers();
+    if (tabName === 'topupcodes') loadTopupCodes();
+    if (tabName === 'credits')    loadCreditLog();
 }
 
 document.querySelectorAll('.tab-btn').forEach(b =>
@@ -311,6 +312,14 @@ async function loadCustomers() {
                 }
             });
         });
+
+        // Ek tarama butonları — event delegation
+        listDiv.querySelectorAll('.btn-topup').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openTopupModal(btn.dataset.lid, btn.dataset.cname, Number(btn.dataset.extra));
+            });
+        });
     } catch (e) {
         listDiv.innerHTML = `<div class="err-msg">Yüklenemedi: ${escapeHtml(e.message)}</div>`;
     }
@@ -328,9 +337,9 @@ function buildCustomerBlock(c) {
         : `<div style="overflow-x:auto"><table style="margin-top:8px">
             <thead><tr>
                 <th>Lisans</th><th>Plan</th><th>Durum</th>
-                <th>Bitiş</th><th>Son Bağlantı</th>
+                <th>Bitiş</th><th>Son Bağlantı</th><th>Aksiyon</th>
             </tr></thead>
-            <tbody>${c.licenses.map(l => buildLicenseRow(l)).join('')}</tbody>
+            <tbody>${c.licenses.map(l => buildLicenseRow(l, c)).join('')}</tbody>
            </table></div>`;
 
     const cid   = escapeHtml(c.id);
@@ -355,7 +364,7 @@ function buildCustomerBlock(c) {
     </div>`;
 }
 
-function buildLicenseRow(l) {
+function buildLicenseRow(l, customer) {
     const planTag    = `<span class="tag tag-${l.plan || 'demo'}">${escapeHtml(l.plan || '—')}</span>`;
     const now        = Date.now();
     const isExpired  = l.expiresAt && l.expiresAt < now;
@@ -399,16 +408,80 @@ function buildLicenseRow(l) {
            </button>`
         : (l.status === 'revoked' ? '<span style="font-size:.72em;color:#6b7280">İptal edildi</span>' : '');
 
+    // Ek tarama göstergesi
+    const extraBadge = (l.extraScans > 0)
+        ? `<br><span style="font-size:.72em;color:#a78bfa">+${l.extraScans.toLocaleString('tr-TR')} ek tarama</span>`
+        : '';
+
+    // Topup butonu — sadece aktif lisanslar için
+    const topupBtn = (l.status === 'active' && !isExpired)
+        ? `<button
+               class="btn-topup"
+               data-lid="${escapeHtml(l.id)}"
+               data-cname="${escapeHtml(customer?.companyName || customer?.id || '—')}"
+               data-extra="${l.extraScans || 0}"
+               style="font-size:.72em;padding:3px 9px;border-radius:5px;border:1px solid #a78bfa;background:transparent;color:#a78bfa;cursor:pointer;white-space:nowrap">
+               📦 Ek Tarama
+           </button>`
+        : '';
+
     return `<tr${expireSoon ? ' style="background:rgba(245,158,11,.05)"' : ''}>
         <td><code style="font-size:.8em">${escapeHtml(l.keyMasked || l.id)}</code>
             ${l.label ? `<br><span class="muted" style="font-size:.75em">${escapeHtml(l.label)}</span>` : ''}
-            <br>${revokeBtn}</td>
+            <br>${revokeBtn}${extraBadge}</td>
         <td>${planTag}</td>
         <td>${statusTag} ${onlineBadge}</td>
         <td>${expiryCell}</td>
         <td><span class="muted">${l.lastHeartbeatAt ? timeAgo(l.lastHeartbeatAt) : '—'}</span></td>
+        <td>${topupBtn}</td>
     </tr>`;
 }
+
+// ─── EK TARAMA PAKETİ MODALI ──────────────────────────────────────────────────
+let _topupLicenseId = null;
+
+function openTopupModal(licenseId, custName, currentExtra) {
+    _topupLicenseId = licenseId;
+    $('topupLicId').textContent          = licenseId;
+    $('topupCustName').textContent        = custName || '—';
+    $('topupCurrentExtra').textContent    = (currentExtra || 0).toLocaleString('tr-TR');
+    $('topupResult').textContent          = '';
+    $('topupTier').value                  = 'T5';
+    $('topupModal').classList.remove('hidden');
+}
+
+$('topupCancel')?.addEventListener('click', () => $('topupModal').classList.add('hidden'));
+$('topupModal')?.addEventListener('click', (e) => {
+    if (e.target === $('topupModal')) $('topupModal').classList.add('hidden');
+});
+
+$('topupConfirm')?.addEventListener('click', async () => {
+    const tier    = $('topupTier').value;
+    const resEl   = $('topupResult');
+    const btn     = $('topupConfirm');
+    resEl.textContent = '';
+    btn.disabled = true; btn.textContent = '⏳';
+    try {
+        const r = await api(`/api/dealer/licenses/${encodeURIComponent(_topupLicenseId)}/topup`, {
+            method: 'POST',
+            body:   { topupTier: tier }
+        });
+        resEl.style.color = '#34d399';
+        resEl.textContent = `✅ ${r.scanAmount.toLocaleString('tr-TR')} tarama eklendi. Toplam ek: ${r.newExtraScans.toLocaleString('tr-TR')} | Kalan kredi: ${r.remainingCredits}`;
+        $('topupCurrentExtra').textContent = r.newExtraScans.toLocaleString('tr-TR');
+        // Topbar krediyi güncelle
+        $('dealerCredits').textContent = r.remainingCredits.toLocaleString('tr-TR');
+        _refreshTopbarTry();
+        showToast(`📦 ${r.scanAmount.toLocaleString('tr-TR')} ek tarama eklendi!`, 'success');
+        // Müşteri listesini yenile
+        setTimeout(() => { $('topupModal').classList.add('hidden'); loadCustomers(); }, 1500);
+    } catch (e) {
+        resEl.style.color = '#f87171';
+        resEl.textContent = 'Hata: ' + (e.message || 'işlem başarısız');
+    } finally {
+        btn.disabled = false; btn.textContent = '📦 Ekle (1 Kredi)';
+    }
+});
 
 $('refreshCustomersBtn')?.addEventListener('click', loadCustomers);
 $('refreshCreditsBtn')?.addEventListener('click', loadCreditLog);
@@ -508,6 +581,112 @@ async function doTransferAction(id, action, reason) {
         if (resEl) { resEl.style.color = '#f87171'; resEl.textContent = 'Hata: ' + e.message; }
     }
 }
+
+// ─── TOPUP KODLARI ───────────────────────────────────────────────────────────
+const TIER_SCAN_LABELS = {
+    T1:'50', T2:'100', T3:'200', T4:'500',
+    T5:'1.000', T6:'2.000', T7:'3.000', T8:'5.000', T9:'10.000'
+};
+
+async function loadTopupCodes() {
+    const tbody = $('topupCodesBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Yükleniyor...</td></tr>';
+    const usedFilter = $('topupCodeFilter')?.value ?? '';
+    try {
+        const url = usedFilter !== '' ? `/api/dealer/topup-codes?used=${encodeURIComponent(usedFilter)}` : '/api/dealer/topup-codes';
+        const r = await api(url);
+        const codes = r.codes || [];
+        if (!codes.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">Henüz topup kodu üretilmedi.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = codes.map(c => {
+            const usedTag = c.used
+                ? `<span class="tag tag-revoked">Kullanıldı</span>`
+                : `<span class="tag tag-active">Aktif</span>`;
+            const expCell = c.expires_at
+                ? (c.expires_at < Date.now()
+                    ? `<span style="color:#f87171">${fmtDate(c.expires_at)} (doldu)</span>`
+                    : fmtDate(c.expires_at))
+                : '<span class="muted">Süresiz</span>';
+            const custCell = c.company_name
+                ? escapeHtml(c.company_name)
+                : (c.customer_id ? `<span class="muted">${escapeHtml(c.customer_id)}</span>` : '<span class="muted">Tüm müşteriler</span>');
+            return `<tr>
+                <td><code style="font-size:.95em;letter-spacing:.08em;color:#a5b4fc">${escapeHtml(c.code)}</code></td>
+                <td>+${TIER_SCAN_LABELS[c.tier] || c.scan_amount} tarama<br><span class="muted" style="font-size:.75em">${escapeHtml(c.tier)}</span></td>
+                <td>${custCell}</td>
+                <td>${expCell}</td>
+                <td>${usedTag}${c.used && c.used_at ? `<br><span class="muted" style="font-size:.75em">${fmtDate(c.used_at)}</span>` : ''}</td>
+                <td style="white-space:nowrap">${fmtDate(c.created_at)}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="err-msg">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+$('refreshTopupCodesBtn')?.addEventListener('click', loadTopupCodes);
+$('topupCodeFilter')?.addEventListener('change', loadTopupCodes);
+
+// ─── Kod Üret Modalı ─────────────────────────────────────────────────────────
+function openGenCodeModal() {
+    $('genCodeResult')?.classList.add('hidden');
+    $('genCodeError').textContent    = '';
+    $('genCodeCustomerId').value     = '';
+    $('genCodeValidDays').value      = '';
+    $('genCodeTier').value           = 'T5';
+    $('genCodeConfirm').disabled     = false;
+    $('genCodeConfirm').textContent  = '🎟️ Kod Üret (1 Kredi)';
+    $('genCodeModal').classList.remove('hidden');
+}
+
+$('generateTopupCodeBtn')?.addEventListener('click', openGenCodeModal);
+$('genCodeCancel')?.addEventListener('click', () => $('genCodeModal').classList.add('hidden'));
+$('genCodeModal')?.addEventListener('click', (e) => {
+    if (e.target === $('genCodeModal')) $('genCodeModal').classList.add('hidden');
+});
+
+$('genCodeCopyBtn')?.addEventListener('click', () => {
+    const code = $('genCodeValue')?.textContent || '';
+    if (!code) return;
+    navigator.clipboard?.writeText(code).then(() => showToast('Kod panoya kopyalandı!', 'success')).catch(() => {
+        prompt('Kodu kopyalayın:', code);
+    });
+});
+
+$('genCodeConfirm')?.addEventListener('click', async () => {
+    const tier       = $('genCodeTier').value;
+    const customerId = ($('genCodeCustomerId').value || '').trim() || undefined;
+    const validDays  = ($('genCodeValidDays').value || '').trim();
+    const errEl      = $('genCodeError');
+    const btn        = $('genCodeConfirm');
+    errEl.textContent = '';
+    btn.disabled = true; btn.textContent = '⏳';
+    try {
+        const body = { tier };
+        if (customerId) body.customerId = customerId;
+        if (validDays)  body.validDays  = Number(validDays);
+        const r = await api('/api/dealer/topup-codes', { method: 'POST', body });
+
+        $('genCodeValue').textContent   = r.code;
+        $('genCodeScanAmt').textContent = `+${(r.scanAmount || 0).toLocaleString('tr-TR')} ek tarama`;
+        $('genCodeResult').classList.remove('hidden');
+
+        $('dealerCredits').textContent = r.remainingCredits.toLocaleString('tr-TR');
+        _refreshTopbarTry();
+        showToast(`🎟️ Kod üretildi: ${r.code}`, 'success');
+
+        // Tabloda görünsün
+        if ($('panel-topupcodes')?.classList.contains('active')) loadTopupCodes();
+
+        btn.disabled = true; btn.textContent = '✅ Üretildi';
+    } catch (e) {
+        errEl.textContent = 'Hata: ' + (e.message || 'işlem başarısız');
+        btn.disabled = false; btn.textContent = '🎟️ Kod Üret (1 Kredi)';
+    }
+});
 
 // ─── KREDİ HAREKETLERİ ───────────────────────────────────────────────────────
 async function loadCreditLog() {
@@ -654,10 +833,10 @@ $('createLicModal')?.addEventListener('click', e => {
 });
 
 $('clicPlan')?.addEventListener('change', function() {
-    // Demo seçilince süreyi 14 ile sınırla
+    // Demo seçilince süreyi 7 ile sınırla
     if (this.value === 'demo') {
         const daysEl = $('clicDays');
-        if (daysEl && Number(daysEl.value) > 14) daysEl.value = '14';
+        if (daysEl && Number(daysEl.value) > 7) daysEl.value = '7';
     }
     // Maliyet tahminini güncelle
     _updateClicCostEstimate(this.value);

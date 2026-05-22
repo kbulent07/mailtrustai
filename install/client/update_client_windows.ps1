@@ -297,6 +297,28 @@ if ($ImageFile) {
         }
     }
 
+    # .env'e fingerprint kaynaklarini ekle (eksik ise — v2.0.1+ install'da yazilir,
+    # eski kurulumlarda yok. Update sirasinda da olusturalim.)
+    function Add-EnvIfMissing([string]$key, [string]$value) {
+        if (-not $value) { return }
+        $env_text = Get-Content $EnvFile -Raw -ErrorAction SilentlyContinue
+        if ($env_text -notmatch "(?m)^$([regex]::Escape($key))=") {
+            Add-Content -Path $EnvFile -Value "$key=$value" -Encoding UTF8
+            Info "  .env'e eklendi: $key"
+        }
+    }
+    try {
+        $mid = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction Stop).MachineGuid
+        Add-EnvIfMissing 'HOST_MACHINE_ID' $mid
+    } catch {}
+    try {
+        $cs = Get-CimInstance Win32_ComputerSystemProduct -ErrorAction Stop
+        if ($cs -and $cs.UUID -and $cs.UUID -ne '00000000-0000-0000-0000-000000000000') {
+            Add-EnvIfMissing 'HOST_SYSTEM_UUID' $cs.UUID
+        }
+    } catch {}
+    if ($env:COMPUTERNAME) { Add-EnvIfMissing 'HOST_HOSTNAME' $env:COMPUTERNAME }
+
     Info "Image derleniyor (5-15 dakika)..."
     # docker compose build progress bar/satirlarini stderr'e yazar — wrap edilir.
     Invoke-NativeSilent {

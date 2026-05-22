@@ -28,10 +28,11 @@
     # En basit (interaktif):
     powershell -ExecutionPolicy Bypass -File install_client_windows.ps1
 
-    # Tek satir parametreli:
+    # Tek satir parametreli (LicenseServerUrl opsiyonel — bos kalirsa default kullanilir):
     powershell -ExecutionPolicy Bypass -File install_client_windows.ps1 `
-        -LicenseKey "MTAI-PRO-XXXX-XXXX" `
-        -LicenseServerUrl "https://license.firma.com"
+        -LicenseKey "MTAI-PRO-XXXX-XXXX"
+    # Default license-server: http://license.mailtrustai.com:3200
+    # Farkli sunucuya baglanmak icin: -LicenseServerUrl "https://baska.sirket.com"
 #>
 
 [CmdletBinding()]

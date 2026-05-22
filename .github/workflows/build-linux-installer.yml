@@ -1,0 +1,81 @@
+name: build-linux-installer
+
+# ============================================================
+# MailTrustAI Client — Linux self-extracting .run installer
+#
+# Tetikleyiciler:
+#   - tag push: v*               → release'a otomatik upload
+#   - manuel workflow_dispatch   → artifact olarak indir
+#
+# Cikti: dist/MailTrustAI-Client-Setup-<ver>.run
+# ============================================================
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Surum etiketi (orn. 2.0.1)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    name: makeself ile .run derle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: makeself kuruluyor
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq makeself
+          makeself --version
+
+      - name: Surum belirle
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+              VERSION="${GITHUB_REF_NAME#v}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+              VERSION="${{ inputs.version }}"
+          else
+              VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo '0.0.0-dev')
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "[i] surum: $VERSION"
+
+      - name: .run derle
+        run: |
+          chmod +x install/client/build-linux-installer.sh
+          bash install/client/build-linux-installer.sh --version "${{ steps.version.outputs.version }}"
+          ls -la dist/
+
+      - name: Artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: MailTrustAI-Client-Setup-${{ steps.version.outputs.version }}-run
+          path: dist/*.run
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Release'a yukle (tag push ise)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.run
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

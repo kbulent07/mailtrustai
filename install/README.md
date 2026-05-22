@@ -5,15 +5,30 @@
 | Hedef | Komut |
 |---|---|
 | **Windows Müşteri** | [Releases](https://github.com/kbulent07/mailtrustai/releases)'ten `MailTrustAI-Client-Setup-*.exe` indir → çift tıkla → lisans+URL gir |
+| **Ubuntu Müşteri (tek dosya)** | [Releases](https://github.com/kbulent07/mailtrustai/releases)'ten `MailTrustAI-Client-Setup-*.run` indir → `chmod +x` → `sudo ./...run` |
 | **Ubuntu Sunucu** | `curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick.sh \| sudo bash` |
-| **Ubuntu Müşteri** | `curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick-client.sh \| sudo bash -s -- --license=MTAI-XXX --server=https://license.firma.com` |
+| **Ubuntu Müşteri (one-liner)** | `curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick-client.sh \| sudo bash -s -- --license=MTAI-XXX` |
+
+> **License-server varsayılanı**: `http://license.mailtrustai.com:3200` (MailTrustAI merkezi sunucusu).
+> Tüm installer'lar (Ubuntu/Windows/EXE/.run) bu adresi default olarak gösterir.
+> Farklı bir sunucu için `--server=...`, `LICENSE_SERVER_URL=...` veya wizard'da URL'i değiştirin.
 
 Bu tek-adım yöntemler önkoşulları (git, docker) otomatik kurar, repoyu klonlar ve
 asıl kurulum scriptini çalıştırır. Detaylı/manuel yöntemler aşağıda.
 
 > **Windows `.exe` nereden geliyor?** `installer/MailTrustAIClient.iss` (Inno Setup)
-> dosyasından, her `v*` tag push'unda GitHub Actions ile otomatik derlenir
-> (bkz. `installer/README.md`). Lokal derleme: `.\installer\build-installer.ps1 -InstallIfMissing`
+> dosyasından, her `v*` tag push'unda GitHub Actions
+> ([`build-windows-installer.yml`](../.github/workflows/build-windows-installer.yml))
+> ile otomatik derlenir (bkz. `installer/README.md`).
+> Lokal derleme: `.\installer\build-installer.ps1 -InstallIfMissing`
+
+> **Linux `.run` nereden geliyor?** `install/client/build-linux-installer.sh`
+> `makeself` ile tek-dosya self-extracting installer üretir; her `v*` tag push'unda
+> GitHub Actions
+> ([`build-linux-installer.yml`](../.github/workflows/build-linux-installer.yml))
+> ile derlenip Release'a yüklenir.
+> Lokal derleme: `bash install/client/build-linux-installer.sh --version 2.0.1`
+> (önkoşul: `sudo apt install makeself`)
 
 ---
 
@@ -139,7 +154,26 @@ powershell -ExecutionPolicy Bypass -File install\client\uninstall_client_windows
 
 ## 3. Müşteri / Client — Ubuntu
 
-### Kurulum
+### Tek dosya kurulum (`.run` — yeni)
+
+```bash
+# Releases'ten indir:
+wget https://github.com/kbulent07/mailtrustai/releases/latest/download/MailTrustAI-Client-Setup-X.Y.Z.run
+chmod +x MailTrustAI-Client-Setup-*.run
+sudo ./MailTrustAI-Client-Setup-*.run        # interaktif menu: install/update/uninstall
+
+# Otomasyon:
+sudo MSA_INSTALLER_MODE=install \
+     LICENSE_KEY="MTAI-PRO-XXXX-XXXX" \
+     LICENSE_SERVER_URL="http://license.mailtrustai.com:3200" \
+     ./MailTrustAI-Client-Setup-*.run
+```
+
+`.run` dosyası self-extracting'tir — git/docker yoksa otomatik kurar,
+repo'yu `/opt/mailtrustai-source`'a klonlar (mainpaketler), ardından
+`install_client_ubuntu.sh`'i tetikler.
+
+### Klasik kurulum (repo zaten klonluysa)
 
 ```bash
 git clone -b mainpaketler https://github.com/kbulent07/mailtrustai.git /home/ubuntu/mailtrustai
@@ -150,7 +184,7 @@ sudo bash install/client/install_client_ubuntu.sh
 
 # Parametreli (otomasyon)
 sudo LICENSE_KEY="MTAI-PRO-XXXX-XXXX" \
-     LICENSE_SERVER_URL="https://license.firma.com" \
+     LICENSE_SERVER_URL="http://license.mailtrustai.com:3200" \
      CUSTOMER_PORT=3000 \
      bash install/client/install_client_ubuntu.sh
 ```
@@ -198,12 +232,17 @@ sudo MODE=full UNATTENDED=true bash install/client/uninstall_client_ubuntu.sh
 
 ## 4. Sık Kullanılan Komutlar
 
+Tüm `ctl` araçları aynı komut setini sunar: `start | stop | restart | status | logs | update | backup | version | health | doctor`.
+
 ### Server (Linux)
 ```bash
 sudo /opt/mailtrustai/mailtrustai-ctl.sh status     # Container durumları
 sudo /opt/mailtrustai/mailtrustai-ctl.sh logs       # Canlı loglar
 sudo /opt/mailtrustai/mailtrustai-ctl.sh backup     # MariaDB + .env yedek
 sudo /opt/mailtrustai/mailtrustai-ctl.sh update     # Yeni sürüme yükselt
+sudo /opt/mailtrustai/mailtrustai-ctl.sh doctor     # Tanı (docker/container/env/http)
+sudo /opt/mailtrustai/mailtrustai-ctl.sh health     # JSON sağlık (cron/monitoring)
+sudo /opt/mailtrustai/mailtrustai-ctl.sh version    # Kurulu sürüm + image
 ```
 
 ### Client (Windows)
@@ -212,6 +251,9 @@ sudo /opt/mailtrustai/mailtrustai-ctl.sh update     # Yeni sürüme yükselt
 & 'C:\MailTrustAI\mailtrustai-ctl.ps1' logs
 & 'C:\MailTrustAI\mailtrustai-ctl.ps1' backup
 & 'C:\MailTrustAI\mailtrustai-ctl.ps1' update
+& 'C:\MailTrustAI\mailtrustai-ctl.ps1' doctor       # Tanı
+& 'C:\MailTrustAI\mailtrustai-ctl.ps1' health       # JSON sağlık
+& 'C:\MailTrustAI\mailtrustai-ctl.ps1' version
 ```
 
 ### Client (Linux)
@@ -220,6 +262,17 @@ sudo /opt/mailtrustai/mailtrustai-client-ctl.sh status
 sudo /opt/mailtrustai/mailtrustai-client-ctl.sh logs
 sudo /opt/mailtrustai/mailtrustai-client-ctl.sh backup
 sudo /opt/mailtrustai/mailtrustai-client-ctl.sh update
+sudo /opt/mailtrustai/mailtrustai-client-ctl.sh doctor    # Tanı
+sudo /opt/mailtrustai/mailtrustai-client-ctl.sh health    # JSON sağlık
+sudo /opt/mailtrustai/mailtrustai-client-ctl.sh version
+```
+
+### Monitoring entegrasyonu (cron örneği)
+
+```bash
+# /etc/cron.d/mailtrustai-watchdog — 5 dakikada bir health, fail ise mail
+*/5 * * * * root /opt/mailtrustai/mailtrustai-client-ctl.sh health >/dev/null || \
+    /opt/mailtrustai/mailtrustai-client-ctl.sh doctor | mail -s "MailTrustAI down" admin@firma.com
 ```
 
 ---

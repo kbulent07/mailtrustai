@@ -3646,10 +3646,159 @@ function showImapBackgroundScanNotification(result, message) {
 // ============================================================
 function showLicenseModal() {
     document.getElementById('licenseModal').classList.remove('hidden');
+    // URL alanini guncel deger ile doldur (her acilista taze cek)
+    _loadLicenseServerUrlIntoModal();
 }
 
 function closeLicenseModal() {
     document.getElementById('licenseModal').classList.add('hidden');
+    // Edit modunda kapatilirsa toggle'i sifirla
+    _setLicenseServerUrlEditMode(false, /* discard */ true);
+}
+
+// ─── License-server URL yonetimi ───────────────────────────
+async function _loadLicenseServerUrlIntoModal() {
+    const input = document.getElementById('licenseServerUrlInput');
+    const info  = document.getElementById('licenseServerUrlInfo');
+    if (!input) return;
+    try {
+        const res = await fetch('/api/customer/license/server-url');
+        const data = await res.json();
+        input.value = data.active || '';
+        input.dataset.original = data.active || '';
+        if (info) {
+            const src = data.source === 'settings'
+                ? '⚙️ UI uzerinden ayarlanmis (kalici)'
+                : data.source === 'env'
+                    ? '🐳 .env dosyasindan (Docker default)'
+                    : '⚠ URL tanimsiz — sertifikalama yapilmasi icin girin';
+            info.innerHTML = `💡 ${src}. Degistirmek icin <strong>Düzenle</strong>.`;
+        }
+    } catch (e) {
+        input.value = '';
+        if (info) info.innerHTML = `❌ URL bilgisi alinamadi: ${esc(e.message)}`;
+    }
+    _setLicenseServerUrlEditMode(false);
+}
+
+function _setLicenseServerUrlEditMode(editing, discard = false) {
+    const input = document.getElementById('licenseServerUrlInput');
+    const btn   = document.getElementById('licenseServerUrlEditBtn');
+    if (!input || !btn) return;
+    if (editing) {
+        input.readOnly = false;
+        input.style.opacity = '1';
+        input.style.cursor = 'text';
+        btn.innerHTML = '💾 Kaydet';
+        btn.classList.remove('btn-ghost');
+        btn.classList.add('btn-primary');
+        input.focus();
+        input.select();
+    } else {
+        input.readOnly = true;
+        input.style.opacity = '0.75';
+        input.style.cursor = 'not-allowed';
+        btn.innerHTML = '✏️ Düzenle';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-ghost');
+        if (discard && input.dataset.original !== undefined) {
+            input.value = input.dataset.original;
+        }
+    }
+}
+
+async function toggleLicenseServerUrlEdit() {
+    const input = document.getElementById('licenseServerUrlInput');
+    const btn   = document.getElementById('licenseServerUrlEditBtn');
+    if (!input || !btn) return;
+    const editing = !input.readOnly;
+    if (!editing) {
+        // edit moduna gec
+        _setLicenseServerUrlEditMode(true);
+        return;
+    }
+    // Save modunda — backend'e yaz
+    const newUrl = input.value.trim();
+    const original = input.dataset.original || '';
+    if (newUrl === original) {
+        // Degisiklik yok, sadece read-only'ye don
+        _setLicenseServerUrlEditMode(false);
+        return;
+    }
+    if (newUrl && !/^https?:\/\//i.test(newUrl)) {
+        showToast(_tLit('URL http:// veya https:// ile baslamali', 'URL must start with http:// or https://'), 'warning');
+        return;
+    }
+    btn.disabled = true;
+    const prev = btn.innerHTML;
+    btn.innerHTML = '⏳ Kaydediliyor...';
+    try {
+        const res = await fetch('/api/customer/license/server-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: newUrl })
+        });
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+        if (!res.ok) {
+            showToast(`URL kaydedilemedi: ${data.error || 'HTTP ' + res.status}`, 'error');
+            btn.innerHTML = prev;
+            btn.disabled = false;
+            return;
+        }
+        // Basarili: input'u guncelle, read-only'ye gec
+        input.value = data.active || newUrl;
+        input.dataset.original = input.value;
+        showToast(_tLit('✅ License-server URL kaydedildi', '✅ License-server URL saved'), 'success');
+        const info = document.getElementById('licenseServerUrlInfo');
+        if (info) {
+            const src = data.source === 'settings' ? '⚙️ UI uzerinden ayarlanmis'
+                : data.source === 'env' ? '🐳 .env (Docker)'
+                : '⚠ tanimsiz';
+            info.innerHTML = `💡 ${src}. Degistirmek icin <strong>Düzenle</strong>.`;
+        }
+    } catch (e) {
+        showToast(`URL kaydedilemedi: ${e.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        _setLicenseServerUrlEditMode(false);
+    }
+}
+
+// ─── Topup kodu kullanımı ──────────────────────────────────
+async function redeemTopupCode() {
+    const input  = document.getElementById('topupCodeInput');
+    const resEl  = document.getElementById('topupCodeResult');
+    const btn    = document.getElementById('topupCodeRedeemBtn');
+    if (!input || !resEl) return;
+
+    const code = (input.value || '').trim().toUpperCase().replace(/\s/g, '');
+    if (!code) { resEl.style.color = 'var(--text-warning)'; resEl.textContent = '⚠ Lütfen kodu girin.'; return; }
+
+    resEl.textContent = '';
+    btn.disabled = true; btn.textContent = '⏳';
+    try {
+        const res  = await fetch('/api/customer/license/redeem-topup', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ code })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+        const scanAmt = (data.scanAmount || 0).toLocaleString('tr-TR');
+        const total   = (data.newExtraScans || 0).toLocaleString('tr-TR');
+        resEl.style.color = '#10b981';
+        resEl.textContent = `✅ ${scanAmt} ek tarama eklendi! Toplam ek tarama: ${total}`;
+        input.value = '';
+        // Lisans bilgisini yenile — usageCounter vs.
+        setTimeout(() => { try { loadLicenseInfo?.(); } catch (_) {} }, 800);
+    } catch (e) {
+        resEl.style.color = '#ef4444';
+        resEl.textContent = '❌ ' + (e.message || 'Kod uygulanamadı');
+    } finally {
+        btn.disabled = false; btn.textContent = '✅ Uygula';
+    }
 }
 
 // ============================================================
@@ -3738,13 +3887,16 @@ async function pingLicenseServer() {
     const out = document.getElementById('licenseResult');
     if (out) out.innerHTML = '<div style="color:var(--text-secondary);margin-top:12px">🔌 License-server\'a ping atılıyor...</div>';
     try {
-        const t0 = Date.now();
-        const res = await fetch('/api/customer/license/ping');
+        // URL alani edit modundaysa o degeri test et (henuz kaydedilmemis olsa bile)
+        const input = document.getElementById('licenseServerUrlInput');
+        const probeUrl = input && !input.readOnly ? input.value.trim() : '';
+        const endpoint = probeUrl ? `/api/customer/license/ping?url=${encodeURIComponent(probeUrl)}` : '/api/customer/license/ping';
+        const res = await fetch(endpoint);
         const data = await res.json();
-        const elapsed = Date.now() - t0;
+        const ms = data.elapsedMs ?? data.elapsed ?? '?';
         const html = data.ok
             ? `<div style="background:rgba(16,185,129,0.12);border:1px solid #10b981;border-radius:8px;padding:12px;margin-top:12px">
-                ✅ <strong>License-server cevap verdi</strong> (${data.elapsed}ms)<br>
+                ✅ <strong>License-server cevap verdi</strong> (${ms}ms${data.path ? ' · ' + esc(data.path) : ''})<br>
                 <code style="font-size:11px">${esc(data.url)}</code>
             </div>`
             : `<div style="background:rgba(239,68,68,0.12);border:1px solid #ef4444;border-radius:8px;padding:12px;margin-top:12px">
@@ -3929,24 +4081,27 @@ function updateLicenseBadge(info) {
     const tier = info.tier || '';
     let label = tier ? `${labels[info.plan] || 'Free'}-${tier}` : (labels[info.plan] || 'Free');
 
-    // Sona erme uyarısı
+    // Kalan gun — her zaman goster (sadece uyari durumunda degil)
     const daysLeft = info.daysLeft ?? (info.expiryDate
         ? Math.ceil((new Date(info.expiryDate) - Date.now()) / 86400000) : null);
     if (daysLeft !== null) {
         if (daysLeft <= 0) {
-            label += ' ❌';
+            label += ' ❌ 0g';
             badge.style.borderColor = '#ef4444';
             badge.title = 'Lisans süresi dolmuş!';
         } else if (daysLeft <= 3) {
-            label += ` ⚠️${daysLeft}g`;
+            label += ` ⚠️ ${daysLeft}g`;
             badge.style.borderColor = '#ef4444';
             badge.title = `Lisans ${daysLeft} gün içinde sona eriyor!`;
             showExpiryAlert(daysLeft, info);
         } else if (daysLeft <= 7) {
-            label += ` ⚠️${daysLeft}g`;
+            label += ` ⚠️ ${daysLeft}g`;
             badge.style.borderColor = '#f59e0b';
             badge.title = `Lisans ${daysLeft} gün içinde sona eriyor.`;
             showExpiryAlert(daysLeft, info);
+        } else {
+            label += ` · ${daysLeft}g`;
+            badge.title = `Lisans süresi: ${daysLeft} gün`;
         }
     }
 
@@ -5569,7 +5724,10 @@ function timeAgo(dateStr) {
 // ============================================================
 async function loadLicenseUsage() {
     try {
-        const res = await fetch('/api/customer/license/usage');
+        // NOT: Endpoint /api/license/usage'dadir (licenseCustomer.routes.js).
+        // Onceki kod /api/customer/license/usage cagiriyordu — bu yol YOK, 404 doner
+        // ve usageCounter sessizce hidden kalir.
+        const res = await fetch('/api/license/usage');
         if (!res.ok) return;
         const data = await res.json();
         const counter = document.getElementById('usageCounter');
@@ -5602,6 +5760,20 @@ async function loadLicenseUsage() {
         counter.style.border = `1px solid ${color}40`;
         counter.style.borderRadius = '5px';
         counter.style.padding = '2px 8px';
+
+        // Usage endpoint snapshot'tan kalan gun de verir — badge'i de guncelle
+        // (license validate cagrilmadiginda bile gun bilgisi gozuksun)
+        if (data.daysLeft !== undefined && data.daysLeft !== null) {
+            const badge = document.getElementById('licenseBadge');
+            if (badge) {
+                const existingLabel = badge.textContent || '';
+                // Eger badge "·  ?g" / "⚠️ ?g" / "❌ ?g" kismi yoksa ekle
+                if (!/[·⚠️❌]\s*\d+g\b/.test(existingLabel)) {
+                    badge.textContent = existingLabel + ` · ${data.daysLeft}g`;
+                    badge.title = `Lisans süresi: ${data.daysLeft} gün`;
+                }
+            }
+        }
     } catch {}
 }
 
@@ -7509,6 +7681,71 @@ function copyFingerprintJson() {
 }
 
 // ============================================================
+// LİSANSI ANLIK YENİLE — bayi uzatma yaptıysa manuel anlık tetik
+// ============================================================
+/**
+ * Customer'ın license-server'a senkron validate çağrısı atmasını tetikler.
+ * Normalde validate 6 saatte bir, heartbeat (lisans piggyback) 5 dakikada bir
+ * otomatik çalışır. Bu buton kullanıcıya ANLIK (1 saniye) yenileme imkanı verir.
+ */
+async function revalidateLicenseNow() {
+    const btn = document.getElementById('btnRevalidateLicense');
+    const status = document.getElementById('revalidateStatus');
+    const original = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ <span>Yenileniyor...</span>';
+    }
+    if (status) status.innerHTML = '<span style="opacity:0.65">License-server\'a soruluyor...</span>';
+
+    try {
+        const res = await fetch('/api/customer/license/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+
+        if (!res.ok || !data.ok) {
+            const msg = data.error || `HTTP ${res.status}`;
+            if (status) status.innerHTML = `<span style="color:#ef4444">✗ Yenileme başarısız: ${esc(msg)}</span>`;
+            showToast(`Lisans yenileme başarısız: ${msg}`, 'error');
+            return;
+        }
+
+        // Snapshot'tan yeni expiresAt'ı al, kullanıcıya göster
+        const snap = data.snapshot || {};
+        const exp = snap.expiresAt
+            ? new Date(Number(snap.expiresAt)).toLocaleString(navigator.language || 'tr-TR')
+            : '—';
+        const lvl = snap.licenseStatus || 'aktif';
+        const extra = (typeof snap.limits?.monthlyScanCount === 'number')
+            ? ` · Aylık limit: ${snap.limits.monthlyScanCount.toLocaleString()}`
+            : '';
+        if (status) {
+            status.innerHTML =
+                `<span style="color:#22c55e">✓ Lisans güncellendi</span><br>` +
+                `<span style="opacity:0.7">Durum: <strong>${esc(lvl)}</strong> · Bitiş: <strong>${esc(exp)}</strong>${esc(extra)}</span>`;
+        }
+        showToast('Lisans bilgisi güncellendi ✓', 'success');
+
+        // Lisans bilgisini gösteren diğer kart/sayfaları varsa yenile
+        if (typeof loadLicenseStatus === 'function') {
+            try { await loadLicenseStatus(); } catch (_) {}
+        }
+    } catch (e) {
+        if (status) status.innerHTML = `<span style="color:#ef4444">✗ Ağ hatası: ${esc(e.message)}</span>`;
+        showToast(`Ağ hatası: ${e.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
+    }
+}
+
+// ============================================================
 // ONBOARDING CHECKLIST — yeni kurulumda 5 adımlık rehber
 // ============================================================
 async function renderOnboardingChecklist() {
@@ -7790,9 +8027,79 @@ async function loadListsPanel() {
         const data = await res.json();
         renderListItems('allowlist', data.allowlist || []);
         renderListItems('blocklist', data.blocklist || []);
+        _setListsSyncStatus('', '');
     } catch (e) {
         console.error('loadListsPanel error:', e);
+        showToast(_tLit('Liste yüklenemedi: ', 'List load failed: ') + e.message, 'error');
     }
+}
+
+// Merkez listesini indirir ve lokal girisleri koruyarak birlestirir.
+// Backend importLists(merge=true) kullanir — kullanicinin elle ekledigi
+// allowlist/blocklist girisleri SILINMEZ, yalniz yeni gelenler eklenir.
+async function syncListsFromCentral() {
+    const btnSelector = '[data-fn="syncListsFromCentral"]';
+    const btn = document.querySelector(btnSelector);
+    const original = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Senkronize ediliyor...'; }
+    _setListsSyncStatus(_tLit('☁ Merkez listesi indiriliyor...', '☁ Fetching central list...'), '#60a5fa');
+
+    try {
+        const res = await fetch('/api/lists/sync-from-central', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+
+        if (!res.ok) {
+            const msg = data.error || `HTTP ${res.status}`;
+            _setListsSyncStatus('✗ ' + msg, '#f87171');
+            showToast(_tLit('Merkezi liste güncelleme hatası: ', 'Central list sync error: ') + msg, 'error');
+            return;
+        }
+
+        const added = (data.allowlistAdded || 0) + (data.blocklistAdded || 0);
+        if (data.centralEmpty) {
+            _setListsSyncStatus(_tLit('ℹ Merkez listesi boş veya tanımsız.', 'ℹ Central list is empty.'), '#fbbf24');
+            showToast(_tLit('Merkez listesi boş', 'Central list empty'), 'info');
+        } else if (added === 0) {
+            _setListsSyncStatus(
+                _tLit('✓ Liste güncel — yeni giriş yok (lokal girişler korundu).',
+                      '✓ Up to date — no new entries (local entries preserved).'),
+                '#2ee59d'
+            );
+            showToast(_tLit('Zaten güncel — değişiklik yok', 'Already up to date'), 'success');
+        } else {
+            _setListsSyncStatus(
+                `✓ ${_tLit('Eklendi','Added')}: allowlist +${data.allowlistAdded || 0}, blocklist +${data.blocklistAdded || 0} (${_tLit('lokal girişler korundu','local entries preserved')})`,
+                '#2ee59d'
+            );
+            showToast(`✅ ${_tLit('Merkezden güncellendi','Synced from central')}: +${added}`, 'success');
+        }
+
+        // Listeyi yeniden render
+        if (data.lists) {
+            renderListItems('allowlist', data.lists.allowlist || []);
+            renderListItems('blocklist', data.lists.blocklist || []);
+        } else {
+            loadListsPanel();
+        }
+    } catch (e) {
+        _setListsSyncStatus('✗ ' + e.message, '#f87171');
+        showToast(_tLit('Ağ hatası: ', 'Network error: ') + e.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = original; }
+    }
+}
+
+function _setListsSyncStatus(text, color) {
+    const el = document.getElementById('listsSyncStatus');
+    if (!el) return;
+    if (!text) { el.style.display = 'none'; el.textContent = ''; return; }
+    el.style.display = '';
+    el.style.color = color || '';
+    el.textContent = text;
 }
 
 function renderListItems(type, items) {
