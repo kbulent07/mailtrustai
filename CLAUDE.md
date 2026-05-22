@@ -66,3 +66,22 @@ Tüm unit testler geçmeli (şu an 111). Native modüller: better-sqlite3, bcryp
 - Commit'ler Türkçe, conventional (`fix(...)`, `feat(...)`). Co-author satırını koru.
 - Müşteri tarafına `LICENSE_SIGNING_SECRET`, `DEALER_API_SECRET`, `MARIADB_*` gibi sunucu secret'ları KOYMA.
 - Prod'da secret yoksa `requireSecret()` (packages/shared) fail-fast eder — bu kasıtlı.
+
+## İş Akışı (her görevde)
+Görev geldiğinde **bu dosyanın alt kısmındaki "Aktif Plan & İlerleme" bölümüne**:
+1. **Görev** başlığını yaz (1 satır)
+2. **Plan** (madde listesi — hangi dosyalar, hangi adımlar)
+3. Yaptıkça ✓ ile işaretle, ekleme/değişiklik çıkarsa not düş
+4. Bitince **"Yapıldı"** alt-bölümüne özet at (commit hash + ne değişti)
+5. Eski tamamlanmış işleri 5 başlıktan fazla olmasın — en üstte sadece **son tamamlananlar** kalsın
+
+Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomatik (onay sorma).
+
+---
+
+## 🎯 Aktif Plan & İlerleme
+
+*(görev geldikçe bu bölüm güncellenir)*
+
+### Yapıldı (son tamamlananlar)
+*(boş — henüz bu oturumda kaydedilen bir görev yok)*
