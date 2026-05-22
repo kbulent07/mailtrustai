@@ -358,7 +358,7 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
             <input type="checkbox" id="newTrial" style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer">
             <label for="newTrial" style="margin:0;cursor:pointer;font-size:.9em;color:var(--text)">
               🧪 <strong>Deneme Lisansı</strong>
-              <span style="color:var(--muted);font-size:.82em;margin-left:6px">— Maksimum 14 gün, planın tüm özellikleriyle</span>
+              <span style="color:var(--muted);font-size:.82em;margin-left:6px">— Maksimum 7 gün, planın tüm özellikleriyle</span>
             </label>
           </div>
           <div class="full">
@@ -506,7 +506,7 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
     </select>
     <div style="display:flex;align-items:center;gap:9px;margin:10px 0 4px;padding:8px 12px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);border-radius:7px">
       <input type="checkbox" id="quickLicTrial" style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer">
-      <label for="quickLicTrial" style="margin:0;cursor:pointer;font-size:.88em">🧪 <strong>Deneme Lisansı</strong> <span style="color:var(--muted);font-size:.8em">— max 14 gün</span></label>
+      <label for="quickLicTrial" style="margin:0;cursor:pointer;font-size:.88em">🧪 <strong>Deneme Lisansı</strong> <span style="color:var(--muted);font-size:.8em">— max 7 gün</span></label>
     </div>
     <label for="quickLicDays">Geçerlilik (gün)</label>
     <input type="number" id="quickLicDays" min="1" max="36500" value="365" autocomplete="off">
@@ -1068,8 +1068,8 @@ $('createForm').addEventListener('submit', async e => {
   };
   if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
   if (!body.validDays || body.validDays < 1) { resEl.textContent = 'Geçerli bir gün sayısı girin.'; resEl.className = 'result err'; return; }
-  if (isTrial && body.validDays > 14) {
-    resEl.textContent = 'Deneme lisansı en fazla 14 gün olabilir.'; resEl.className = 'result err'; return;
+  if (isTrial && body.validDays > 7) {
+    resEl.textContent = 'Deneme lisansı en fazla 7 gün olabilir.'; resEl.className = 'result err'; return;
   }
 
   try {
@@ -1226,17 +1226,17 @@ function openQuickLicModal(custId, name, company) {
 $('quickLicCancel').addEventListener('click', () => $('quickLicModal').classList.add('hidden'));
 $('quickLicModal').addEventListener('click', e => { if (e.target === $('quickLicModal')) $('quickLicModal').classList.add('hidden'); });
 
-// Deneme checkbox → validDays'i otomatik 14'e klampla
+// Deneme checkbox → validDays'i otomatik 7'ye klampla
 function _wireTrialCheckbox(checkId, daysId) {
   const chk = $(checkId), days = $(daysId);
   if (!chk || !days) return;
   chk.addEventListener('change', () => {
     if (chk.checked) {
-      days.max = '14';
-      if (!days.value || Number(days.value) > 14) days.value = '14';
+      days.max = '7';
+      if (!days.value || Number(days.value) > 7) days.value = '7';
     } else {
       days.max = '36500';
-      if (Number(days.value) === 14) days.value = '365';
+      if (Number(days.value) === 7) days.value = '365';
     }
   });
 }
@@ -1251,8 +1251,8 @@ $('quickLicApply').addEventListener('click', async () => {
     $('quickLicResult').textContent = 'En az 1 gün girin.'; $('quickLicResult').className = 'result err'; return;
   }
   const isTrialQ = $('quickLicTrial')?.checked || false;
-  if (isTrialQ && validDays > 14) {
-    $('quickLicResult').textContent = 'Deneme lisansı en fazla 14 gün olabilir.'; $('quickLicResult').className = 'result err'; return;
+  if (isTrialQ && validDays > 7) {
+    $('quickLicResult').textContent = 'Deneme lisansı en fazla 7 gün olabilir.'; $('quickLicResult').className = 'result err'; return;
   }
   $('quickLicApply').disabled = true;
   $('quickLicResult').textContent = '⏳ Üretiliyor...'; $('quickLicResult').className = 'result';
