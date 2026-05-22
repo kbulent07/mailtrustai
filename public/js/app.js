@@ -3765,42 +3765,6 @@ async function toggleLicenseServerUrlEdit() {
     }
 }
 
-// ─── Topup kodu kullanımı ──────────────────────────────────
-async function redeemTopupCode() {
-    const input  = document.getElementById('topupCodeInput');
-    const resEl  = document.getElementById('topupCodeResult');
-    const btn    = document.getElementById('topupCodeRedeemBtn');
-    if (!input || !resEl) return;
-
-    const code = (input.value || '').trim().toUpperCase().replace(/\s/g, '');
-    if (!code) { resEl.style.color = 'var(--text-warning)'; resEl.textContent = '⚠ Lütfen kodu girin.'; return; }
-
-    resEl.textContent = '';
-    btn.disabled = true; btn.textContent = '⏳';
-    try {
-        const res  = await fetch('/api/customer/license/redeem-topup', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ code })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-
-        const scanAmt = (data.scanAmount || 0).toLocaleString('tr-TR');
-        const total   = (data.newExtraScans || 0).toLocaleString('tr-TR');
-        resEl.style.color = '#10b981';
-        resEl.textContent = `✅ ${scanAmt} ek tarama eklendi! Toplam ek tarama: ${total}`;
-        input.value = '';
-        // Lisans bilgisini yenile — usageCounter vs.
-        setTimeout(() => { try { loadLicenseInfo?.(); } catch (_) {} }, 800);
-    } catch (e) {
-        resEl.style.color = '#ef4444';
-        resEl.textContent = '❌ ' + (e.message || 'Kod uygulanamadı');
-    } finally {
-        btn.disabled = false; btn.textContent = '✅ Uygula';
-    }
-}
-
 // ============================================================
 // LICENSE SERVER İLETİŞİM LOGLARI
 // ============================================================
