@@ -242,7 +242,26 @@ if [[ "$SKIP_ENV" == "false" ]]; then
         printf '# === Port & Ortam ===\n'
         printf 'CUSTOMER_PORT=%s\n' "$CUSTOMER_PORT"
         printf 'NODE_ENV=production\n'
-        printf 'TRUST_PROXY=1\n'
+        printf 'TRUST_PROXY=1\n\n'
+        # === Fingerprint kaynaklari (host'tan okunur) ===
+        # Container icindeki fingerprint.js bunlari env'den okur ve hash'ler.
+        # /etc/machine-id Linux'ta her zaman var.
+        # /sys/class/dmi/id/product_uuid bare-metal/VM'de var (root gerek);
+        # container'da Docker Desktop Windows'ta mount edilemiyor (KB: ).
+        # Skor modeli: install_id (4) + os_machine_id (4) = 8 zorunlu eşik;
+        # system_uuid (3) bonus — yoksa lisans yine geçerli.
+        if [[ -r /etc/machine-id ]]; then
+            HOST_MID="$(cat /etc/machine-id 2>/dev/null | tr -d '[:space:]')"
+            printf '# === Fingerprint (host'\''tan) ===\n'
+            printf 'HOST_MACHINE_ID=%s\n' "$HOST_MID"
+        fi
+        if [[ -r /sys/class/dmi/id/product_uuid ]]; then
+            HOST_UUID="$(cat /sys/class/dmi/id/product_uuid 2>/dev/null | tr -d '[:space:]')"
+            [[ -n "$HOST_UUID" ]] && printf 'HOST_SYSTEM_UUID=%s\n' "$HOST_UUID"
+        fi
+        # Hostname — container icinde os.hostname() icin override
+        HOST_HN="$(hostname 2>/dev/null | tr -d '[:space:]')"
+        [[ -n "$HOST_HN" ]] && printf 'HOST_HOSTNAME=%s\n' "$HOST_HN"
     } > "$TMP_ENV"
 
     chmod 600 "$TMP_ENV"

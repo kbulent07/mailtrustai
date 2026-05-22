@@ -51,6 +51,11 @@ services:
       # Ilk admin kullanici kurulumu — browser'dan ?setup_token=... ile.
       # Container disindan setup yapilirken zorunlu (localhost'tan istisna).
       MSA_SETUP_TOKEN: ${MSA_SETUP_TOKEN:-}
+      # Fingerprint kaynaklari — install scripti host'tan okuyup .env.docker'a yazar.
+      # /etc/machine-id ve /sys/.../product_uuid mount edemiyorsa env fallback'i kullanir.
+      HOST_MACHINE_ID:  ${HOST_MACHINE_ID:-}
+      HOST_SYSTEM_UUID: ${HOST_SYSTEM_UUID:-}
+      HOST_HOSTNAME:    ${HOST_HOSTNAME:-}
     ports:
       - "${CUSTOMER_PORT:-3000}:3000"
     volumes:
