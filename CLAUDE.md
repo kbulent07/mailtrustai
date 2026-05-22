@@ -92,6 +92,11 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 - **Müşteri tarafı:** yeni anahtar girişi zaten anında sunucu kontrolü + aktivasyon yapıyor (`apps/customer/server.js` `/api/customer/license/activate` → `licenseClient.activate`).
 - Commit `63d975a`. Testler 150/150 ✓ (dealer-topup happy-path yeni kredi maliyetine göre güncellendi); canlı doğrulama (T9 kuralları + kapasiteler) ✓.
 
+### Yapıldı — Bayi paneli sadeleştirme + kararlar
+- **İKİ bayi paneli var, ayrışıyor:** `apps/dealer` (SPA, port **3100**, kullanıcının kullandığı, kanonik) + `apps/license-server/public/dealer` (license-server `/dealer`, port 3200, task-7'deki zengin kopya). Bayi UI değişikliğinde **ikisini de** kontrol et.
+- **Topup YOK politikası:** Müşteriye ek tarama (topup) satılmaz; kapasite ihtiyacı = **yeni/üst tier lisans**. Müşteri panelinden "Ek Tarama Paketi Kodu" UI + `redeem-topup` ucu kaldırıldı (commit `68580ac`, `5420f18`). Kanonik panele topup eklenmedi. Backend kalıntıları (`dealer.routes` topup/topup-codes, `topup_codes` tablosu, `licenses.extra_scans`) deprecated.
+- **apps/dealer hizalama:** deneme lisansı 14→7 gün (`6ad7fd1`); tier dropdown T6=2.500 + T9 bayiden kaldırıldı (`ba25d51`); **Fiyatlandırma (Plan×Tier) sekmesi** eklendi (`a9c5627`, `/api/dealer/pricing` proxy); Lisans Üret formunda **Müşteri ID artık arama kutulu seçim listesi** (lisansı olmayan müşteriler de listede — central baseQuery LEFT JOIN).
+
 ### Bilinen Davranışlar (Bug Değil)
 - **DKIM imzası bozulması**: `markRiskySubject` etkinken bir mailin konusu APPEND ile değiştirilir → DKIM-Signature artık geçersizdir. Bu beklenen ve dokümante edilmiş davranıştır. Mail içeriği DEĞİŞMEMİŞTİR, sadece subject + 3 tracking header eklenmiştir. (UI checkbox'ında uyarı var.)
 

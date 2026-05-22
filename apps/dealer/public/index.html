@@ -323,8 +323,13 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
         <p class="muted" style="margin-bottom:16px">Müşteri daha önce kayıtlıysa bilgileri güncellenir; yeni bir lisans üretilir.</p>
         <form id="createForm" class="form-card form-grid">
           <div>
-            <label for="newCustId">Müşteri ID *</label>
-            <input type="text" id="newCustId" required maxlength="64" placeholder="acme-corp" autocomplete="off">
+            <label for="newCustId">Müşteri *</label>
+            <input type="text" id="newCustSearch" placeholder="🔍 Müşteri ara (şirket / ID)..." autocomplete="off"
+                   style="margin-bottom:6px">
+            <select id="newCustId" required size="1">
+              <option value="">— Müşteri seçin —</option>
+            </select>
+            <small class="muted" style="display:block;margin-top:4px">Yeni müşteri eklemek için “Müşteriler” sekmesini kullanın.</small>
           </div>
           <div>
             <label for="newCompany">Şirket Adı</label>
@@ -725,6 +730,7 @@ function activateTab(name) {
   if (name === 'manage') renderManageTable();
   if (name === 'transfers') loadTransfers();
   if (name === 'pricing') loadPricing();
+  if (name === 'create') populateCustomerSelect($('newCustSearch')?.value || '');
 }
 document.querySelectorAll('.nav-item').forEach(el =>
   el.addEventListener('click', () => activateTab(el.dataset.tab)));
@@ -780,6 +786,7 @@ async function loadCustomers() {
     renderOverview();
     renderCustomersTable();
     renderManageTable();
+    populateCustomerSelect($('newCustSearch')?.value || '');
   } catch (e) {
     if (e.status === 401) { logout401(); return; }
     const msg = `<tr><td colspan="10" class="loading" style="color:var(--err)">Hata: ${escapeHtml(e.message)}</td></tr>`;
@@ -793,6 +800,40 @@ function logout401() {
   showToast('Oturum süresi doldu. Yeniden giriş yapın.', 'warn', 3000);
   location.reload();
 }
+
+// ── Lisans Üret: müşteri seçim listesi (arama kutulu) ──────────
+function populateCustomerSelect(filter = '') {
+  const sel = $('newCustId');
+  if (!sel) return;
+  const prev = sel.value;
+  const q = filter.trim().toLowerCase();
+  const list = (customers || [])
+    .filter(c => {
+      if (!q) return true;
+      return String(c.companyName || '').toLowerCase().includes(q)
+          || String(c.customerId  || '').toLowerCase().includes(q);
+    })
+    // customerId'ye göre tekilleştir (status listesi lisans başına çoğaltabilir)
+    .reduce((acc, c) => { if (!acc.some(x => x.customerId === c.customerId)) acc.push(c); return acc; }, [])
+    .sort((a, b) => String(a.companyName || a.customerId).localeCompare(String(b.companyName || b.customerId), 'tr'));
+
+  sel.innerHTML = '<option value="">— Müşteri seçin —</option>' + list.map(c =>
+    `<option value="${escapeHtml(c.customerId)}">${escapeHtml(c.companyName || c.customerId)} (${escapeHtml(c.customerId)})</option>`
+  ).join('');
+  // Önceki seçim hâlâ listedeyse koru
+  if (prev && list.some(c => c.customerId === prev)) sel.value = prev;
+}
+
+// Seçilen müşteriye göre şirket/e-posta alanlarını otomatik doldur
+$('newCustId')?.addEventListener('change', function () {
+  const c = (customers || []).find(x => x.customerId === this.value);
+  if (c) {
+    if ($('newCompany') && !$('newCompany').value) $('newCompany').value = c.companyName || '';
+    const cEmail = c.customerEmail || c.email;
+    if ($('newEmail') && cEmail && !$('newEmail').value) $('newEmail').value = cEmail;
+  }
+});
+$('newCustSearch')?.addEventListener('input', function () { populateCustomerSelect(this.value); });
 
 // ================================================================
 // ÖZET SEKMESİ
