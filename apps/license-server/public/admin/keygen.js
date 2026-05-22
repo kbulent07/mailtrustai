@@ -571,9 +571,11 @@ function renderDealersTable() {
     }).join('');
 
     tbody.querySelectorAll('button.action-btn').forEach(btn => {
-        if      (btn.dataset.action === 'dealerCredit') openCreditModal(btn.dataset.id, btn.dataset.name, Number(btn.dataset.credits));
-        else if (btn.dataset.action === 'dealerPw')     openDealerPwModal(btn.dataset.id);
-        else if (btn.dataset.action === 'dealerDel')    confirmDeleteDealer(btn.dataset.id, btn.dataset.name);
+        btn.addEventListener('click', () => {
+            if      (btn.dataset.action === 'dealerCredit') openCreditModal(btn.dataset.id, btn.dataset.name, Number(btn.dataset.credits));
+            else if (btn.dataset.action === 'dealerPw')     openDealerPwModal(btn.dataset.id);
+            else if (btn.dataset.action === 'dealerDel')    confirmDeleteDealer(btn.dataset.id, btn.dataset.name);
+        });
     });
 }
 
