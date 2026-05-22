@@ -94,6 +94,12 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 - **B11** 🟡 `enrichWithAI` partial state (yarıda kalan VT call)
 
 ### Yapıldı (son tamamlananlar)
+- **Lisans uzatma anlık yansıyor (heartbeat-piggyback + manuel buton)**
+  - `customerSync.routes.js` `/customer-sync/heartbeat` → cevap `license: {expiresAt, status, features, limits, extraScans}` snapshot içeriyor
+  - `packages/license-client` yeni `applyServerSnapshot(snap)` — cache fark merge (testler 3/3 ✓)
+  - `packages/central-sync.sendHeartbeat` heartbeat cevabını otomatik işler
+  - UI: "🔄 Lisansı Şimdi Yenile" kartı + butonu (`revalidateLicenseNow`)
+  - Sonuç: ~5 dakika (heartbeat) içinde otomatik yansır, butona tıklayınca **anlık**
 - **Lisans uzatma akışı araştırıldı (sadece dokümantasyon — kod değişmedi)**
   - Endpoint: `POST /api/license/renew` (bayi-akışı) + `POST /api/admin/licenses/:id/renew` (admin override)
   - DB: `UPDATE licenses SET expires_at = MAX(expires_at, NOW) + days*86400000, status='active'`

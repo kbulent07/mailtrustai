@@ -7681,6 +7681,71 @@ function copyFingerprintJson() {
 }
 
 // ============================================================
+// LİSANSI ANLIK YENİLE — bayi uzatma yaptıysa manuel anlık tetik
+// ============================================================
+/**
+ * Customer'ın license-server'a senkron validate çağrısı atmasını tetikler.
+ * Normalde validate 6 saatte bir, heartbeat (lisans piggyback) 5 dakikada bir
+ * otomatik çalışır. Bu buton kullanıcıya ANLIK (1 saniye) yenileme imkanı verir.
+ */
+async function revalidateLicenseNow() {
+    const btn = document.getElementById('btnRevalidateLicense');
+    const status = document.getElementById('revalidateStatus');
+    const original = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ <span>Yenileniyor...</span>';
+    }
+    if (status) status.innerHTML = '<span style="opacity:0.65">License-server\'a soruluyor...</span>';
+
+    try {
+        const res = await fetch('/api/customer/license/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+
+        if (!res.ok || !data.ok) {
+            const msg = data.error || `HTTP ${res.status}`;
+            if (status) status.innerHTML = `<span style="color:#ef4444">✗ Yenileme başarısız: ${esc(msg)}</span>`;
+            showToast(`Lisans yenileme başarısız: ${msg}`, 'error');
+            return;
+        }
+
+        // Snapshot'tan yeni expiresAt'ı al, kullanıcıya göster
+        const snap = data.snapshot || {};
+        const exp = snap.expiresAt
+            ? new Date(Number(snap.expiresAt)).toLocaleString(navigator.language || 'tr-TR')
+            : '—';
+        const lvl = snap.licenseStatus || 'aktif';
+        const extra = (typeof snap.limits?.monthlyScanCount === 'number')
+            ? ` · Aylık limit: ${snap.limits.monthlyScanCount.toLocaleString()}`
+            : '';
+        if (status) {
+            status.innerHTML =
+                `<span style="color:#22c55e">✓ Lisans güncellendi</span><br>` +
+                `<span style="opacity:0.7">Durum: <strong>${esc(lvl)}</strong> · Bitiş: <strong>${esc(exp)}</strong>${esc(extra)}</span>`;
+        }
+        showToast('Lisans bilgisi güncellendi ✓', 'success');
+
+        // Lisans bilgisini gösteren diğer kart/sayfaları varsa yenile
+        if (typeof loadLicenseStatus === 'function') {
+            try { await loadLicenseStatus(); } catch (_) {}
+        }
+    } catch (e) {
+        if (status) status.innerHTML = `<span style="color:#ef4444">✗ Ağ hatası: ${esc(e.message)}</span>`;
+        showToast(`Ağ hatası: ${e.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
+    }
+}
+
+// ============================================================
 // ONBOARDING CHECKLIST — yeni kurulumda 5 adımlık rehber
 // ============================================================
 async function renderOnboardingChecklist() {

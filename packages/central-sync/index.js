@@ -155,7 +155,22 @@ async function sendHeartbeat({ syncUrl, gather }) {
     }
     return _withRetry(async () => {
         const payload = sanitizeHeartbeatPayload(_baseTelemetry(gather ? await gather() : {}));
-        return await _fetch('POST', syncUrl, '/api/customer-sync/heartbeat', payload);
+        const res = await _fetch('POST', syncUrl, '/api/customer-sync/heartbeat', payload);
+
+        // HEARTBEAT-PIGGYBACK: sunucu güncel lisans snapshot'ı döndürdüyse
+        // license-client cache'ini hemen güncelle → uzatma 5 dk içinde yansır.
+        // (Aksi halde validate'in 6 saatlik döngüsünü beklemek gerekirdi.)
+        if (res && res.license && typeof licenseClient.applyServerSnapshot === 'function') {
+            try {
+                const r = licenseClient.applyServerSnapshot(res.license);
+                if (r.applied) {
+                    logger.info('[central-sync] heartbeat: lisans cache guncellendi: ' + r.changed.join(' · '));
+                }
+            } catch (e) {
+                logger.warn('[central-sync] heartbeat applyServerSnapshot hatasi:', e.message);
+            }
+        }
+        return res;
     }, 'heartbeat');
 }
 
