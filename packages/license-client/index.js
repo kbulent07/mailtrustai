@@ -245,7 +245,42 @@ async function validate({ remoteUrl, licenseKey }) {
         const prev = readCache() || {};
         const next = { ...prev, ...r, lastValidatedAt: Date.now(), lastValidationOk: true };
         writeCache(next);
-        _log('info', 'validate() basarili', { status: r.licenseStatus });
+
+        // B) Müşteri tarafı iz: sunucudan gelen extra_scans önceki cache'den farklıysa logla.
+        // Bu log, müşteri kontrol panelindeki "Loglar" modali üzerinden görüntülenebilir
+        // ve yönetici/bayi için "bakiye ne zaman iletildi?" sorusunu yanıtlar.
+        const prevExtra = typeof prev.extraScans === 'number' ? prev.extraScans : 0;
+        const newExtra  = typeof r.extraScans   === 'number' ? r.extraScans   : 0;
+        if (newExtra !== prevExtra) {
+            const diff = newExtra - prevExtra;
+            if (diff > 0) {
+                _log('info',
+                    `Ek tarama bakiyesi guncellendi: ${prevExtra} → ${newExtra} (+${diff} tarama)`,
+                    {
+                        prevExtraScans:   prevExtra,
+                        newExtraScans:    newExtra,
+                        diff,
+                        monthlyScanCount: r.limits?.monthlyScanCount
+                    }
+                );
+            } else {
+                _log('info',
+                    `Ek tarama bakiyesi degisti: ${prevExtra} → ${newExtra} (${diff} tarama)`,
+                    {
+                        prevExtraScans:   prevExtra,
+                        newExtraScans:    newExtra,
+                        diff,
+                        monthlyScanCount: r.limits?.monthlyScanCount
+                    }
+                );
+            }
+        }
+
+        _log('info', 'validate() basarili', {
+            status:        r.licenseStatus,
+            extraScans:    newExtra,
+            monthlyScanCount: r.limits?.monthlyScanCount
+        });
         return { ok: true, status: r.licenseStatus, fromCache: false };
     } catch (e) {
         logger.warn('validate başarısız, grace kontrolüne düşülüyor:', e.message);

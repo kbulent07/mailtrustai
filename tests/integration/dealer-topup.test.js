@@ -129,6 +129,13 @@ test('topup: validate endpoint extra_scans değerini monthlyScanCount\'a ekler',
         assert.strictEqual(r.body.limits.monthlyScanCount, 350,
             `Beklenen 350, alınan: ${r.body.limits?.monthlyScanCount}`);
         assert.strictEqual(r.body.extraScans, 150);
+
+        // A) Sunucu tarafı iz: activations.extra_scans_sent güncellendi mi?
+        const act = db.prepare('SELECT extra_scans_sent, extra_scans_sent_at FROM activations WHERE license_id = ? AND instance_id = ?')
+            .get('tu-lic2', 'inst-tu2');
+        assert.ok(act, 'aktivasyon kaydı bulunamadı');
+        assert.strictEqual(act.extra_scans_sent, 150, 'extra_scans_sent DB\'ye yazılmadı');
+        assert.ok(act.extra_scans_sent_at > 0, 'extra_scans_sent_at sıfır/null');
     } finally {
         await new Promise((r) => srv.close(r));
     }

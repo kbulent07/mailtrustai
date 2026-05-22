@@ -297,6 +297,12 @@ router.post('/license/validate', asyncH(async (req, res) => {
     if (valExtra > 0 && typeof valLimits.monthlyScanCount === 'number') {
         valLimits.monthlyScanCount = valLimits.monthlyScanCount + valExtra;
     }
+
+    // A) Sunucu tarafı iz: ne zaman, kaç extra_scans iletildi?
+    // "Müşteri bakiyeyi ne zaman çekti?" sorusunu cevaplayabilmek için
+    // activations.extra_scans_sent / extra_scans_sent_at güncellenir.
+    await activationRepo.updateExtraScansSent(license.id, instanceId, valExtra);
+
     res.json({
         licenseStatus: expired ? 'expired' : license.status,
         plan: license.plan,
