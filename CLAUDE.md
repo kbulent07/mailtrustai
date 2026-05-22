@@ -83,6 +83,15 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 *(şu an aktif görev yok)*
 
+### Yapıldı — Lisans modeli yeniden yapılandırması (Plan × Tier)
+- **Tier kapasiteleri** (license-core `TIER_MATRIX`): T1=50, T2=100, T3=250, T4=500, T5=1.000, T6=2.500, T7=5.000, T8=10.000, **T9=Özel/Custom** (`adminOnly`). Plan (pro/ent) = özellik seti, tier = kapasite. Pro N ve Enterprise N **aynı kapasite**.
+- **T9 admin-only:** bayi (license.routes + dealer.routes) T9 lisans/topup/kod üretemez (403 `TIER_ADMIN_ONLY`). Admin T9'da `customScanCount` verir → `getPlan(plan, tier, {customScanCount})`.
+- **Tier'a göre kredi maliyeti:** `TIER_MATRIX[].creditCost` (T1=1 … T8=12). Bayi üretiminde `credits = credits - ? WHERE credits >= ?`; `dealer_credit_log.delta = -creditCost`.
+- **Plan × Tier fiyat matrisi:** yeni `tier_pricing` tablosu (migration `0016`, SQLite+MariaDB) — pro/ent × T1-T8 × aylık/yıllık = 32 satır seed (placeholder fiyat, admin düzenler). Admin `/admin/pricing` GET/PUT/POST + bayi `/dealer/pricing` bu tabloyu kullanır (eski `pricing_plans` modeli bırakıldı).
+- **UI:** `keygen.html/js` tier dropdown + T9 custom kapasite input + fiyat/tier matrisi; `dealer index.html/js` lisans modalına tier seçici + topup/kod kapasiteleri (T9 yok) + fiyat matrisi + kredi maliyeti tablosu.
+- **Müşteri tarafı:** yeni anahtar girişi zaten anında sunucu kontrolü + aktivasyon yapıyor (`apps/customer/server.js` `/api/customer/license/activate` → `licenseClient.activate`).
+- Commit `63d975a`. Testler 150/150 ✓ (dealer-topup happy-path yeni kredi maliyetine göre güncellendi); canlı doğrulama (T9 kuralları + kapasiteler) ✓.
+
 ### Bilinen Davranışlar (Bug Değil)
 - **DKIM imzası bozulması**: `markRiskySubject` etkinken bir mailin konusu APPEND ile değiştirilir → DKIM-Signature artık geçersizdir. Bu beklenen ve dokümante edilmiş davranıştır. Mail içeriği DEĞİŞMEMİŞTİR, sadece subject + 3 tracking header eklenmiştir. (UI checkbox'ında uyarı var.)
 
