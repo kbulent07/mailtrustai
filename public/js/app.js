@@ -5543,14 +5543,17 @@ async function exportExecutivePDF() {
     const alerts = Array.isArray(data.commercialAlerts) ? data.commercialAlerts : [];
     const recs   = data.recommendations || [];
 
-    // ── colour palette ──────────────────────────────────────────────────────
+    // ── colour palette (LIGHT / baskıya uygun beyaz tema) ────────────────────
+    // Zeminler beyaz/açık-gri, metinler koyu. Risk/accent renkleri beyaz üstünde
+    // okunur olacak şekilde hafif koyulaştırıldı. Tablo başlıkları koyu indigo
+    // zemin üstünde beyaz metin kullanır.
     const C = {
-        bg:      [11, 18, 32],   bgCard:  [22, 33, 55],   bgCard2: [17, 26, 44],
-        accent:  [99,102,241],   accent2: [129,140,248],
-        high:    [239, 68, 68],  medium:  [249,115, 22],
-        low:     [234,179,  8],  safe:    [ 34,197, 94],
-        textLt:  [241,245,249],  textMd:  [203,213,225],  textDim: [148,163,184],
-        border:  [ 51, 65, 85],  white:   [255,255,255],
+        bg:      [255,255,255],  bgCard:  [243,244,246],  bgCard2: [255,255,255],
+        accent:  [ 99,102,241],  accent2: [ 67, 56,202],
+        high:    [220, 38, 38],  medium:  [234, 88, 12],
+        low:     [202,138,  4],  safe:    [ 22,163, 74],
+        textLt:  [ 17, 24, 39],  textMd:  [ 55, 65, 81],  textDim: [107,114,128],
+        border:  [209,213,219],  white:   [255,255,255],
         indigo:  [ 67, 56,202],
     };
 
@@ -5851,7 +5854,8 @@ async function exportExecutivePDF() {
     const wrBarW = Math.round((wr/100)*CW);
     if (wrBarW>0) fillR(M, y2, wrBarW, 12, wrColor.map(v=>Math.round(v*0.6)));
     fillR(M, y2, wrBarW>0?wrBarW:1, 12, wrColor);
-    font('bold',9); textC(C.white); txt(`${wr} / 100`, M+4, y2+8);
+    // Açık temada çubuk küçükken metin beyaz kalırsa görünmez — koyu metin kullan.
+    font('bold',9); textC(C.textLt); txt(`${wr} / 100`, M+4, y2+8);
     font('normal',6.5); textC(C.textDim);
     txt(`Agirlikli ortalama risk endeksi (yuksek=daha riskli)`, M+CW-2, y2+8, {align:'right'});
     y2 += 16;
@@ -8279,20 +8283,31 @@ window.dismissOnboarding = function() {
 };
 
 async function loadHomeStats() {
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     try {
-        const res = await fetch('/api/history');
-        const items = await res.json();
-        const total  = items.length;
-        const high   = items.filter(i => i.level === 'high').length;
-        const medium = items.filter(i => i.level === 'medium').length;
-        const safe   = items.filter(i => i.level === 'safe' || i.level === 'low').length;
-        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-        setVal('hsTotalScans', total);
-        setVal('hsHighRisk',   high);
-        setVal('hsMediumRisk', medium);
-        setVal('hsSafe',       safe);
+        // /api/stats = tüm veritabanı üzerinden toplam (COUNT/GROUP BY).
+        // ÖNEMLİ: eskiden /api/history?slice(0,50) kullanılıyordu → kartlar yalnız
+        // son 50 kaydı sayıyor, Tarama Geçmişi (tüm tablo) ile örtüşmüyordu.
+        // Her kartın sayısı, tıklayınca açılan filtreyle birebir eşleşir:
+        //   Toplam→tümü, Yüksek→level=high, Orta→level=medium, Güvenli→level=safe
+        const res = await fetch('/api/stats');
+        if (!res.ok) throw new Error('stats HTTP ' + res.status);
+        const d  = await res.json();
+        const bl = d.byLevel || {};
+        setVal('hsTotalScans', d.totalScans ?? 0);
+        setVal('hsHighRisk',   bl.high   ?? 0);
+        setVal('hsMediumRisk', bl.medium ?? 0);
+        setVal('hsSafe',       bl.safe   ?? 0);
     } catch (e) {
         console.error('loadHomeStats error:', e);
+        // Fallback: eski uçtan (son 50) — sunucu /api/stats vermezse boş kalmasın
+        try {
+            const items = await (await fetch('/api/history')).json();
+            setVal('hsTotalScans', items.length);
+            setVal('hsHighRisk',   items.filter(i => i.level === 'high').length);
+            setVal('hsMediumRisk', items.filter(i => i.level === 'medium').length);
+            setVal('hsSafe',       items.filter(i => i.level === 'safe').length);
+        } catch (_) {}
     }
 }
 
