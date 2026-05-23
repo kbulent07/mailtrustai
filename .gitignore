@@ -121,6 +121,9 @@ apps/customer/data/
 apps/customer/logs/
 login.tmp.json
 
-# Yedek klasoru — .env.docker (AES anahtarlari) ve msa.db (PII) icerir.
+# Yedek klasoru -- .env.docker (AES anahtarlari) ve msa.db (PII) icerir.
 # ASLA commit edilmemeli.
 backups/
+
+# Task Scheduler wrapper (setup-taskscheduler-backup.ps1 tarafindan uretilir)
+scripts/_backup-runner.ps1
