@@ -38,7 +38,10 @@ const storage = {
 
 const services = {
     initialSetup: lazy(() => _req('src/services/initialSetupService')),
-    setupToken:   lazy(() => _req('src/services/setupTokenService'))
+    setupToken:   lazy(() => _req('src/services/setupTokenService')),
+    // scanMailbox: server.js boot sonrası resumeScanMailboxMonitors() çağırır
+    // (anlık rapor monitörleri persistent ayarlardan yeniden başlatılır).
+    scanMailbox:  lazy(() => _req('src/services/scanMailboxService'))
 };
 
 const license = {

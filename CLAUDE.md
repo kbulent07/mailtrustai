@@ -81,7 +81,16 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
-*(şu an aktif görev yok — B4, B8, B9, B10, B11 ve UX paketinin hepsi tamamlandı)*
+### Görev: Anlık rapor maili gelmiyor sorununu çöz
+"Tüm mailler" modu işaretli, yeni mail geliyor ama rapor uzun süredir gelmiyor.
+
+- [ ] Docker container log'larından scanMailbox akışını incele
+- [ ] scanMailboxMonitor.start() çağrıldı mı (resume sonrası)
+- [ ] _onNewEmail tetikleniyor mu (IDLE event)
+- [ ] shouldSend hesabı 'all' modunda true mu
+- [ ] SMTP send hata veriyor mu
+- [ ] B4 cache'inden dolayı handler atlanıyor olabilir mi
+- [ ] Fix + rebuild + test
 
 ### Yapıldı — Açık bug'lar (B4, B8, B9, B10, B11) + UX iyileştirmeleri
 **B4** 🟠 — `analyzeParsedEmailData` in-flight request coalescing: aynı Message-ID iki paralel monitör (scanMailbox + websocket) tarafından çağrılırsa tek analiz çalışır, ikinci bekleyip aynı sonucu paylaşır. AI/VT quota ~50% tasarruf. TTL 5dk, key=`${account}::${messageId}`, structuredClone ile mutation koruması.

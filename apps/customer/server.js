@@ -412,6 +412,19 @@ app.use('/api', customerApi);
 
 setupWebSocket(wss);
 
+// Sunucu hazır olduktan ~12s sonra scan-mailbox monitörlerini resume et.
+// (Anlık rapor maili gönderen monitörler — IMAP IDLE + SMTP send.)
+// WebSocket monitörleri setupWebSocket içinde başlar; scan-mailbox ayrı.
+// 12s gecikme: license-client validate + central-sync bootstrap tamamlansın.
+(() => {
+    const { resumeScanMailboxMonitors } = core.services.scanMailbox();
+    setTimeout(() => {
+        resumeScanMailboxMonitors().catch(e =>
+            logger.error('[ScanMailbox] Resume hatası:', e.message)
+        );
+    }, 12_000);
+})();
+
 app.use('/api', (req, res) => res.status(404).json({ error: `API endpoint bulunamadı: ${req.method} ${req.path}` }));
 app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
