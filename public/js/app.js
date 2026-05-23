@@ -8069,11 +8069,19 @@ function exportHistoryCsv() {
 function openListsPanel() {
     // Sadece müşteri admin açabilir. Müşteri user için 'sınırlı erişim' uyarısı.
     if (getCustomerRole() === 'user') {
-        alert(_tLit('Allowlist / Blocklist yönetimi yalnız müşteri yönetici hesabıyla yapılabilir.', 'Allowlist / Blocklist management is admin-only.'));
+        showToast(_tLit('Allowlist / Blocklist yönetimi yalnız müşteri yönetici hesabıyla yapılabilir.',
+                        'Allowlist / Blocklist management is admin-only.'), 'warning');
         return;
     }
     const panel = document.getElementById('listsPanel');
-    if (!panel) return;
+    if (!panel) {
+        console.error('[openListsPanel] #listsPanel div bulunamadı');
+        showToast('UI hatası: lists panel elementi bulunamadı', 'error');
+        return;
+    }
+    // CSS .hidden { display:none !important } baskın — class'ı kaldır,
+    // inline style'ı temizle (önce close ile :none atanmış olabilir).
+    panel.classList.remove('hidden');
     panel.style.display = '';
     loadListsPanel();
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -8081,7 +8089,11 @@ function openListsPanel() {
 
 function closeListsPanel() {
     const panel = document.getElementById('listsPanel');
-    if (panel) panel.style.display = 'none';
+    if (panel) {
+        // hidden class'ı geri ekle (CSS !important — diğer reset'lere dayanıklı)
+        panel.classList.add('hidden');
+        panel.style.display = '';
+    }
 }
 
 async function loadListsPanel() {

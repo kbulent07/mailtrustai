@@ -81,7 +81,12 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
-*(şu an aktif görev yok)*
+### Görev: Allowlist / Blocklist butonu çalışmıyor — kontrol + düzelt
+- [ ] Buton ne tetikliyor (openListsPanel veya benzeri)
+- [ ] /api/lists endpoint cevap veriyor mu (HARD-GATE kontrolü)
+- [ ] UI'da event delegation veya handler bağlı mı
+- [ ] Toast ile feedback var mı
+- [ ] Fix + test
 
 ### Yapıldı — Anlık rapor maili gelmiyor (KRİTİK, scanMailbox resume eksik)
 **Semptom**: Kullanıcı UI'da "Anlık güvenlik raporu" + "Tüm mailler" işaretli. Yeni mail geliyor, WS-Monitor analiz ediyor (görünür) ama **SMTP rapor mail'i gönderilmiyordu** — uzun süredir.
