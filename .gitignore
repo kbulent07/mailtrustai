@@ -120,3 +120,7 @@ data/license-server/
 apps/customer/data/
 apps/customer/logs/
 login.tmp.json
+
+# Yedek klasoru — .env.docker (AES anahtarlari) ve msa.db (PII) icerir.
+# ASLA commit edilmemeli.
+backups/
