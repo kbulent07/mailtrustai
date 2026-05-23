@@ -450,6 +450,28 @@
                 </div>
             </div>
 
+            <!-- ── AI MODEL (Merkezi) — yalnız owner (super-admin/admin) ───────── -->
+            <div class="form-card" style="margin-bottom:18px;border-left:3px solid var(--primary)" id="aiModelCard" data-perm="aimodel:write">
+                <h3 style="margin-bottom:6px">🤖 AI Model (Merkezi Yönetim)</h3>
+                <p class="muted" style="font-size:12px;margin:0 0 12px">
+                    ChatGPT (OpenAI) ve Claude modelini buradan ayarlarsınız. Bu değer tüm müşterilere
+                    sync edilir ve <strong>müşteri admini değiştiremez</strong> (panelde kilitli). Bu global varsayılandır;
+                    müşteri bazında override merkezi API ile (PUT /api/admin/customers/:id/ai-model) yapılabilir.
+                </p>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
+                    <div>
+                        <label for="aiModelOpenai">OpenAI (ChatGPT) modeli</label>
+                        <select id="aiModelOpenai" style="min-width:220px"></select>
+                    </div>
+                    <div>
+                        <label for="aiModelClaude">Claude modeli</label>
+                        <select id="aiModelClaude" style="min-width:240px"></select>
+                    </div>
+                    <button id="aiModelSaveBtn" class="primary" style="height:38px;align-self:flex-end">💾 Kaydet</button>
+                    <div id="aiModelResult" class="result" role="status" aria-live="polite" style="align-self:center"></div>
+                </div>
+            </div>
+
             <!-- Enterprise çarpanı + kredi birimi ayarı -->
             <div class="form-card" style="margin-bottom:18px" id="pricingSettingsCard" data-perm="pricing:write">
                 <h3 style="margin-bottom:12px">⚙️ Genel Ayarlar</h3>

@@ -1522,6 +1522,7 @@ async function loadPricing() {
         renderPricingTable(r.pricing || []);
         renderTierMatrix(r.tierMatrix || []);
         renderPlanMatrix(r.planMatrix || []);
+        loadAiModels();
     } catch (e) {
         tbody.innerHTML = `<tr><td colspan="9" class="error">Yüklenemedi: ${escapeHtml(e.message)}</td></tr>`;
     }
@@ -1714,6 +1715,37 @@ $('pricingSettingsSaveBtn')?.addEventListener('click', async () => {
 });
 
 $('pricingReloadBtn')?.addEventListener('click', () => loadPricing());
+
+// ================================================================
+// AI MODEL (Merkezi) — global default (owner: aimodel:write)
+// ================================================================
+async function loadAiModels() {
+    const oSel = $('aiModelOpenai'), cSel = $('aiModelClaude');
+    if (!oSel || !cSel) return;
+    try {
+        const r = await api('/api/admin/ai-models');
+        const opt = (list, cur) => ['<option value="">(varsayılan)</option>']
+            .concat((list || []).map(m => `<option value="${escapeHtml(m)}"${m === cur ? ' selected' : ''}>${escapeHtml(m)}</option>`))
+            .join('');
+        oSel.innerHTML = opt(r.options?.openai, r.global?.openai || '');
+        cSel.innerHTML = opt(r.options?.claude, r.global?.claude || '');
+    } catch (e) {
+        const res = $('aiModelResult'); if (res) { res.textContent = 'Yüklenemedi: ' + e.message; res.style.color = '#f87171'; }
+    }
+}
+$('aiModelSaveBtn')?.addEventListener('click', async () => {
+    const res = $('aiModelResult');
+    try {
+        await api('/api/admin/ai-models', {
+            method: 'PUT',
+            body: { openai: $('aiModelOpenai')?.value || '', claude: $('aiModelClaude')?.value || '' }
+        });
+        if (res) { res.textContent = '✅ Kaydedildi — müşterilere sync edilecek.'; res.style.color = '#34d399'; }
+        showToast('AI model (global) kaydedildi.', 'success');
+    } catch (e) {
+        if (res) { res.textContent = 'Hata: ' + e.message; res.style.color = '#f87171'; }
+    }
+});
 
 // ================================================================
 // HEARTBEAT LOG — 📡 Haberleşme Geçmişi Modalı
