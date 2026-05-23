@@ -126,7 +126,7 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 **Yan etki tespiti**: `pending list error: AUTHENTICATE failed` — catch-up için yeni IMAP connection açarken IMAP server'da max-conn limiti olabilir. Sadece BAŞLATMA anında eski mailleri taramayı engeller; yeni gelen mailler IDLE üzerinden gelir ve normal işlenir. Düşük öncelik.
 
 ### Yapıldı — Açık bug'lar (B4, B8, B9, B10, B11) + UX iyileştirmeleri
-**B4** 🟠 — `analyzeParsedEmailData` in-flight request coalescing: aynı Message-ID iki paralel monitör (scanMailbox + websocket) tarafından çağrılırsa tek analiz çalışır, ikinci bekleyip aynı sonucu paylaşır. AI/VT quota ~50% tasarruf. TTL 5dk, key=`${account}::${messageId}`, structuredClone ile mutation koruması.
+**B4** 🟠 — Çift monitör AI/VT quota tasarrufu. *Aşama 1* (önceki oturum): `analyzeParsedEmailData` in-flight request coalescing — TTL 5dk, key=`account::messageId`, structuredClone. *Aşama 2* (commit `600ac2e`): `websocket.js` `_analyzeAndBroadcast` artık `analyzeParsedEmailData` kullanıyor (önceden kendi pipeline'ı vardı). İki aşama birlikte: her iki monitör için in-flight cache çalışıyor, API tekrarı tam önlendi. `enrichWithAI`/`applyOpenAIInsights`/`recalcMeta` + 6 import kaldırıldı (-178 satır).
 
 **B11** 🟡 — `enrichWithAI` atomik commit: staged hesaplama (newFindings/scoreDelta) → tüm aşama başarılı ise atomik uygula. VT/Claude/OpenAI hataları artık partial state üretmiyor. OpenAI insights için try/catch ile rollback.
 
@@ -205,11 +205,7 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 - **DKIM imzası bozulması**: `markRiskySubject` etkinken bir mailin konusu APPEND ile değiştirilir → DKIM-Signature artık geçersizdir. Bu beklenen ve dokümante edilmiş davranıştır. Mail içeriği DEĞİŞMEMİŞTİR, sadece subject + 3 tracking header eklenmiştir. (UI checkbox'ında uyarı var.)
 
 ### Açık Bug'lar (gelecek görev)
-- **B4** 🟠 Çift monitör analizi — `scanMailboxMonitor` + `websocket.js` aynı INBOX'u izliyor → AI/VT quota 2x. Ortak analiz cache veya tek-monitör refactoru gerekir.
-- **B8** 🟡 `_wsMonitorLastUid` baseline race (idempotent, küçük)
-- **B9** 🟡 `messageLocator` 30 folder × 30ms (Gmail X-GM-RAW ile hızlandırılabilir)
-- **B10** 🟡 `removeDecoration` locator desteği yok (INBOX dışında çalışmaz)
-- **B11** 🟡 `enrichWithAI` partial state (yarıda kalan VT call)
+*(şu an bilinen kritik bug yok — B4..B11 tamamlandı)*
 
 ### Yapıldı (son tamamlananlar)
 - **Lisans uzatma anlık yansıyor (heartbeat-piggyback + manuel buton)**
