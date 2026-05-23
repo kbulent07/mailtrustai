@@ -6,20 +6,42 @@
 # customer-data.tar.gz + customer-logs.tar.gz birakir.
 #
 # Kullanim:
-#   powershell -ExecutionPolicy Bypass -File scripts\backup-windows-customer.ps1
-# veya PS prompt:
 #   .\scripts\backup-windows-customer.ps1
+#       → backups\YYYY-MM-DD_HHMMSS\ altina yeni yedek
+#
+#   .\scripts\backup-windows-customer.ps1 -TargetDir backups\auto-weekly
+#       → Belirtilen klasore UZERINE YAZAR (haftalik zamanlayici modu)
 # ============================================================
+
+param(
+    [string]$TargetDir = ""   # Bos → zaman damgali yeni klasor.  Dolu → uzerine yaz.
+)
 
 $ErrorActionPreference = "Stop"
 
-$RepoRoot   = (Resolve-Path "$PSScriptRoot\..").Path
-$Ts         = Get-Date -Format "yyyy-MM-dd_HHmmss"
-$BackupDir  = Join-Path $RepoRoot "backups\$Ts"
+$RepoRoot = (Resolve-Path "$PSScriptRoot\..").Path
+$Ts       = Get-Date -Format "yyyy-MM-dd_HHmmss"
+
+if ($TargetDir) {
+    # Mutlak yol degilse repo-root'a gore coz
+    if (-not [System.IO.Path]::IsPathRooted($TargetDir)) {
+        $BackupDir = Join-Path $RepoRoot $TargetDir
+    } else {
+        $BackupDir = $TargetDir
+    }
+    # Eski yedegi temizle (uzerine yazma modu)
+    if (Test-Path $BackupDir) {
+        Remove-Item -Path $BackupDir -Recurse -Force
+    }
+    $ModeLabel = "HAFTALIK (uzerine yaz)"
+} else {
+    $BackupDir = Join-Path $RepoRoot "backups\$Ts"
+    $ModeLabel = "ZAMANLI"
+}
 New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
 
 Write-Host "===========================================================" -ForegroundColor Cyan
-Write-Host " MailTrustAI Customer Yedek - $Ts" -ForegroundColor Cyan
+Write-Host " MailTrustAI Customer Yedek [$ModeLabel] - $Ts" -ForegroundColor Cyan
 Write-Host " Hedef: $BackupDir" -ForegroundColor Cyan
 Write-Host "===========================================================" -ForegroundColor Cyan
 

@@ -18,8 +18,22 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TS="$(date +%Y-%m-%d_%H%M%S)"
-BACKUP_DIR="${REPO_ROOT}/backups/server-${TS}"
-mkdir -p "${BACKUP_DIR}"
+
+# İsteğe bağlı 1. argüman: sabit hedef klasör (haftalık üzerine yazma modu)
+if [[ -n "${1:-}" ]]; then
+    if [[ "${1}" = /* ]]; then
+        BACKUP_DIR="${1}"
+    else
+        BACKUP_DIR="${REPO_ROOT}/${1}"
+    fi
+    [[ -d "${BACKUP_DIR}" ]] && rm -rf "${BACKUP_DIR}"
+    mkdir -p "${BACKUP_DIR}"
+    MODE_LABEL="HAFTALIK (üzerine yaz)"
+else
+    BACKUP_DIR="${REPO_ROOT}/backups/server-${TS}"
+    mkdir -p "${BACKUP_DIR}"
+    MODE_LABEL="ZAMANLI"
+fi
 
 # Compose project name'i otomatik tespit et (volume isimleri buna gore)
 PROJECT_NAME="${PROJECT_NAME:-}"
@@ -39,7 +53,7 @@ LICENSE_VOLUME="${PROJECT_NAME}_license-server-data"
 MARIADB_CONTAINER="mailtrustai-mariadb"
 
 echo "═══════════════════════════════════════════════════════════"
-echo " MailTrustAI Server Yedek — ${TS}"
+echo " MailTrustAI Server Yedek [${MODE_LABEL}] — ${TS}"
 echo " Project name : ${PROJECT_NAME}"
 echo " Hedef        : ${BACKUP_DIR}"
 echo "═══════════════════════════════════════════════════════════"

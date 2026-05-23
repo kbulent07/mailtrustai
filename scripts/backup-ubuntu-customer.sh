@@ -8,13 +8,33 @@
 #
 # Kullanım:
 #   bash scripts/backup-ubuntu-customer.sh
+#       → backups/YYYY-MM-DD_HHMMSS/ altına yeni yedek
+#
+#   bash scripts/backup-ubuntu-customer.sh backups/auto-weekly
+#       → Belirtilen klasöre ÜZERİNE YAZAR (haftalık zamanlayıcı modu)
 # ============================================================
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TS="$(date +%Y-%m-%d_%H%M%S)"
-BACKUP_DIR="${REPO_ROOT}/backups/${TS}"
-mkdir -p "${BACKUP_DIR}"
+
+# İsteğe bağlı 1. argüman: sabit hedef klasör (haftalık üzerine yazma modu)
+if [[ -n "${1:-}" ]]; then
+    # Göreceli yol → repo-root'a göre çöz
+    if [[ "${1}" = /* ]]; then
+        BACKUP_DIR="${1}"
+    else
+        BACKUP_DIR="${REPO_ROOT}/${1}"
+    fi
+    # Eski yedeği temizle (üzerine yaz)
+    [[ -d "${BACKUP_DIR}" ]] && rm -rf "${BACKUP_DIR}"
+    mkdir -p "${BACKUP_DIR}"
+    MODE_LABEL="HAFTALIK (üzerine yaz)"
+else
+    BACKUP_DIR="${REPO_ROOT}/backups/${TS}"
+    mkdir -p "${BACKUP_DIR}"
+    MODE_LABEL="ZAMANLI"
+fi
 
 # Windows Git Bash icin path conversion (cygpath varsa Windows yoluna cevir).
 # Docker Desktop Windows volume mount'larinda gerekli.
@@ -26,7 +46,7 @@ else
 fi
 
 echo "═══════════════════════════════════════════════════════════"
-echo " MailTrustAI Customer Yedek — ${TS}"
+echo " MailTrustAI Customer Yedek [${MODE_LABEL}] — ${TS}"
 echo " Hedef: ${BACKUP_DIR}"
 echo "═══════════════════════════════════════════════════════════"
 
