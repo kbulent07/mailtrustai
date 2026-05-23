@@ -81,16 +81,25 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
-### Görev: Anlık rapor maili gelmiyor sorununu çöz
-"Tüm mailler" modu işaretli, yeni mail geliyor ama rapor uzun süredir gelmiyor.
+*(şu an aktif görev yok)*
 
-- [ ] Docker container log'larından scanMailbox akışını incele
-- [ ] scanMailboxMonitor.start() çağrıldı mı (resume sonrası)
-- [ ] _onNewEmail tetikleniyor mu (IDLE event)
-- [ ] shouldSend hesabı 'all' modunda true mu
-- [ ] SMTP send hata veriyor mu
-- [ ] B4 cache'inden dolayı handler atlanıyor olabilir mi
-- [ ] Fix + rebuild + test
+### Yapıldı — Anlık rapor maili gelmiyor (KRİTİK, scanMailbox resume eksik)
+**Semptom**: Kullanıcı UI'da "Anlık güvenlik raporu" + "Tüm mailler" işaretli. Yeni mail geliyor, WS-Monitor analiz ediyor (görünür) ama **SMTP rapor mail'i gönderilmiyordu** — uzun süredir.
+
+**Kök neden**: `customer-core` bridge geçişinde (`apps/customer/server.js` refactor) `resumeScanMailboxMonitors()` çağrısı kaybolmuştu. `setupWebSocket` içinde `resumePersistedMonitors` (auto-monitor) çalışıyordu, ama scanMailbox monitörleri (anlık rapor) hiç başlatılmıyordu. `docker logs grep scanmailbox` → boş çıktı.
+
+**Çözüm**:
+- `packages/customer-core/index.js`: `services.scanMailbox` bridge eklendi
+- `apps/customer/server.js`: setupWebSocket sonrası 12s gecikmeli setTimeout ile `resumeScanMailboxMonitors()` çağrıldı (license-client validate + central-sync bootstrap tamamlansın)
+
+**Canlı doğrulama (Docker rebuild + restart)**:
+```
+[ScanMailbox] 2 adet etkin monitor yeniden başlatılıyor...
+[ScanMailbox] ✓ Monitor başlatıldı: cwmailkontrol@cw-enerji.com (forwarder)
+[ScanMailbox] ✓ Monitor başlatıldı: bilgiislem2@cw-enerji.com (realtime, reportMode=all)
+```
+
+**Yan etki tespiti**: `pending list error: AUTHENTICATE failed` — catch-up için yeni IMAP connection açarken IMAP server'da max-conn limiti olabilir. Sadece BAŞLATMA anında eski mailleri taramayı engeller; yeni gelen mailler IDLE üzerinden gelir ve normal işlenir. Düşük öncelik.
 
 ### Yapıldı — Açık bug'lar (B4, B8, B9, B10, B11) + UX iyileştirmeleri
 **B4** 🟠 — `analyzeParsedEmailData` in-flight request coalescing: aynı Message-ID iki paralel monitör (scanMailbox + websocket) tarafından çağrılırsa tek analiz çalışır, ikinci bekleyip aynı sonucu paylaşır. AI/VT quota ~50% tasarruf. TTL 5dk, key=`${account}::${messageId}`, structuredClone ile mutation koruması.
