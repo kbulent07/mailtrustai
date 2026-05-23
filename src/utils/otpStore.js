@@ -11,12 +11,14 @@ const MIN_RESEND_MS      = 2 * 60 * 1000;     // 2 dakikadan önce yeni kod iste
 const _store = new Map();
 
 // Süresi dolmuş kayıtları periyodik temizle
-setInterval(() => {
+// unref: test/graceful-shutdown sırasında process'i açık tutmaz.
+const _otpCleanupTimer = setInterval(() => {
     const now = Date.now();
     for (const [k, v] of _store.entries()) {
         if (now > v.expiresAt) _store.delete(k);
     }
 }, 5 * 60 * 1000);
+if (_otpCleanupTimer.unref) _otpCleanupTimer.unref();
 
 /**
  * Belirli bir anahtar (ör. 'admin-reset') için OTP oluşturur.

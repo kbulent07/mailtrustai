@@ -111,18 +111,23 @@ async function refreshFeed() {
     }
 }
 
-// Sunucu başlangıcında arka planda yükle; başarısız olursa sessiz kal
+// Sunucu başlangıcında arka planda yükle
 function initThreatIntelFeed() {
     const cache = loadCache();
     if (!cache) {
-        refreshFeed().catch(() => {});
+        // refreshFeed içinde kendi hata logları var; bu catch sadece beklenmedik throw'lar için
+        refreshFeed().catch(e => console.warn('[ThreatIntel] İlk feed yüklemesi başarısız (beklenmedik):', e.message));
     }
     // Her 24 saatte bir güncelle
-    setInterval(() => {
+    // unref: test/graceful-shutdown sırasında process'i açık tutmaz.
+    const _feedTimer = setInterval(() => {
         _cacheLoaded = false;
         const c = loadCache();
-        if (!c) refreshFeed().catch(() => {});
+        if (!c) {
+            refreshFeed().catch(e => console.warn('[ThreatIntel] Periyodik feed yenilemesi başarısız (beklenmedik):', e.message));
+        }
     }, CACHE_TTL_MS);
+    if (_feedTimer.unref) _feedTimer.unref();
 }
 
 function isThreatDomain(domain) {

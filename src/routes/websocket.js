@@ -443,7 +443,7 @@ function _authenticateWsClient(req) {
                 return { method: 'license-key', ref: qLicense.slice(0, 8) };
             }
         }
-    } catch { /* sessiz */ }
+    } catch { /* intentionally silent — auth hataları dışarıya sızdırılmaz */ }
     return null;
 }
 let _licenseAuthWarned = false;

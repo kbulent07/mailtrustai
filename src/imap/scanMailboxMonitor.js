@@ -62,11 +62,12 @@ class ScanMailboxMonitor {
         try {
             const result = await this.imapMonitor.start();
             this.startedAt = new Date();
-            setTimeout(() => {
+            const _t = setTimeout(() => {
                 this.processPendingRecent().catch((error) => {
                     console.error('[ScanMailbox] pending scan error:', error.message);
                 });
             }, 2500);
+            if (_t.unref) _t.unref();
             return result;
         } catch (error) {
             // Supervisor üst seviyede retry yapacak — burada throw et
