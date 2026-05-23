@@ -5190,6 +5190,37 @@ function goToScanListFiltered(level) {
     showPage('scan-list');
 }
 
+// YYYY-MM-DD (date input value formatı) — yerel saate göre
+function _slYmd(d) {
+    const z = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+}
+
+// İstatistikler sayfasındaki Bugün / Bu Ay / Yüksek Riskli kartlarından
+// Tarama Geçmişi'ne filtreli geçiş. kind: 'today' | 'thisMonth' | 'high' | 'all'
+function goToScanListStat(kind) {
+    const clr = (id, val = '') => { const el = document.getElementById(id); if (el) el.value = val; };
+    clr('slFromEmail');
+    clr('slSubject');
+    clr('slDateStart');
+    clr('slDateEnd');
+    clr('slLevel', '');
+
+    const now = new Date();
+    if (kind === 'today') {
+        const t = _slYmd(now);
+        clr('slDateStart', t);
+        clr('slDateEnd', t);
+    } else if (kind === 'thisMonth') {
+        clr('slDateStart', _slYmd(new Date(now.getFullYear(), now.getMonth(), 1)));
+        clr('slDateEnd', _slYmd(now));
+    } else if (kind === 'high') {
+        clr('slLevel', 'high');
+    }
+    // 'all' → tüm filtreler temiz
+    showPage('scan-list');
+}
+
 function scanListInit() {
     if (!_slState.initialized) {
         _slState.initialized = true;
@@ -7158,10 +7189,10 @@ async function _cuLoadStats() {
 function _cuRenderStatsCards(d) {
     const threatColor = d.threats > 0 ? '#f87171' : 'var(--green)';
     document.getElementById('cuStatsCards').innerHTML = `
-        <div class="stat-card"><div class="stat-value">${d.totalScans ?? 0}</div><div class="stat-label">Toplam Tarama</div></div>
-        <div class="stat-card"><div class="stat-value">${d.todayScans ?? 0}</div><div class="stat-label">Bugün</div></div>
-        <div class="stat-card"><div class="stat-value">${d.monthlyScans ?? 0}</div><div class="stat-label">Bu Ay</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:${threatColor}">${d.threats ?? 0}</div><div class="stat-label">Yüksek Riskli</div></div>
+        <div class="stat-card" onclick="goToScanListStat('all')" style="cursor:pointer" title="Tüm taramaları göster"><div class="stat-value">${d.totalScans ?? 0}</div><div class="stat-label">Toplam Tarama</div></div>
+        <div class="stat-card" onclick="goToScanListStat('today')" style="cursor:pointer" title="Bugünün taramalarını Tarama Geçmişi'nde göster"><div class="stat-value">${d.todayScans ?? 0}</div><div class="stat-label">Bugün</div></div>
+        <div class="stat-card" onclick="goToScanListStat('thisMonth')" style="cursor:pointer" title="Bu ayın taramalarını Tarama Geçmişi'nde göster"><div class="stat-value">${d.monthlyScans ?? 0}</div><div class="stat-label">Bu Ay</div></div>
+        <div class="stat-card" onclick="goToScanListStat('high')" style="cursor:pointer" title="Yüksek riskli mailleri Tarama Geçmişi'nde göster"><div class="stat-value" style="color:${threatColor}">${d.threats ?? 0}</div><div class="stat-label">Yüksek Riskli</div></div>
         <div class="stat-card"><div class="stat-value">${d.accounts ?? 0}</div><div class="stat-label">IMAP Hesabı</div></div>
     `;
 }
