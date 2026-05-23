@@ -57,6 +57,32 @@ function buildReportHtml(result, lang = 'tr') {
         .map((finding) => finding.message);
     const summary = buildExecutiveSummary(result, isTR);
 
+    // ─── UX iyileştirmeleri ──────────────────────────────────────────────
+    // Risk emoji ikonu (büyük başlık için)
+    const riskIcon = { high: '🔴', medium: '🟣', low: '🟡', safe: '🟢' }[level] || '⚠️';
+    // Preheader: Gmail/Outlook preview satırı (inbox listesinde subject yanı)
+    // Display:none ama email client'larda preview alanında görünür.
+    const preheader = isTR
+        ? `${riskIcon} ${levelText} risk · Skor ${score}/100 · ${escapeHtml(meta.subject || '(konu yok)').slice(0, 80)}`
+        : `${riskIcon} ${levelText} risk · Score ${score}/100 · ${escapeHtml(meta.subject || '(no subject)').slice(0, 80)}`;
+    // Risky mailler için üstte aksiyon kutusu (kullanıcının ne yapması gerektiği)
+    const actionBoxHtml = risky
+        ? `<tr><td style="padding:0 30px 16px"><div style="background:linear-gradient(135deg,#3f1420 0%,#2d0a14 100%);border:1px solid ${color};border-radius:14px;padding:18px 20px;display:block">` +
+          `<div style="font-size:11px;color:${color};font-weight:700;letter-spacing:1.2px;margin-bottom:8px">⚠ ${isTR ? 'YAPMANIZ GEREKENLER' : 'RECOMMENDED ACTIONS'}</div>` +
+          `<div style="color:#fde8e8;font-size:13px;line-height:1.6">` +
+          (isTR
+            ? `<b>1.</b> Bu maile <b>tıklamayın</b>, eklerini <b>açmayın</b>.<br>` +
+              `<b>2.</b> Şifrenizi/banka bilgilerinizi <b>kesinlikle yazmayın</b>.<br>` +
+              `<b>3.</b> Şüpheli durumlarda <b>BT/IT birimine</b> iletin (bu raporu da gönderin).`
+            : `<b>1.</b> <b>Do not click</b> any links or open attachments.<br>` +
+              `<b>2.</b> <b>Never enter</b> passwords or banking info.<br>` +
+              `<b>3.</b> Forward this report to your <b>IT/Security team</b>.`) +
+          `</div></div></td></tr>`
+        : '';
+    // Footer için Report ID (scan ID), ISO timestamp, brand
+    const reportIdShort = String(result.id || 'scan').slice(0, 12);
+    const isoTimestamp = new Date(result.timestamp || Date.now()).toISOString();
+
     // Tüm bölümleri birleştir — tek satır (Zimbra whitespace sorununu önler)
     const sections = [
         section('&#128231; Incelenen E-posta', [
@@ -101,7 +127,41 @@ function buildReportHtml(result, lang = 'tr') {
         buildAiSection(aiOpenAI, aiClaude, isTR)
     ].join('');
 
-    return `<!DOCTYPE html><html lang="${isTR ? 'tr' : 'en'}"><head><meta charset="UTF-8"><title>${escapeHtml(companyName)} Mail Guvenlik Raporu</title></head><body style="margin:0;padding:0;background:#0f172a;font-family:Arial,Helvetica,sans-serif;color:#e5e7eb"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f172a;border-collapse:collapse"><tr><td valign="top" align="center" style="padding:12px 8px"><table width="760" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:760px;background:#111827;border:1px solid #263244;border-top:4px solid ${brandAccent};border-radius:18px;overflow:hidden"><tr><td style="padding:28px 30px;background:linear-gradient(135deg,#111827,#172033 58%,#24111a)"><div style="font-size:26px;font-weight:800;color:#f8fafc;letter-spacing:.4px">${escapeHtml(companyName.toUpperCase())} MAIL GUVENLIK RAPORU</div><div style="font-size:13px;color:#94a3b8;margin-top:8px">${isTR ? 'Analiz Tarihi' : 'Analysis Date'}: ${escapeHtml(formatDate(result.timestamp || new Date(), isTR))}</div>${companyDetails ? `<div style="font-size:13px;color:#cbd5e1;margin-top:8px">${escapeHtml(companyDetails)}</div>` : ''}</td></tr><tr><td style="padding:24px 30px 8px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="33%" style="padding:12px"><div style="border:1px solid ${color};background:${color}20;border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">RISK SEVIYESI</div><div style="font-size:24px;color:${color};font-weight:900;margin-top:8px">${escapeHtml(levelText)}</div></div></td><td width="33%" style="padding:12px"><div style="border:1px solid #334155;background:#0b1220;border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">SKOR</div><div style="font-size:24px;color:#f8fafc;font-weight:900;margin-top:8px">${score}/100</div></div></td><td width="33%" style="padding:12px"><div style="border:1px solid ${risky ? '#fb7185' : '#34d399'};background:${risky ? '#3f1420' : '#052e2b'};border-radius:14px;padding:16px;text-align:center"><div style="font-size:12px;color:#94a3b8;font-weight:700;letter-spacing:1px">SONUC</div><div style="font-size:24px;color:${risky ? '#fb7185' : '#34d399'};font-weight:900;margin-top:8px">${verdictText}</div></div></td></tr></table></td></tr>${escalationBanner}<tr><td style="padding:8px 30px 20px"><div style="background:#0b1220;border:1px solid #263244;border-radius:14px;padding:18px;color:#d1d5db;font-size:14px;line-height:1.65">${escapeHtml(summary)}</div></td></tr>${sections}<tr><td style="padding:22px 30px 28px;text-align:center;color:#64748b;font-size:12px;line-height:1.6">${escapeHtml(companyName)} Mail Guvenlik Sistemi - Bu rapor yapay zeka ve otomatik guvenlik kontrolleri tarafindan olusturulmustur.<br>Supheli durumlarda bilgi islem birimiyle iletisime gecin.${companyContactInfo ? `<br><br>${escapeHtml(companyContactInfo)}` : ''}</td></tr></table></td></tr></table></body></html>`;
+    return `<!DOCTYPE html><html lang="${isTR ? 'tr' : 'en'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>${escapeHtml(companyName)} ${isTR ? 'Mail Guvenlik Raporu' : 'Email Security Report'}</title></head><body style="margin:0;padding:0;background:#0f172a;font-family:'Segoe UI',Arial,Helvetica,sans-serif;color:#e5e7eb">` +
+        // PREHEADER: Gmail/Outlook inbox listesinde konunun yanında görünen preview text
+        `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;visibility:hidden;opacity:0;color:transparent;height:0;width:0">${preheader}</div>` +
+        `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f172a;border-collapse:collapse"><tr><td valign="top" align="center" style="padding:12px 8px">` +
+        `<table width="760" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:760px;background:#111827;border:1px solid #263244;border-top:4px solid ${brandAccent};border-radius:18px;overflow:hidden">` +
+        // HERO BANNER — büyük emoji + brand + tarih
+        `<tr><td style="padding:28px 30px 18px;background:linear-gradient(135deg,#111827,#172033 58%,${risky ? '#24111a' : '#0f1d22'})">` +
+        `<table width="100%"><tr><td valign="middle" style="font-size:48px;line-height:1;padding-right:14px;width:60px">${riskIcon}</td>` +
+        `<td valign="middle"><div style="font-size:24px;font-weight:800;color:#f8fafc;letter-spacing:.3px;line-height:1.2">${escapeHtml(companyName.toUpperCase())}</div>` +
+        `<div style="font-size:14px;color:#cbd5e1;font-weight:600;margin-top:4px">${isTR ? 'Mail Güvenlik Raporu' : 'Email Security Report'}</div>` +
+        `<div style="font-size:12px;color:#94a3b8;margin-top:6px">${isTR ? 'Analiz' : 'Analyzed'}: ${escapeHtml(formatDate(result.timestamp || new Date(), isTR))}</div>` +
+        (companyDetails ? `<div style="font-size:12px;color:#cbd5e1;margin-top:4px">${escapeHtml(companyDetails)}</div>` : '') +
+        `</td></tr></table></td></tr>` +
+        // KPI CARDS — risk seviyesi, skor, sonuç
+        `<tr><td style="padding:18px 30px 8px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
+        `<td width="33%" style="padding:12px"><div style="border:1px solid ${color};background:${color}20;border-radius:14px;padding:18px 12px;text-align:center"><div style="font-size:11px;color:#94a3b8;font-weight:700;letter-spacing:1.2px">${isTR ? 'RİSK SEVİYESİ' : 'RISK LEVEL'}</div><div style="font-size:22px;color:${color};font-weight:900;margin-top:10px;line-height:1.1">${escapeHtml(levelText)}</div></div></td>` +
+        `<td width="33%" style="padding:12px"><div style="border:1px solid #334155;background:#0b1220;border-radius:14px;padding:18px 12px;text-align:center"><div style="font-size:11px;color:#94a3b8;font-weight:700;letter-spacing:1.2px">${isTR ? 'SKOR' : 'SCORE'}</div><div style="font-size:22px;color:#f8fafc;font-weight:900;margin-top:10px;line-height:1.1">${score}<span style="font-size:14px;color:#64748b;font-weight:600">/100</span></div></div></td>` +
+        `<td width="33%" style="padding:12px"><div style="border:1px solid ${risky ? '#fb7185' : '#34d399'};background:${risky ? '#3f1420' : '#052e2b'};border-radius:14px;padding:18px 12px;text-align:center"><div style="font-size:11px;color:#94a3b8;font-weight:700;letter-spacing:1.2px">${isTR ? 'SONUÇ' : 'VERDICT'}</div><div style="font-size:22px;color:${risky ? '#fb7185' : '#34d399'};font-weight:900;margin-top:10px;line-height:1.1">${verdictText}</div></div></td>` +
+        `</tr></table></td></tr>` +
+        // ACTION BOX (yalnız riskly mailler için) — kullanıcıya net yön
+        actionBoxHtml +
+        // ESCALATION BANNER (varsa skor/level farkı)
+        escalationBanner +
+        // EXECUTIVE SUMMARY
+        `<tr><td style="padding:8px 30px 20px"><div style="background:#0b1220;border:1px solid #263244;border-radius:14px;padding:18px 20px;color:#d1d5db;font-size:14px;line-height:1.7">${escapeHtml(summary)}</div></td></tr>` +
+        // BÖLÜMLER
+        sections +
+        // FOOTER — Report ID, ISO timestamp, brand, contact
+        `<tr><td style="padding:22px 30px 28px"><div style="border-top:1px solid #1e293b;padding-top:18px;text-align:center;color:#64748b;font-size:11px;line-height:1.7">` +
+        `<div style="margin-bottom:8px"><span style="color:#94a3b8">${escapeHtml(companyName)}</span> · ${isTR ? 'Mail Güvenlik Sistemi' : 'Email Security'}</div>` +
+        `<div style="color:#475569;font-family:'Courier New',monospace;font-size:10px;margin-bottom:8px">Report ID: <span style="color:#94a3b8">${escapeHtml(reportIdShort)}</span> · ${escapeHtml(isoTimestamp)}</div>` +
+        `<div style="color:#64748b">${isTR ? 'Bu rapor yapay zekâ ve otomatik güvenlik kontrolleri tarafından oluşturulmuştur.' : 'This report was generated by AI and automated security checks.'}<br>${isTR ? 'Şüpheli durumlarda BT/IT birimi ile iletişime geçin.' : 'Contact your IT/Security team for suspicious cases.'}</div>` +
+        (companyContactInfo ? `<div style="margin-top:10px;color:#94a3b8">${escapeHtml(companyContactInfo)}</div>` : '') +
+        `</div></td></tr>` +
+        `</table></td></tr></table></body></html>`;
 }
 
 function resolveReportProfile(result = {}) {

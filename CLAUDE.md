@@ -81,7 +81,36 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
-*(şu an aktif görev yok)*
+*(şu an aktif görev yok — B4, B8, B9, B10, B11 ve UX paketinin hepsi tamamlandı)*
+
+### Yapıldı — Açık bug'lar (B4, B8, B9, B10, B11) + UX iyileştirmeleri
+**B4** 🟠 — `analyzeParsedEmailData` in-flight request coalescing: aynı Message-ID iki paralel monitör (scanMailbox + websocket) tarafından çağrılırsa tek analiz çalışır, ikinci bekleyip aynı sonucu paylaşır. AI/VT quota ~50% tasarruf. TTL 5dk, key=`${account}::${messageId}`, structuredClone ile mutation koruması.
+
+**B11** 🟡 — `enrichWithAI` atomik commit: staged hesaplama (newFindings/scoreDelta) → tüm aşama başarılı ise atomik uygula. VT/Claude/OpenAI hataları artık partial state üretmiyor. OpenAI insights için try/catch ile rollback.
+
+**B8** 🟡 — `_bumpWsMonitorLastUid(email, uid)` helper: monotonic-max bump, tek noktadan get-set, idempotent. İki yerde tekrar yazılmıştı, tek helper'a alındı.
+
+**B10** 🟡 — `removeDecoration` Message-ID locator desteği: dış kuralla başka klasöre taşınan etiketli maillerde de etiket kaldırılabilir. `imap.routes` `messageId` parametresini iletir.
+
+**B9** 🟡 — `messageLocator` Gmail X-GM-RAW fast path: `[Gmail]/All Mail` üzerinde `gmraw: rfc822msgid:<id>` ile tek SEARCH, sonra X-GM-LABELS ile gerçek klasör tespiti. Generic loop fallback olarak korunuyor. ~10x hız (N folder × 30ms → 1 query).
+
+**PDF buton fix** — `exportPDF` async + jspdf yükleme bekleme (4sn), `showToast` ile success/error feedback, `currentResult` yoksa anlamlı uyarı. Eskiden sessizce `return;` yapıyordu.
+
+**Mail HTML UX** (kıdemli UX ajanı) — `reportBuilder.js`:
+- Preheader text (Gmail inbox preview line — `display:none` ama `<span>` preview)
+- Hero banner: büyük emoji 🔴🟣🟡🟢 + brand + tarih (table layout)
+- KPI cards: padding+letter-spacing iyileşmesi, RISK SEVİYESİ / SKOR / SONUÇ
+- **Action box** (risky için): "Yapmanız Gerekenler" 3 maddelik checklist
+- Footer: Report ID + ISO timestamp + brand line — forensic için
+- Mobile viewport meta + color-scheme dark
+- Tipografi: Segoe UI fallback, line-height 1.7 — okunabilirlik
+
+**PDF UX** — `_renderPdfReport`:
+- Aksiyon kutusu (risky): kırmızı çerçeveli "YAPMANIZ GEREKENLER" 3 madde
+- Her sayfada footer: Report ID + ISO timestamp + "Sayfa X/Y" + brand
+- Top border separator footer üstünde
+
+**Test**: 147/147 ✓ (8.2 sn)
 
 ### Yapıldı — Counter HMAC tamper kurtarma (KRİTİK veri kaybı fix)
 **Kök neden**: `src/storage/monthlyCounter.js` `loadCounts()` HMAC mismatch'te `return {}` döndürüyordu → **sayaçlar sıfırlanıyordu**. Mali risk (kullanıcı kotası kaybı + ücretlendirme hatası). Plus her `loadCounts` çağrısı dosyayı re-read ettiği için boot'ta 8 kez warn spam.

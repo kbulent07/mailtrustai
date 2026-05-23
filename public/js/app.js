@@ -4526,9 +4526,59 @@ function exportJSON() {
     downloadBlob(blob, `mailtrustai-report-${currentResult.id || 'scan'}.json`);
 }
 
-function exportPDF() {
-    if (!currentResult || !window.jspdf) return;
+/**
+ * jspdf'in defer ile yüklenmesini bekler — ilk tıklamada hazır olmayabilir.
+ * En fazla 4 sn bekler; sonra fail eder.
+ */
+async function _waitForJsPDF(maxWaitMs = 4000) {
+    if (window.jspdf?.jsPDF) return true;
+    const step = 100;
+    let waited = 0;
+    while (waited < maxWaitMs) {
+        if (window.jspdf?.jsPDF) return true;
+        await new Promise(r => setTimeout(r, step));
+        waited += step;
+    }
+    return false;
+}
 
+async function exportPDF() {
+    // Önce sonuç var mı kontrolü — kullanıcıya net feedback
+    if (!currentResult) {
+        showToast(_tLit('Henüz bir tarama sonucu yok — önce bir mail tarayın.',
+                        'No scan result yet — scan an email first.'), 'warning');
+        return;
+    }
+
+    // jspdf yüklenmesini bekle (defer yüzünden ilk tıklamada hazır olmayabilir)
+    const ready = await _waitForJsPDF();
+    if (!ready) {
+        showToast(_tLit('PDF kütüphanesi yüklenemedi (ağ?). Sayfayı yenileyip tekrar deneyin.',
+                        'PDF library could not load (network?). Refresh and retry.'), 'error');
+        return;
+    }
+
+    // Kullanıcıya "hazırlanıyor" feedback'i — büyük PDF'ler 2-3 sn sürebilir
+    const _loadingToast = showToast(_tLit('PDF hazırlanıyor…', 'Generating PDF…'),
+                                     'info', { title: '📄' });
+    try {
+        await _renderPdfReport(currentResult);
+    } catch (e) {
+        console.error('[exportPDF] hata:', e);
+        showToast(_tLit('PDF oluşturulamadı: ', 'PDF generation failed: ') + e.message, 'error');
+        return;
+    } finally {
+        // Loading toast'ı kapat
+        try { _loadingToast?.querySelector('.msa-toast-close')?.click(); } catch (_) {}
+    }
+    showToast(_tLit('✓ PDF indirildi', '✓ PDF downloaded'), 'success');
+}
+
+/**
+ * PDF rendering ana fonksiyon — exportPDF tarafından çağrılır.
+ * Asenkron olabilir gelecekte (örn. AI-generated insights inject).
+ */
+async function _renderPdfReport(currentResult) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     const result = currentResult;
@@ -4727,6 +4777,55 @@ function exportPDF() {
         doc.text('-', margin, y);
         y = drawWrappedText(item, margin + 10, y, contentWidth - 10, 13, [229, 231, 235], 'normal', 10) + 4;
     });
+
+    // ─── Aksiyon kutusu — risky ise net "yapılacaklar" listesi ─────────────
+    if (risky) {
+        y += 8;
+        ensureSpace(72);
+        const boxX = margin;
+        const boxW = contentWidth;
+        const boxY = y;
+        // Kutu arkaplan
+        doc.setFillColor(63, 20, 32);
+        doc.setDrawColor(...dangerColor);
+        doc.setLineWidth(0.6);
+        doc.roundedRect(boxX, boxY, boxW, 68, 4, 4, 'FD');
+        // Başlık
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(...dangerColor);
+        doc.text('YAPMANIZ GEREKENLER', boxX + 12, boxY + 14);
+        // Listeli aksiyonlar
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(253, 232, 232);
+        const actions = [
+            '1. Bu maile tiklamayin, eklerini acmayin.',
+            '2. Sifrenizi/banka bilgilerinizi kesinlikle yazmayin.',
+            '3. Suphelendiginizde BT/IT birimine bu raporu gonderin.'
+        ];
+        actions.forEach((line, i) => {
+            doc.text(line, boxX + 12, boxY + 28 + i * 12);
+        });
+        y = boxY + 68 + 12;
+    }
+
+    // ─── Footer — tüm sayfalara Report ID + sayfa numarası ─────────────────
+    const pageCount = doc.internal.getNumberOfPages();
+    const reportIdShort = String(result.id || 'scan').slice(0, 12);
+    const isoTs = new Date(result.timestamp || Date.now()).toISOString().slice(0, 19) + 'Z';
+    for (let p = 1; p <= pageCount; p++) {
+        doc.setPage(p);
+        const fy = pageHeight - 18;
+        doc.setDrawColor(30, 41, 59);
+        doc.setLineWidth(0.4);
+        doc.line(margin, fy - 10, pageWidth - margin, fy - 10);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Report ID: ${reportIdShort}  ·  ${isoTs}`, margin, fy);
+        doc.text(`MailTrustAI  ·  Sayfa ${p}/${pageCount}`, pageWidth - margin, fy, { align: 'right' });
+    }
 
     doc.save(`mailtrustai-report-${result.id || 'scan'}.pdf`);
 }

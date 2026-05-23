@@ -78,7 +78,61 @@ async function findMessageByMessageId(client, messageId, opts = {}) {
         } finally { try { await lock.release(); } catch (_) {} }
     } catch (_) { /* preferFolder erişilemiyor — diğerlerine geç */ }
 
-    // Tüm klasörleri listele
+    // ─── Gmail X-GM-RAW fast path (B9 fix) ──────────────────────────────────
+    // Gmail X-GM-EXT-1 capability'sini destekler. Tek SEARCH ile TÜM label'larda
+    // (klasörlerde) ara — N folder × 30ms (~1s) yerine 1 query ~100ms.
+    // Önemli: önce All Mail klasörüne girmek gerek (tüm Gmail içeriği orada).
+    try {
+        const caps = client.capabilities;
+        const supportsGmail = caps && (
+            (typeof caps.has === 'function' && caps.has('X-GM-EXT-1')) ||
+            (Array.isArray(caps) && caps.includes('X-GM-EXT-1'))
+        );
+        if (supportsGmail) {
+            // [Gmail]/All Mail (lokalize: 'Tüm Postalar', vs.) — namespace ile dene
+            const allMailCandidates = ['[Gmail]/All Mail', '[Gmail]/Tüm Postalar', '[Google Mail]/All Mail'];
+            for (const allMailPath of allMailCandidates) {
+                try {
+                    const lock = await client.getMailboxLock(allMailPath);
+                    try {
+                        // X-GM-RAW: Gmail search syntax. rfc822msgid: header'ı için.
+                        // messageId genelde <id@host> formatında; çıplak gönderelim.
+                        const cleanId = String(messageId).replace(/^<|>$/g, '');
+                        const matches = await client.search(
+                            { gmraw: `rfc822msgid:${cleanId}` },
+                            { uid: true }
+                        );
+                        if (matches && matches.length > 0) {
+                            // Sonuç All Mail'de — gerçek klasör için X-GM-LABELS bakalım
+                            let realFolder = allMailPath;
+                            try {
+                                for await (const msg of client.fetch(matches[0],
+                                    { 'x-gm-labels': true, uid: true }, { uid: true })) {
+                                    const labels = msg['x-gm-labels'] || msg.gmailLabels || [];
+                                    // İlk non-system label'ı tercih et (INBOX > diğer)
+                                    if (Array.isArray(labels) && labels.length) {
+                                        const inbox = labels.find(l => /^\\Inbox$/i.test(l) || /^INBOX$/i.test(l));
+                                        realFolder = inbox ? 'INBOX' : (labels.find(l => !l.startsWith('\\')) || allMailPath);
+                                    }
+                                    break;
+                                }
+                            } catch (_) {}
+                            console.log(
+                                `[MessageLocator] ✓ Gmail fast-path: "${messageId}" → folder="${realFolder}" uid=${matches[0]}`
+                            );
+                            return { folder: realFolder, uid: Number(matches[0]) };
+                        }
+                    } finally { try { await lock.release(); } catch (_) {} }
+                    break;  // All Mail erişildi, başka aday deneme
+                } catch (_) { /* bu yol çalışmıyor, sonraki aday */ }
+            }
+        }
+    } catch (e) {
+        // Gmail fast-path başarısız — generic loop'a düş
+        console.warn('[MessageLocator] Gmail fast-path hatası, generic arama:', e.message);
+    }
+
+    // Tüm klasörleri listele (generic)
     let folders;
     try { folders = await client.list(); }
     catch (e) {

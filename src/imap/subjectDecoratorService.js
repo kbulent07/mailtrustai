@@ -423,7 +423,7 @@ async function maybeDecorateSubject({ account, uid, level, parsedEmail, folder =
  * @param {string} [opts.folder='INBOX']
  * @returns {Promise<object>} { attempted, restored, newUid?, reason? }
  */
-async function removeDecoration({ account, uid, folder = 'INBOX' }) {
+async function removeDecoration({ account, uid, folder = 'INBOX', messageId = null }) {
     if (!account?.email) {
         return { attempted: false, restored: false, reason: 'no-account' };
     }
@@ -437,13 +437,47 @@ async function removeDecoration({ account, uid, folder = 'INBOX' }) {
 
     let client = null;
     let lock = null;
+    // B10 fix: dış kuralla başka klasöre taşınmış olabilir
+    let actualFolder = folder;
+    let actualUid    = uid;
+    let movedExternally = false;
+
     try {
         client = await createConnection(stored);
         await client.connect();
-        lock = await client.getMailboxLock(folder);
+
+        // ─── PRE-CHECK: tercih edilen klasörde mail var mı? ────────────────
+        let foundInPreferred = false;
+        try {
+            const tryLock = await client.getMailboxLock(folder);
+            try {
+                const m = await client.search({ uid: String(uid) }, { uid: true });
+                foundInPreferred = !!(m && m.length > 0);
+            } finally { try { await tryLock.release(); } catch (_) {} }
+        } catch (_) {}
+
+        // ─── BULUNAMADIYSA: Message-ID ile diğer klasörlerde ara (B10 fix) ─
+        if (!foundInPreferred) {
+            if (!messageId) {
+                console.warn(`[SubjectDecorator] removeDecoration: mail ${folder}'de yok, messageId yok — locator çalıştırılamıyor.`);
+                return { attempted: true, restored: false, reason: 'mail-not-found-no-messageid' };
+            }
+            console.log(`[SubjectDecorator] removeDecoration: mail "${folder}"de yok, Message-ID ile aranıyor: ${messageId}`);
+            const found = await findMessageByMessageId(client, messageId, { preferFolder: folder });
+            if (!found) {
+                return { attempted: true, restored: false, reason: 'mail-not-found-anywhere', messageId };
+            }
+            actualFolder = found.folder;
+            actualUid    = found.uid;
+            movedExternally = true;
+            console.log(`[SubjectDecorator] removeDecoration: ✓ Mail bulundu: "${actualFolder}" uid=${actualUid}`);
+        }
+
+        // ─── Hedef klasörde lock al ve işle ────────────────────────────────
+        lock = await client.getMailboxLock(actualFolder);
 
         let original = null;
-        for await (const msg of client.fetch(uid, {
+        for await (const msg of client.fetch(actualUid, {
             source:       true,
             internalDate: true,
             flags:        true
@@ -453,7 +487,7 @@ async function removeDecoration({ account, uid, folder = 'INBOX' }) {
         }
 
         if (!original?.source) {
-            return { attempted: true, restored: false, reason: 'fetch-failed' };
+            return { attempted: true, restored: false, reason: 'fetch-failed', folder: actualFolder, uid: actualUid };
         }
 
         // Parse edip orijinal subject'i header'dan çıkar
@@ -474,10 +508,10 @@ async function removeDecoration({ account, uid, folder = 'INBOX' }) {
         const cleanedRaw = stripDecorationFromRaw(original.source, originalSubject);
         const flags = Array.from(original.flags || []).filter(f => f !== '\\Recent');
 
-        const appendRes = await client.append(folder, cleanedRaw, flags, original.internalDate);
+        const appendRes = await client.append(actualFolder, cleanedRaw, flags, original.internalDate);
         if (!appendRes?.uid) {
-            console.warn(`[SubjectDecorator] removeDecoration: APPEND başarısız, orijinal mail (uid=${uid}) korundu`);
-            return { attempted: true, restored: false, reason: 'append-failed' };
+            console.warn(`[SubjectDecorator] removeDecoration: APPEND başarısız, orijinal mail (${actualFolder}/${actualUid}) korundu`);
+            return { attempted: true, restored: false, reason: 'append-failed', folder: actualFolder };
         }
 
         // Güvenlik kontrolü: yeni UID gerçekten erişilebilir mi?
@@ -494,18 +528,20 @@ async function removeDecoration({ account, uid, folder = 'INBOX' }) {
         if (!verified) {
             console.error(
                 `[SubjectDecorator] removeDecoration DURDURULDU — yeni UID ${appendRes.uid} ` +
-                `doğrulanamadı. Etiketli mail (uid=${uid}) KORUNDU.`
+                `${actualFolder} klasöründe doğrulanamadı. Etiketli mail (uid=${actualUid}) KORUNDU.`
             );
-            return { attempted: true, restored: false, reason: 'append-not-verified', appendedUid: appendRes.uid };
+            return { attempted: true, restored: false, reason: 'append-not-verified', appendedUid: appendRes.uid, folder: actualFolder };
         }
 
-        await client.messageDelete(uid, { uid: true });
+        await client.messageDelete(actualUid, { uid: true });
 
-        console.log(`[SubjectDecorator] Etiket kaldırıldı: ${account.email} uid ${uid} → ${appendRes.uid}`);
+        console.log(`[SubjectDecorator] Etiket kaldırıldı: ${account.email} ${actualFolder}/${actualUid} → ${appendRes.uid}${movedExternally ? ' [dış kuralla taşınmıştı]' : ''}`);
         return {
             attempted: true,
             restored:  true,
             newUid:    appendRes.uid,
+            newFolder: actualFolder,
+            movedExternally,
             originalSubject
         };
     } catch (error) {

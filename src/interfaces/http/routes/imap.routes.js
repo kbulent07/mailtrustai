@@ -198,8 +198,9 @@ router.post('/imap/messages/unmark', async (req, res) => {
 
     const result = await removeDecoration({
         account,
-        uid:    Number(uid),
-        folder: folder || 'INBOX'
+        uid:       Number(uid),
+        folder:    folder || 'INBOX',
+        messageId: req.body?.messageId || null  // B10: locator desteği — dış kural taşımışsa da bul
     });
 
     if (!result.restored) {

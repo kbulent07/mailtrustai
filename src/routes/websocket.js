@@ -44,6 +44,19 @@ const clients = new Set();
 // Sunucu yeniden başladığında sıfırlanır; ilk bağlantıda değil, sadece reconnect'te tetiklenir.
 const _wsMonitorLastUid = new Map();
 
+/**
+ * Monotonic-max bump: hesap için son UID'yi günceller, eski/küçük UID'ler
+ * yazılmaz. Node.js event loop single-threaded olduğu için await arasında
+ * çalışmadığı sürece atomik; bu helper iki yerde tekrar yazılan get/set
+ * pattern'ini tek noktaya alır (B8 fix — okunabilirlik + idempotent garanti).
+ */
+function _bumpWsMonitorLastUid(email, uid) {
+    const num = Number(uid);
+    if (!Number.isFinite(num) || num <= 0) return;
+    const current = _wsMonitorLastUid.get(email) || 0;
+    if (num > current) _wsMonitorLastUid.set(email, num);
+}
+
 // WebSocket monitör supervisor backoff (ms): 10s, 30s, 60s, 2dk, 5dk
 const WS_MONITOR_BACKOFF = [10_000, 30_000, 60_000, 120_000, 300_000];
 const _wsMonitorRetryTimers = new Map();
@@ -98,7 +111,11 @@ async function enrichWithAI(result, parsedEmail) {
     const openaiKey = settings.openaiApiKey || '';
     const vtKey = settings.vtApiKey || '';
 
-    // VirusTotal ek tarama
+    // ─── VirusTotal — atomik güncelleme (B11 fix) ──────────────────────────
+    // ÖNCE: vtEntries gelir → result.virusTotal=vtEntries → findings.push (forEach)
+    //       → recalcMeta. Arada hata olursa result.virusTotal SET edilmiş ama
+    //       findings/score eksik kalır → UI yanlış gösterir.
+    // YENİ: tüm hesaplamalar staged objelerde yapılır, sonra atomik commit.
     if (vtKey && result.attachmentDetails?.length > 0) {
         const vtCandidates = result.attachmentDetails.filter((item) => item.vtEligible !== false);
         if (vtCandidates.length > 0) {
@@ -114,28 +131,39 @@ async function enrichWithAI(result, parsedEmail) {
                     return { ...item, content: srcAtt?.content, contentType: srcAtt?.contentType, filename: srcAtt?.filename || item.filename };
                 });
                 const vtEntries = await vtScan(vtWithContent, vtKey);
-                result.virusTotal = vtEntries;
 
-                // VT sonuçlarını findings'e yansıt
-                vtEntries.forEach((entry) => {
+                // Staged hesaplama — result'a HENÜZ yazma
+                const newFindings = [];
+                let scoreDelta = 0;
+                for (const entry of (vtEntries || [])) {
                     const malicious = entry.stats?.malicious || 0;
                     const suspicious = entry.stats?.suspicious || 0;
                     if (malicious > 0) {
-                        result.score = Math.min(100, result.score + 20);
-                        result.findings.push({ severity: 'critical', category: 'virusTotal', message: `VirusTotal: ${entry.filename} zararlı (${malicious}/${entry.stats?.total || 0} motor)` });
+                        scoreDelta += 20;
+                        newFindings.push({ severity: 'critical', category: 'virusTotal',
+                            message: `VirusTotal: ${entry.filename} zararlı (${malicious}/${entry.stats?.total || 0} motor)` });
                     } else if (suspicious > 0) {
-                        result.score = Math.min(100, result.score + 10);
-                        result.findings.push({ severity: 'warning', category: 'virusTotal', message: `VirusTotal: ${entry.filename} şüpheli (${suspicious} motor)` });
+                        scoreDelta += 10;
+                        newFindings.push({ severity: 'warning', category: 'virusTotal',
+                            message: `VirusTotal: ${entry.filename} şüpheli (${suspicious} motor)` });
                     }
-                });
-                recalcMeta(result);
+                }
+
+                // ATOMIK COMMIT — buraya kadar hata atılmadıysa hepsini birden uygula
+                result.virusTotal = vtEntries;
+                if (newFindings.length) {
+                    result.findings.push(...newFindings);
+                    result.score = Math.min(100, result.score + scoreDelta);
+                    recalcMeta(result);  // findings özet sayaçları + level
+                }
             } catch (e) {
                 console.error('[WS-Monitor] VirusTotal error:', e.message);
+                // result.virusTotal hâlâ undefined — UI "VT yapılmadı" olarak gösterir (doğru)
             }
         }
     }
 
-    // Claude AI analizi
+    // ─── Claude AI — staged, sonra commit ──────────────────────────────────
     if (claudeKey) {
         try {
             const claudeResult = await analyzeWithClaude(
@@ -143,7 +171,8 @@ async function enrichWithAI(result, parsedEmail) {
                 parsedEmail.text || parsedEmail.textAsHtml || '',
                 parsedEmail.subject
             );
-            if (claudeResult.success) {
+            // Sadece başarılı + findings dolu ise commit
+            if (claudeResult?.success && claudeResult.findings) {
                 result.claudeAnalysis = claudeResult.findings;
             }
         } catch (e) {
@@ -151,7 +180,7 @@ async function enrichWithAI(result, parsedEmail) {
         }
     }
 
-    // OpenAI analizi
+    // ─── OpenAI — staged, sonra atomik commit (insights + raw analysis) ────
     if (openaiKey) {
         try {
             const { loadSettings: ls } = require('../storage/settingsStore');
@@ -162,9 +191,20 @@ async function enrichWithAI(result, parsedEmail) {
                 { parsedData: parsedEmail, linkUrls: linkResult.urls, attachmentDetails: result.attachmentDetails || [] },
                 openaiModel
             );
-            if (openaiResult.success) {
-                result.openaiAnalysis = openaiResult.analysis;
-                applyOpenAIInsights(result, openaiResult.analysis);
+            if (openaiResult?.success && openaiResult.analysis) {
+                // Önce insights uygula (findings/score'u etkileyebilir) — fail ederse rollback için clone
+                const stagedFindings = [...result.findings];
+                const stagedScore    = result.score;
+                try {
+                    result.openaiAnalysis = openaiResult.analysis;
+                    applyOpenAIInsights(result, openaiResult.analysis);
+                } catch (insightErr) {
+                    // Insights uygularken hata → rollback (partial state önlenir)
+                    result.findings = stagedFindings;
+                    result.score    = stagedScore;
+                    delete result.openaiAnalysis;
+                    console.error('[WS-Monitor] applyOpenAIInsights hatası — rollback:', insightErr.message);
+                }
             }
         } catch (e) {
             console.error('[WS-Monitor] OpenAI error:', e.message);
@@ -300,10 +340,7 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     if (isAlreadyDecorated(email)) {
         console.log(`[WS-Monitor][${source}] Etiketli mail atlandı (re-scan döngüsü engellendi): "${subject.slice(0, 80)}"`);
         // UID baseline'ı yine de güncelle (yeni UID'yi takip et)
-        const decUid = Number(uid);
-        if (!Number.isNaN(decUid) && decUid > (_wsMonitorLastUid.get(account.email) || 0)) {
-            _wsMonitorLastUid.set(account.email, decUid);
-        }
+        _bumpWsMonitorLastUid(account.email, uid);
         return;
     }
     const skipInfo = getImapSenderSkipInfo({ account, from: email?.from });
@@ -425,9 +462,7 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
 
     // UID baseline'ı güncelle — yukarıdaki effectiveUid'i tekrar kullan
     // (decoration sonrası yeni UID, yoksa orijinal UID)
-    if (!Number.isNaN(effectiveUid) && effectiveUid > (_wsMonitorLastUid.get(account.email) || 0)) {
-        _wsMonitorLastUid.set(account.email, effectiveUid);
-    }
+    _bumpWsMonitorLastUid(account.email, effectiveUid);
 }
 
 /**
