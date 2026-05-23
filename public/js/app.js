@@ -4576,258 +4576,599 @@ async function exportPDF() {
 
 /**
  * PDF rendering ana fonksiyon — exportPDF tarafından çağrılır.
- * Asenkron olabilir gelecekte (örn. AI-generated insights inject).
+ * Modern açık (light) tema: beyaz zemin, koyu lacivert header, violet aksanlar.
  */
 async function _renderPdfReport(currentResult) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     const result = currentResult;
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 34;
-    const contentWidth = pageWidth - (margin * 2);
-    const sectionGap = 18;
-    const summary = buildExecutiveSummaryText(result);
-    const meta = result.emailMeta || {};
-    const from = meta.from?.[0]?.address || 'N/A';
-    const to = meta.to?.[0]?.address || currentImapEmail || 'N/A';
+
+    // ── Sayfa boyutları ───────────────────────────────────────────────────
+    const PW = doc.internal.pageSize.getWidth();   // 595.28
+    const PH = doc.internal.pageSize.getHeight();  // 841.89
+    const ML = 42, MR = 42;
+    const CW = PW - ML - MR;
+    const HEADER_H = 38;
+    const FOOTER_H = 38;
+    const CONTENT_START_P1 = HEADER_H + 24 + 16; // header + subheader + boşluk
+    const CONTENT_START    = HEADER_H + 14;
+    const FOOTER_LINE_Y    = PH - FOOTER_H;
+
+    // ── Renk paleti (light tema) ──────────────────────────────────────────
+    const C = {
+        navy:        [22, 36, 66],
+        navyLight:   [44, 60, 100],
+        white:       [255, 255, 255],
+        violet:      [109, 40, 217],
+        violetLight: [237, 233, 254],
+        violetMid:   [196, 181, 253],
+        border:      [226, 232, 240],
+        borderDark:  [203, 213, 225],
+        bgPage:      [255, 255, 255],
+        bgStripe:    [248, 250, 252],
+        bgMed:       [241, 245, 249],
+        textDark:    [15, 23, 42],
+        textMed:     [71, 85, 105],
+        textLight:   [148, 163, 184],
+        high:        [220, 38, 38],
+        highBg:      [254, 242, 242],
+        highBorder:  [254, 202, 202],
+        med:         [180, 83, 9],
+        medBg:       [255, 251, 235],
+        medBorder:   [253, 230, 138],
+        low:         [133, 77, 14],
+        lowBg:       [254, 252, 232],
+        safe:        [21, 128, 61],
+        safeBg:      [240, 253, 244],
+        safeBorder:  [134, 239, 172],
+        info:        [29, 78, 216],
+        infoBg:      [239, 246, 255],
+    };
+
+    // ── Veri hazırlığı ────────────────────────────────────────────────────
+    const meta        = result.emailMeta || {};
+    const fromArr     = meta.from?.[0] || {};
+    const fromAddr    = fromArr.address || String(meta.from?.[0] || 'N/A');
+    const fromName    = fromArr.name || '';
+    const fromDisplay = fromName ? `${asciiPdfText(fromName)} <${asciiPdfText(fromAddr)}>` : asciiPdfText(fromAddr);
+    const toAddr      = meta.to?.[0]?.address || String(meta.to?.[0] || currentImapEmail || 'N/A');
+    const subject     = asciiPdfText(meta.subject || '(Konu belirtilmemis)');
+    const mailDate    = asciiPdfText(formatDate(meta.date || result.timestamp, true));
     const attachments = mergeAttachmentScanData(result);
-    const authRows = buildAuthRows(result);
-    const threatTags = buildThreatTags(result);
-    const recommendations = buildRecommendations(result);
-    const risky = result.level !== 'safe';
-    const levelLabel = asciiPdfText(_tLit(result.labelTR || result.labelEN || result.level, result.labelEN || result.level));
-    const verdictLabel = risky ? 'RISKLI' : 'GUVENLI';
-    const bannerColor = pdfHexToRgb(result.color || '#94a3b8');
-    const dangerColor = risky ? [251, 113, 133] : [52, 211, 153];
-    let y = margin;
+    const authRows    = buildAuthRows(result);
+    const threatTags  = buildThreatTags(result);
+    const recommends  = buildRecommendations(result);
+    const findings    = (result.findings || []).filter(f => f.severity !== 'safe');
+    const risky       = result.level !== 'safe';
+    const levelLabel  = asciiPdfText(_tLit(result.labelTR || result.labelEN || result.level, result.labelEN || result.level));
+    const score       = Number(result.score) || 0;
+    const reportId    = String(result.id || 'scan').slice(0, 16);
+    const isoTs       = new Date(result.timestamp || Date.now()).toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
+    const summary     = buildExecutiveSummaryText(result);
+    const totalLinks  = buildLinkSummary(result)?.total || 0;
 
-    const ensureSpace = (needed) => {
-        if (y + needed <= pageHeight - margin) return;
-        doc.addPage();
-        y = margin;
-    };
-
-    const drawWrappedText = (text, x, top, maxWidth, lineHeight = 14, color = [229, 231, 235], font = 'normal', size = 11) => {
-        const safe = asciiPdfText(text || '');
-        if (!safe) return top;
-        doc.setFont('helvetica', font);
-        doc.setFontSize(size);
-        doc.setTextColor(...color);
-        const lines = doc.splitTextToSize(safe, maxWidth);
-        doc.text(lines, x, top);
-        return top + (lines.length * lineHeight);
-    };
-
-    const drawSectionTitle = (title) => {
-        ensureSpace(28);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
-        doc.setTextColor(148, 163, 184);
-        doc.text(asciiPdfText(title), margin, y);
-        y += 16;
-    };
-
-    const drawMetricCard = (x, width, title, value, valueColor, bgColor) => {
-        const cardHeight = 72;
-        doc.setFillColor(...bgColor);
-        doc.setDrawColor(38, 50, 68);
-        doc.roundedRect(x, y, width, cardHeight, 12, 12, 'FD');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.setTextColor(148, 163, 184);
-        doc.text(asciiPdfText(title), x + 14, y + 18);
-        doc.setFontSize(18);
-        doc.setTextColor(...valueColor);
-        doc.text(asciiPdfText(value), x + 14, y + 46);
-        return cardHeight;
-    };
-
-    ensureSpace(150);
-    doc.setFillColor(17, 24, 39);
-    doc.setDrawColor(...bannerColor);
-    doc.roundedRect(margin, y, contentWidth, 126, 18, 18, 'FD');
-    doc.setFillColor(11, 18, 32);
-    doc.circle(margin + 42, y + 42, 28, 'F');
-    doc.setDrawColor(...bannerColor);
-    doc.setLineWidth(1.2);
-    doc.circle(margin + 42, y + 42, 28, 'S');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(24);
-    doc.setTextColor(...bannerColor);
-    doc.text(asciiPdfText(String(result.score || 0)), margin + 29, y + 50);
-    doc.setFontSize(22);
-    doc.text(levelLabel, margin + 84, y + 42);
-    const verdictEndY = drawWrappedText(summary, margin + 84, y + 63, contentWidth - 180, 14, [209, 213, 219], 'normal', 11);
-    doc.setFillColor(31, 41, 55);
-    doc.setDrawColor(55, 65, 81);
-    doc.roundedRect(pageWidth - margin - 132, y + 30, 98, 32, 10, 10, 'FD');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(...dangerColor);
-    doc.text(verdictLabel, pageWidth - margin - 103, y + 50);
-    y += Math.max(126, verdictEndY - (y - 10)) + sectionGap;
-
-    const cardGap = 12;
-    const cardWidth = (contentWidth - (cardGap * 2)) / 3;
-    ensureSpace(90);
-    drawMetricCard(margin, cardWidth, 'RISK SEVIYESI', levelLabel, bannerColor, [11, 18, 32]);
-    drawMetricCard(margin + cardWidth + cardGap, cardWidth, 'SKOR', `${result.score || 0}/100`, [248, 250, 252], [11, 18, 32]);
-    drawMetricCard(margin + ((cardWidth + cardGap) * 2), cardWidth, 'SONUC', verdictLabel, dangerColor, risky ? [63, 20, 32] : [5, 46, 43]);
-    y += 72 + sectionGap;
-
-    ensureSpace(86);
-    doc.setFillColor(11, 18, 32);
-    doc.setDrawColor(38, 50, 68);
-    doc.roundedRect(margin, y, contentWidth, 70, 14, 14, 'FD');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(148, 163, 184);
-    doc.text('YONETICI OZETI', margin + 16, y + 20);
-    y = drawWrappedText(summary, margin + 16, y + 40, contentWidth - 32, 15, [229, 231, 235], 'normal', 11) + sectionGap;
-
-    drawSectionTitle('INCELENEN E-POSTA');
-    const metaRows = [
-        ['Gonderen', from],
-        ['Alici', to],
-        ['Konu', meta.subject || 'N/A'],
-        ['Tarih', formatDate(meta.date || result.timestamp, true)],
-        ['Baglanti', `${buildLinkSummary(result).total} adet`],
-        ['Ekler', attachments.length ? attachments.map((item) => item.filename).join(', ') : 'Ek yok']
-    ];
-    metaRows.forEach(([label, value]) => {
-        ensureSpace(18);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.setTextColor(148, 163, 184);
-        doc.text(`${asciiPdfText(label)}:`, margin, y);
-        y = drawWrappedText(String(value || '-'), margin + 92, y, contentWidth - 92, 13, [229, 231, 235], 'normal', 10) + 4;
-    });
-    y += 6;
-
-    drawSectionTitle('KIMLIK DOGRULAMA VE GONDEREN ITIBARI');
-    authRows.forEach((row) => {
-        ensureSpace(18);
-        const severityColor = row.severity === 'critical'
-            ? [251, 113, 133]
-            : row.severity === 'warning'
-                ? [251, 191, 36]
-                : [52, 211, 153];
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.setTextColor(148, 163, 184);
-        doc.text(`${asciiPdfText(row.label)}:`, margin, y);
-        doc.setTextColor(...severityColor);
-        doc.text(asciiPdfText(row.value || '-'), margin + 110, y);
-        if (row.note) {
-            y = drawWrappedText(row.note, margin + 110, y + 13, contentWidth - 110, 12, [203, 213, 225], 'normal', 9) + 5;
-        } else {
-            y += 16;
-        }
-    });
-    y += 6;
-
-    drawSectionTitle('ANTIVIRUS VE EK TARAMA SONUCLARI');
-    if (!attachments.length) {
-        y = drawWrappedText('Ek bulunamadi.', margin, y, contentWidth, 13, [148, 163, 184], 'normal', 10) + sectionGap;
+    // Risk rengi seti
+    let riskColor, riskBg, riskBorder, riskVerdict;
+    if (result.level === 'high') {
+        riskColor = C.high; riskBg = C.highBg; riskBorder = C.highBorder;
+        riskVerdict = 'YUKSEK RISK';
+    } else if (result.level === 'medium') {
+        riskColor = C.med; riskBg = C.medBg; riskBorder = C.medBorder;
+        riskVerdict = 'ORTA RISK';
+    } else if (result.level === 'low') {
+        riskColor = C.low; riskBg = C.lowBg; riskBorder = [253, 224, 71];
+        riskVerdict = 'DUSUK RISK';
     } else {
-        attachments.slice(0, 8).forEach((row) => {
-            ensureSpace(30);
-            const verdict = renderAttachmentVerdictText(row, result.vtStatus);
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(10);
-            doc.setTextColor(229, 231, 235);
-            doc.text(asciiPdfText(row.filename || 'Ek'), margin, y);
-            y = drawWrappedText(`SHA-256: ${shortHash(row.hash || '')} | ${verdict}`, margin + 14, y + 13, contentWidth - 14, 12, [148, 163, 184], 'normal', 9) + 6;
-        });
-        y += 4;
+        riskColor = C.safe; riskBg = C.safeBg; riskBorder = C.safeBorder;
+        riskVerdict = 'GUVENLI';
     }
 
-    drawSectionTitle('TESPIT EDILEN TEHDIT TIPLERI');
-    if (!threatTags.length) {
-        y = drawWrappedText('Belirgin tehdit tipi tespit edilmedi.', margin, y, contentWidth, 13, [148, 163, 184], 'normal', 10) + sectionGap;
-    } else {
-        y = drawWrappedText(threatTags.map((tag) => tag.label).join(' | '), margin, y, contentWidth, 14, [229, 231, 235], 'normal', 10) + sectionGap;
-    }
+    // ── Y pozisyon ────────────────────────────────────────────────────────
+    let y = CONTENT_START_P1;
 
-    drawSectionTitle('DETAYLI BULGULAR');
-    const findings = (result.findings || []).filter((finding) => finding.severity !== 'safe');
-    if (!findings.length) {
-        y = drawWrappedText('Detayli bulgu yok.', margin, y, contentWidth, 13, [148, 163, 184], 'normal', 10) + sectionGap;
-    } else {
-        findings.slice(0, 20).forEach((finding) => {
-            ensureSpace(26);
-            const severity = asciiPdfText((finding.severity || 'info').toUpperCase());
-            const category = asciiPdfText(finding.category || 'genel');
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(10);
-            doc.setTextColor(229, 231, 235);
-            doc.text(`[${severity}] ${category}`, margin, y);
-            y = drawWrappedText(finding.message || '', margin + 14, y + 13, contentWidth - 14, 12, [209, 213, 219], 'normal', 9) + 6;
-        });
-        y += 4;
-    }
+    // ── İç yardımcılar ───────────────────────────────────────────────────
 
-    drawSectionTitle('GUVENLIK ONERILERI');
-    recommendations.forEach((item) => {
-        ensureSpace(22);
+    function _drawPageHeader() {
+        doc.setFillColor(...C.navy);
+        doc.rect(0, 0, PW, HEADER_H, 'F');
+        // Sağ taraf ince violet şerit
+        doc.setFillColor(...C.violet);
+        doc.rect(PW - 5, 0, 5, HEADER_H, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.setTextColor(...C.white);
+        doc.text('MailTrustAI', ML, 25);
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        doc.setTextColor(229, 231, 235);
-        doc.text('-', margin, y);
-        y = drawWrappedText(item, margin + 10, y, contentWidth - 10, 13, [229, 231, 235], 'normal', 10) + 4;
-    });
-
-    // ─── Aksiyon kutusu — risky ise net "yapılacaklar" listesi ─────────────
-    if (risky) {
-        y += 8;
-        ensureSpace(72);
-        const boxX = margin;
-        const boxW = contentWidth;
-        const boxY = y;
-        // Kutu arkaplan
-        doc.setFillColor(63, 20, 32);
-        doc.setDrawColor(...dangerColor);
-        doc.setLineWidth(0.6);
-        doc.roundedRect(boxX, boxY, boxW, 68, 4, 4, 'FD');
-        // Başlık
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.setTextColor(...dangerColor);
-        doc.text('YAPMANIZ GEREKENLER', boxX + 12, boxY + 14);
-        // Listeli aksiyonlar
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        doc.setTextColor(253, 232, 232);
-        const actions = [
-            '1. Bu maile tiklamayin, eklerini acmayin.',
-            '2. Sifrenizi/banka bilgilerinizi kesinlikle yazmayin.',
-            '3. Suphelendiginizde BT/IT birimine bu raporu gonderin.'
-        ];
-        actions.forEach((line, i) => {
-            doc.text(line, boxX + 12, boxY + 28 + i * 12);
-        });
-        y = boxY + 68 + 12;
+        doc.setFontSize(8.5);
+        doc.setTextColor(180, 200, 230);
+        doc.text('E-POSTA GUVENLIK RAPORU', PW - MR - 5, 25, { align: 'right' });
     }
 
-    // ─── Footer — tüm sayfalara Report ID + sayfa numarası ─────────────────
-    const pageCount = doc.internal.getNumberOfPages();
-    const reportIdShort = String(result.id || 'scan').slice(0, 12);
-    const isoTs = new Date(result.timestamp || Date.now()).toISOString().slice(0, 19) + 'Z';
-    for (let p = 1; p <= pageCount; p++) {
-        doc.setPage(p);
-        const fy = pageHeight - 18;
-        doc.setDrawColor(30, 41, 59);
-        doc.setLineWidth(0.4);
-        doc.line(margin, fy - 10, pageWidth - margin, fy - 10);
+    function _drawPageSubHeader() {
+        // Sadece sayfa 1'de
+        doc.setFillColor(...C.bgMed);
+        doc.rect(0, HEADER_H, PW, 24, 'F');
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.textMed);
+        doc.text(`Rapor ID: ${reportId}`, ML, HEADER_H + 16);
+        doc.text(`Olusturulma: ${isoTs}`, PW - MR, HEADER_H + 16, { align: 'right' });
+    }
+
+    function _drawFooter(pageNum, total) {
+        doc.setDrawColor(...C.border);
+        doc.setLineWidth(0.5);
+        doc.line(ML, FOOTER_LINE_Y, PW - MR, FOOTER_LINE_Y);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
-        doc.setTextColor(100, 116, 139);
-        doc.text(`Report ID: ${reportIdShort}  ·  ${isoTs}`, margin, fy);
-        doc.text(`MailTrustAI  ·  Sayfa ${p}/${pageCount}`, pageWidth - margin, fy, { align: 'right' });
+        doc.setTextColor(...C.textLight);
+        doc.text(`Rapor ID: ${reportId}  |  ${isoTs}`, ML, FOOTER_LINE_Y + 14);
+        doc.text(`MailTrustAI Guvenlik Raporu  |  Sayfa ${pageNum} / ${total}`, PW - MR, FOOTER_LINE_Y + 14, { align: 'right' });
     }
 
-    doc.save(`mailtrustai-report-${result.id || 'scan'}.pdf`);
+    const newPage = () => {
+        doc.addPage();
+        y = CONTENT_START;
+        _drawPageHeader();
+    };
+
+    const ensureSpace = (needed) => {
+        if (y + needed > FOOTER_LINE_Y - 14) newPage();
+    };
+
+    const T = (text, x, ty, opts = {}) => {
+        doc.text(asciiPdfText(String(text ?? '')), x, ty, opts);
+    };
+
+    const Tw = (text, x, ty, maxW, lineH = 12) => {
+        const lines = doc.splitTextToSize(asciiPdfText(String(text ?? '')), maxW);
+        doc.text(lines, x, ty);
+        return ty + lines.length * lineH;
+    };
+
+    const hRule = (hy, color = C.border) => {
+        doc.setDrawColor(...color);
+        doc.setLineWidth(0.5);
+        doc.line(ML, hy, PW - MR, hy);
+    };
+
+    // Bölüm başlığı: mor çizgi + başlık metin
+    const sectionTitle = (title) => {
+        ensureSpace(38);
+        y += 12;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.violet);
+        T(title.toUpperCase(), ML, y);
+        y += 5;
+        doc.setDrawColor(...C.violet);
+        doc.setLineWidth(1.5);
+        doc.line(ML, y, ML + 28, y);
+        doc.setDrawColor(...C.border);
+        doc.setLineWidth(0.4);
+        doc.line(ML + 30, y, PW - MR, y);
+        y += 11;
+    };
+
+    // ════════════════════════════════════════════════════════════════════════
+    // SAYFA 1 — Header + Sub-header
+    // ════════════════════════════════════════════════════════════════════════
+    _drawPageHeader();
+    _drawPageSubHeader();
+
+    // ── VERDICT BANNER ────────────────────────────────────────────────────
+    const bannerH = 88;
+    ensureSpace(bannerH + 12);
+
+    doc.setFillColor(...riskBg);
+    doc.setDrawColor(...riskBorder);
+    doc.setLineWidth(1);
+    doc.roundedRect(ML, y, CW, bannerH, 6, 6, 'FD');
+
+    // Sol renkli kenar çubuğu
+    doc.setFillColor(...riskColor);
+    doc.rect(ML, y, 7, bannerH, 'F');
+    doc.setFillColor(...riskBg);
+    doc.rect(ML, y, 4, bannerH, 'F'); // köşeleri yuvarlatmak için örtme
+
+    // Skor dairesi (sağ)
+    const cx = PW - MR - 54, cy = y + bannerH / 2;
+    doc.setFillColor(...C.white);
+    doc.setDrawColor(...riskColor);
+    doc.setLineWidth(2.5);
+    doc.circle(cx, cy, 30, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(score >= 100 ? 18 : 22);
+    doc.setTextColor(...riskColor);
+    T(String(score), cx, cy + (score >= 100 ? 6 : 8), { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...C.textLight);
+    T('/100', cx, cy + 22, { align: 'center' });
+
+    // Sol metin bloğu
+    const bx = ML + 18;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.setTextColor(...riskColor);
+    T(riskVerdict, bx, y + 30);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...C.textMed);
+    T(levelLabel, bx, y + 48);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...C.textMed);
+    const sumShort = asciiPdfText(summary).slice(0, 120);
+    const sumLines = doc.splitTextToSize(sumShort, CW - 130);
+    doc.text(sumLines, bx, y + 64);
+
+    y += bannerH + 18;
+
+    // ── E-POSTA BİLGİLERİ ────────────────────────────────────────────────
+    sectionTitle('Incelenen E-Posta Bilgileri');
+
+    const metaItems = [
+        ['Gonderen', fromDisplay],
+        ['Alici',    asciiPdfText(toAddr)],
+        ['Konu',     subject],
+        ['Tarih',    mailDate],
+        ['Baglantilar', `${totalLinks} adet`],
+        ['Ekler',    attachments.length
+            ? attachments.map(a => asciiPdfText(a.filename || 'dosya')).join(', ')
+            : 'Ek yok'],
+    ];
+
+    const labelW = 76;
+    metaItems.forEach(([lbl, val], i) => {
+        const valLines = doc.splitTextToSize(String(val || '-'), CW - labelW - 12);
+        const rh = Math.max(20, valLines.length * 12 + 9);
+        ensureSpace(rh + 1);
+
+        if (i % 2 === 0) {
+            doc.setFillColor(...C.bgStripe);
+            doc.rect(ML, y, CW, rh, 'F');
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(...C.textLight);
+        T(lbl + ':', ML + 8, y + 13);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(...C.textDark);
+        doc.text(valLines, ML + labelW, y + 13);
+
+        y += rh;
+    });
+    y += 10;
+
+    // ── YÖNETİCİ ÖZETİ ───────────────────────────────────────────────────
+    sectionTitle('Yonetici Ozeti');
+
+    const sumFull  = asciiPdfText(summary);
+    const sumFLines = doc.splitTextToSize(sumFull, CW - 24);
+    const sumFitH  = Math.max(46, sumFLines.length * 13 + 22);
+    ensureSpace(sumFitH + 8);
+
+    doc.setFillColor(...C.bgStripe);
+    doc.setDrawColor(...C.border);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(ML, y, CW, sumFitH, 4, 4, 'FD');
+    // Sol violet çubuğu
+    doc.setFillColor(...C.violet);
+    doc.rect(ML, y, 4, sumFitH, 'F');
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...C.textDark);
+    doc.text(sumFLines, ML + 16, y + 17);
+    y += sumFitH + 14;
+
+    // ── AKSİYON KUTUSU (yalnızca riskli mailler) ─────────────────────────
+    if (risky) {
+        const actions = [
+            '1. Bu maile tiklamayin, linkleri ziyaret etmeyin, eklerini acmayin.',
+            '2. Kisisel bilgilerinizi, sifrenizi veya banka bilgilerinizi asla yazmayin.',
+            '3. Bu raporu BT/IT birimine iletin ve maili silmeden bekleyin.',
+        ];
+        const actH = 22 + actions.length * 16 + 12;
+        ensureSpace(actH + 10);
+
+        doc.setFillColor(...C.highBg);
+        doc.setDrawColor(...C.high);
+        doc.setLineWidth(1);
+        doc.roundedRect(ML, y, CW, actH, 5, 5, 'FD');
+        doc.setFillColor(...C.high);
+        doc.rect(ML, y, 5, actH, 'F');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(...C.high);
+        T('YAPMANIZ GEREKENLER', ML + 14, y + 16);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...C.textDark);
+        actions.forEach((line, i) => {
+            T(line, ML + 14, y + 30 + i * 16);
+        });
+        y += actH + 14;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // BÖLÜM: KİMLİK DOĞRULAMA
+    // ════════════════════════════════════════════════════════════════════════
+    sectionTitle('Kimlik Dogrulama ve Gonderen Itibari (SPF / DKIM / DMARC)');
+
+    if (!authRows.length) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(...C.textLight);
+        T('Kimlik dogrulama verisi bulunamadi.', ML, y); y += 18;
+    } else {
+        const aCols = [110, 110, CW - 220];
+        const aRowH = 20;
+
+        ensureSpace(aRowH + 8);
+        doc.setFillColor(...C.navy);
+        doc.rect(ML, y, CW, aRowH, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.white);
+        T('KONTROL', ML + 8, y + 13);
+        T('DURUM', ML + aCols[0] + 8, y + 13);
+        T('ACIKLAMA', ML + aCols[0] + aCols[1] + 8, y + 13);
+        y += aRowH;
+
+        authRows.forEach((row, i) => {
+            const sColor = row.severity === 'critical' ? C.high
+                : row.severity === 'warning' ? C.med : C.safe;
+            const noteLines = doc.splitTextToSize(asciiPdfText(row.note || '-'), aCols[2] - 16);
+            const rh = Math.max(aRowH, noteLines.length * 11 + 10);
+            ensureSpace(rh + 2);
+
+            if (i % 2 === 0) {
+                doc.setFillColor(...C.bgStripe);
+                doc.rect(ML, y, CW, rh, 'F');
+            }
+            hRule(y, C.border);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(...C.textDark);
+            T(asciiPdfText(row.label || ''), ML + 8, y + 13);
+
+            // Renkli durum badge
+            const statusTxt = asciiPdfText(row.value || '-');
+            const bW = Math.max(30, doc.getTextWidth(statusTxt) + 12);
+            doc.setFillColor(...sColor);
+            doc.roundedRect(ML + aCols[0] + 6, y + 5, bW, 12, 3, 3, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7);
+            doc.setTextColor(...C.white);
+            T(statusTxt, ML + aCols[0] + 12, y + 13);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(...C.textMed);
+            doc.text(noteLines, ML + aCols[0] + aCols[1] + 8, y + 12);
+
+            y += rh;
+        });
+        hRule(y, C.borderDark);
+        y += 10;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // BÖLÜM: TEHDİT TİPLERİ
+    // ════════════════════════════════════════════════════════════════════════
+    if (threatTags.length) {
+        sectionTitle('Tespit Edilen Tehdit Tipleri');
+        ensureSpace(30);
+
+        let tx = ML;
+        const tagH = 17, tagGapX = 7, tagRowH = tagH + 8;
+
+        threatTags.forEach((tag) => {
+            const lbl = asciiPdfText(tag.label || '');
+            const tw = Math.max(40, doc.getTextWidth(lbl) + 18);
+            if (tx + tw > PW - MR - 8) { tx = ML; y += tagRowH; ensureSpace(tagRowH); }
+
+            const tc = tag.severity === 'critical' ? C.high
+                : tag.severity === 'warning' ? C.med : C.violet;
+            const tb = tag.severity === 'critical' ? C.highBg
+                : tag.severity === 'warning' ? C.medBg : C.violetLight;
+            const tBdr = tag.severity === 'critical' ? C.highBorder
+                : tag.severity === 'warning' ? C.medBorder : C.violetMid;
+
+            doc.setFillColor(...tb);
+            doc.setDrawColor(...tBdr);
+            doc.setLineWidth(0.6);
+            doc.roundedRect(tx, y, tw, tagH, 4, 4, 'FD');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.5);
+            doc.setTextColor(...tc);
+            T(lbl, tx + 9, y + 11);
+            tx += tw + tagGapX;
+        });
+        y += tagRowH + 10;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // BÖLÜM: DETAYLI BULGULAR
+    // ════════════════════════════════════════════════════════════════════════
+    sectionTitle('Detayli Bulgular');
+
+    if (!findings.length) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(...C.textLight);
+        T('Onemli bulgu tespit edilmedi.', ML, y); y += 18;
+    } else {
+        const fCols = [70, 88, CW - 158];
+        const fRowH = 20;
+
+        ensureSpace(fRowH + 8);
+        doc.setFillColor(...C.navy);
+        doc.rect(ML, y, CW, fRowH, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.white);
+        T('SEVIYE', ML + 8, y + 13);
+        T('KATEGORI', ML + fCols[0] + 8, y + 13);
+        T('MESAJ', ML + fCols[0] + fCols[1] + 8, y + 13);
+        y += fRowH;
+
+        findings.slice(0, 25).forEach((f, i) => {
+            const sev = (f.severity || 'info').toLowerCase();
+            const sColor = sev === 'critical' ? C.high
+                : sev === 'warning' ? C.med
+                : sev === 'info'    ? C.info : C.textLight;
+            const msgLines = doc.splitTextToSize(asciiPdfText(f.message || ''), fCols[2] - 12);
+            const rh = Math.max(fRowH, msgLines.length * 11 + 10);
+            ensureSpace(rh + 2);
+
+            if (i % 2 === 0) {
+                doc.setFillColor(...C.bgStripe);
+                doc.rect(ML, y, CW, rh, 'F');
+            }
+            hRule(y, C.border);
+
+            // Seviye badge
+            const sevLbl = sev.toUpperCase().slice(0, 8);
+            const sbW = Math.max(28, doc.getTextWidth(sevLbl) + 10);
+            doc.setFillColor(...sColor);
+            doc.roundedRect(ML + 6, y + 5, sbW, 11, 2, 2, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(6.5);
+            doc.setTextColor(...C.white);
+            T(sevLbl, ML + 11, y + 13);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(...C.textMed);
+            T(asciiPdfText(f.category || 'genel'), ML + fCols[0] + 8, y + 13);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(...C.textDark);
+            doc.text(msgLines, ML + fCols[0] + fCols[1] + 8, y + 12);
+
+            y += rh;
+        });
+        hRule(y, C.borderDark);
+        if (findings.length > 25) {
+            y += 8;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(...C.textLight);
+            T(`... ve ${findings.length - 25} bulgu daha`, ML, y);
+        }
+        y += 12;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // BÖLÜM: EK DOSYALAR
+    // ════════════════════════════════════════════════════════════════════════
+    sectionTitle('Ek Dosya Tarama Sonuclari');
+
+    if (!attachments.length) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(...C.textLight);
+        T('E-postada ek dosya bulunmuyor.', ML, y); y += 18;
+    } else {
+        const attCols = [CW - 210, 90, 120];
+        const attRowH = 22;
+
+        ensureSpace(attRowH + 8);
+        doc.setFillColor(...C.navy);
+        doc.rect(ML, y, CW, attRowH, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C.white);
+        T('DOSYA ADI', ML + 8, y + 15);
+        T('BOYUT', ML + attCols[0] + 8, y + 15);
+        T('SONUC', ML + attCols[0] + attCols[1] + 8, y + 15);
+        y += attRowH;
+
+        attachments.slice(0, 10).forEach((att, i) => {
+            const verdict  = renderAttachmentVerdictText(att, result.vtStatus);
+            const vColor   = att.severity === 'critical' ? C.high
+                : att.severity === 'warning' ? C.med : C.safe;
+            const fnLines  = doc.splitTextToSize(asciiPdfText(att.filename || 'dosya'), attCols[0] - 16);
+            const rh       = Math.max(attRowH, fnLines.length * 11 + 10);
+            ensureSpace(rh + 2);
+
+            if (i % 2 === 0) {
+                doc.setFillColor(...C.bgStripe);
+                doc.rect(ML, y, CW, rh, 'F');
+            }
+            hRule(y, C.border);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(...C.textDark);
+            doc.text(fnLines, ML + 8, y + 14);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(...C.textMed);
+            T(asciiPdfText(formatBytes(att.size)), ML + attCols[0] + 8, y + 14);
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(...vColor);
+            T(asciiPdfText(verdict), ML + attCols[0] + attCols[1] + 8, y + 14);
+
+            y += rh;
+        });
+        hRule(y, C.borderDark);
+        y += 10;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // BÖLÜM: ÖNERİLER
+    // ════════════════════════════════════════════════════════════════════════
+    if (recommends.length) {
+        sectionTitle('Guvenlik Onerileri');
+
+        recommends.forEach((item, i) => {
+            const lines = doc.splitTextToSize(asciiPdfText(item), CW - 28);
+            const rh    = Math.max(18, lines.length * 12 + 8);
+            ensureSpace(rh + 4);
+
+            // Numara badge
+            doc.setFillColor(...C.violetLight);
+            doc.roundedRect(ML, y + 1, 15, 15, 3, 3, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.5);
+            doc.setTextColor(...C.violet);
+            T(String(i + 1), ML + 7.5, y + 12, { align: 'center' });
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(...C.textDark);
+            doc.text(lines, ML + 22, y + 12);
+
+            y += rh + 4;
+        });
+        y += 4;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // FOOTER — tüm sayfalara
+    // ════════════════════════════════════════════════════════════════════════
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        _drawFooter(p, totalPages);
+    }
+
+    doc.save(`mailtrustai-${result.level || 'scan'}-${reportId.slice(0, 8)}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -7743,70 +8084,9 @@ function copyFingerprintJson() {
     }
 }
 
-// ============================================================
-// LİSANSI ANLIK YENİLE — bayi uzatma yaptıysa manuel anlık tetik
-// ============================================================
-/**
- * Customer'ın license-server'a senkron validate çağrısı atmasını tetikler.
- * Normalde validate 6 saatte bir, heartbeat (lisans piggyback) 5 dakikada bir
- * otomatik çalışır. Bu buton kullanıcıya ANLIK (1 saniye) yenileme imkanı verir.
- */
-async function revalidateLicenseNow() {
-    const btn = document.getElementById('btnRevalidateLicense');
-    const status = document.getElementById('revalidateStatus');
-    const original = btn ? btn.innerHTML : '';
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '⏳ <span>Yenileniyor...</span>';
-    }
-    if (status) status.innerHTML = '<span style="opacity:0.65">License-server\'a soruluyor...</span>';
-
-    try {
-        const res = await fetch('/api/customer/license/validate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
-        });
-        let data = {};
-        try { data = await res.json(); } catch (_) {}
-
-        if (!res.ok || !data.ok) {
-            const msg = data.error || `HTTP ${res.status}`;
-            if (status) status.innerHTML = `<span style="color:#ef4444">✗ Yenileme başarısız: ${esc(msg)}</span>`;
-            showToast(`Lisans yenileme başarısız: ${msg}`, 'error');
-            return;
-        }
-
-        // Snapshot'tan yeni expiresAt'ı al, kullanıcıya göster
-        const snap = data.snapshot || {};
-        const exp = snap.expiresAt
-            ? new Date(Number(snap.expiresAt)).toLocaleString(navigator.language || 'tr-TR')
-            : '—';
-        const lvl = snap.licenseStatus || 'aktif';
-        const extra = (typeof snap.limits?.monthlyScanCount === 'number')
-            ? ` · Aylık limit: ${snap.limits.monthlyScanCount.toLocaleString()}`
-            : '';
-        if (status) {
-            status.innerHTML =
-                `<span style="color:#22c55e">✓ Lisans güncellendi</span><br>` +
-                `<span style="opacity:0.7">Durum: <strong>${esc(lvl)}</strong> · Bitiş: <strong>${esc(exp)}</strong>${esc(extra)}</span>`;
-        }
-        showToast('Lisans bilgisi güncellendi ✓', 'success');
-
-        // Lisans bilgisini gösteren diğer kart/sayfaları varsa yenile
-        if (typeof loadLicenseStatus === 'function') {
-            try { await loadLicenseStatus(); } catch (_) {}
-        }
-    } catch (e) {
-        if (status) status.innerHTML = `<span style="color:#ef4444">✗ Ağ hatası: ${esc(e.message)}</span>`;
-        showToast(`Ağ hatası: ${e.message}`, 'error');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = original;
-        }
-    }
-}
+// NOT: revalidateLicenseNow() fonksiyonu UI kartı kaldırıldığı için silindi.
+// Lisans 5dk heartbeat-piggyback + 6 saat validate döngüsü ile otomatik
+// senkronize olur — manuel buton gereksizdi.
 
 // ============================================================
 // ONBOARDING CHECKLIST — yeni kurulumda 5 adımlık rehber

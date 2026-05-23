@@ -81,7 +81,16 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
-*(şu an aktif görev yok)*
+### Görev: "Lisansı Şimdi Yenile" kartını kaldır + PDF raporu en baştan tasarla
+- [ ] UI'da `licenseRevalidateCard` kartını HTML + JS'den tamamen kaldır
+- [ ] `_renderPdfReport`'ı baştan yaz — modern, profesyonel, açık tema, hiyerarşik
+  - [ ] Kapak/hero — büyük emoji + risk verdict
+  - [ ] E-posta meta kartı (clean, tablo)
+  - [ ] KPI metric'leri (risk / skor / sonuç)
+  - [ ] Aksiyon kutusu (risky)
+  - [ ] Detaylı bulgular tablosu
+  - [ ] Auth/SPF/DKIM/DMARC rozetleri
+  - [ ] Footer (her sayfada, brand + report id + sayfa numarası)
 
 ### Yapıldı — Allowlist/Blocklist butonu açılmıyor (.hidden !important çakışması)
 **Semptom**: "🛡️ Allowlist / Blocklist Yönet" butonuna tıklayınca panel açılmıyor (görünmüyor).
