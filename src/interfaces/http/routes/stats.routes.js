@@ -343,7 +343,7 @@ router.get('/scan/:scanId', requireCustomerUser, (req, res) => {
 // ─── Tarama geçmişi arama — admin tümünü, user sadece kendininkini görür ──────
 router.get('/scan-history/search', requireCustomerUser, (req, res) => {
     const u = loadCustomerUser(req);
-    const { from_email, subject, start, end, level, page, limit } = req.query;
+    const { from_email, subject, start, end, level, source, page, limit } = req.query;
 
     // 'user' rolü: yalnız kendi imap_email'ine ait taramaları görebilir
     const imapEmailFilter = (u && u.role === 'user') ? (u.imapEmail || '__none__') : null;
@@ -355,6 +355,7 @@ router.get('/scan-history/search', requireCustomerUser, (req, res) => {
             start:     start      || '',
             end:       end        || '',
             level:     level      || '',
+            source:    source     || '',
             page:      parseInt(page,  10) || 1,
             limit:     parseInt(limit, 10) || 50,
             imapEmailFilter

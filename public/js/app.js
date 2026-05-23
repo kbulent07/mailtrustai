@@ -5240,6 +5240,8 @@ function _scanListApplyRoleUI() {
             // user rolü: Hesap sütununu gizle
             const col = document.getElementById('slColAccount');
             if (col) col.style.display = 'none';
+            const gcol = document.getElementById('slGridColAccount');
+            if (gcol) gcol.style.display = 'none';
         }
     } catch {}
 }
@@ -5270,12 +5272,24 @@ async function scanListLoad(page = 1) {
     if (info)  info.textContent  = '';
     if (pager) pager.innerHTML   = '';
 
+    // Grid (sütun) filtre satırı ile üst çubuğu senkronla: aktif filtreler
+    // her iki yerde de görünsün (goToScanListStat sl* set ettiğinde grid yansısın).
+    const _sync = (srcId, dstId) => {
+        const s = document.getElementById(srcId), d = document.getElementById(dstId);
+        if (s && d && d.value !== s.value) d.value = s.value;
+    };
+    _sync('slFromEmail', 'gfFromEmail');
+    _sync('slSubject',   'gfSubject');
+    _sync('slLevel',     'gfLevel');
+    _sync('slSource',    'gfSource');
+
     const params = new URLSearchParams({
         from_email: (document.getElementById('slFromEmail')?.value  || '').trim(),
         subject:    (document.getElementById('slSubject')?.value     || '').trim(),
         start:      document.getElementById('slDateStart')?.value    || '',
         end:        document.getElementById('slDateEnd')?.value      || '',
         level:      document.getElementById('slLevel')?.value        || '',
+        source:     document.getElementById('slSource')?.value       || '',
         page:       String(page),
         limit:      '50'
     });
@@ -5457,9 +5471,10 @@ function scanListGoBack() {
 }
 
 function scanListReset() {
-    const ids = ['slFromEmail','slSubject','slDateStart','slDateEnd'];
+    // Üst çubuk + grid satırındaki tüm filtreleri temizle
+    const ids = ['slFromEmail','slSubject','slDateStart','slDateEnd','slLevel','slSource',
+                 'gfFromEmail','gfSubject','gfLevel','gfSource'];
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-    const lv = document.getElementById('slLevel'); if (lv) lv.value = '';
     scanListLoad(1);
 }
 
@@ -5470,6 +5485,7 @@ async function scanListExportCsv() {
         start:      document.getElementById('slDateStart')?.value    || '',
         end:        document.getElementById('slDateEnd')?.value      || '',
         level:      document.getElementById('slLevel')?.value        || '',
+        source:     document.getElementById('slSource')?.value       || '',
         page:       '1',
         limit:      '1000'
     });

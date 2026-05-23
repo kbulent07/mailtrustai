@@ -495,7 +495,7 @@ function updateScanById(scanId, patch) {
  *   imapEmailFilter – null = tümü, string = sadece bu imap_email (user rolü)
  */
 function searchScanHistory({ fromEmail = '', subject = '', start = '', end = '',
-                              level = '', page = 1, limit = 50, imapEmailFilter = null } = {}) {
+                              level = '', source = '', page = 1, limit = 50, imapEmailFilter = null } = {}) {
     const conditions = [];
     const params     = [];
 
@@ -518,6 +518,10 @@ function searchScanHistory({ fromEmail = '', subject = '', start = '', end = '',
     if (level && ['high','medium','low','safe'].includes(level)) {
         conditions.push('level = ?');
         params.push(level);
+    }
+    if (source && ['scan-mailbox','imap-manual','upload','paste'].includes(source)) {
+        conditions.push('scan_source = ?');
+        params.push(source);
     }
     if (imapEmailFilter) {
         conditions.push('(imap_email = ? OR user_key LIKE ?)');

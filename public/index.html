@@ -850,6 +850,17 @@
                         <option value="safe">🟢 Güvenli</option>
                     </select>
                 </div>
+                <div>
+                    <label style="display:block;font-size:11px;color:var(--text-secondary);margin-bottom:4px">Kaynak</label>
+                    <select id="slSource" onchange="scanListLoad(1)"
+                        style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
+                        <option value="">Tümü</option>
+                        <option value="scan-mailbox">📬 Otomatik</option>
+                        <option value="imap-manual">📡 IMAP</option>
+                        <option value="upload">📁 Dosya</option>
+                        <option value="paste">📋 Yapıştır</option>
+                    </select>
+                </div>
                 <div style="display:flex;align-items:flex-end;gap:6px">
                     <button class="btn btn-primary btn-sm" style="flex:1;padding:8px" data-fn="scanListLoad" data-arg="1">🔍 Ara</button>
                     <button class="btn btn-ghost btn-sm" style="padding:8px 10px" data-fn="scanListReset" title="Filtreleri temizle">✕</button>
@@ -874,6 +885,47 @@
                             <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--text-secondary)" id="slColAccount">Hesap</th>
                             <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--text-secondary)">Kaynak</th>
                             <th style="padding:10px 4px;text-align:center;font-weight:600;color:var(--text-secondary)"></th>
+                        </tr>
+                        <!-- Grid (sütun) filtre satırı — değerler üst filtre çubuğuyla senkron -->
+                        <tr id="scanListGridFilter" style="background:var(--bg-primary);border-bottom:1px solid var(--border)">
+                            <td style="padding:5px 8px"></td>
+                            <td style="padding:5px 8px">
+                                <input id="gfFromEmail" type="text" placeholder="Gönderen…" autocomplete="off"
+                                    style="width:100%;box-sizing:border-box;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text-primary);font-size:12px"
+                                    oninput="var t=document.getElementById('slFromEmail');if(t)t.value=this.value"
+                                    onkeydown="if(event.key==='Enter')scanListLoad(1)">
+                            </td>
+                            <td style="padding:5px 8px">
+                                <input id="gfSubject" type="text" placeholder="Konu…" autocomplete="off"
+                                    style="width:100%;box-sizing:border-box;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text-primary);font-size:12px"
+                                    oninput="var t=document.getElementById('slSubject');if(t)t.value=this.value"
+                                    onkeydown="if(event.key==='Enter')scanListLoad(1)">
+                            </td>
+                            <td style="padding:5px 8px;text-align:center">
+                                <select id="gfLevel"
+                                    style="width:100%;box-sizing:border-box;padding:5px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text-primary);font-size:12px"
+                                    onchange="var t=document.getElementById('slLevel');if(t)t.value=this.value;scanListLoad(1)">
+                                    <option value="">Tümü</option>
+                                    <option value="high">🔴 Yüksek</option>
+                                    <option value="medium">🟠 Orta</option>
+                                    <option value="low">🟡 Düşük</option>
+                                    <option value="safe">🟢 Güvenli</option>
+                                </select>
+                            </td>
+                            <td style="padding:5px 8px"></td>
+                            <td style="padding:5px 8px" id="slGridColAccount"></td>
+                            <td style="padding:5px 8px">
+                                <select id="gfSource"
+                                    style="width:100%;box-sizing:border-box;padding:5px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text-primary);font-size:12px"
+                                    onchange="var t=document.getElementById('slSource');if(t)t.value=this.value;scanListLoad(1)">
+                                    <option value="">Tümü</option>
+                                    <option value="scan-mailbox">📬 Otomatik</option>
+                                    <option value="imap-manual">📡 IMAP</option>
+                                    <option value="upload">📁 Dosya</option>
+                                    <option value="paste">📋 Yapıştır</option>
+                                </select>
+                            </td>
+                            <td style="padding:5px 4px"></td>
                         </tr>
                     </thead>
                     <tbody id="scanListBody">
