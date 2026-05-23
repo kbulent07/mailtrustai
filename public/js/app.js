@@ -5177,6 +5177,19 @@ async function _renderPdfReport(currentResult) {
 
 const _slState = { page: 1, total: 0, totalPages: 1, loading: false, initialized: false };
 
+// Dashboard stat kartlarından Tarama Geçmişi'ne yönlendirme + filtre uygulama.
+// level: '' = tümü, 'high', 'medium', 'low', 'safe'
+function goToScanListFiltered(level) {
+    // Diğer filtreleri sıfırla (temiz başlangıç)
+    const clr = (id, val = '') => { const el = document.getElementById(id); if (el) el.value = val; };
+    clr('slFromEmail');
+    clr('slSubject');
+    clr('slDateStart');
+    clr('slDateEnd');
+    clr('slLevel', level || '');
+    showPage('scan-list');
+}
+
 function scanListInit() {
     if (!_slState.initialized) {
         _slState.initialized = true;

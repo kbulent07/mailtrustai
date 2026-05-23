@@ -551,28 +551,28 @@
 
         <!-- İstatistik kartları -->
         <div class="home-stat-grid" id="homeStatGrid">
-            <div class="home-stat-card">
+            <div class="home-stat-card" onclick="goToScanListFiltered('')" title="Tüm taramaları göster">
                 <div class="home-stat-icon" style="background:rgba(99,102,241,0.15);color:#818cf8">📊</div>
                 <div class="home-stat-body">
                     <div class="home-stat-val" id="hsTotalScans">—</div>
                     <div class="home-stat-lbl">Toplam Tarama</div>
                 </div>
             </div>
-            <div class="home-stat-card">
+            <div class="home-stat-card" onclick="goToScanListFiltered('high')" title="Yüksek riskli mailleri göster">
                 <div class="home-stat-icon" style="background:var(--red-bg);color:var(--red)">🔴</div>
                 <div class="home-stat-body">
                     <div class="home-stat-val" id="hsHighRisk" style="color:var(--red)">—</div>
                     <div class="home-stat-lbl">Yüksek Risk</div>
                 </div>
             </div>
-            <div class="home-stat-card">
+            <div class="home-stat-card" onclick="goToScanListFiltered('medium')" title="Orta riskli mailleri göster">
                 <div class="home-stat-icon" style="background:var(--orange-bg);color:var(--orange)">🟠</div>
                 <div class="home-stat-body">
                     <div class="home-stat-val" id="hsMediumRisk" style="color:var(--orange)">—</div>
                     <div class="home-stat-lbl">Orta Risk</div>
                 </div>
             </div>
-            <div class="home-stat-card">
+            <div class="home-stat-card" onclick="goToScanListFiltered('safe')" title="Güvenli mailleri göster">
                 <div class="home-stat-icon" style="background:var(--green-bg);color:var(--green)">🟢</div>
                 <div class="home-stat-body">
                     <div class="home-stat-val" id="hsSafe" style="color:var(--green)">—</div>
