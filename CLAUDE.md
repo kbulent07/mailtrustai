@@ -81,12 +81,18 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
-### Görev: Allowlist / Blocklist butonu çalışmıyor — kontrol + düzelt
-- [ ] Buton ne tetikliyor (openListsPanel veya benzeri)
-- [ ] /api/lists endpoint cevap veriyor mu (HARD-GATE kontrolü)
-- [ ] UI'da event delegation veya handler bağlı mı
-- [ ] Toast ile feedback var mı
-- [ ] Fix + test
+*(şu an aktif görev yok)*
+
+### Yapıldı — Allowlist/Blocklist butonu açılmıyor (.hidden !important çakışması)
+**Semptom**: "🛡️ Allowlist / Blocklist Yönet" butonuna tıklayınca panel açılmıyor (görünmüyor).
+
+**Kök neden**: `public/css/style.css:1079` `.hidden { display: none !important; }` ve `<div id="listsPanel" class="hidden">`. `openListsPanel()` `panel.style.display = ''` yapıyordu — inline style temizleniyor ama CSS class `!important` ile baskı uyguluyordu.
+
+**Çözüm**:
+- `openListsPanel`: `panel.classList.remove('hidden')` + inline style temizle
+- `closeListsPanel`: `panel.classList.add('hidden')` (CSS !important geri etkin)
+- `index.html` inline `onclick="...style.display='none'"` → `data-fn="closeListsPanel"` event delegation
+- `alert` → `showToast` kullanıcı feedback
 
 ### Yapıldı — Anlık rapor maili gelmiyor (KRİTİK, scanMailbox resume eksik)
 **Semptom**: Kullanıcı UI'da "Anlık güvenlik raporu" + "Tüm mailler" işaretli. Yeni mail geliyor, WS-Monitor analiz ediyor (görünür) ama **SMTP rapor mail'i gönderilmiyordu** — uzun süredir.
