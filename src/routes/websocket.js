@@ -3,11 +3,9 @@
 // ============================================================
 const { ImapMonitor } = require('../imap/monitor');
 const { listEmails, fetchAndParseEmail } = require('../imap/scanner');
-const { analyzeHeaders } = require('../analysis/headerAnalyzer');
-const { analyzeContent } = require('../analysis/contentAnalyzer');
-const { analyzeLinks } = require('../analysis/linkAnalyzer');
-const { analyzeAttachments } = require('../analysis/attachmentAnalyzer');
-const { calculateScore, resolveLevel, levelMeta } = require('../analysis/scorer');
+// B4 fix: WS monitörü de ortak analiz motorunu kullanır — in-flight cache ile
+// paralel çalışan scanMailboxMonitor ile AI/VT quota tekrarı önlenir.
+const { analyzeParsedEmailData } = require('../application/analyze/AnalyzeMessageService');
 const { validateLicenseKey, UNLICENSED_FEATURES } = require('../license/license');
 const { getCachedStatus } = require('../license/remoteValidator');
 const { loadLicenseFile } = require('../license/licenseFile');
@@ -17,15 +15,10 @@ try { _wsLicenseClient = require('@mailtrustai/license-client'); } catch (_) {}
 const { loadCredentials } = require('../imap/connection');
 const { recordScan } = require('../storage/scanHistory');
 const { removeAutoMonitor, listAutoMonitors } = require('../storage/autoMonitorState');
-const { loadSettings } = require('../storage/settingsStore');
-const { analyzeWithClaude } = require('../integrations/claude');
-const { analyzeWithOpenAI } = require('../integrations/openai');
-const { scanAttachments: vtScan } = require('../integrations/virustotal');
 const { maybeMoveMessageToQuarantine, maybeMoveScannedMailToCollection } = require('../imap/quarantineService');
-const { maybeDecorateSubject, isAlreadyDecorated, PREFIX_HIGH, PREFIX_MEDIUM } = require('../imap/subjectDecoratorService');
+const { maybeDecorateSubject, isAlreadyDecorated } = require('../imap/subjectDecoratorService');
 const { REPORT_HEADER_NAME, verifyReportId } = require('../smtp/sender');
 const { getImapSenderSkipInfo } = require('../imap/scanExclusions');
-const crypto = require('crypto');
 
 // NOT: Yeni mail geldiğinde mail sahibine otomatik HTML rapor gönderimi
 // 'realtime' purpose'lu scanMailbox kayıtları üzerinden yapılır (Enterprise).
@@ -105,151 +98,11 @@ function resolveLicense(licenseKey) {
     return result;
 }
 
-async function enrichWithAI(result, parsedEmail) {
-    const settings = loadSettings();
-    const claudeKey = settings.claudeApiKey || '';
-    const openaiKey = settings.openaiApiKey || '';
-    const vtKey = settings.vtApiKey || '';
-
-    // ─── VirusTotal — atomik güncelleme (B11 fix) ──────────────────────────
-    // ÖNCE: vtEntries gelir → result.virusTotal=vtEntries → findings.push (forEach)
-    //       → recalcMeta. Arada hata olursa result.virusTotal SET edilmiş ama
-    //       findings/score eksik kalır → UI yanlış gösterir.
-    // YENİ: tüm hesaplamalar staged objelerde yapılır, sonra atomik commit.
-    if (vtKey && result.attachmentDetails?.length > 0) {
-        const vtCandidates = result.attachmentDetails.filter((item) => item.vtEligible !== false);
-        if (vtCandidates.length > 0) {
-            try {
-                const vtWithContent = vtCandidates.map((item) => {
-                    const srcAtt = (parsedEmail.attachments || []).find((att) => {
-                        if (item.hash && att.content) {
-                            const hash = crypto.createHash('sha256').update(att.content).digest('hex');
-                            if (hash === item.hash) return true;
-                        }
-                        return att.filename === item.filename;
-                    });
-                    return { ...item, content: srcAtt?.content, contentType: srcAtt?.contentType, filename: srcAtt?.filename || item.filename };
-                });
-                const vtEntries = await vtScan(vtWithContent, vtKey);
-
-                // Staged hesaplama — result'a HENÜZ yazma
-                const newFindings = [];
-                let scoreDelta = 0;
-                for (const entry of (vtEntries || [])) {
-                    const malicious = entry.stats?.malicious || 0;
-                    const suspicious = entry.stats?.suspicious || 0;
-                    if (malicious > 0) {
-                        scoreDelta += 20;
-                        newFindings.push({ severity: 'critical', category: 'virusTotal',
-                            message: `VirusTotal: ${entry.filename} zararlı (${malicious}/${entry.stats?.total || 0} motor)` });
-                    } else if (suspicious > 0) {
-                        scoreDelta += 10;
-                        newFindings.push({ severity: 'warning', category: 'virusTotal',
-                            message: `VirusTotal: ${entry.filename} şüpheli (${suspicious} motor)` });
-                    }
-                }
-
-                // ATOMIK COMMIT — buraya kadar hata atılmadıysa hepsini birden uygula
-                result.virusTotal = vtEntries;
-                if (newFindings.length) {
-                    result.findings.push(...newFindings);
-                    result.score = Math.min(100, result.score + scoreDelta);
-                    recalcMeta(result);  // findings özet sayaçları + level
-                }
-            } catch (e) {
-                console.error('[WS-Monitor] VirusTotal error:', e.message);
-                // result.virusTotal hâlâ undefined — UI "VT yapılmadı" olarak gösterir (doğru)
-            }
-        }
-    }
-
-    // ─── Claude AI — staged, sonra commit ──────────────────────────────────
-    if (claudeKey) {
-        try {
-            const claudeResult = await analyzeWithClaude(
-                claudeKey,
-                parsedEmail.text || parsedEmail.textAsHtml || '',
-                parsedEmail.subject
-            );
-            // Sadece başarılı + findings dolu ise commit
-            if (claudeResult?.success && claudeResult.findings) {
-                result.claudeAnalysis = claudeResult.findings;
-            }
-        } catch (e) {
-            console.error('[WS-Monitor] Claude error:', e.message);
-        }
-    }
-
-    // ─── OpenAI — staged, sonra atomik commit (insights + raw analysis) ────
-    if (openaiKey) {
-        try {
-            const { loadSettings: ls } = require('../storage/settingsStore');
-            const openaiModel = ls().openaiModel || '';
-            const linkResult = { urls: (result.findings || []).filter((f) => f.category === 'link').map((f) => f.message) };
-            const openaiResult = await analyzeWithOpenAI(
-                openaiKey,
-                { parsedData: parsedEmail, linkUrls: linkResult.urls, attachmentDetails: result.attachmentDetails || [] },
-                openaiModel
-            );
-            if (openaiResult?.success && openaiResult.analysis) {
-                // Önce insights uygula (findings/score'u etkileyebilir) — fail ederse rollback için clone
-                const stagedFindings = [...result.findings];
-                const stagedScore    = result.score;
-                try {
-                    result.openaiAnalysis = openaiResult.analysis;
-                    applyOpenAIInsights(result, openaiResult.analysis);
-                } catch (insightErr) {
-                    // Insights uygularken hata → rollback (partial state önlenir)
-                    result.findings = stagedFindings;
-                    result.score    = stagedScore;
-                    delete result.openaiAnalysis;
-                    console.error('[WS-Monitor] applyOpenAIInsights hatası — rollback:', insightErr.message);
-                }
-            }
-        } catch (e) {
-            console.error('[WS-Monitor] OpenAI error:', e.message);
-        }
-    }
-
-    return result;
-}
-
-function applyOpenAIInsights(result, analysis) {
-    if (!analysis) return;
-    const baseByThreat = { safe: 0, low: 4, medium: 10, high: 18, critical: 26 };
-    const base = baseByThreat[analysis.threatLevel] || 0;
-    const confMul = Math.max(0.45, Math.min(1, (analysis.confidence || 0) / 100));
-    const intentMul = Math.max(0.5, Math.min(1.15, (analysis.maliciousIntentScore || 0) / 100));
-    const boost = Math.round(base * confMul * intentMul);
-    if (boost > 0) result.score = Math.min(100, result.score + boost);
-
-    const severity = (t) => (t === 'critical' || t === 'high') ? 'critical' : (t === 'medium' || t === 'low') ? 'warning' : 'safe';
-    // "AI verdict:" patternini koru — scorer.js forcedLevelFromFindings bunu okur
-    result.findings.unshift({
-        severity: severity(analysis.threatLevel),
-        category: 'ai',
-        message: `AI verdict: ${analysis.category} / ${analysis.threatLevel} (${analysis.confidence || 0}% confidence)`
-    });
-    (analysis.redFlagsTR || []).slice(0, 3).forEach((flag) => {
-        result.findings.push({ severity: severity(analysis.threatLevel), category: 'ai', message: `AI uyarı: ${flag}` });
-    });
-    recalcMeta(result);
-}
-
-function recalcMeta(result) {
-    result.level = resolveLevel(result.score, result.findings || []);
-    const meta = levelMeta(result.level);
-    result.color = meta.color;
-    result.labelTR = meta.labelTR;
-    result.labelEN = meta.labelEN;
-    result.summary = {
-        critical: (result.findings || []).filter((f) => f.severity === 'critical').length,
-        warning: (result.findings || []).filter((f) => f.severity === 'warning').length,
-        info: (result.findings || []).filter((f) => f.severity === 'info').length,
-        safe: (result.findings || []).filter((f) => f.severity === 'safe').length,
-        total: (result.findings || []).length
-    };
-}
+// enrichWithAI / applyOpenAIInsights / recalcMeta kaldırıldı (B4 fix):
+// WS monitörü artık analyzeParsedEmailData (AnalyzeMessageService) kullanıyor.
+// Ortak motor, in-flight cache ile paralel ScanMailboxMonitor ile API paylaşımı
+// sağlar; ayrıca OTX, threatIntel, allowlist/blocklist, triage gibi zengin
+// analizleri de tek seferden çalıştırır.
 
 /**
  * Başlatma başarısız olan WebSocket monitörlerini üstel geri çekilme ile yeniden dener.
@@ -349,32 +202,37 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
         return;
     }
 
-    const h = analyzeHeaders(email);
-    const c = analyzeContent(email, 'advanced');
-    const l = analyzeLinks(email);
-    const a = license.features?.attachmentScan
-        ? analyzeAttachments(email.attachments || [])
-        : { findings: [], score: 0, results: [] };
-    const result = calculateScore(h, c, l, a);
-    result.emailMeta = {
-        from: email.from,
-        to: email.to,
-        subject: email.subject,
-        date: email.date,
-        attachmentCount: email.attachmentCount || 0
+    // ─── Analiz — ortak motor (B4 fix) ───────────────────────────────────────
+    // analyzeParsedEmailData: VT, Claude, OpenAI, OTX, threatIntel, allowlist,
+    // triage, webhook — tam pipeline. In-flight cache (key: account::messageId)
+    // ile paralel ScanMailboxMonitor da aynı maili işliyorsa API yalnız BİR kez
+    // çağrılır; ikinci çağrı promise'i paylaşarak sonucu bekler.
+    // persist=false / incrementCounts=false çünkü aşağıda kendimiz yapıyoruz.
+    const analysisLicense = {
+        ...license,
+        features: {
+            contentAnalysis: 'advanced',
+            linkLimit:        Infinity,
+            // virusTotal: attachmentScan desteği varsa API key kontrolü motorun içinde
+            virusTotal: !!(license.features?.attachmentScan),
+            ...license.features
+        }
     };
-    result.attachmentDetails = a.results || [];
-    result.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-    result.timestamp = new Date().toISOString();
-    result.account = account.email;
-    if (source === 'catchup') result.catchup = true;   // UI'a göstermek için işaret
-
-    // AI & VT analizi
+    let result;
     try {
-        await enrichWithAI(result, email);
+        result = await analyzeParsedEmailData({
+            parsedData:      email,
+            license:         analysisLicense,
+            scanSource:      source,
+            account:         account.email,
+            persist:         false,
+            incrementCounts: false
+        });
     } catch (e) {
-        console.error(`[WS-Monitor][${source}] enrichWithAI error:`, e.message);
+        console.error(`[WS-Monitor][${source}] analyzeParsedEmailData error:`, e.message);
+        return;
     }
+    if (source === 'catchup') result.catchup = true;   // UI'a göstermek için işaret
 
     // ─── Mail akış özeti: log'larda mailin nereye gittiğini takip etmek için ───
     console.log(
