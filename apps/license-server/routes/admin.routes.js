@@ -1307,6 +1307,71 @@ router.post('/admin/pricing', adminAuth, requirePerm('pricing:write'), asyncH(as
 }));
 
 // ============================================================
+// AI MODEL — Merkezi (Owner) yönetimi.
+// ChatGPT/Claude modelini müşteri ADMİNLERİ DEĞİL, yalnız owner (super-admin /
+// admin) buradan ayarlar. Global default → admin_settings; müşteri override →
+// api_policies.body.aiModels. Efektif model (override ?? global) müşteriye
+// apiPolicy sync ile gider ve müşteride kilitlenir.
+// ============================================================
+const _OPENAI_MODEL_OPTIONS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano'];
+const _CLAUDE_MODEL_OPTIONS = ['claude-haiku-4-5-20251001', 'claude-sonnet-4-5-20250929', 'claude-opus-4-1-20250805'];
+
+function _aiSettingUpsertSql() {
+    return isMaria
+        ? `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=VALUES(updated_at)`
+        : `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value, updated_at=excluded.updated_at`;
+}
+
+// GET /api/admin/ai-models — global default + seçenek listeleri (okuma: her owner rolü)
+router.get('/admin/ai-models', adminAuth, asyncH(async (req, res) => {
+    const o = await get("SELECT setting_value FROM admin_settings WHERE setting_key='ai_model_openai'");
+    const c = await get("SELECT setting_value FROM admin_settings WHERE setting_key='ai_model_claude'");
+    res.json({
+        global:  { openai: o?.setting_value || '', claude: c?.setting_value || '' },
+        options: { openai: _OPENAI_MODEL_OPTIONS, claude: _CLAUDE_MODEL_OPTIONS }
+    });
+}));
+
+// PUT /api/admin/ai-models — global default güncelle (yalnız owner: super-admin/admin)
+router.put('/admin/ai-models', adminAuth, requirePerm('aimodel:write'), asyncH(async (req, res) => {
+    const { openai, claude } = req.body || {};
+    const ts = Date.now();
+    const up = _aiSettingUpsertSql();
+    if (openai !== undefined) await run(up, ['ai_model_openai', String(openai || '').trim().slice(0, 64), ts]);
+    if (claude !== undefined) await run(up, ['ai_model_claude', String(claude || '').trim().slice(0, 64), ts]);
+    await audit(req.actor, 'aimodel.global.update', null, { openai, claude });
+    res.json({ ok: true });
+}));
+
+// GET /api/admin/customers/:id/ai-model — efektif (override??global) + raw override
+router.get('/admin/customers/:id/ai-model', adminAuth, asyncH(async (req, res) => {
+    const ap  = await getApiPolicy(req.params.id);
+    const row = await get('SELECT body_json FROM api_policies WHERE customer_id=?', [req.params.id]);
+    let override = {};
+    try { override = (JSON.parse(row?.body_json || '{}').aiModels) || {}; } catch { override = {}; }
+    res.json({ customerId: req.params.id, effective: ap.body.aiModels, override });
+}));
+
+// PUT /api/admin/customers/:id/ai-model — müşteri override (owner). Boş değer = override kaldır (global'e dön).
+router.put('/admin/customers/:id/ai-model', adminAuth, requirePerm('aimodel:write'), asyncH(async (req, res) => {
+    const { openai, claude } = req.body || {};
+    const row = await get('SELECT version, body_json FROM api_policies WHERE customer_id=?', [req.params.id]);
+    let body = {};
+    try { body = JSON.parse(row?.body_json || '{}'); } catch { body = {}; }
+    const ai = (body.aiModels && typeof body.aiModels === 'object') ? { ...body.aiModels } : {};
+    if (openai !== undefined) { const v = String(openai || '').trim().slice(0, 64); if (v) ai.openai = v; else delete ai.openai; }
+    if (claude !== undefined) { const v = String(claude || '').trim().slice(0, 64); if (v) ai.claude = v; else delete ai.claude; }
+    if (Object.keys(ai).length) body.aiModels = ai; else delete body.aiModels;
+    const nextVersion = (row?.version || 0) + 1;
+    const sql = isMaria
+        ? `INSERT INTO api_policies(customer_id,version,body_json,updated_at) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE version=VALUES(version), body_json=VALUES(body_json), updated_at=VALUES(updated_at)`
+        : `INSERT INTO api_policies(customer_id,version,body_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(customer_id) DO UPDATE SET version=excluded.version, body_json=excluded.body_json, updated_at=excluded.updated_at`;
+    await run(sql, [req.params.id, nextVersion, JSON.stringify(body), Date.now()]);
+    await audit(req.actor, 'aimodel.customer.update', req.params.id, { openai, claude, version: nextVersion });
+    res.json({ ok: true, version: nextVersion });
+}));
+
+// ============================================================
 // MÜŞTERİ YAPILANDIRMA — Policy / Lists / API Policy
 // Tüm endpoint'ler customers:write veya customers:read gerektirir.
 // ============================================================

@@ -8,9 +8,13 @@ const { redact, truncate } = require('../utils/logSafe');
 // Kurucu (founder) tarafı yönetimi: model değiştirme .env üzerinden yapılır.
 // MSA_CLAUDE_MODEL veya MSA_LOCKED_CLAUDE_MODEL set'liyse o kullanılır.
 // Müşteri admin UI'dan bunu değiştiremez (claude.js içinden okunur, settings'te yok).
-const CLAUDE_MODEL = process.env.MSA_LOCKED_CLAUDE_MODEL
-                  || process.env.MSA_CLAUDE_MODEL
-                  || 'claude-haiku-4-5-20251001';
+// Model HER ÇAĞRIDA dinamik çözülür — Merkezi Yönetim (apiPolicy) runtime'da
+// MSA_LOCKED_CLAUDE_MODEL'i set ederse anında geçerli olur (const cache'lenmez).
+function _claudeModel() {
+    return process.env.MSA_LOCKED_CLAUDE_MODEL
+        || process.env.MSA_CLAUDE_MODEL
+        || 'claude-haiku-4-5-20251001';
+}
 const MAX_EMAIL_CHARS = 10000;
 
 // Network timeout — hung request'in kuyrugun sismesine engel olur.
@@ -58,7 +62,7 @@ Provide your analysis in EXACTLY the following JSON format (return raw JSON only
 }`;
 
         const msg = await anthropic.messages.create({
-            model: CLAUDE_MODEL,
+            model: _claudeModel(),
             max_tokens: 1000,
             temperature: 0.2,
             system: 'You are an expert security analyst. You must output ONLY valid JSON.',
@@ -75,7 +79,7 @@ Provide your analysis in EXACTLY the following JSON format (return raw JSON only
             const data = JSON.parse(jsonStr);
             recordCall({
                 provider: 'anthropic',
-                model: CLAUDE_MODEL,
+                model: _claudeModel(),
                 purpose: 'analysis',
                 success: true,
                 usage: msg.usage ? {
@@ -86,12 +90,12 @@ Provide your analysis in EXACTLY the following JSON format (return raw JSON only
             });
             return { success: true, findings: data };
         } catch (e) {
-            recordCall({ provider: 'anthropic', model: CLAUDE_MODEL, purpose: 'analysis', success: false });
+            recordCall({ provider: 'anthropic', model: _claudeModel(), purpose: 'analysis', success: false });
             console.error('Claude JSON Parse Error. Raw response:', truncate(redact(responseText), 500));
             return { success: false, error: 'Failed to parse AI response' };
         }
     } catch (e) {
-        recordCall({ provider: 'anthropic', model: CLAUDE_MODEL, purpose: 'analysis', success: false });
+        recordCall({ provider: 'anthropic', model: _claudeModel(), purpose: 'analysis', success: false });
         return { success: false, error: e.message };
     }
 }

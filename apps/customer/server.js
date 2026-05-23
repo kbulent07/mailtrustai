@@ -503,6 +503,30 @@ installShutdownHandlers([
 process.on('unhandledRejection', (reason) => logger.error('[customer] unhandledRejection', reason));
 process.on('uncaughtException', (err) => { logger.error('[customer] uncaughtException', err); process.exit(1); });
 
+// ─── Merkezi (Owner) AI model uygulaması ──────────────────────────────────────
+// license-server apiPolicy.body.aiModels (override ?? global) müşteriye sync edilir.
+// Burada runtime'da MEVCUT kilit altyapısına besleriz:
+//   · MSA_LOCKED_OPENAI_MODEL → settings.routes müşteri model değişikliğini reddeder
+//     + UI'da seçeneği disable eder; openai çağrıları state.openaiModel'i kullanır.
+//   · MSA_LOCKED_CLAUDE_MODEL → claude.js her çağrıda dinamik okur.
+// Böylece model YALNIZ Merkezi Yönetim'den (owner) değişir; müşteri admini değiştiremez.
+function _applyCentralAiModels() {
+    let ai;
+    try { ai = centralSync.getApiPolicy()?.body?.aiModels; } catch (_) { ai = null; }
+    if (!ai || typeof ai !== 'object') return;
+    try {
+        if (ai.openai) {
+            process.env.MSA_LOCKED_OPENAI_MODEL = String(ai.openai);
+            try { core.services.appState().state.openaiModel = String(ai.openai); } catch (_) {}
+        }
+        if (ai.claude) {
+            process.env.MSA_LOCKED_CLAUDE_MODEL = String(ai.claude);
+        }
+    } catch (e) {
+        logger.warn('[ai-model] merkezi model uygulanamadı:', e.message);
+    }
+}
+
 function startListening() {
     server.listen(PORT, () => {
         logger.info(`🛡️  MailTrustAI Customer @ http://localhost:${PORT} (v${APP.VERSION})`);
@@ -535,6 +559,11 @@ function startListening() {
                 startSync();
             }
         })();
+
+        // Merkezi AI modelini uygula: ilk pull tamamlandıktan kısa süre sonra + periyodik
+        // (apiPolicy pull cadence'i ile uyumlu, ucuz in-memory okuma).
+        setTimeout(_applyCentralAiModels, 15 * 1000);
+        setInterval(_applyCentralAiModels, Math.max(60, plSec) * 1000).unref();
 
         // Periyodik validate: ek tarama paketi ve lisans değişikliklerini 6 saatte bir yansıt.
         const VALIDATE_INTERVAL_MS = envInt('MSA_VALIDATE_INTERVAL_HOURS', 6) * 3600 * 1000;

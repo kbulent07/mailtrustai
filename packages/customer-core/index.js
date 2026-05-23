@@ -41,7 +41,10 @@ const services = {
     setupToken:   lazy(() => _req('src/services/setupTokenService')),
     // scanMailbox: server.js boot sonrası resumeScanMailboxMonitors() çağırır
     // (anlık rapor monitörleri persistent ayarlardan yeniden başlatılır).
-    scanMailbox:  lazy(() => _req('src/services/scanMailboxService'))
+    scanMailbox:  lazy(() => _req('src/services/scanMailboxService')),
+    // appState: paylaşılan in-memory state (singleton). apps/customer merkezi AI
+    // modelini runtime'da state.openaiModel'e yazmak için kullanır.
+    appState:     lazy(() => _req('src/services/appState'))
 };
 
 const license = {

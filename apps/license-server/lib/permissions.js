@@ -20,7 +20,8 @@ const PERMISSIONS = [
     'billing:read',     // fatura / finansal bilgi
     'audit:read',
     'pricing:read',     // fiyatlandırma planlarını görüntüle
-    'pricing:write'     // fiyatlandırma planlarını düzenle
+    'pricing:write',    // fiyatlandırma planlarını düzenle
+    'aimodel:write'     // müşteri AI modeli (ChatGPT/Claude) merkezden ayarla — yalnız owner (super-admin/admin)
 ];
 
 // Rol → yetki listesi
@@ -34,7 +35,8 @@ const ROLE_PERMISSIONS = {
         'transfers:read','transfers:write',
         'billing:read',
         'audit:read',
-        'pricing:read',  'pricing:write'
+        'pricing:read',  'pricing:write',
+        'aimodel:write'
         // users:manage YOK
     ],
     'muhasebe': [
