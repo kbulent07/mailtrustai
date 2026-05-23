@@ -3,7 +3,7 @@
 # MailTrustAI Server — Yedekten Geri Yukleme
 #
 # Kullanim:
-#   sudo bash scripts/restore-server.sh backups/server-2026-05-23_220000
+#   sudo bash scripts/restore-ubuntu-server.sh backups/server-2026-05-23_220000
 # ============================================================
 set -euo pipefail
 

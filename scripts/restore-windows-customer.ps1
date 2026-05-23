@@ -2,7 +2,7 @@
 # MailTrustAI Customer - Windows PowerShell Geri Yukleme
 #
 # Kullanim:
-#   .\scripts\restore-customer.ps1 backups\2026-05-23_211546
+#   .\scripts\restore-windows-customer.ps1 backups\2026-05-23_211546
 # ============================================================
 
 param(

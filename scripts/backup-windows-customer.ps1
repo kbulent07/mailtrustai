@@ -6,9 +6,9 @@
 # customer-data.tar.gz + customer-logs.tar.gz birakir.
 #
 # Kullanim:
-#   powershell -ExecutionPolicy Bypass -File scripts\backup-customer.ps1
+#   powershell -ExecutionPolicy Bypass -File scripts\backup-windows-customer.ps1
 # veya PS prompt:
-#   .\scripts\backup-customer.ps1
+#   .\scripts\backup-windows-customer.ps1
 # ============================================================
 
 $ErrorActionPreference = "Stop"
@@ -74,7 +74,7 @@ Bu klasor SU 3 dosyayi icerir:
 
 GERI YUKLEME (PowerShell):
 --------------------------
-.\scripts\restore-customer.ps1 $BackupDir
+.\scripts\restore-windows-customer.ps1 $BackupDir
 
 GERI YUKLEME (manuel):
 1) docker compose --env-file .env.docker -f docker-compose.customer.yml down

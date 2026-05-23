@@ -7,7 +7,7 @@
 # kopyasını AYRI tutar (en kritik dosya).
 #
 # Kullanım:
-#   bash scripts/backup-customer.sh
+#   bash scripts/backup-ubuntu-customer.sh
 # ============================================================
 set -euo pipefail
 

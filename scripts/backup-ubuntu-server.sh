@@ -8,11 +8,11 @@
 #   3) license-server-data volume  (audit log, app state)
 #
 # Kullanim:
-#   sudo bash scripts/backup-server.sh
+#   sudo bash scripts/backup-ubuntu-server.sh
 #
 # Varsayilan compose project name: 'mailtrustai-server'. Eski prod
 # stack 'mailtrustai' adiyla acilmis ise PROJECT_NAME env'i ile override:
-#   PROJECT_NAME=mailtrustai bash scripts/backup-server.sh
+#   PROJECT_NAME=mailtrustai bash scripts/backup-ubuntu-server.sh
 # ============================================================
 set -euo pipefail
 

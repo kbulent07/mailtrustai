@@ -3,7 +3,7 @@
 # MailTrustAI Customer — Yedekten Geri Yukleme
 #
 # Kullanim:
-#   bash scripts/restore-customer.sh backups/2026-05-23_211500
+#   bash scripts/restore-ubuntu-customer.sh backups/2026-05-23_211500
 # ============================================================
 set -euo pipefail
 
