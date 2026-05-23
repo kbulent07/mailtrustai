@@ -1,5 +1,12 @@
 // ============================================================
-// MONTHLY SCAN COUNTER — HMAC korumalı (dosya değiştirilirse sıfırlanır)
+// MONTHLY SCAN COUNTER — HMAC korumalı (tamper-resistant)
+//
+// HMAC imzalı JSON dosyası. Doğrulama başarısız olursa (örn. secret değişikliği,
+// kod güncellemesi sonrası stableStringify değişimi, harici tamper):
+//   • Eski veriyi KAYBETME — yedekle ve mevcut sayaçları koru
+//   • Yeni HMAC ile yeniden imzala (idempotent recovery)
+//   • Audit log'a + 1 kez warn (boot spam yok)
+//   • Module-level cache: aynı process içinde tekrar tekrar dosya okumaz
 // ============================================================
 const fs = require('fs');
 const path = require('path');
@@ -9,6 +16,11 @@ const { requireSecret } = require('@mailtrustai/shared');
 
 const COUNTER_FILE = path.join(__dirname, '..', '..', 'data', 'monthly-counts.json');
 const HMAC_SECRET = requireSecret('MSA_LICENSE_SECRET', { devFallback: 'MSA_SECRET_2024_K3Y!@#' });
+
+// In-memory cache — dosyayı her çağrıda re-read etmez. saveCounts() günceller.
+// Process restart'ında sıfırlanır (ilk load disk'ten yapılır).
+let _cache = null;
+let _hmacFailWarned = false;  // boot spam koruması
 
 function computeHmac(dataObj) {
     // Yalnızca sayım verilerini (underscore ile başlamayan anahtarlar) imzala
@@ -30,24 +42,107 @@ function getCurrentMonthKey() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function loadCounts() {
+/**
+ * HMAC mismatch durumunda:
+ *   1) Eski dosyayı yedekle (forensic — tampering veya secret rotation tespiti)
+ *   2) Veriyi koru (mali risk: kullanıcı kotasını sıfırlama!)
+ *   3) Yeni HMAC ile yeniden yaz (idempotent — bir daha tetiklenmez)
+ *   4) Audit log + warn 1 kez
+ */
+function _recoverTamperedCounter(raw, dataWithoutMeta) {
+    if (!_hmacFailWarned) {
+        console.warn(
+            '[Counter] HMAC uyumsuzluğu tespit edildi — veri KORUNUYOR, yeni imza ile yeniden yazılıyor. ' +
+            'Olası sebep: secret rotasyonu, kod güncellemesi (stableStringify değişimi), veya harici dosya değişikliği. ' +
+            'Yedek: monthly-counts.tampered-<timestamp>.json'
+        );
+        _hmacFailWarned = true;
+    }
+
+    // Yedekle (her çağrı için değil; sadece dosya hâlâ tampered durumdaysa)
     try {
-        if (!fs.existsSync(COUNTER_FILE)) return {};
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupPath = COUNTER_FILE.replace(/\.json$/, `.tampered-${ts}.json`);
+        if (!fs.existsSync(backupPath)) {
+            fs.writeFileSync(backupPath, JSON.stringify(raw, null, 2), 'utf8');
+        }
+    } catch (_) { /* yedek başarısız olursa pas geç — asıl veri koruma kritik */ }
+
+    // Audit (best-effort — auditLog modülü import dairesi yaratmasın)
+    try {
+        const { recordAudit } = require('./auditLog');
+        if (typeof recordAudit === 'function') {
+            recordAudit({
+                actorType: 'system',
+                actorId:   'monthly-counter',
+                action:    'counter.hmac.mismatch.recovered',
+                details:   {
+                    file:       COUNTER_FILE,
+                    monthCount: Object.keys(dataWithoutMeta).length,
+                    storedHmac: raw._hmac ? String(raw._hmac).slice(0, 8) + '…' : null
+                }
+            });
+        }
+    } catch (_) { /* audit yoksa pas geç */ }
+
+    // Veriyi koru — yeni HMAC ile yeniden imzala
+    try {
+        const withHmac = {
+            ...dataWithoutMeta,
+            _hmac:      computeHmac(dataWithoutMeta),
+            _savedAt:   new Date().toISOString(),
+            _recovered: true,
+            _recoveredAt: new Date().toISOString()
+        };
+        fs.writeFileSync(COUNTER_FILE, JSON.stringify(withHmac, null, 2), 'utf8');
+    } catch (e) {
+        console.error('[Counter] Recovery yazımı başarısız:', e.message);
+    }
+
+    return dataWithoutMeta;
+}
+
+function loadCounts() {
+    // In-memory cache hit — disk'i tekrar okuma (boot spam ortadan kalkar)
+    if (_cache !== null) return _cache;
+
+    try {
+        if (!fs.existsSync(COUNTER_FILE)) {
+            _cache = {};
+            return _cache;
+        }
         const raw = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8') || '{}');
 
-        // HMAC doğrulaması
         const storedHmac = raw._hmac;
-        const dataWithoutMeta = Object.fromEntries(Object.entries(raw).filter(([k]) => !k.startsWith('_')));
+        const dataWithoutMeta = Object.fromEntries(
+            Object.entries(raw).filter(([k]) => !k.startsWith('_'))
+        );
+
         if (storedHmac) {
             const expectedHmac = computeHmac(dataWithoutMeta);
             if (storedHmac !== expectedHmac) {
-                console.error('[Counter] UYARI: Aylık tarama sayacı dosyası değiştirilmiş. Sayaçlar sıfırlanıyor.');
-                return {};
+                // ESKİ DAVRANIŞ: return {} — sayacı sıfırlardı (VERİ KAYBI!)
+                // YENİ DAVRANIŞ: veriyi koru + yedek + yeniden imzala
+                _cache = _recoverTamperedCounter(raw, dataWithoutMeta);
+                return _cache;
             }
         }
 
-        return dataWithoutMeta;
-    } catch { return {}; }
+        _cache = dataWithoutMeta;
+        return _cache;
+    } catch (e) {
+        // JSON parse hatası vb. — tamamen bozuk dosya. Sıfırlamadan önce yedekle.
+        try {
+            const ts = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupPath = COUNTER_FILE.replace(/\.json$/, `.corrupt-${ts}.json`);
+            if (fs.existsSync(COUNTER_FILE) && !fs.existsSync(backupPath)) {
+                fs.copyFileSync(COUNTER_FILE, backupPath);
+            }
+        } catch (_) {}
+        console.error('[Counter] Sayaç dosyası bozuk, yedeklendi ve sıfırlanıyor:', e.message);
+        _cache = {};
+        return _cache;
+    }
 }
 
 function saveCounts(data) {
@@ -55,6 +150,16 @@ function saveCounts(data) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const withHmac = { ...data, _hmac: computeHmac(data), _savedAt: new Date().toISOString() };
     fs.writeFileSync(COUNTER_FILE, JSON.stringify(withHmac, null, 2), 'utf8');
+    // Cache güncelle — sonraki load disk'e gitmez
+    _cache = { ...data };
+}
+
+/**
+ * Test/debug için cache'i temizle. Production kodu kullanmaz.
+ */
+function _resetCache() {
+    _cache = null;
+    _hmacFailWarned = false;
 }
 
 function getMonthlyCount(monthKey, scope = 'global') {
@@ -91,4 +196,8 @@ function resetMonthlyCount(monthKey) {
     saveCounts(counts);
 }
 
-module.exports = { getCurrentMonthKey, getMonthlyCount, incrementMonthlyCount, resetMonthlyCount };
+module.exports = {
+    getCurrentMonthKey, getMonthlyCount, incrementMonthlyCount, resetMonthlyCount,
+    // Test-only
+    _resetCache, _COUNTER_FILE: COUNTER_FILE
+};

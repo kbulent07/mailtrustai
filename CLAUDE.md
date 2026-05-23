@@ -83,6 +83,24 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 *(şu an aktif görev yok)*
 
+### Yapıldı — Counter HMAC tamper kurtarma (KRİTİK veri kaybı fix)
+**Kök neden**: `src/storage/monthlyCounter.js` `loadCounts()` HMAC mismatch'te `return {}` döndürüyordu → **sayaçlar sıfırlanıyordu**. Mali risk (kullanıcı kotası kaybı + ücretlendirme hatası). Plus her `loadCounts` çağrısı dosyayı re-read ettiği için boot'ta 8 kez warn spam.
+
+**Senaryolar HMAC fail için**:
+- Secret rotasyonu (`MSA_LICENSE_SECRET` değişti)
+- Kod güncellemesi (`stableStringify`/`computeHmac` algoritma değişimi)
+- Harici tamper (kullanıcı dosyayı manuel değiştirdi)
+
+**Çözüm**:
+- `_recoverTamperedCounter()`: eski dosyayı `tampered-<ts>.json` olarak yedekle + sayım verisini KORU + yeni HMAC ile imzala + `_recovered: true` işareti
+- Module-level `_cache` + `_hmacFailWarned` bayrağı → spam yok, idempotent
+- Audit log (best-effort) entegrasyonu
+- JSON parse hatası için ayrı kurtarma: `corrupt-<ts>.json` yedek + sıfırla (parse edilemeyen dosya zaten faydasız)
+
+**Test sonuçları (npm test 147/147 ✓ + manuel)**:
+- Tamper → warn 1 kez, foo=7 KORUNDU, yedek yarıtıldı, yeni HMAC imzalandı, `_recovered:true`
+- 5 kez tekrar load → spam YOK (cache aktif)
+
 ### Yapıldı — Lokal Docker customer container rebuild
 - `C:\mailtrustai-source` 864901c → 25928a1 (15 commit + v2.0.1 tag pull edildi)
 - `docker compose -f docker-compose.customer.yml build customer` → image yenilendi (sha 559492d…)
