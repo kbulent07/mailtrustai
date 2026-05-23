@@ -828,9 +828,12 @@ function populateCustomerSelect(filter = '') {
 $('newCustId')?.addEventListener('change', function () {
   const c = (customers || []).find(x => x.customerId === this.value);
   if (c) {
-    if ($('newCompany') && !$('newCompany').value) $('newCompany').value = c.companyName || '';
-    const cEmail = c.customerEmail || c.email;
-    if ($('newEmail') && cEmail && !$('newEmail').value) $('newEmail').value = cEmail;
+    if ($('newCompany')) $('newCompany').value = c.companyName || '';
+    const cEmail = c.customerEmail || c.email || '';
+    if ($('newEmail')) $('newEmail').value = cEmail;
+  } else {
+    if ($('newCompany')) $('newCompany').value = '';
+    if ($('newEmail'))   $('newEmail').value   = '';
   }
 });
 $('newCustSearch')?.addEventListener('input', function () { populateCustomerSelect(this.value); });

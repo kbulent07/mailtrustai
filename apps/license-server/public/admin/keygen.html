@@ -257,8 +257,12 @@
             <p class="muted">Admin olarak doğrudan lisans üretirsiniz. Lisans hem yeni hem mevcut bir müşteriye atanabilir (UPSERT).</p>
             <form id="licenseCreateForm" class="form-card form-grid">
                 <div>
-                    <label for="newLicCustomerId">Müşteri ID *</label>
-                    <input type="text" id="newLicCustomerId" required maxlength="64" placeholder="acme-corp" autocomplete="off">
+                    <label for="newLicCustomerId">Müşteri *</label>
+                    <input type="text" id="licCustSearch" placeholder="🔍 Müşteri ara (şirket / ID)..." autocomplete="off" style="margin-bottom:6px">
+                    <select id="newLicCustomerId" required>
+                        <option value="">— Müşteri seçin —</option>
+                    </select>
+                    <small class="muted" style="display:block;margin-top:4px">Yeni müşteri eklemek için "Müşteriler" sekmesini kullanın.</small>
                 </div>
                 <div>
                     <label for="newLicDealer">Bayi (opsiyonel)</label>

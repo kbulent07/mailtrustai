@@ -243,6 +243,7 @@ async function loadAll() {
     allItems     = out.customers?.items   || [];
     groupedItems = out.grouped?.items     || [];
     populateDealerSelects();
+    populateLicCustomerSelect();
     renderActiveView();
     renderManageTable();
 }
@@ -775,8 +776,37 @@ async function confirmDeleteDealer(id, name) {
 }
 
 // ================================================================
-// LİSANS ÜRETME SEKMESİ
+// LİSANS ÜRETME SEKMESİ — Müşteri arama kutusu
 // ================================================================
+function populateLicCustomerSelect(filter) {
+    const sel = $('newLicCustomerId');
+    if (!sel) return;
+    const prev = sel.value;
+    const q = (filter || '').trim().toLowerCase();
+    const seen = new Set();
+    const list = (allItems || [])
+        .filter(it => {
+            if (seen.has(it.customerId)) return false;
+            seen.add(it.customerId);
+            if (!q) return true;
+            return [it.customerId, it.companyName || '', it.email || ''].join(' ').toLowerCase().includes(q);
+        })
+        .sort((a, b) => String(a.companyName || a.customerId).localeCompare(String(b.companyName || b.customerId), 'tr'));
+    sel.innerHTML = '<option value="">— Müşteri seçin —</option>' + list.map(it =>
+        `<option value="${escapeHtml(it.customerId)}">${escapeHtml(it.companyName || it.customerId)} (${escapeHtml(it.customerId)})</option>`
+    ).join('');
+    if (prev && list.some(it => it.customerId === prev)) sel.value = prev;
+}
+
+$('licCustSearch')?.addEventListener('input', function () { populateLicCustomerSelect(this.value); });
+
+$('newLicCustomerId')?.addEventListener('change', function () {
+    const it = (allItems || []).find(x => x.customerId === this.value);
+    if (!it) return;
+    if ($('newLicCompany')) $('newLicCompany').value = it.companyName || '';
+    if ($('newLicEmail'))   $('newLicEmail').value   = it.email       || '';
+});
+
 // Deneme checkbox → validDays'i otomatik 7'ye klampla.
 $('newLicTrial')?.addEventListener('change', () => {
     const days = $('newLicDays');
@@ -819,7 +849,7 @@ $('licenseCreateForm').addEventListener('submit', async (e) => {
         body.customScanCount = cs;
     }
 
-    if (!body.customerId) { resEl.textContent = 'Müşteri ID zorunlu.'; resEl.className = 'result err'; return; }
+    if (!body.customerId) { resEl.textContent = 'Lütfen listeden bir müşteri seçin.'; resEl.className = 'result err'; return; }
     if (!body.validDays || body.validDays < 1) { resEl.textContent = 'Geçerli bir gün sayısı girin.'; resEl.className = 'result err'; return; }
     if (body.trial && body.validDays > 7) {
         resEl.textContent = 'Deneme lisansı en fazla 7 gün olabilir.'; resEl.className = 'result err'; return;
