@@ -81,7 +81,15 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
-*(şu an aktif görev yok)*
+*(şu an aktif görev yok — D1..D7 tamamlandı)*
+
+### Yapıldı — Dealer kredi-mali risk + politika temizliği (D1..D7)
+- **D1/D2/D3 (KRİTİK)** `_withCreditRollback` helper: kredi atomik düş → fn çalıştır → fail olursa otomatik iade + `dealer_credit_log` `.rollback` kaydı + audit. 3 endpoint (licenses, topup, topup-codes) sarıldı. Rollback başarısız olursa kritik log ile manuel müdahale çağrısı.
+- **D4 (önemli)** `POST /api/dealer/licenses/:id/topup` ve `POST /api/dealer/topup-codes` artık **410 Gone** döner. `TOPUP_DEPRECATED` code + politika referansı + yönlendirme mesajı. GET listele endpoint'i tutuldu (eski kod history için). Ölü handler kodları tamamen silindi (git history'de mevcut).
+- **D5 (küçük)** `'demo' && validDays>7` dead code temizlendi (`PLAN_MATRIX[plan]` kontrolü zaten yakalıyor).
+- **D6 (küçük)** T9 `customScanCount` için üst sınır: `MSA_T9_MAX_SCAN_COUNT` env (default 10M). Aşımda warn + kırpma.
+- **D7 (küçük)** Bilinmeyen `plan` → `pro` fallback artık `console.warn` ile görünür (önce sessizdi).
+- **Test:** `dealer-topup.test.js` baştan yazıldı. **147/147 ✓** (eski 13 topup-üretim testi silindi; yerine 4 yeni: 2 deprecation, 1 legacy validate, 1 rollback happy-path).
 
 ### Yapıldı — Lisans modeli yeniden yapılandırması (Plan × Tier)
 - **Tier kapasiteleri** (license-core `TIER_MATRIX`): T1=50, T2=100, T3=250, T4=500, T5=1.000, T6=2.500, T7=5.000, T8=10.000, **T9=Özel/Custom** (`adminOnly`). Plan (pro/ent) = özellik seti, tier = kapasite. Pro N ve Enterprise N **aynı kapasite**.

@@ -64,6 +64,101 @@ function dealerSessionAuth(req, res, next) {
     next();
 }
 
+// ─── Kredi rollback helper ────────────────────────────────────────────────────
+// Bayi kredisini atomik olarak düşürür, fn() içindeki işi yapar; hata olursa
+// krediyi iade eder + dealer_credit_log'a 'rollback' kaydı atar.
+//
+// Bu helper olmadan 3 endpoint (licenses, topup, topup-codes) aynı bug'ı
+// taşıyordu: kredi düşülür, ardından INSERT/UPDATE fail ederse bayi parasını
+// kaybediyordu. Atomik transaction yerine compensating action pattern.
+//
+// @param {object} args
+//   - dealerId             — bayi ID
+//   - creditCost           — düşülecek/iade edilecek kredi
+//   - reasonRollback       — dealer_credit_log.reason ('license.rollback' vb.)
+//   - descriptionRollback  — kullanıcı için açıklama
+//   - fn(newBalance)       — async iş; throw ederse rollback
+//
+// @returns { newBalance, result } — fn'nin return değeri + güncel bakiye
+// @throws  — fn hatası fırlatılır (rollback yapılmış olur)
+async function _withCreditRollback({ dealerId, creditCost, reasonRollback, descriptionRollback, fn }) {
+    const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [dealerId]);
+    if (!dealer) {
+        const err = new Error('Bayi bulunamadı');
+        err.status = 404;
+        throw err;
+    }
+
+    // 1) Atomik kredi düşme — race condition koruması
+    const upd = await run(
+        'UPDATE dealers SET credits = credits - ? WHERE id = ? AND credits >= ?',
+        [creditCost, dealer.id, creditCost]
+    );
+    const changed = upd?.affectedRows ?? upd?.changes ?? 0;
+    if (changed === 0) {
+        const err = new Error(`Yetersiz kredi (gereken: ${creditCost}). Yöneticinizden kredi yüklemesini isteyin.`);
+        err.status   = 402;
+        err.code     = 'INSUFFICIENT_CREDITS';
+        err.required = creditCost;
+        err.balance  = dealer.credits ?? 0;
+        throw err;
+    }
+
+    // UPDATE sonrası gerçek bakiyeyi DB'den oku (stale pre-UPDATE değil)
+    const after = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
+    const newBalance = after?.credits ?? 0;
+
+    // 2) İşi yap
+    try {
+        const result = await fn(newBalance);
+        return { newBalance, result };
+    } catch (err) {
+        // 3) ROLLBACK: krediyi iade et + audit/log kaydı at
+        try {
+            await run(
+                'UPDATE dealers SET credits = credits + ? WHERE id = ?',
+                [creditCost, dealer.id]
+            );
+            const afterRb = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
+            const rbBalance = afterRb?.credits ?? 0;
+            const errMsgShort = String(err?.message || 'unknown').slice(0, 200);
+            await run(
+                `INSERT INTO dealer_credit_log
+                    (id, dealer_id, delta, balance, reason, description, actor, created_at, price_amount, currency)
+                 VALUES (?,?,?,?,?,?,?,?,?,?)`,
+                [uuid(), dealer.id, +creditCost, rbBalance,
+                 reasonRollback,
+                 `${descriptionRollback} — ROLLBACK (hata: ${errMsgShort})`,
+                 'dealer-panel', Date.now(), 0, 'TRY']
+            );
+            await audit(dealerId, reasonRollback, null, {
+                creditCost, originalError: errMsgShort
+            });
+            console.warn(`[dealer/rollback] ${dealerId}: ${creditCost} kredi iade edildi (${reasonRollback}). Yeni bakiye: ${rbBalance}`);
+        } catch (rbErr) {
+            // ROLLBACK BAŞARISIZ — Bayi parasını KAYBETTİ. Kritik log, manuel müdahale gerek.
+            console.error(
+                `[dealer/rollback] ⚠ KRİTİK: Kredi iadesi başarısız! ` +
+                `dealerId=${dealerId} creditCost=${creditCost} ` +
+                `originalErr="${err?.message}" rollbackErr="${rbErr?.message}"`
+            );
+            err.rollbackFailed = true;
+        }
+        throw err;
+    }
+}
+
+// Express endpoint'lerinde _withCreditRollback throw'larını yanıta çevirmek için.
+function _sendError(res, err) {
+    const status = err.status || 500;
+    const body   = { error: err.message };
+    if (err.code)     body.code = err.code;
+    if (err.required) body.required = err.required;
+    if (err.balance != null) body.balance = err.balance;
+    if (err.rollbackFailed) body.rollbackFailed = true;
+    return res.status(status).json(body);
+}
+
 // ─── POST /api/dealer/login ───────────────────────────────────────────────────
 // body: { dealerId, password }
 // → { ok, sessionToken, dealerId, name, email, expiresIn }
@@ -272,9 +367,8 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
     if (!PLAN_MATRIX[plan]) {
         return res.status(400).json({ error: `Geçersiz plan: ${plan}. Geçerli: ${Object.keys(PLAN_MATRIX).join(', ')}` });
     }
-    if (plan === 'demo' && validDays > 7) {
-        return res.status(400).json({ error: 'Demo lisans en fazla 7 gün olabilir.' });
-    }
+    // NOT: 'demo' plan PLAN_MATRIX'te yok — yukarıdaki kontrol zaten reddediyor.
+    // Eski 'demo && validDays>7' kontrolü dead code idi, kaldırıldı (D5).
     if (tier && !TIER_MATRIX[tier]) {
         return res.status(400).json({ error: `Geçersiz tier: ${tier}` });
     }
@@ -297,36 +391,12 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
     const planDef    = getPlan(plan, tier);
     const creditCost = planDef.creditCost || 1;
 
-    // Atomik kredi düşme: credits >= maliyet koşuluyla — race condition koruması
-    const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [dealerId]);
-    if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
-
-    const upd = await run(
-        'UPDATE dealers SET credits = credits - ? WHERE id = ? AND credits >= ?',
-        [creditCost, dealer.id, creditCost]
-    );
-    const changed = upd?.affectedRows ?? upd?.changes ?? 0;
-    if (changed === 0) {
-        return res.status(402).json({
-            error: `Yetersiz kredi (gereken: ${creditCost}). Yöneticinizden kredi yüklemesini isteyin.`,
-            code:  'INSUFFICIENT_CREDITS',
-            required: creditCost,
-            balance: dealer.credits ?? 0
-        });
-    }
-
-    // UPDATE sonrası gerçek bakiyeyi DB'den oku — stale pre-UPDATE değeri yerine
-    // kesin rakamı kullan. Concurrent istekler aynı anda geçse bile log doğru olur.
-    const afterUpd   = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
-    const newBalance = afterUpd?.credits ?? 0;
-    let priceAmount  = 0;
-    let priceCurrency = 'TRY';
+    // Pricing snapshot (varsa, kredi log'una yazılır)
+    let priceAmount = 0, priceCurrency = 'TRY';
     try {
         const priceRow = await get(
-            `SELECT extra_credit_price, currency
-             FROM pricing_plans
-             WHERE plan = ? AND is_active = 1
-             ORDER BY extra_credit_price ASC LIMIT 1`,
+            `SELECT extra_credit_price, currency FROM pricing_plans
+             WHERE plan = ? AND is_active = 1 ORDER BY extra_credit_price ASC LIMIT 1`,
             [plan]
         );
         if (priceRow) {
@@ -335,41 +405,62 @@ router.post('/dealer/licenses', dealerSessionAuth, asyncH(async (req, res) => {
         }
     } catch (_) { /* pricing tablosu yoksa sessizce geç */ }
 
-    await run(
-        'INSERT INTO dealer_credit_log(id,dealer_id,delta,balance,reason,description,actor,created_at,price_amount,currency) VALUES(?,?,?,?,?,?,?,?,?,?)',
-        [uuid(), dealer.id, -creditCost, newBalance, 'license.create',
-         `Lisans üretimi (bayi paneli): müşteri=${customerId}, plan=${plan} ${planDef.tier} (${creditCost} kredi)`, 'dealer-panel', Date.now(),
-         priceAmount, priceCurrency]
-    );
+    // Lisansı kredi-rollback koruması ile üret: INSERT fail ederse kredi iade.
+    try {
+        const out = await _withCreditRollback({
+            dealerId,
+            creditCost,
+            reasonRollback: 'license.create.rollback',
+            descriptionRollback:
+                `Lisans üretimi başarısız — iade: müşteri=${customerId}, plan=${plan} ${planDef.tier}`,
+            fn: async (newBalance) => {
+                // Kredi log'u (başarılı düşme)
+                await run(
+                    `INSERT INTO dealer_credit_log
+                        (id, dealer_id, delta, balance, reason, description, actor, created_at, price_amount, currency)
+                     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+                    [uuid(), dealerId, -creditCost, newBalance, 'license.create',
+                     `Lisans üretimi (bayi paneli): müşteri=${customerId}, plan=${plan} ${planDef.tier} (${creditCost} kredi)`,
+                     'dealer-panel', Date.now(), priceAmount, priceCurrency]
+                );
 
-    // Lisansı üret
-    const { key, keyHash } = generateLicenseKey({ customerId: customerId.trim(), dealerId, plan });
-    const id        = uuid();
-    const issuedAt  = Date.now();
-    const expiresAt = issuedAt + validDays * 86400 * 1000;
-    const rawLabel  = typeof label === 'string' ? label.trim().slice(0, 128) : null;
+                // Lisansı üret + INSERT — fail ederse caller catch eder, rollback yapılır
+                const { key, keyHash } = generateLicenseKey({ customerId: customerId.trim(), dealerId, plan });
+                const id        = uuid();
+                const issuedAt  = Date.now();
+                const expiresAt = issuedAt + validDays * 86400 * 1000;
+                const rawLabel  = typeof label === 'string' ? label.trim().slice(0, 128) : null;
 
-    await run(
-        `INSERT INTO licenses(id, customer_id, dealer_id, license_key_hash, license_key_masked, plan, tier, status, issued_at, expires_at, grace_days, features_json, limits_json, label)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, customerId.trim(), dealerId, keyHash,
-         `${key.slice(0, 8)}…${key.slice(-4)}`,
-         plan, planDef.tier || null, 'active', issuedAt, expiresAt, planDef.graceDays,
-         JSON.stringify(planDef.features), JSON.stringify(planDef.limits), rawLabel || null]
-    );
+                await run(
+                    `INSERT INTO licenses(id, customer_id, dealer_id, license_key_hash, license_key_masked, plan, tier, status, issued_at, expires_at, grace_days, features_json, limits_json, label)
+                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                    [id, customerId.trim(), dealerId, keyHash,
+                     `${key.slice(0, 8)}…${key.slice(-4)}`,
+                     plan, planDef.tier || null, 'active', issuedAt, expiresAt, planDef.graceDays,
+                     JSON.stringify(planDef.features), JSON.stringify(planDef.limits), rawLabel || null]
+                );
 
-    await audit(dealerId, 'license.create', id, { customerId: customerId.trim(), plan, tier: planDef.tier, source: 'dealer-panel' });
+                await audit(dealerId, 'license.create', id, {
+                    customerId: customerId.trim(), plan, tier: planDef.tier, source: 'dealer-panel'
+                });
 
-    res.json({
-        ok:         true,
-        id,
-        licenseKey: key,
-        plan,
-        tier:       planDef.tier,
-        creditCost,
-        expiresAt,
-        remainingCredits: newBalance
-    });
+                return { id, key, expiresAt };
+            }
+        });
+
+        res.json({
+            ok:         true,
+            id:         out.result.id,
+            licenseKey: out.result.key,
+            plan,
+            tier:       planDef.tier,
+            creditCost,
+            expiresAt:  out.result.expiresAt,
+            remainingCredits: out.newBalance
+        });
+    } catch (err) {
+        return _sendError(res, err);
+    }
 }));
 
 // ─── POST /api/dealer/licenses/:id/revoke — Kendi lisansını iptal et ─────────
@@ -491,93 +582,30 @@ router.post('/dealer/transfers/:id/reject', dealerSessionAuth, asyncH(async (req
     res.json({ ok: true, message: 'Transfer reddedildi.' });
 }));
 
-// ─── POST /api/dealer/licenses/:id/topup — Ek tarama paketi ekle ────────────
-// body: { topupTier: 'T1'|'T2'|...'T9' }
-// 1 kredi düşer, licenses.extra_scans += TIER_MATRIX[topupTier].monthlyScanCount
+// ─── POST /api/dealer/licenses/:id/topup — DEPRECATED ────────────────────────
+// CLAUDE.md "Topup Yok Politikası": Müşteriye ek tarama (topup) satılmaz;
+// kapasite ihtiyacı = yeni/üst tier lisans. UI'dan kaldırıldı (68580ac, 5420f18).
+// Backend endpoint'i 410 Gone döner — eski client'lara açıklayıcı mesaj.
+//
+// NOT: Aşağıdaki orijinal handler logic'i ARTIK ULAŞILAMAZ. Tarihsel kayıt için
+// muhafaza edilmiştir; tier_matrix değişikliklerinde referans olabilir.
 router.post('/dealer/licenses/:id/topup', dealerSessionAuth, asyncH(async (req, res) => {
-    const { dealerId } = req.dealerSession;
-    const licenseId    = req.params.id;
-    const { topupTier } = req.body || {};
-
-    if (!topupTier || !TIER_MATRIX[topupTier]) {
-        return res.status(400).json({
-            error: `Geçersiz topupTier: ${topupTier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`
-        });
-    }
-    // T9 (Özel/Custom) ek-tarama paketi olarak satılamaz.
-    if (isAdminOnlyTier(topupTier)) {
-        return res.status(403).json({
-            error: `${topupTier} (Özel/Custom) ek tarama paketi olarak kullanılamaz.`,
-            code:  'TIER_ADMIN_ONLY'
-        });
-    }
-
-    const license = await get(
-        'SELECT id, dealer_id, customer_id, status, extra_scans FROM licenses WHERE id = ?',
-        [licenseId]
-    );
-    if (!license) return res.status(404).json({ error: 'Lisans bulunamadı' });
-    if (license.dealer_id !== dealerId) return res.status(403).json({ error: 'Bu lisans size ait değil' });
-    if (license.status !== 'active') {
-        return res.status(400).json({ error: 'Yalnızca aktif lisanslara ek tarama paketi eklenebilir' });
-    }
-
-    const scanAmount = TIER_MATRIX[topupTier].monthlyScanCount;
-    const creditCost = tierCreditCost(topupTier);
-
-    // Atomik kredi düşme
-    const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [dealerId]);
-    if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
-
-    const upd = await run(
-        'UPDATE dealers SET credits = credits - ? WHERE id = ? AND credits >= ?',
-        [creditCost, dealer.id, creditCost]
-    );
-    const changed = upd?.affectedRows ?? upd?.changes ?? 0;
-    if (changed === 0) {
-        return res.status(402).json({
-            error: `Yetersiz kredi (gereken: ${creditCost}). Yöneticinizden kredi yüklemesini isteyin.`,
-            code:  'INSUFFICIENT_CREDITS',
-            required: creditCost,
-            balance: dealer.credits ?? 0
-        });
-    }
-
-    // extra_scans artır
-    await run(
-        'UPDATE licenses SET extra_scans = extra_scans + ? WHERE id = ?',
-        [scanAmount, licenseId]
-    );
-
-    const afterDealer  = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
-    const afterLicense = await get('SELECT extra_scans FROM licenses WHERE id = ?', [licenseId]);
-    const newBalance   = afterDealer?.credits ?? 0;
-
-    await run(
-        `INSERT INTO dealer_credit_log
-            (id,dealer_id,delta,balance,reason,description,actor,created_at,price_amount,currency)
-         VALUES(?,?,?,?,?,?,?,?,?,?)`,
-        [uuid(), dealer.id, -creditCost, newBalance, 'scan.topup',
-         `Ek tarama paketi: lisans=${licenseId}, müşteri=${license.customer_id}, tier=${topupTier} (+${scanAmount} tarama, ${creditCost} kredi)`,
-         'dealer-panel', Date.now(), 0, 'TRY']
-    );
-
-    await audit(dealerId, 'license.topup', licenseId, {
-        customerId: license.customer_id, topupTier, scanAmount, creditCost
-    });
-
-    res.json({
-        ok:               true,
-        licenseId,
-        topupTier,
-        scanAmount,
-        creditCost,
-        newExtraScans:    afterLicense?.extra_scans ?? 0,
-        remainingCredits: newBalance
+    await audit(req.dealerSession?.dealerId || null, 'topup.deprecated.attempt', req.params.id,
+        { tier: req.body?.topupTier, source: 'dealer-panel' });
+    return res.status(410).json({
+        error: 'Ek tarama (topup) paketi politikası kaldırıldı. Kapasite artışı için müşteriye üst tier lisans verin.',
+        code:  'TOPUP_DEPRECATED',
+        policy: 'topup-yok-politikasi-2026',
+        hint:  'POST /api/dealer/licenses ile yeni lisans üretin (örn. T3 yerine T5).'
     });
 }));
 
-// ─── Topup kodu üretici ───────────────────────────────────────────────────────
+// NOT: Orijinal topup handler tamamen kaldırıldı — D4 fix (politika).
+// İmplementasyon git history'de mevcut: commit 63d975a/d13fa86 öncesinde
+// /api/dealer/licenses/:id/topup ve /api/dealer/topup-codes endpoint'leri
+// ek tarama paketi satışı yapıyordu. Politika değişikliği ile kaldırıldı.
+
+// ─── Topup kodu üretici (deprecated, dahili kullanım kalmadı) ───────────────
 function _generateTopupCode() {
     // Karıştırılabilecek karakterler hariç (0/O, 1/I/L)
     const CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -589,96 +617,23 @@ function _generateTopupCode() {
     return code; // XXXX-XXXX
 }
 
-// ─── POST /api/dealer/topup-codes — Tek kullanımlık topup kodu üret ──────────
-// body: { tier, customerId?, validDays? }
-// 1 kredi kesilir, kod üretilir ve müşteriye verilebilir.
+// ─── POST /api/dealer/topup-codes — DEPRECATED (CLAUDE.md "Topup Yok Politikası") ─
+// Üretim engellendi, eski client'a 410 Gone + açıklama. Tarih: 2026-05.
 router.post('/dealer/topup-codes', dealerSessionAuth, asyncH(async (req, res) => {
-    const { dealerId } = req.dealerSession;
-    const { tier, customerId, validDays } = req.body || {};
-
-    if (!tier || !TIER_MATRIX[tier]) {
-        return res.status(400).json({
-            error: `Geçersiz tier: ${tier}. Geçerli: ${Object.keys(TIER_MATRIX).join(', ')}`
-        });
-    }
-    // T9 (Özel/Custom) ek-tarama kodu olarak üretilemez.
-    if (isAdminOnlyTier(tier)) {
-        return res.status(403).json({
-            error: `${tier} (Özel/Custom) ek tarama kodu olarak üretilemez.`,
-            code:  'TIER_ADMIN_ONLY'
-        });
-    }
-
-    // Opsiyonel müşteri kısıtlaması
-    if (customerId) {
-        const cust = await get('SELECT dealer_id FROM customers WHERE id = ?', [customerId]);
-        if (!cust) return res.status(404).json({ error: 'Müşteri bulunamadı' });
-        if (cust.dealer_id !== dealerId) return res.status(403).json({ error: 'Bu müşteri size ait değil' });
-    }
-
-    const expDays = validDays ? Number(validDays) : null;
-    if (expDays !== null && (!Number.isFinite(expDays) || expDays < 1 || expDays > 3650)) {
-        return res.status(400).json({ error: 'validDays 1..3650 arasında olmalı' });
-    }
-
-    // Atomik kredi düşme
-    const dealer = await get('SELECT id, credits FROM dealers WHERE id = ?', [dealerId]);
-    if (!dealer) return res.status(404).json({ error: 'Bayi bulunamadı' });
-
-    const creditCost = tierCreditCost(tier);
-    const upd = await run(
-        'UPDATE dealers SET credits = credits - ? WHERE id = ? AND credits >= ?',
-        [creditCost, dealer.id, creditCost]
-    );
-    const changed = upd?.affectedRows ?? upd?.changes ?? 0;
-    if (changed === 0) {
-        return res.status(402).json({
-            error: `Yetersiz kredi (gereken: ${creditCost}).`,
-            code:  'INSUFFICIENT_CREDITS',
-            required: creditCost,
-            balance: dealer.credits ?? 0
-        });
-    }
-
-    const afterDealer = await get('SELECT credits FROM dealers WHERE id = ?', [dealer.id]);
-    const newBalance  = afterDealer?.credits ?? 0;
-    const scanAmount  = TIER_MATRIX[tier].monthlyScanCount;
-    const codeStr     = _generateTopupCode();
-    const id          = uuid();
-    const now         = Date.now();
-    const expiresAt   = expDays ? now + expDays * 86400 * 1000 : null;
-
-    await run(
-        `INSERT INTO topup_codes(id,code,dealer_id,customer_id,tier,scan_amount,expires_at,used,created_at)
-         VALUES(?,?,?,?,?,?,?,0,?)`,
-        [id, codeStr, dealerId, customerId || null, tier, scanAmount, expiresAt, now]
-    );
-
-    await run(
-        `INSERT INTO dealer_credit_log
-            (id,dealer_id,delta,balance,reason,description,actor,created_at,price_amount,currency)
-         VALUES(?,?,?,?,?,?,?,?,?,?)`,
-        [uuid(), dealerId, -creditCost, newBalance, 'code.generate',
-         `Topup kodu üretimi: ${codeStr}, tier=${tier} (+${scanAmount} tarama, ${creditCost} kredi)${customerId ? `, müşteri=${customerId}` : ''}`,
-         'dealer-panel', now, 0, 'TRY']
-    );
-
-    await audit(dealerId, 'topup.code.create', id, { tier, scanAmount, creditCost, customerId: customerId || null });
-
-    res.json({
-        ok:               true,
-        id,
-        code:             codeStr,
-        tier,
-        scanAmount,
-        creditCost,
-        customerId:       customerId || null,
-        expiresAt,
-        remainingCredits: newBalance
+    await audit(req.dealerSession?.dealerId || null, 'topup.code.deprecated.attempt', null,
+        { tier: req.body?.tier, source: 'dealer-panel' });
+    return res.status(410).json({
+        error: 'Topup kodu üretimi kaldırıldı (politika). Kapasite ihtiyacı için müşteriye üst tier lisans verin.',
+        code:  'TOPUP_DEPRECATED',
+        policy: 'topup-yok-politikasi-2026',
+        hint:  'POST /api/dealer/licenses ile yeni/üst tier lisans üretin.'
     });
 }));
 
-// ─── GET /api/dealer/topup-codes — Bayinin ürettiği kodları listele ───────────
+// NOT: Orijinal topup-codes handler tamamen kaldırıldı — D4 fix (politika).
+// İmplementasyon git history'de mevcut. POST'lar artık 410 Gone döner.
+
+// ─── GET /api/dealer/topup-codes — Eski üretilen kodları listele (history için) ─
 // ?limit=50   ?used=all|0|1
 router.get('/dealer/topup-codes', dealerSessionAuth, asyncH(async (req, res) => {
     const { dealerId } = req.dealerSession;

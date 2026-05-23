@@ -79,6 +79,11 @@ const PLAN_MATRIX = {
     }
 };
 
+// T9 (custom) için makul üst sınır — bilinçsiz yüksek değer girilirse
+// customer sayaç logic'i / DB INT alanları beklenmedik davranışlar gösterebilir.
+// Bu sınır gereken her senaryoda yeterlidir; gerekirse env ile override.
+const T9_CUSTOM_MAX_SCAN_COUNT = parseInt(process.env.MSA_T9_MAX_SCAN_COUNT || '10000000', 10);
+
 /**
  * Plan + tier birleşimi için final tanımı döner.
  * @param {string} plan  - 'pro' | 'enterprise'
@@ -86,15 +91,37 @@ const PLAN_MATRIX = {
  * @param {object} [opts] - { customScanCount } — yalnız T9 (custom) için kapasite
  */
 function getPlan(plan, tier, opts = {}) {
-    const base = PLAN_MATRIX[plan] || PLAN_MATRIX.pro;
+    // D7: bilinmeyen plan → 'pro' fallback; ama silent değil, uyarı log'la.
+    let base;
+    if (PLAN_MATRIX[plan]) {
+        base = PLAN_MATRIX[plan];
+    } else {
+        base = PLAN_MATRIX.pro;
+        // console.warn yerine: caller bunu test etmek için sonradan alabilir,
+        // ama development'ta gözümüze takılsın. Production'da yine de görünür.
+        if (plan != null && plan !== 'pro') {
+            console.warn(`[license-core.getPlan] Bilinmeyen plan "${plan}" — 'pro' varsayılana düşülüyor. Geçerli: ${Object.keys(PLAN_MATRIX).join(', ')}`);
+        }
+    }
     const t    = (tier && TIER_MATRIX[tier]) ? tier : base.tier;
     const tierDef = TIER_MATRIX[t] || {};
 
-    // T9 (custom): kapasite admin tarafından verilir. Verilmezse plan tabanına düş.
+    // T9 (custom): kapasite admin tarafından verilir.
     let scanCount;
     if (tierDef.custom) {
         const c = Number(opts.customScanCount);
-        scanCount = (Number.isFinite(c) && c > 0) ? c : base.limits.monthlyScanCount;
+        if (Number.isFinite(c) && c > 0) {
+            // D6: üst sınır kontrolü — overflow / mantık dışı değerlere karşı koruma
+            if (c > T9_CUSTOM_MAX_SCAN_COUNT) {
+                console.warn(`[license-core.getPlan] T9 customScanCount=${c} üst sınırı (${T9_CUSTOM_MAX_SCAN_COUNT}) aşıyor — kırpıldı.`);
+                scanCount = T9_CUSTOM_MAX_SCAN_COUNT;
+            } else {
+                scanCount = c;
+            }
+        } else {
+            // Verilmediyse / geçersizse plan tabanına düş (defensive)
+            scanCount = base.limits.monthlyScanCount;
+        }
     } else {
         scanCount = tierDef.monthlyScanCount ?? base.limits.monthlyScanCount;
     }
