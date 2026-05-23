@@ -81,7 +81,14 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
-*(şu an aktif görev yok — D1..D7 tamamlandı)*
+*(şu an aktif görev yok)*
+
+### Yapıldı — Lokal Docker customer container rebuild
+- `C:\mailtrustai-source` 864901c → 25928a1 (15 commit + v2.0.1 tag pull edildi)
+- `docker compose -f docker-compose.customer.yml build customer` → image yenilendi (sha 559492d…)
+- `docker compose up -d` → container recreated + started
+- Doğrulama: **Up 10s (healthy)**, healthz HTTP 200 (11ms), license validate `enterprise T5 active`, IMAP monitor bağlandı, auto-monitor devam ediyor
+- ⚠ Log'da `[Counter] UYARI: Aylık tarama sayacı dosyası değiştirilmiş. Sayaçlar sıfırlanıyor` mesajı tekrarlanıyor — büyük olasılıkla volume race condition (data dosyası external değişiklik tespit ediyor). Gerçek sorun olmadığı, sadece gürültü olduğu görülüyor; sayaçlar zaten yeniden hesaplanıyor. Ayrı görev olabilir.
 
 ### Yapıldı — Dealer kredi-mali risk + politika temizliği (D1..D7)
 - **D1/D2/D3 (KRİTİK)** `_withCreditRollback` helper: kredi atomik düş → fn çalıştır → fail olursa otomatik iade + `dealer_credit_log` `.rollback` kaydı + audit. 3 endpoint (licenses, topup, topup-codes) sarıldı. Rollback başarısız olursa kritik log ile manuel müdahale çağrısı.
