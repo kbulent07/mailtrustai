@@ -44,7 +44,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # --- Log dosyasi -------------------------------------------------------------
-$UpgradeLog = Join-Path $env:TEMP "mailtrustai-upgrade-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+$BackupDirEarly = Join-Path $InstallDir 'backups'
+New-Item -ItemType Directory -Force -Path $BackupDirEarly | Out-Null
+$UpgradeLog = Join-Path $BackupDirEarly "upgrade-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 Start-Transcript -Path $UpgradeLog -Append | Out-Null
 
 # --- Yardimci fonksiyonlar ---------------------------------------------------
