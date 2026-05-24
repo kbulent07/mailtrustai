@@ -1478,4 +1478,64 @@ router.post('/admin/customers/:id/api-policy', adminAuth, requirePerm('customers
     res.json({ ok: true, version: nextVersion });
 }));
 
+// ============================================================
+// GET  /api/admin/notification-settings — bildirim ayarlarını getir
+// POST /api/admin/notification-settings — kaydet
+// POST /api/admin/notification-settings/test — SMTP bağlantısını test et
+// ============================================================
+router.get('/admin/notification-settings', adminAuth, requirePerm('licenses:read'), asyncH(async (req, res) => {
+    const row = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'expiry_notifications'");
+    const cfg = row ? safeJSON(row.setting_value, {}) : {};
+    // Şifreyi frontend'e verme
+    const safe = { ...cfg };
+    if (safe.smtpPassword) safe.smtpPassword = '••••••••';
+    res.json({ settings: safe });
+}));
+
+router.post('/admin/notification-settings', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
+    const body = req.body || {};
+    const existing = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'expiry_notifications'");
+    const prev = existing ? safeJSON(existing.setting_value, {}) : {};
+
+    // Şifre alanı değişmediyse eskisini koru
+    const smtpPassword = (body.smtpPassword && !body.smtpPassword.startsWith('•'))
+        ? body.smtpPassword
+        : (prev.smtpPassword || '');
+
+    const cfg = {
+        enabled:          Boolean(body.enabled),
+        notifyBeforeDays: Array.isArray(body.notifyBeforeDays) ? body.notifyBeforeDays.map(Number).filter(n => n > 0) : [30, 7, 1],
+        smtpHost:         String(body.smtpHost || ''),
+        smtpPort:         Number(body.smtpPort) || 587,
+        smtpSecure:       Boolean(body.smtpSecure),
+        smtpUser:         String(body.smtpUser || ''),
+        smtpPassword,
+        smtpRejectUnauthorized: body.smtpRejectUnauthorized !== false,
+        fromName:         String(body.fromName || 'MailTrustAI'),
+        fromEmail:        String(body.fromEmail || ''),
+        adminEmail:       String(body.adminEmail || '')
+    };
+
+    const upsertSql = isMaria
+        ? `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?)
+           ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=VALUES(updated_at)`
+        : `INSERT INTO admin_settings(setting_key,setting_value,updated_at) VALUES(?,?,?)
+           ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at`;
+    await run(upsertSql, ['expiry_notifications', JSON.stringify(cfg), Date.now()]);
+    await audit('admin', 'notification-settings.update', 'expiry_notifications', { enabled: cfg.enabled });
+
+    const safe = { ...cfg, smtpPassword: cfg.smtpPassword ? '••••••••' : '' };
+    res.json({ ok: true, settings: safe });
+}));
+
+router.post('/admin/notification-settings/test', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
+    const existing = await get("SELECT setting_value FROM admin_settings WHERE setting_key = 'expiry_notifications'");
+    if (!existing) return res.status(400).json({ error: 'Önce ayarları kaydedin' });
+    const cfg = safeJSON(existing.setting_value, {});
+    if (!cfg.smtpHost || !cfg.smtpUser) return res.status(400).json({ error: 'SMTP ayarları eksik' });
+    const { testSmtpConnection } = require('../lib/notificationMailer');
+    const result = await testSmtpConnection(cfg);
+    res.json(result);
+}));
+
 module.exports = router;

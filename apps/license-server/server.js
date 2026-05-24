@@ -31,6 +31,7 @@ const customerSync = require('./routes/customerSync.routes');
 const dealerAuth   = require('./routes/dealerAuth.routes');
 const dealerRoutes = require('./routes/dealer.routes');
 const adminRoutes  = require('./routes/admin.routes');
+const { startExpiryNotifier } = require('./services/expiryNotifier');
 const { createRateLimiters } = require('./middleware/rateLimit');
 const path = require('path');
 
@@ -177,6 +178,7 @@ let httpSrv = null;
 (async () => {
     await ready;
     httpSrv = app.listen(port, () => logger.info(`License-Server @ http://localhost:${port}`));
+    startExpiryNotifier();
 })().catch((error) => {
     logger.error('[license-server] bootstrap failed:', error);
     process.exit(1);

@@ -57,6 +57,7 @@
             <a class="nav-item" data-tab="audit" data-perm="audit:read">📜 <span>Audit Log</span></a>
             <a class="nav-item" data-tab="transfers" data-perm="transfers:read">🔁 <span>Transferler</span></a>
             <a class="nav-item" data-tab="users" data-perm="users:manage">👮 <span>Kullanıcılar</span></a>
+            <a class="nav-item" data-tab="notifications" data-perm="licenses:write">🔔 <span>Bildirimler</span></a>
             <a class="nav-item" data-tab="security">🔐 <span>Güvenlik</span></a>
         </aside>
 
@@ -558,6 +559,50 @@
         </section>
 
         <!-- =========== TAB: GÜVENLİK =========== -->
+        <!-- =========== TAB: BİLDİRİMLER =========== -->
+        <section class="tab-content" data-tab="notifications">
+            <h2>🔔 Lisans Bitiş Bildirimleri</h2>
+            <p class="muted" style="margin-bottom:18px">Lisanslar bitmeden N gün önce müşteriye ve/veya yönetici adresine otomatik e-posta gönderir.</p>
+            <div class="form-card" style="max-width:560px">
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+                    <input type="checkbox" id="notifEnabled" style="accent-color:#6366f1;width:16px;height:16px">
+                    <span>Bildirimleri etkinleştir</span>
+                </label>
+
+                <label for="notifDays">Kaç gün önce bildirim (virgülle ayır, ör: 30,7,1)</label>
+                <input type="text" id="notifDays" placeholder="30,7,1" autocomplete="off" style="margin-bottom:10px">
+
+                <label for="notifSmtpHost">SMTP Host</label>
+                <input type="text" id="notifSmtpHost" placeholder="smtp.example.com" autocomplete="off" style="margin-bottom:10px">
+
+                <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px">
+                    <div>
+                        <label for="notifSmtpUser">SMTP Kullanıcı</label>
+                        <input type="text" id="notifSmtpUser" placeholder="noreply@example.com" autocomplete="off">
+                    </div>
+                    <div>
+                        <label for="notifSmtpPort">Port</label>
+                        <input type="number" id="notifSmtpPort" value="587" min="1" max="65535" autocomplete="off">
+                    </div>
+                </div>
+
+                <label for="notifSmtpPass">SMTP Şifre</label>
+                <input type="password" id="notifSmtpPass" placeholder="Değiştirmemek için boş bırak" autocomplete="new-password" style="margin-bottom:10px">
+
+                <label for="notifFromEmail">Gönderici E-posta</label>
+                <input type="email" id="notifFromEmail" placeholder="noreply@example.com" autocomplete="off" style="margin-bottom:10px">
+
+                <label for="notifAdminEmail">Yönetici Bildirim E-postası</label>
+                <input type="email" id="notifAdminEmail" placeholder="admin@sirketiniz.com" autocomplete="off" style="margin-bottom:16px">
+
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button id="notifSaveBtn" class="primary">💾 Kaydet</button>
+                    <button id="notifTestBtn">📡 SMTP Test</button>
+                </div>
+                <div id="notifResult" class="result" role="status" aria-live="polite" style="margin-top:10px"></div>
+            </div>
+        </section>
+
         <section class="tab-content" data-tab="security">
             <h2>🔐 Panel Erişim Şifresi</h2>
             <div class="two-col">

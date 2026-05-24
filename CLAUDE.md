@@ -81,6 +81,14 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 
 ## 🎯 Aktif Plan & İlerleme
 
+### Yapıldı — Sıralı iyileştirmeler (commit serisi)
+- ✓ **#1 IMAP max-conn** (`349ae07`): `resumeScanMailboxMonitors` 3s stagger + `processPendingRecent` geçici hata retry (15s)
+- ✓ **#2 Counter spam**: zaten çözülmüştü; CLAUDE.md notu güncellendi
+- ✓ **#3 T9 kapasite** (`663af76`): `POST /api/admin/licenses/:id/custom-scan` + keygen modal
+- ✓ **#4 Dealer kredi geçmişi** (`e69c4e6`): apps/dealer 💳 sekmesi; `loadCreditLog()` özet kartlar + tablo
+- ✓ **#5 Müşteri mail log**: scan-list sayfası zaten mevcuttu; atlandı
+- ✓ **#6 Lisans bitiş bildirimi** (bu commit): migration 0017, `notificationMailer.js`, `expiryNotifier.js`, 3 admin endpoint, 🔔 Bildirimler sekmesi
+
 ### Yapıldı — PDF raporu ve lisans kartı (commit `87799da`)
 - ✓ `licenseRevalidateCard` kartı `public/index.html` + `revalidateLicenseNow()` `app.js`'den kaldırıldı
 - ✓ `_renderPdfReport` tamamen yeniden yazıldı — açık (light) tema:

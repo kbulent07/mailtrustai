@@ -135,6 +135,7 @@ function activateTab(tabName) {
     if (tabName === 'manage')    renderManageTable();
     if (tabName === 'audit')     loadAudit();
     if (tabName === 'transfers') loadAdminTransfers();
+    if (tabName === 'notifications') loadNotificationSettings();
     if (tabName === 'security')  loadSecurityStatus();
     if (tabName === 'users')     loadOwnerUsers();
     if (tabName === 'pricing')   loadPricing();
@@ -2150,3 +2151,66 @@ $('customerConfigModal')?.addEventListener('click', e => {
         sessionStorage.removeItem(TOKEN_KEY);
     }
 })();
+
+// ================================================================
+// BİLDİRİMLER SEKMESİ
+// ================================================================
+async function loadNotificationSettings() {
+    try {
+        const r = await api('/api/admin/notification-settings');
+        const s = r.settings || {};
+        $('notifEnabled').checked     = Boolean(s.enabled);
+        $('notifDays').value          = Array.isArray(s.notifyBeforeDays) ? s.notifyBeforeDays.join(',') : '30,7,1';
+        $('notifSmtpHost').value      = s.smtpHost || '';
+        $('notifSmtpPort').value      = s.smtpPort || 587;
+        $('notifSmtpUser').value      = s.smtpUser || '';
+        $('notifSmtpPass').value      = '';  // şifreyi gösterme
+        $('notifFromEmail').value     = s.fromEmail || '';
+        $('notifAdminEmail').value    = s.adminEmail || '';
+    } catch (e) {
+        $('notifResult').textContent = 'Ayarlar yüklenemedi: ' + e.message;
+        $('notifResult').className   = 'result err';
+    }
+}
+
+$('notifSaveBtn').addEventListener('click', async () => {
+    const daysRaw = $('notifDays').value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => n > 0);
+    try {
+        await api('/api/admin/notification-settings', {
+            method: 'POST',
+            body: {
+                enabled:          $('notifEnabled').checked,
+                notifyBeforeDays: daysRaw,
+                smtpHost:         $('notifSmtpHost').value.trim(),
+                smtpPort:         Number($('notifSmtpPort').value) || 587,
+                smtpUser:         $('notifSmtpUser').value.trim(),
+                smtpPassword:     $('notifSmtpPass').value || '••••••••',
+                fromEmail:        $('notifFromEmail').value.trim(),
+                adminEmail:       $('notifAdminEmail').value.trim()
+            }
+        });
+        $('notifResult').textContent = '✓ Kaydedildi.';
+        $('notifResult').className   = 'result ok';
+    } catch (e) {
+        $('notifResult').textContent = 'Hata: ' + e.message;
+        $('notifResult').className   = 'result err';
+    }
+});
+
+$('notifTestBtn').addEventListener('click', async () => {
+    $('notifResult').textContent = '⏳ Test ediliyor...';
+    $('notifResult').className   = 'result';
+    try {
+        const r = await api('/api/admin/notification-settings/test', { method: 'POST' });
+        if (r.ok) {
+            $('notifResult').textContent = '✓ SMTP bağlantısı başarılı.';
+            $('notifResult').className   = 'result ok';
+        } else {
+            $('notifResult').textContent = 'Bağlantı başarısız: ' + (r.error || 'bilinmiyor');
+            $('notifResult').className   = 'result err';
+        }
+    } catch (e) {
+        $('notifResult').textContent = 'Hata: ' + e.message;
+        $('notifResult').className   = 'result err';
+    }
+});
