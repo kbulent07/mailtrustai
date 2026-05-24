@@ -269,6 +269,7 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
       <a class="nav-item" data-tab="create">🔑 <span>Lisans Üret</span></a>
       <a class="nav-item" data-tab="manage">⚙️ <span>Lisans Yönet</span></a>
       <a class="nav-item" data-tab="pricing">💰 <span>Fiyatlandırma</span></a>
+      <a class="nav-item" data-tab="credits">💳 <span>Kredi Geçmişi</span></a>
       <a class="nav-item" data-tab="log">📜 <span>Log</span></a>
       <a class="nav-item" data-tab="transfers" id="transfersNavItem">🔁 <span>Transferler</span></a>
     </aside>
@@ -421,6 +422,27 @@ td .action-btn.ok:hover{background:var(--ok);color:#fff}
           </table>
         </div>
         <p class="muted" style="margin-top:8px;font-size:.85em">💡 Kredi maliyeti tier'a göre değişir. Fiyatlar KDV hariçtir. T9 (Özel) yalnızca merkez tarafından üretilir.</p>
+      </section>
+
+      <!-- ===== TAB: KREDİ GEÇMİŞİ ===== -->
+      <section class="tab-content" data-tab="credits">
+        <h2>💳 Kredi Geçmişi</h2>
+        <p class="muted" style="margin-bottom:14px">Kredi yüklemeleri, lisans harcamaları ve geri iadeler.</p>
+        <div class="filters">
+          <button id="creditsRefreshBtn">↻ Yenile</button>
+        </div>
+        <section class="stats" style="margin-bottom:20px">
+          <div class="stat-card"><div class="stat-label">Mevcut Bakiye</div><div id="crBalance" class="stat-value ok">—</div></div>
+          <div class="stat-card"><div class="stat-label">Toplam Yüklenen</div><div id="crLoaded" class="stat-value">—</div></div>
+          <div class="stat-card"><div class="stat-label">Toplam Harcanan</div><div id="crSpent" class="stat-value warn">—</div></div>
+          <div class="stat-card"><div class="stat-label">Ödenen (TRY)</div><div id="crPaid" class="stat-value">—</div></div>
+        </section>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Tarih</th><th>Değişim</th><th>Bakiye</th><th>TRY Tutar</th><th>Sebep</th><th>Açıklama</th></tr></thead>
+            <tbody id="creditsBody"><tr><td colspan="6" class="loading">Yükleniyor...</td></tr></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- ===== TAB: LOG ===== -->
@@ -726,6 +748,7 @@ function activateTab(name) {
     el.classList.toggle('active', el.dataset.tab === name));
   document.querySelectorAll('.tab-content').forEach(el =>
     el.classList.toggle('active', el.dataset.tab === name));
+  if (name === 'credits') loadCreditLog();
   if (name === 'log') loadLog();
   if (name === 'manage') renderManageTable();
   if (name === 'transfers') loadTransfers();
@@ -1267,6 +1290,65 @@ $('revokeApply').addEventListener('click', async () => {
     $('revokeResult').textContent = 'Hata: ' + err.message; $('revokeResult').className = 'result err';
   }
 });
+
+// ================================================================
+// KREDİ GEÇMİŞİ SEKMESİ
+// ================================================================
+$('creditsRefreshBtn').addEventListener('click', loadCreditLog);
+
+async function loadCreditLog() {
+  const tbody = $('creditsBody');
+  tbody.innerHTML = '<tr><td colspan="6" class="loading">Yükleniyor...</td></tr>';
+  try {
+    const r    = await api('/api/dealer/credit-log?limit=200');
+    const rows = r.log || [];
+
+    // Özet kartları
+    let totalLoaded = 0, totalSpent = 0, totalPaid = 0;
+    rows.forEach(row => {
+      if (row.delta > 0) totalLoaded += row.delta;
+      else               totalSpent  += Math.abs(row.delta);
+      if (row.delta > 0 && row.price_amount) totalPaid += row.delta * row.price_amount;
+    });
+    const balance = rows.length ? rows[0].balance : '—';
+    $('crBalance').textContent = balance.toLocaleString('tr-TR');
+    $('crLoaded').textContent  = totalLoaded.toLocaleString('tr-TR');
+    $('crSpent').textContent   = totalSpent.toLocaleString('tr-TR');
+    $('crPaid').textContent    = totalPaid > 0
+      ? totalPaid.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺'
+      : '—';
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">Henüz kredi işlemi yok.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(row => {
+      const sign     = row.delta >= 0 ? '+' : '';
+      const deltaClr = row.delta >= 0 ? 'var(--ok)' : 'var(--err)';
+      const tryAmt   = row.price_amount && row.delta
+        ? (Math.abs(row.delta) * row.price_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 }) + ' ₺'
+        : '—';
+      const reasonMap = {
+        'license.create':          '🔑 Lisans üretildi',
+        'license.create.rollback': '↩ Geri alındı',
+        'credit.load':             '➕ Kredi yüklendi',
+        'credit.manual':           '✏️ Manuel düzeltme',
+        'credit.deduct':           '➖ Kredi düşüldü'
+      };
+      const reasonLabel = reasonMap[row.reason] || escapeHtml(row.reason || '—');
+      return `<tr>
+        <td><small>${fmtDateTime(row.created_at)}</small></td>
+        <td style="color:${deltaClr};font-weight:600">${sign}${row.delta}</td>
+        <td>${row.balance}</td>
+        <td>${tryAmt}</td>
+        <td>${reasonLabel}</td>
+        <td class="muted">${escapeHtml(row.description || '—')}</td>
+      </tr>`;
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" class="loading" style="color:var(--err)">Hata: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
 
 // ================================================================
 // LOG SEKMESİ
