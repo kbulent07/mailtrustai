@@ -463,12 +463,20 @@ router.post('/license/redeem-topup', asyncH(async (req, res) => {
     const scanAmount = topupCode.scan_amount;
     const now        = Date.now();
 
-    // Atomik: extra_scans arttır + kodu kullanıldı olarak işaretle
-    await run('UPDATE licenses SET extra_scans = extra_scans + ? WHERE id = ?', [scanAmount, license.id]);
-    await run(
-        'UPDATE topup_codes SET used=1, used_by_license_id=?, used_at=? WHERE id=?',
+    // GÜVENLİK (MED-1): Atomik kod tüketimi. Eskiden iki ayrı UPDATE peş peşeydi;
+    // aynı kodu paralel iki istek aynı anda gönderdiğinde her ikisi de `used=0`
+    // görüp `extra_scans`'i çift artırabiliyordu (double topup). Şimdi önce
+    // kodu CAS ile (`WHERE id=? AND used=0`) "kapatıyoruz"; affectedRows/changes
+    // 0 ise başkası bizden önce kullanmış demektir → 409 dön.
+    const lockRes = await run(
+        'UPDATE topup_codes SET used=1, used_by_license_id=?, used_at=? WHERE id=? AND used=0',
         [license.id, now, topupCode.id]
     );
+    const lockedRows = (lockRes && (lockRes.affectedRows ?? lockRes.changes)) || 0;
+    if (lockedRows === 0) {
+        return res.status(409).json({ error: 'Bu kod zaten kullanılmış (yarış koşulu)' });
+    }
+    await run('UPDATE licenses SET extra_scans = extra_scans + ? WHERE id = ?', [scanAmount, license.id]);
 
     const afterLicense = await get('SELECT extra_scans FROM licenses WHERE id = ?', [license.id]);
 

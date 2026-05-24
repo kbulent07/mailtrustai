@@ -13,17 +13,28 @@ const { requireSecret } = require('@mailtrustai/shared');
 
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 saat
 
-// Development fallback: MSA_LICENSE_SECRET tanımsızsa rastgele per-boot secret.
-// Production'da process.exit(1) beklenir — aşağıya ulaşmamalı.
+// GÜVENLİK (HIGH-2): Production'da MSA_LICENSE_SECRET ZORUNLU — yoksa fail-fast.
+// Eskiden tüm ortamlarda sessizce per-boot rastgele secret üretiliyordu; bu
+// production'da token rotasyonu sorununu maskeliyor ve token forge riskini
+// gizliyordu. Şimdi sadece NODE_ENV != 'production' için dev fallback aktif.
 let _devFallbackSecret = null;
 function _getSecret() {
     const s = process.env.MSA_LICENSE_SECRET;
     if (s && s !== 'CHANGE_ME') return s + '|customer';
+
+    const isProd = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+    if (isProd) {
+        // Production'da hata at — caller (Express handler) 500 döner, operatör görür.
+        throw new Error(
+            '[customerAuth] MSA_LICENSE_SECRET tanımsız veya "CHANGE_ME". ' +
+            'Production\'da kuvvetli bir secret zorunludur (.env / docker secret).'
+        );
+    }
     if (!_devFallbackSecret) {
         _devFallbackSecret = require('crypto').randomBytes(32).toString('hex');
         require('@mailtrustai/shared').logger.warn(
-            '[customerAuth] UYARI: MSA_LICENSE_SECRET tanımsız — rastgele geçici secret kullanılıyor.' +
-            ' Yeniden başlatmada mevcut token\'lar geçersiz olacak.'
+            '[customerAuth] DEV UYARI: MSA_LICENSE_SECRET tanımsız — rastgele geçici secret kullanılıyor.' +
+            ' Yeniden başlatmada mevcut token\'lar geçersiz olacak. Production\'da bu durum fail-fast üretir.'
         );
     }
     return _devFallbackSecret + '|customer';

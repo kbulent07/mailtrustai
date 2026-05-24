@@ -93,12 +93,20 @@ function _systemTransport() {
     const s = loadSettings();
     const cfg = s.systemSmtp || {};
     if (!cfg.host || !cfg.user || !s.systemSmtpPassword) return null;
+    // GÜVENLİK (HIGH-1): TLS doğrulaması varsayılan AÇIK. Self-signed sertifika
+    // kullanan dahili SMTP relay'leri için MSA_SYSTEM_SMTP_INSECURE=1 ile opt-in
+    // kapatma var. Eskiden hardcoded false idi → MITM riski.
+    const insecureFlag = String(process.env.MSA_SYSTEM_SMTP_INSECURE || '').toLowerCase();
+    const insecure = insecureFlag === '1' || insecureFlag === 'true';
+    if (insecure) {
+        console.warn('[Sender] UYARI: Sistem SMTP TLS doğrulaması KAPALI (MSA_SYSTEM_SMTP_INSECURE).');
+    }
     return nodemailer.createTransport({
         host:   cfg.host,
         port:   Number(cfg.port) || 587,
         secure: cfg.secure === true,
         auth:   { user: cfg.user, pass: s.systemSmtpPassword },
-        tls:    { rejectUnauthorized: false }
+        tls:    { rejectUnauthorized: !insecure }
     });
 }
 

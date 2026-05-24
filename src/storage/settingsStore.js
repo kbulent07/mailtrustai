@@ -44,7 +44,12 @@ function encryptValue(plaintext) {
     return ENC_PREFIX + payload.toString('base64');
 }
 
-function decryptValue(stored) {
+// GÜVENLİK (LOW-2): Decrypt başarısızlığında sessizce '' dönmek "API key
+// kayboldu" çağrılarına neden oluyordu (secret rotasyonu, farklı host'tan
+// kopyalanmış data klasörü, vb.). Şimdi `fieldName` ile WARN log atılıyor
+// — plaintext sızdırmadan. _decryptFailWarned ile spam önlenir.
+const _decryptFailWarned = new Set();
+function decryptValue(stored, fieldName = 'unknown') {
     if (!stored || !stored.startsWith(ENC_PREFIX)) return stored;
     try {
         const payload  = Buffer.from(stored.slice(ENC_PREFIX.length), 'base64');
@@ -54,8 +59,12 @@ function decryptValue(stored) {
         const decipher = crypto.createDecipheriv('aes-256-gcm', _key(), iv);
         decipher.setAuthTag(authTag);
         return decipher.update(data) + decipher.final('utf8');
-    } catch {
-        // Farklı makine / bozuk kayıt → boş döner
+    } catch (e) {
+        if (!_decryptFailWarned.has(fieldName)) {
+            _decryptFailWarned.add(fieldName);
+            console.warn(`[SettingsStore] UYARI: '${fieldName}' decrypt başarısız (${e.code || e.name || 'err'}). ` +
+                `Olası neden: MSA_ENC_PASSWORD/MSA_ENC_SALT değişti veya data başka host'tan kopyalandı. Alan sıfırlanmış görünecek.`);
+        }
         return '';
     }
 }
@@ -72,9 +81,9 @@ function loadSettings() {
         const raw  = fs.readFileSync(SETTINGS_FILE, 'utf8');
         const data = { ...defaultSettings(), ...JSON.parse(raw || '{}') };
 
-        // Şifreli alanları çöz
+        // Şifreli alanları çöz (alan adı log için decryptValue'ya iletilir)
         for (const field of SENSITIVE) {
-            if (data[field]) data[field] = decryptValue(data[field]);
+            if (data[field]) data[field] = decryptValue(data[field], field);
         }
         return data;
     } catch {
@@ -101,7 +110,7 @@ function saveSettings(settings) {
             // Önce decrypt edip plaintext'i çek, sonra tekrar encrypt et.
             // (Geçerli bir encrypted blob ise decrypt başarılı; değilse — yani
             // saldırgan input'u — boş string döner, alan temizlenir.)
-            const plain = decryptValue(v);
+            const plain = decryptValue(v, field);
             toSave[field] = plain ? encryptValue(plain) : '';
         } else {
             toSave[field] = encryptValue(v);

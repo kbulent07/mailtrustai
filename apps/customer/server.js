@@ -89,8 +89,20 @@ const BLOCKED = [
 ];
 // /api/admin/restart ve /api/admin/stop → HARD-GATE'den muaf (customer admin yönetimi)
 const BLOCKED_EXEMPT = new Set(['/api/admin/restart', '/api/admin/stop']);
+// GÜVENLİK (MED-4): URL'i normalize et — encoded slash, çift slash, trailing dot
+// gibi varyantlarla bypass denemelerini kapat.
+function _normalizePath(rawPath) {
+    let p = String(rawPath || '').toLowerCase();
+    try { p = decodeURIComponent(p); } catch { /* bozuk encoding → orijinali kullan */ }
+    p = p.replace(/\\/g, '/');           // backslash → slash
+    p = p.replace(/\/{2,}/g, '/');       // çift slash birleştir
+    p = p.replace(/\/+\.+$/, '');        // trailing /. veya /..
+    p = p.replace(/\/+$/, '');           // trailing slash (eşitlik için)
+    if (!p) p = '/';
+    return p;
+}
 app.use((req, res, next) => {
-    const p = (req.path || '').toLowerCase();
+    const p = _normalizePath(req.path);
     if (BLOCKED_EXEMPT.has(p)) return next();
     for (const b of BLOCKED) {
         if (p === b || p.startsWith(b + '/')) {
@@ -500,7 +512,12 @@ installShutdownHandlers([
     })
 ]);
 
-process.on('unhandledRejection', (reason) => logger.error('[customer] unhandledRejection', reason));
+// GÜVENLİK (MED-2): prod'da unhandledRejection state corruption üretebilir;
+// hızlı fail + container restart politikası daha güvenli (state korruption riskini azaltır).
+process.on('unhandledRejection', (reason) => {
+    logger.error('[customer] unhandledRejection', reason);
+    if (String(process.env.NODE_ENV || '').toLowerCase() === 'production') process.exit(1);
+});
 process.on('uncaughtException', (err) => { logger.error('[customer] uncaughtException', err); process.exit(1); });
 
 // ─── Merkezi (Owner) AI model uygulaması ──────────────────────────────────────

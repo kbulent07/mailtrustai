@@ -14,11 +14,14 @@ const { recordAudit } = require('../../../storage/auditLog');
 
 const router = express.Router();
 
-// /settings/keys — Müşteri-erişilebilir API key'leri + companyProfile + riskMode.
-// Outer guard zaten admin/customer/license-key kontrolünü yapıyor.
+// /settings/keys — API anahtarları + companyProfile + riskMode kaydeder.
+// GÜVENLİK (CRIT-2): requireAdminAuth ŞARTTIR — eskiden "outer guard yeterli"
+// yorumu yanlıştı (apps/customer/server.js'de global admin gate YOK), bu yüzden
+// kimliği doğrulanmamış istekler API anahtarlarını silebiliyordu (`:clear`)
+// veya değiştirebiliyordu. Şimdi admin token zorunlu.
 // HASSAS NOT: adminPassword bu endpoint'ten DEĞİŞTİRİLEMEZ (privilege escalation
 // önlemi). Admin şifresi için ayrı /settings/admin-password endpoint'i var.
-router.post('/settings/keys', async (req, res) => {
+router.post('/settings/keys', requireAdminAuth, async (req, res) => {
     const updateKey = (current, incoming) => {
         if (incoming === undefined) return current;
         if (incoming === ':clear') return '';
@@ -170,10 +173,9 @@ function _isWebhookUrlSafe(rawUrl) {
     return { ok: true, url: u.toString() };
 }
 
-// Webhook ayarları müşteri-erişilebilir. SSRF korumasını _isWebhookUrlSafe
-// yapıyor (private/loopback IP'leri reddediyor) — admin auth gerektirmek
-// kullanılabilirliği kırardı (müşteri panelinden ayarlama).
-router.post('/settings/webhook', (req, res) => {
+// Webhook ayarı: tehdit verisi dış URL'e çıkar — admin yetkisi şart (CRIT-2).
+// SSRF koruması _isWebhookUrlSafe'de (private/loopback/metadata IP reddi).
+router.post('/settings/webhook', requireAdminAuth, (req, res) => {
     const safety = _isWebhookUrlSafe(String(req.body.webhookUrl || '').trim());
     if (!safety.ok) return res.status(400).json({ error: safety.error });
 
@@ -193,7 +195,7 @@ router.post('/settings/webhook', (req, res) => {
     res.json({ success: true });
 });
 
-router.post('/settings/webhook/test', async (req, res) => {
+router.post('/settings/webhook/test', requireAdminAuth, async (req, res) => {
     const url = req.body.webhookUrl || loadSettings().webhookUrl;
     if (!url) return res.status(400).json({ error: 'Webhook URL gerekli' });
     const safety = _isWebhookUrlSafe(url);

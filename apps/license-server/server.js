@@ -205,10 +205,14 @@ installShutdownHandlers([
     }
 ]);
 
-// Beklenmeyen hatalar — crash yerine logla.
-process.on('unhandledRejection', (reason) => logger.error('[unhandledRejection]', reason));
+// Beklenmeyen hatalar — kritikse process'i yenile (orchestrator restart eder).
+// GÜVENLİK (MED-2): prod'da unhandledRejection de exit eder; state corruption
+// riskini azaltır. Dev'de sadece log → debugging için process korunur.
+process.on('unhandledRejection', (reason) => {
+    logger.error('[unhandledRejection]', reason);
+    if (String(process.env.NODE_ENV || '').toLowerCase() === 'production') process.exit(1);
+});
 process.on('uncaughtException', (err) => {
     logger.error('[uncaughtException]', err);
-    // Kritik hata — process'i yenile (orchestrator restart eder).
     process.exit(1);
 });

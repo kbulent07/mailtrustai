@@ -1,5 +1,15 @@
 # ============================================================
-# MailTrustAI — Dockerfile
+# MailTrustAI — KÖK / MONOLİTİK Dockerfile  (LEGACY)
+#
+# ⚠️  UYARI (HIGH-3): Bu Dockerfile TÜM repo'yu (apps/license-server +
+#     packages/license-core + apps/dealer dahil) tek imaja kopyalar.
+#     Müşteri (customer) kurulumlarına bu imajı DAĞITMAYIN — keygen
+#     ve LICENSE_SIGNING_SECRET kullanan kod sızar (CRITICAL).
+#
+#     Müşteri imajı için: apps/customer/Dockerfile kullanın
+#     (docker-compose.customer.yml zaten onu çağırıyor; license-core
+#      orada fiziksel olarak silinir + check-customer-package.js denetler).
+#
 # Node.js 22 LTS Alpine tabanlı (--use-system-ca için 22+ gerekli).
 # native module derleme destekli, non-root kullanici.
 # ============================================================

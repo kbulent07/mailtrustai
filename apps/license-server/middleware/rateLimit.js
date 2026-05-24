@@ -25,7 +25,12 @@ function fallbackLimiter({ windowMs, max, label }) {
     if (cleanupInterval.unref) cleanupInterval.unref();
 
     return (req, res, next) => {
-        const key = (req.ip || req.headers['x-forwarded-for'] || 'unknown').toString();
+        // GÜVENLİK (MED-3): Eskiden `req.headers['x-forwarded-for']` fallback'i
+        // doğrudan kullanılıyordu — saldırgan her isteğe farklı XFF header'ı
+        // koyup rate limit'i bypass edebiliyordu. Express'in `req.ip`'si
+        // trust-proxy ayarlarına göre güvenli kaynak verir; XFF header'ı
+        // doğrudan asla kullanılmaz.
+        const key = String(req.ip || 'unknown');
         const now = Date.now();
         const b = buckets.get(key);
         if (!b || b.resetAt <= now) {

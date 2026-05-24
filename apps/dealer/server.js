@@ -265,5 +265,9 @@ installShutdownHandlers([
     })
 ]);
 
-process.on('unhandledRejection', (reason) => logger.error('[dealer] unhandledRejection', reason));
+// GÜVENLİK (MED-2): prod'da unhandledRejection de exit; state korruption riski azalır.
+process.on('unhandledRejection', (reason) => {
+    logger.error('[dealer] unhandledRejection', reason);
+    if (String(process.env.NODE_ENV || '').toLowerCase() === 'production') process.exit(1);
+});
 process.on('uncaughtException', (err) => { logger.error('[dealer] uncaughtException', err); process.exit(1); });

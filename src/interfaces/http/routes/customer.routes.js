@@ -7,7 +7,6 @@ const { v4: uuidv4 } = require('uuid');
 
 const customerAuth = require('../../../middleware/customerAuth');
 const { requireAdminAuth } = require('../../../middleware/adminAuth');
-const { validateLicenseKey } = require('../../../license/license');
 const { cleanupInitialCredsFile } = require('../../../services/initialSetupService');
 const { clearPersistedSetupToken } = require('../../../services/setupTokenService');
 const customerUserStore = require('../../../storage/customerUserStore');
@@ -25,46 +24,25 @@ function _tokenEquals(a, b) {
 const router = express.Router();
 
 // /customer/status — front-end başlangıçta login/setup formundan hangisi olduğunu
-// öğrenmek için çağırır. Lisans köprüsü desteği korundu.
+// öğrenmek için çağırır.
+// GÜVENLİK (CRIT-1): Lisans köprüsü (x-license-key ile otomatik admin
+// bridgeToken üretimi) çapraz-tenant admin takeover riski nedeniyle kaldırıldı.
+// Lisans anahtarı yalnızca feature gate + heartbeat için kullanılır; admin
+// oturumu için email + şifre zorunludur.
 router.get('/customer/status', (req, res) => {
     const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
     const parsed = token ? customerAuth.parseCustomerToken(token) : null;
-    let valid = !!parsed;
-    let bridgeToken = null;
-    let role = parsed?.role || null;
-    let email = parsed?.email || null;
-
-    // Token yoksa veya geçersizse: x-license-key ile fallback yetkilendirme.
-    // Lisans köprüsü yalnız admin rolünde çalışır — kullanıcılar email/parola ile girer.
-    if (!valid) {
-        const licKey = String(req.headers['x-license-key'] || req.query.licenseKey || '');
-        if (licKey) {
-            const result = validateLicenseKey(licKey);
-            if (result.valid && customerAuth.hasAnyAdmin()) {
-                // İlk admin'i bul (geriye uyumluluk: tek-admin senaryosu)
-                const admins = customerUserStore.listAll().filter(u => u.role === 'admin' && u.active);
-                const firstAdmin = admins[0];
-                if (firstAdmin) {
-                    valid = true;
-                    role = 'admin';
-                    email = firstAdmin.email;
-                    bridgeToken = customerAuth.createCustomerToken({
-                        email: firstAdmin.email, role: 'admin', imapEmail: null
-                    });
-                }
-            }
-        }
-    }
+    const valid = !!parsed;
 
     res.json({
         // Geriye uyumlu alanlar
         passwordSet:  customerAuth.isCustomerInitialized(),
         sessionValid: valid,
-        bridgeToken,
+        bridgeToken:  null, // KALDIRILDI — geriye uyumluluk için null kalır
         // Yeni alanlar
         initialized:  customerAuth.isCustomerInitialized(),
-        role,
-        email,
+        role:         parsed?.role || null,
+        email:        parsed?.email || null,
         imapEmail:    parsed?.imapEmail || null
     });
 });
