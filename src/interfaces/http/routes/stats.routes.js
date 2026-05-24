@@ -142,15 +142,18 @@ router.delete('/scan-history/range', requireCustomerAdmin, (req, res) => {
     try {
         const from = String(req.query.from || req.body?.from || '').trim();
         const to   = String(req.query.to   || req.body?.to   || '').trim();
-        if (!from || !to) {
-            return res.status(400).json({ error: 'from ve to (ISO tarihleri) zorunludur.' });
+        if (!to) {
+            return res.status(400).json({ error: 'to (bitiş tarihi) zorunludur.' });
         }
-        if (!/^\d{4}-\d{2}-\d{2}/.test(from) || !/^\d{4}-\d{2}-\d{2}/.test(to)) {
-            return res.status(400).json({ error: 'Geçersiz tarih formatı (YYYY-MM-DD bekleniyor).' });
+        if (from && !/^\d{4}-\d{2}-\d{2}/.test(from)) {
+            return res.status(400).json({ error: 'Geçersiz başlangıç tarihi (YYYY-MM-DD bekleniyor).' });
         }
-        // to=YYYY-MM-DD ise gün sonuna kadar al
-        const fromISO = from.length === 10 ? from + 'T00:00:00.000Z' : from;
-        const toISO   = to.length === 10   ? to   + 'T23:59:59.999Z' : to;
+        if (!/^\d{4}-\d{2}-\d{2}/.test(to)) {
+            return res.status(400).json({ error: 'Geçersiz bitiş tarihi (YYYY-MM-DD bekleniyor).' });
+        }
+        // from boşsa en baştan sil
+        const fromISO = from ? (from.length === 10 ? from + 'T00:00:00.000Z' : from) : '1970-01-01T00:00:00.000Z';
+        const toISO   = to.length === 10 ? to + 'T23:59:59.999Z' : to;
 
         const result = deleteScanHistoryRange(fromISO, toISO);
         recordAudit({

@@ -4115,24 +4115,27 @@ async function deleteScanHistoryByRange() {
 
     status.textContent = '';
 
-    if (!from || !to) {
-        status.innerHTML = '<span class="u-err">Başlangıç ve bitiş tarihi seçin</span>';
+    if (!to) {
+        status.innerHTML = '<span class="u-err">Bitiş tarihi seçin</span>';
         return;
     }
-    if (from > to) {
+    if (from && from > to) {
         status.innerHTML = '<span class="u-err">Başlangıç bitişten büyük olamaz</span>';
         return;
     }
+    const rangeLabel = from ? `${from} → ${to}` : `${to} tarihine kadar tüm`;
     const ok = await showConfirm({
         title: 'Tarama Geçmişini Sil',
-        message: `${from} → ${to} aralığındaki TÜM tarama kayıtları kalıcı olarak silinecek.\n\nDevam edilsin mi?`,
+        message: `${rangeLabel} tarama kayıtları kalıcı olarak silinecek.\n\nDevam edilsin mi?`,
         confirmText: 'Sil', cancelText: 'Vazgeç', danger: true
     });
     if (!ok) return;
 
     status.innerHTML = '⏳ Siliniyor…';
+    const params = new URLSearchParams({ to });
+    if (from) params.set('from', from);
     try {
-        const r = await fetch(`/api/scan-history/range?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+        const r = await fetch(`/api/scan-history/range?${params}`, {
             method: 'DELETE'
         });
         const data = await r.json();
