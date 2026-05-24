@@ -25,7 +25,6 @@ const state = {
     claudeApiKey:  persistedSettings.claudeApiKey  || '',
     openaiApiKey:  persistedSettings.openaiApiKey  || '',
     openaiModel:   persistedSettings.openaiModel   || '',
-    otxApiKey:     persistedSettings.otxApiKey     || '',
     customPrices:  persistedSettings.customPrices  || null
 };
 

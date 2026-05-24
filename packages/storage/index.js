@@ -19,7 +19,6 @@ module.exports = {
     fpSuggestionStore: require(path.join(SRC, 'fpSuggestionStore')),
     llmUsageStore:     require(path.join(SRC, 'llmUsageStore')),
     monthlyCounter:    require(path.join(SRC, 'monthlyCounter')),
-    otxCacheStore:     require(path.join(SRC, 'otxCacheStore')),
     patternStore:      require(path.join(SRC, 'patternStore')),
     trustedDomainStore:require(path.join(SRC, 'trustedDomainStore')),
     vtCacheStore:      require(path.join(SRC, 'vtCacheStore'))

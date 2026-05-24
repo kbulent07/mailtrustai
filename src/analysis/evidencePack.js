@@ -14,7 +14,6 @@ function buildEvidencePack(result) {
     const findings = result.findings || [];
     const attachments = result.attachmentDetails || [];
     const vt = result.virusTotal || [];
-    const otx = result.otxData || {};
     const ai = result.openaiAnalysis || {};
 
     // Auth durumu
@@ -50,14 +49,6 @@ function buildEvidencePack(result) {
             } : { checked: false }
         };
     });
-
-    // OTX sinyalleri
-    const otxIndicators = (otx.indicators || []).slice(0, 6).map(i => ({
-        type:     i.type || 'unknown',
-        value:    truncate(i.value || '', 100),
-        verdict:  i.verdict || 'unknown',
-        pulses:   i.pulseCount || 0
-    }));
 
     // İçerik sinyalleri (content + finding kategorilerinden)
     const contentSignals = [];
@@ -105,12 +96,6 @@ function buildEvidencePack(result) {
                 checked:           vt.length,
                 totalMalicious:    vt.reduce((n, e) => n + (e.stats?.malicious  || 0), 0),
                 totalSuspicious:   vt.reduce((n, e) => n + (e.stats?.suspicious || 0), 0)
-            },
-            otx: {
-                checked:    otxIndicators.length,
-                malicious:  otxIndicators.filter(i => i.verdict === 'malicious').length,
-                suspicious: otxIndicators.filter(i => i.verdict === 'suspicious').length,
-                indicators: otxIndicators
             }
         },
         priorAi: ai.threatLevel ? {

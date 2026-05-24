@@ -11,7 +11,7 @@ const SETTINGS_FILE = path.join(__dirname, '..', '..', 'data', 'settings.json');
 
 // ─── ŞİFRELEME ───────────────────────────────────────────────
 const ENC_PREFIX = 'enc:v1:';
-const SENSITIVE   = ['vtApiKey', 'claudeApiKey', 'openaiApiKey', 'otxApiKey', 'webhookUrl', 'systemSmtpPassword'];
+const SENSITIVE   = ['vtApiKey', 'claudeApiKey', 'openaiApiKey', 'webhookUrl', 'systemSmtpPassword'];
 
 const { requireSecret } = require('@mailtrustai/shared');
 
@@ -133,7 +133,6 @@ function defaultSettings() {
         claudeApiKey:  '',
         openaiApiKey:  '',
         openaiModel:   '',
-        otxApiKey:     '',
         adminPassword: '',
         companyProfile: { name: '', details: '', contactInfo: '' },
         scanMailboxes: [],

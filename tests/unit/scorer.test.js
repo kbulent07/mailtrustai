@@ -45,13 +45,6 @@ test('resolveLevel: VirusTotal warning → low (skor düşük olsa bile)', () =>
     assert.equal(lvl, 'low');
 });
 
-test('resolveLevel: OTX malicious → high', () => {
-    const lvl = resolveLevel(15, [
-        { category: 'otx', severity: 'critical', message: 'OTX: malicious indicator' }
-    ]);
-    assert.equal(lvl, 'high');
-});
-
 test('resolveLevel: critical attachment → medium', () => {
     const lvl = resolveLevel(20, [
         { category: 'attachment', severity: 'critical', message: 'Şüpheli ek' }

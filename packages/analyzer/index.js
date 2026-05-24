@@ -20,7 +20,6 @@ module.exports = {
         openai:       require(path.join(I, 'openai')),
         claude:       require(path.join(I, 'claude')),
         virustotal:   require(path.join(I, 'virustotal')),
-        otx:          require(path.join(I, 'otx')),
         threatIntel:  require(path.join(I, 'threatIntel')),
         webhook:      require(path.join(I, 'webhook'))
     }

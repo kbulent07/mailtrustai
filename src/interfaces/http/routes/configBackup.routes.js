@@ -14,7 +14,7 @@ const router = express.Router();
 
 // Hassas / kuruluma özgü alanlar — export/import'a dahil edilmez
 const EXCLUDE = new Set([
-    'vtApiKey', 'claudeApiKey', 'openaiApiKey', 'otxApiKey',
+    'vtApiKey', 'claudeApiKey', 'openaiApiKey',
     'adminPassword', 'customerPassword', 'licenseKey'
 ]);
 
@@ -81,7 +81,7 @@ router.post('/admin/config/import', requireAdminAuth, (req, res) => {
         );
     }
 
-    // ── OTX Güvenilir Domainler ──────────────────────────────
+    // ── Güvenilir Domainler ──────────────────────────────────
     if (Array.isArray(trustedDomains) && trustedDomains.length) {
         result.trustedDomains = importTrustedDomains(
             trustedDomains,

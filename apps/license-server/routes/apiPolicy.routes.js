@@ -31,7 +31,7 @@ async function _effectiveAiModels(overrideBody) {
 async function getApiPolicy(customerId) {
     const row  = await get('SELECT * FROM api_policies WHERE customer_id=?', [customerId]);
     const body = row ? JSON.parse(row.body_json) : {
-        allowedProviders: ['openai', 'claude', 'virustotal', 'otx'],
+        allowedProviders: ['openai', 'claude', 'virustotal'],
         rateLimit: null,
         dailyQuota: null,
         monthlyQuota: null,

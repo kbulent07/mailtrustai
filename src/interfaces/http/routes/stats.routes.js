@@ -226,7 +226,6 @@ router.get('/stats', (req, res) => {
         .map(([category, count]) => ({ category, count }));
 
     const vtHits    = history.filter(s => s.vtStatus?.checked && (s.findings || []).some(f => f.category === 'virusTotal' && f.severity === 'critical')).length;
-    const otxHits   = history.filter(s => (s.findings || []).some(f => f.category === 'otx')).length;
     const abuseHits = history.filter(s => (s.findings || []).some(f => f.category === 'abuse')).length;
 
     res.json({
@@ -235,7 +234,7 @@ router.get('/stats', (req, res) => {
         monthlyScans:  getMonthlyCount(),
         threats:       byLevel.high,
         accounts:      loadCredentials().length,
-        byLevel, bySource, trend7, topCategories, vtHits, otxHits, abuseHits
+        byLevel, bySource, trend7, topCategories, vtHits, abuseHits
     });
 });
 
@@ -290,39 +289,6 @@ router.get('/stats/vt-detections', (req, res) => {
     res.json(results.slice(0, 200));
 });
 
-// OTX ile tespit edilen domain/hostname listesi — istatistik paneli FP entegrasyonu için
-router.get('/stats/otx-domains', (req, res) => {
-    const history = loadScanHistory();
-    const domainMap = new Map(); // domain → { severity, message, lastSeen, count }
-
-    for (const scan of history) {
-        for (const f of (scan.findings || [])) {
-            if (f.category !== 'otx') continue;
-            if (!f.indicatorValue) continue;
-            if (f.indicatorType === 'IPv4') continue;
-            if (f.severity !== 'critical' && f.severity !== 'warning') continue;
-
-            const key = f.indicatorValue;
-            const ts  = scan.timestamp || scan.scanTime || '';
-            if (!domainMap.has(key)) {
-                domainMap.set(key, { domain: key, severity: f.severity, message: f.message || '', lastSeen: ts, count: 1 });
-            } else {
-                const entry = domainMap.get(key);
-                entry.count++;
-                // En yüksek severity'yi koru
-                if (f.severity === 'critical') entry.severity = 'critical';
-                // En son görülme tarihini güncelle
-                if (ts > entry.lastSeen) { entry.lastSeen = ts; entry.message = f.message || entry.message; }
-            }
-        }
-    }
-
-    const list = Array.from(domainMap.values())
-        .sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen))
-        .slice(0, 100);
-
-    res.json(list);
-});
 
 // ─── Tek tarama detayı (scan_id ile) ─────────────────────────────────────────
 router.get('/scan/:scanId', requireCustomerUser, (req, res) => {

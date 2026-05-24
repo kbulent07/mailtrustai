@@ -77,11 +77,6 @@ test('buildEmailAnalysisResult records abuse feed link matches as first-class fi
         mockModule('../../src/storage/settingsStore', {
             loadSettings: () => ({ riskMode: 'classic' })
         }),
-        mockModule('../../src/integrations/otx', {
-            checkEmailIndicators: async () => ({ indicators: [], summary: {} }),
-            severityFromVerdict: () => 'safe',
-            scoreFromVerdict: () => 0
-        }),
         mockModule('../../src/storage/allowlistStore', {
             isAllowlisted: () => false,
             isBlocklisted: () => false
@@ -97,7 +92,6 @@ test('buildEmailAnalysisResult records abuse feed link matches as first-class fi
         mockModule('../../src/services/appState', {
             state: {
                 vtApiKey: '',
-                otxApiKey: '',
                 claudeApiKey: '',
                 openaiApiKey: '',
                 openaiModel: ''

@@ -272,7 +272,7 @@ db.exec(`
         console.log(`[DB] ${brands.length} marka domain seed edildi.`);
     }
 
-    // Trusted domains (OTX whitelist) — kategori başına seed
+    // Trusted domains (yanlış pozitif beyaz listesi) — kategori başına seed
     const trustedCount = db.prepare('SELECT COUNT(*) AS n FROM trusted_domains').get().n;
     if (trustedCount === 0) {
         const ins = db.prepare('INSERT OR IGNORE INTO trusted_domains (domain, category, added_by, note) VALUES (?, ?, ?, ?)');

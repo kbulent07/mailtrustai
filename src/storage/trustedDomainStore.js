@@ -1,5 +1,5 @@
 // ============================================================
-// TRUSTED DOMAIN STORE — OTX whitelist'i SQLite üzerinden yönetir.
+// TRUSTED DOMAIN STORE — yanlış pozitif beyaz listesini SQLite üzerinden yönetir.
 // In-memory Set önbelleği ile her sorguda DB'ye gitmez; admin
 // güncelleme yaptığında cache invalidate edilir.
 // ============================================================

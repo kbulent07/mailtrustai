@@ -17,7 +17,6 @@
 function triage(result) {
     const findings = result.findings || [];
     const vt       = result.virusTotal || [];
-    const otx      = result.otxData || {};
     const ai       = result.openaiAnalysis || null;
 
     // ─── TIER 1: Bariz tehdit ────────────────────────────────
@@ -27,16 +26,6 @@ function triage(result) {
         return {
             tier: 1,
             reason: `VirusTotal'de ${vtMalicious} antivirüs motoru zararlı tespit etti`,
-            shouldAdjudicate: false
-        };
-    }
-
-    // OTX'te malicious indicator
-    const otxMalicious = (otx.indicators || []).filter(i => i.verdict === 'malicious').length;
-    if (otxMalicious > 0) {
-        return {
-            tier: 1,
-            reason: `OTX'te ${otxMalicious} zararlı gösterge işaretli`,
             shouldAdjudicate: false
         };
     }
@@ -85,12 +74,11 @@ function triage(result) {
         };
     }
 
-    // VT/OTX hiç sinyal vermemişse + hiç warning/critical bulgu yoksa + AI da safe/low dediyse
-    const otxSuspicious = (otx.indicators || []).filter(i => i.verdict === 'suspicious').length;
+    // VT hiç sinyal vermemişse + hiç warning/critical bulgu yoksa + AI da safe/low dediyse
     const aiThreatLevel = String(ai?.threatLevel || '').toLowerCase();
     const aiSaysSafe    = aiThreatLevel === 'safe' || aiThreatLevel === 'low';
 
-    if (!hasCritical && !hasWarning && otxSuspicious === 0 && (!ai || aiSaysSafe)) {
+    if (!hasCritical && !hasWarning && (!ai || aiSaysSafe)) {
         return {
             tier: 2,
             reason: 'Tüm kontroller temiz, kararsızlık sinyali yok',
@@ -102,7 +90,6 @@ function triage(result) {
     const reasons = [];
     if (hasCritical) reasons.push('kritik bulgular var');
     if (hasWarning) reasons.push('uyarı seviyesinde bulgular var');
-    if (otxSuspicious > 0) reasons.push(`OTX'te ${otxSuspicious} şüpheli gösterge`);
     if (hasSuspiciousLinks) reasons.push('şüpheli linkler');
     if (hasAttachments) reasons.push(`${result.attachmentDetails.length} ek dosya`);
     if (ai && !aiSaysSafe) reasons.push(`AI ön-değerlendirmesi: ${aiThreatLevel}`);

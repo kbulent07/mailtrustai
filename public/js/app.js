@@ -301,11 +301,11 @@ document.addEventListener('DOMContentLoaded', () => {
     renderImapReportPlaceholder(t('imap_no_account'));
     updateScanSelectedButton();
 
-    // ─── OTX import dosya seçici — programmatik event bağlama ───
+    // ─── Güvenilir domain import dosya seçici — programmatik event bağlama ───
     // (inline onchange'e güvenmek yerine addEventListener kullanıyoruz)
-    const _otxFileInput = document.getElementById('userTdImportFile');
-    if (_otxFileInput) {
-        _otxFileInput.addEventListener('change', function () {
+    const _tdFileInput = document.getElementById('userTdImportFile');
+    if (_tdFileInput) {
+        _tdFileInput.addEventListener('change', function () {
             if (this.files && this.files[0]) userTdImport(this);
         });
     }
@@ -605,12 +605,6 @@ function _deriveLevelReason(data) {
     if ((rank[lvl] || 0) <= (rank[scoreLvl] || 0)) return null;
 
     const parts = [];
-    const otx = data.otxData?.indicators || [];
-    const otxMal = otx.filter(i => i.verdict === 'malicious').length;
-    const otxSus = otx.filter(i => i.verdict === 'suspicious').length;
-    if (otxMal) parts.push(`OTX'te ${otxMal} zararlı gösterge`);
-    else if (otxSus) parts.push(`OTX'te ${otxSus} şüpheli gösterge`);
-
     const vt = data.virusTotal || [];
     const vtMal = vt.reduce((n,e) => n + (e.stats?.malicious || 0), 0);
     const vtSus = vt.reduce((n,e) => n + (e.stats?.suspicious || 0), 0);
@@ -1138,20 +1132,6 @@ function jsString(value) {
     return JSON.stringify(String(value || ''));
 }
 
-function canReportOtxFalsePositive(finding) {
-    return finding?.category === 'otx'
-        && finding.indicatorValue
-        && finding.indicatorType !== 'IPv4'
-        && (finding.severity === 'critical' || finding.severity === 'warning');
-}
-
-function renderFindingFpButton(finding, idx, buttonId = '') {
-    if (!canReportOtxFalsePositive(finding)) return '';
-    const idAttr = buttonId ? ` id="${esc(buttonId)}"` : '';
-    const argButtonId = buttonId ? jsString(buttonId) : 'null';
-    return `<button${idAttr} class="finding-fp-btn" onclick='reportFalsePositive(${jsString(finding.indicatorValue)},${jsString(finding.category)},${jsString(finding.severity)},${jsString(idx)},${argButtonId})' title="Bu domain yanlış pozitif — onay kuyruğuna gönder" style="margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#94a3b8;font-size:11px;padding:3px 8px;cursor:pointer;white-space:nowrap">⚠️ Yanlış pozitif</button>`;
-}
-
 function renderFindings(findings, filter = 'all') {
     const list = document.getElementById('findingsList');
     // 'ai' kategorisi ayrı ChatGPT kartında gösterildiği için burada tekrarlanmaz
@@ -1159,77 +1139,14 @@ function renderFindings(findings, filter = 'all') {
         ? findings.filter(f => f.category !== 'ai')
         : findings.filter((finding) => finding.category === filter);
 
-    list.innerHTML = filtered.map((finding, idx) => {
-        const fpBtn = renderFindingFpButton(finding, idx);
-        return `
+    list.innerHTML = filtered.map((finding, idx) => `
         <div class="finding-item" data-finding-idx="${idx}" class="u-row-10">
             <div class="finding-icon ${finding.severity}">${findingIcon(finding.severity)}</div>
             <div class="u-flex1">
                 <div class="finding-text">${esc(finding.message)}</div>
                 <div class="finding-category">${esc(formatCategory(finding.category))}</div>
             </div>
-            ${fpBtn}
-        </div>`;
-    }).join('');
-}
-
-async function reportFalsePositive(domain, category, severity, idx, buttonId = null) {
-    if (!domain) return;
-    const ok = await showConfirm({
-        title: 'Yanlış Pozitif Bildir',
-        message: `"${domain}" için yanlış pozitif raporu gönderilsin mi?\n\nAdmin onayından sonra bu domain güvenilir listeye eklenir ve bir daha tehdit olarak işaretlenmez.`,
-        confirmText: '✅ Evet, raporla',
-        cancelText: 'İptal',
-        icon: '⚠️'
-    });
-    if (!ok) return;
-
-    const item = buttonId ? null : document.querySelector(`.finding-item[data-finding-idx="${idx}"]`);
-    const btn = buttonId ? document.getElementById(buttonId) : (item ? item.querySelector('.finding-fp-btn') : null);
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Gönderiliyor…'; }
-
-    try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (typeof licenseKey !== 'undefined' && licenseKey) headers['x-license-key'] = licenseKey;
-        const res = await fetch('/api/fp-suggestions', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                domain,
-                category,
-                severity,
-                scanId:  currentResult?.id || currentResult?.scanId || null,
-                message: (currentResult?.findings || []).find(f => f.indicatorValue === domain)?.message || ''
-            })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-            if (btn) { btn.disabled = false; btn.textContent = '⚠️ Yanlış pozitif'; }
-            showToast(data.error || `Hata: HTTP ${res.status}`, 'error', { title: 'FP raporu gönderilemedi' });
-            return;
-        }
-        if (btn) {
-            btn.disabled = true;
-            if (data.alreadyDecided && data.status === 'approved') {
-                btn.textContent = '✅ Onaylanmış';
-                btn.style.color = '#4ade80';
-                showToast(`"${domain}" zaten onaylanmış güvenilir listede.`, 'info');
-            } else if (data.alreadyDecided && data.status === 'rejected') {
-                btn.textContent = '🚫 Reddedilmiş';
-                btn.style.color = '#94a3b8';
-                showToast(`"${domain}" daha önce admin tarafından reddedilmiş.`, 'warning');
-            } else {
-                btn.textContent = data.incremented ? '✓ Sayaç +1' : '✓ Gönderildi';
-                btn.style.color = '#4ade80';
-                showToast(`"${domain}" yanlış pozitif olarak raporlandı. Admin onayı bekleniyor.`, 'success', {
-                    title: '✅ Rapor gönderildi'
-                });
-            }
-        }
-    } catch (e) {
-        if (btn) { btn.disabled = false; btn.textContent = '⚠️ Yanlış pozitif'; }
-        showToast(e.message, 'error', { title: 'Bağlantı hatası' });
-    }
+        </div>`).join('');
 }
 
 function filterFindings(tab) {
@@ -2932,18 +2849,14 @@ function renderImapReport(data, message = null) {
                         <span class="text-muted">${group.items.length}</span>
                     </div>
                     <div class="findings-list">
-                        ${group.items.map((finding, findingIdx) => {
-                            const fpButtonId = `imap-fp-${group.category}-${findingIdx}`;
-                            return `
+                        ${group.items.map((finding) => `
                             <div class="finding-item compact" class="u-row-10">
                                 <div class="finding-icon ${finding.severity}">${findingIcon(finding.severity)}</div>
                                 <div class="u-flex1-0">
                                     <div class="finding-text">${esc(finding.message)}</div>
                                     <div class="finding-category">${esc(formatCategory(finding.category))}</div>
                                 </div>
-                                ${renderFindingFpButton(finding, `imap-${group.category}-${findingIdx}`, fpButtonId)}
-                            </div>`;
-                        }).join('')}
+                            </div>`).join('')}
                     </div>
                 </div>
             `).join('')}
@@ -4274,7 +4187,6 @@ async function saveSettings() {
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--text-secondary)">Kaydediliyor...</span>';
 
     const vtKey     = document.getElementById('vtApiKeyInput').value.trim();
-    const otxKey    = document.getElementById('otxApiKeyInput')?.value.trim() || '';
     const claudeKey = document.getElementById('claudeApiKeyInput').value.trim();
     const openaiKey = document.getElementById('openaiApiKeyInput').value.trim();
     const companyProfile = {
@@ -4299,7 +4211,6 @@ async function saveSettings() {
 
     const payload = {
         vtApiKey: vtKey, claudeApiKey: claudeKey, openaiApiKey: openaiKey,
-        otxApiKey: otxKey,
         openaiModel,
         companyProfile,
         riskMode
@@ -4382,7 +4293,6 @@ async function loadSettingsStatus() {
             if (!el.dataset.defaultPlaceholder) el.dataset.defaultPlaceholder = el.placeholder;
         };
         setKeyPlaceholder('vtApiKeyInput', status.vtConfigured);
-        setKeyPlaceholder('otxApiKeyInput', status.otxConfigured);
         setKeyPlaceholder('claudeApiKeyInput', status.claudeConfigured);
         setKeyPlaceholder('openaiApiKeyInput', status.openaiConfigured);
 
@@ -4430,7 +4340,6 @@ async function loadSettingsStatus() {
 
         statusEl.textContent = [
             `AntiVirüs: ${status.vtConfigured ? '✅' : '—'}`,
-            `OTX: ${status.otxConfigured ? '✅' : '—'}`,
             `Link Tarama Motoru: ${status.abuseFeedAvailable ? 'OK' : '-'}`,
             `Claude: ${status.claudeConfigured ? '✅' : '—'}`,
             `OpenAI: ${status.openaiConfigured ? `✅ (${status.openaiModel || 'default'})` : '—'}`,
@@ -4441,35 +4350,6 @@ async function loadSettingsStatus() {
         if (statusEl) {
             statusEl.textContent = `Settings status unavailable: ${error.message}`;
         }
-    }
-}
-
-async function testOtxConnection() {
-    const apiKey = document.getElementById('otxApiKeyInput')?.value.trim();
-    const statusEl = document.getElementById('otxTestStatus');
-    if (!statusEl) return;
-    if (!apiKey) {
-        statusEl.innerHTML = '<span style="color:#f59e0b">⚠️ Önce OTX API anahtarını girin.</span>';
-        return;
-    }
-    statusEl.innerHTML = '<span style="color:var(--text-secondary)">⏳ Test ediliyor...</span>';
-    try {
-        const res = await fetch('/api/settings/otx/test', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(licenseKey ? { 'x-license-key': licenseKey } : {})
-            },
-            body: JSON.stringify({ otxApiKey: apiKey })
-        });
-        const data = await res.json();
-        if (res.ok) {
-            statusEl.innerHTML = `<span class="u-ok">✅ ${esc(data.message)}</span>`;
-        } else {
-            statusEl.innerHTML = `<span class="u-err">❌ ${esc(data.error)}</span>`;
-        }
-    } catch (e) {
-        statusEl.innerHTML = `<span class="u-err">❌ Bağlantı hatası: ${esc(e.message)}</span>`;
     }
 }
 
@@ -6876,7 +6756,6 @@ async function updateScanMailboxReportMode(imapEmail, reportMode) {
 function showPage(page) {
     const homePanel     = document.getElementById('homePanel');
     const statsPanel    = document.getElementById('statsPanel');
-    const otxPanel      = document.getElementById('otxApprovalPanel');
     const scanListPanel = document.getElementById('scanListPanel');
     const mainPanels    = ['connectionBar','scanModes','panelUpload','panelPaste',
                            'panelImap','panelScanMailbox','scanProgress','resultsPanel',
@@ -6885,16 +6764,14 @@ function showPage(page) {
     const tabHome     = document.getElementById('navTabHome');
     const tabScan     = document.getElementById('navTabScan');
     const tabStats    = document.getElementById('navTabStats');
-    const tabOtx      = document.getElementById('navTabOtxApproval');
     const tabScanList = document.getElementById('navTabScanList');
 
     // Önce her şeyi gizle — classList.add('hidden') kullan (.hidden { display:none !important })
     if (homePanel)     homePanel.classList.add('hidden');
     if (statsPanel)    statsPanel.classList.add('hidden');
-    if (otxPanel)      otxPanel.classList.add('hidden');
     if (scanListPanel) scanListPanel.classList.add('hidden');
-    [tabHome, tabScan, tabStats, tabOtx, tabScanList].forEach(t => t && t.classList.remove('active'));
-    ['mNavTabHome','mNavTabScan','mNavTabStats','mNavTabOtx','mNavTabScanList'].forEach(id => {
+    [tabHome, tabScan, tabStats, tabScanList].forEach(t => t && t.classList.remove('active'));
+    ['mNavTabHome','mNavTabScan','mNavTabStats','mNavTabScanList'].forEach(id => {
         const el = document.getElementById(id); if (el) el.classList.remove('active');
     });
 
@@ -6916,12 +6793,6 @@ function showPage(page) {
         if (tabScanList) tabScanList.classList.add('active');
         const msl = document.getElementById('mNavTabScanList'); if (msl) msl.classList.add('active');
         scanListInit();
-    } else if (page === 'otx-approval') {
-        if (otxPanel) otxPanel.classList.remove('hidden');
-        mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
-        if (tabOtx) tabOtx.classList.add('active');
-        const mo = document.getElementById('mNavTabOtx'); if (mo) mo.classList.add('active');
-        loadUserFpSuggestions();
     } else {
         // 'scan' modu: inline style sıfırla — CSS class durumuna göre görünürlük döner
         mainPanels.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
@@ -7284,7 +7155,6 @@ function _cuRenderTrend(trend7) {
 function _cuRenderIntegrations(d) {
     const total  = d.totalScans || 0;
     const vtPct  = total > 0 ? (d.vtHits  / total * 100).toFixed(1) : '0.0';
-    const otxPct = total > 0 ? (d.otxHits / total * 100).toFixed(1) : '0.0';
     const abusePct = total > 0 ? (d.abuseHits / total * 100).toFixed(1) : '0.0';
     document.getElementById('cuStatsIntegrations').innerHTML = `
         <div class="u-mb14">
@@ -7294,15 +7164,6 @@ function _cuRenderIntegrations(d) {
             <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">
                 İsabet oranı: ${vtPct}%
                 ${d.vtHits > 0 ? `<span style="margin-left:8px;color:#f87171;cursor:pointer;text-decoration:underline" onclick="showVtDetections()">tespit listesi →</span>` : ''}
-            </div>
-        </div>
-        <div>
-            <div style="cursor:pointer;user-select:none" onclick="showOtxDomainList()" title="Tespit edilen domainleri görüntüle">
-                ${_cuBar('🌐 AlienVault OTX Tespiti  ↗', d.otxHits || 0, total || 1, '#fb923c')}
-            </div>
-            <div style="font-size:11px;color:var(--text-secondary);margin-top:-6px">
-                İsabet oranı: ${otxPct}%
-                ${d.otxHits > 0 ? `<span style="margin-left:8px;color:#fb923c;cursor:pointer;text-decoration:underline" onclick="showOtxDomainList()">domain listesi →</span>` : ''}
             </div>
         </div>
         <div>
@@ -7435,215 +7296,6 @@ function _cuRenderVtDetections(panel, list) {
         </div>
         ${cards}
     `;
-}
-
-async function showOtxDomainList() {
-    const body = _openListDetailModal('🌐 AlienVault OTX — Tespit Edilen Domain / Hostname Listesi');
-    if (!body) return;
-    try {
-        const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
-        const res = await fetch('/api/stats/otx-domains', { headers });
-        if (!res.ok) { body.innerHTML = '<p class="u-err">Veriler yüklenemedi.</p>'; return; }
-        const list = await res.json();
-        _cuRenderOtxDomainList(body, list);
-    } catch (e) {
-        body.innerHTML = `<p class="u-err">Hata: ${esc(e.message)}</p>`;
-    }
-}
-
-function _cuRenderOtxDomainList(panel, list) {
-    if (!list.length) {
-        panel.innerHTML = '<p style="font-size:12px;color:var(--text-secondary);padding:8px 0">OTX tespit kaydı bulunamadı.</p>';
-        return;
-    }
-    const sevColor = { critical: '#f87171', warning: '#fb923c' };
-    const sevIcon  = { critical: '🔴', warning: '🟠' };
-    const rows = list.map(item => {
-        const color   = sevColor[item.severity] || '#94a3b8';
-        const icon    = sevIcon[item.severity]  || '⚠️';
-        const lastDate = item.lastSeen ? new Date(item.lastSeen).toLocaleDateString('tr-TR', { day:'2-digit', month:'short', year:'2-digit' }) : '—';
-        const countBadge = item.count > 1
-            ? `<span style="font-size:10px;background:rgba(251,146,60,0.15);color:#fb923c;border-radius:4px;padding:2px 6px;margin-left:6px">${item.count}×</span>`
-            : '';
-        return `
-        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:8px;background:var(--surface2);margin-bottom:6px;font-size:12px">
-            <span style="font-size:15px;padding-top:1px">${icon}</span>
-            <div class="u-flex1-0">
-                <div style="font-weight:700;color:${color};margin-bottom:2px">
-                    ${esc(item.domain)}${countBadge}
-                </div>
-                <div style="font-size:11px;color:var(--text-secondary);line-height:1.5;word-break:break-word">${esc(item.message)}</div>
-            </div>
-            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">
-                <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap">${lastDate}</span>
-                <button onclick="reportFpFromStats('${esc(item.domain)}','${esc(item.severity)}','${esc(item.message)}')" title="Yanlış pozitif olarak bildir" style="background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:5px;color:#94a3b8;font-size:10px;padding:3px 7px;cursor:pointer;white-space:nowrap">⚠️ Yanlış pozitif</button>
-            </div>
-        </div>`;
-    }).join('');
-    panel.innerHTML = `
-        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-            ${list.length} benzersiz domain/hostname tespit edildi — en çok tekrarlananlar üstte
-        </div>
-        ${rows}
-    `;
-}
-
-async function reportFpFromStats(domain, severity, message) {
-    if (!domain) return;
-    const ok = await showConfirm({
-        title: 'Yanlış Pozitif Raporu',
-        message: `"${domain}" için yanlış pozitif raporu gönderilsin mi?\nAdmin onayından sonra güvenilir listeye eklenir.`,
-        confirmText: 'Gönder', cancelText: 'Vazgeç'
-    });
-    if (!ok) return;
-    try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (licenseKey) headers['x-license-key'] = licenseKey;
-        const res = await fetch('/api/fp-suggestions', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ domain, message, severity, category: 'otx' })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-            alert(`⚠️ ${data.error || 'Gönderilemedi.'}`);
-            return;
-        }
-        if (data.alreadyDecided) {
-            if (data.status === 'approved') {
-                alert(`✅ "${domain}" zaten güvenilir listede (onaylı). Tekrar eklenmesi gerekmiyor.`);
-            } else {
-                alert(`ℹ️ "${domain}" daha önce reddedilmiş. Lütfen yöneticinize danışın.`);
-            }
-        } else if (data.incremented) {
-            alert(`✅ "${domain}" için rapor güncellendi (bildirim sayısı artırıldı). Admin onayını bekliyor.`);
-        } else {
-            alert(`✅ "${domain}" yanlış pozitif olarak raporlandı. Admin onayını bekliyor.`);
-        }
-    } catch (e) {
-        alert(`Hata: ${e.message}`);
-    }
-}
-
-// ══════════════════════════════════════════════════════════
-// KULLANICI — OTX GÜVENİLİR DOMAİN EXPORT / IMPORT
-// ══════════════════════════════════════════════════════════
-async function loadUserFpSuggestions() {
-    const listEl = document.getElementById('userFpApprovalList');
-    const statusEl = document.getElementById('userFpApprovalStatus');
-    if (!listEl) return;
-
-    if (statusEl) statusEl.textContent = 'Yükleniyor...';
-    listEl.innerHTML = '';
-
-    try {
-        const headers = licenseKey ? { 'x-license-key': licenseKey } : {};
-        const res = await fetch('/api/fp-suggestions', { headers });
-        const data = await res.json();
-        if (!res.ok) {
-            listEl.innerHTML = `<div class="imap-report-empty error">${esc(data.error || 'OTX onay listesi alınamadı.')}</div>`;
-            if (statusEl) statusEl.textContent = '';
-            return;
-        }
-        renderUserFpSuggestions(Array.isArray(data) ? data : []);
-    } catch (e) {
-        listEl.innerHTML = `<div class="imap-report-empty error">${esc(e.message)}</div>`;
-        if (statusEl) statusEl.textContent = '';
-    }
-}
-
-function renderUserFpSuggestions(items) {
-    const listEl = document.getElementById('userFpApprovalList');
-    const statusEl = document.getElementById('userFpApprovalStatus');
-    if (!listEl) return;
-
-    if (!items.length) {
-        if (statusEl) statusEl.textContent = 'Bekleyen OTX yanlış pozitif önerisi yok.';
-        listEl.innerHTML = '<div class="imap-report-empty">Onay bekleyen domain bulunmuyor.</div>';
-        return;
-    }
-
-    if (statusEl) statusEl.textContent = `${items.length} domain onay bekliyor.`;
-    listEl.innerHTML = items.map((item) => {
-        const count = Number(item.report_count || 1);
-        const lastSeen = item.last_seen_at
-            ? new Date(item.last_seen_at).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
-            : '-';
-        const severity = item.finding_severity || 'warning';
-        const severityColor = severity === 'critical' ? '#f87171' : '#fb923c';
-        return `
-            <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;border:1px solid rgba(255,255,255,0.08);background:var(--surface2);border-radius:8px;margin-bottom:10px">
-                <div class="finding-icon ${esc(severity)}" style="flex-shrink:0">${findingIcon(severity)}</div>
-                <div class="u-flex1-0">
-                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-                        <strong style="color:${severityColor};word-break:break-all">${esc(item.domain)}</strong>
-                        <span style="font-size:10px;background:rgba(251,146,60,0.15);color:#fb923c;border-radius:4px;padding:2px 6px">${count} bildirim</span>
-                    </div>
-                    <div class="finding-category">${esc(formatCategory(item.finding_category || 'otx'))} · ${esc(severity)} · Son: ${esc(lastSeen)}</div>
-                    <div class="finding-text" style="margin-top:6px">${esc(item.finding_message || 'OTX yanlış pozitif olarak bildirildi.')}</div>
-                </div>
-                <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
-                    <button class="btn btn-primary btn-sm" onclick='userApproveFp(${jsString(item.domain)})'>Onayla</button>
-                    <button class="btn btn-ghost btn-sm" onclick='userRejectFp(${jsString(item.domain)})'>Reddet</button>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-async function userApproveFp(domain) {
-    if (!domain) return;
-    const ok = await showConfirm({
-        title: 'OTX Domain Onayı',
-        message: `"${domain}" güvenilir domain listesine eklensin mi?\n\nOnaydan sonra bu domain OTX tehdidi olarak değerlendirilmez.`,
-        confirmText: 'Onayla',
-        cancelText: 'İptal',
-        icon: '🛡️'
-    });
-    if (!ok) return;
-
-    try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (licenseKey) headers['x-license-key'] = licenseKey;
-        const res = await fetch(`/api/fp-suggestions/${encodeURIComponent(domain)}/approve`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ category: 'custom', note: 'Kullanıcı OTX onayı' })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-        showToast(`"${domain}" güvenilir listeye eklendi.`, 'success', { title: 'OTX onaylandı' });
-        loadUserFpSuggestions();
-    } catch (e) {
-        showToast(e.message, 'error', { title: 'OTX onayı başarısız' });
-    }
-}
-
-async function userRejectFp(domain) {
-    if (!domain) return;
-    const ok = await showConfirm({
-        title: 'OTX Önerisini Reddet',
-        message: `"${domain}" için yanlış pozitif önerisi reddedilsin mi?`,
-        confirmText: 'Reddet',
-        cancelText: 'İptal',
-        icon: '⚠️'
-    });
-    if (!ok) return;
-
-    try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (licenseKey) headers['x-license-key'] = licenseKey;
-        const res = await fetch(`/api/fp-suggestions/${encodeURIComponent(domain)}/reject`, {
-            method: 'POST',
-            headers
-        });
-        const data = await res.json();
-        if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
-        showToast(`"${domain}" önerisi reddedildi.`, 'info', { title: 'OTX önerisi kapatıldı' });
-        loadUserFpSuggestions();
-    } catch (e) {
-        showToast(e.message, 'error', { title: 'Reddetme başarısız' });
-    }
 }
 
 let _userTdBackup = null; // sıfırlama öncesi otomatik yedek (bellek)
@@ -7823,7 +7475,7 @@ function _cuRenderCategories(cats) {
         return;
     }
     const catLabels = {
-        virusTotal:  '🔍 Tespit Edilen Tehdit Tipleri', otx: '🌐 OTX',
+        virusTotal:  '🔍 Tespit Edilen Tehdit Tipleri',
         abuse: '🔗 Link Tarama Motoru',
         spf: '📋 SPF', dkim: '🔏 DKIM', dmarc: '🛡️ DMARC',
         phishing: '🎣 Phishing', attachment: '📎 Şüpheli Ek',
@@ -8175,12 +7827,12 @@ async function renderOnboardingChecklist() {
     // 1) Lisans aktif mi?
     state.license = !!(licenseInfo && licenseInfo.valid);
 
-    // 2) En az bir AI/VT/OTX anahtarı kayıtlı mı?
+    // 2) En az bir AI/VT anahtarı kayıtlı mı?
     try {
         const res = await fetch('/api/settings/status');
         if (res.ok) {
             const s = await res.json();
-            state.apiKey = !!(s.openaiConfigured || s.claudeConfigured || s.vtConfigured || s.otxConfigured);
+            state.apiKey = !!(s.openaiConfigured || s.claudeConfigured || s.vtConfigured);
         }
     } catch {}
 
@@ -8225,7 +7877,7 @@ async function renderOnboardingChecklist() {
         { id: 'license',          done: state.license,          label: '✅ Lisans aktif',
           action: () => { document.getElementById('licenseBtn')?.click() || openLicenseModal?.(); },
           desc: 'Bayinizden aldığınız lisans kodunu girin' },
-        { id: 'apiKey',           done: state.apiKey,           label: '🔑 En az bir AI/VT/OTX anahtarı ekle',
+        { id: 'apiKey',           done: state.apiKey,           label: '🔑 En az bir AI/VT anahtarı ekle',
           action: () => openSettings?.(),
           desc: 'OpenAI veya AntiVirüs entegrasyonu güç katar' },
         { id: 'firstScan',        done: state.firstScan,        label: '🔍 İlk taramanı yap',

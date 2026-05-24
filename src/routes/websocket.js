@@ -101,7 +101,7 @@ function resolveLicense(licenseKey) {
 // enrichWithAI / applyOpenAIInsights / recalcMeta kaldırıldı (B4 fix):
 // WS monitörü artık analyzeParsedEmailData (AnalyzeMessageService) kullanıyor.
 // Ortak motor, in-flight cache ile paralel ScanMailboxMonitor ile API paylaşımı
-// sağlar; ayrıca OTX, threatIntel, allowlist/blocklist, triage gibi zengin
+// sağlar; ayrıca threatIntel, allowlist/blocklist, triage gibi zengin
 // analizleri de tek seferden çalıştırır.
 
 /**
@@ -203,7 +203,7 @@ async function _analyzeAndBroadcast(account, license, uid, email, source = 'real
     }
 
     // ─── Analiz — ortak motor (B4 fix) ───────────────────────────────────────
-    // analyzeParsedEmailData: VT, Claude, OpenAI, OTX, threatIntel, allowlist,
+    // analyzeParsedEmailData: VT, Claude, OpenAI, threatIntel, allowlist,
     // triage, webhook — tam pipeline. In-flight cache (key: account::messageId)
     // ile paralel ScanMailboxMonitor da aynı maili işliyorsa API yalnız BİR kez
     // çağrılır; ikinci çağrı promise'i paylaşarak sonucu bekler.

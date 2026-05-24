@@ -93,7 +93,6 @@ data/uid-*.eml
 data/sample-*.eml
 data/msg-extract/
 data/threat-intel-cache.json
-data/otx-cache.json
 data/monthly-counts.json
 data/*.exe
 data/*.dll

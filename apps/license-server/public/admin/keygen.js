@@ -1963,7 +1963,7 @@ async function _ccLoad(ccName) {
             const d = await api(`/api/admin/customers/${encodeURIComponent(_ccCustomerId)}/api-policy`);
             const b = d.body || {};
             const providers = b.allowedProviders || [];
-            ['openai','claude','virustotal','otx','urlscan'].forEach(p => {
+            ['openai','claude','virustotal','urlscan'].forEach(p => {
                 const el = $(`ccProv_${p}`);
                 if (el) el.checked = providers.includes(p);
             });
@@ -2061,7 +2061,7 @@ $('ccApiSave')?.addEventListener('click', async () => {
     const resEl = $('ccApiResult');
     resEl.style.color = '#8b95b3'; resEl.textContent = 'Kaydediliyor...';
     try {
-        const allowedProviders = ['openai','claude','virustotal','otx','urlscan']
+        const allowedProviders = ['openai','claude','virustotal','urlscan']
             .filter(p => $(`ccProv_${p}`)?.checked);
         const rl  = $('ccApiRateLimit').value.trim();
         const dq  = $('ccApiDailyQuota').value.trim();

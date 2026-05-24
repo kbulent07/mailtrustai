@@ -314,7 +314,6 @@ function parseJsonSafe(rawText) {
 //   - Header analizi sonuçları (SPF/DKIM/DMARC)
 //   - Statik content/link/attachment bulguları
 //   - VirusTotal sonuçları
-//   - OTX tehdit istihbaratı
 //   - (Opsiyonel) klasik AI ön-değerlendirmesi
 //
 // AI bu delilleri ağırlıklandırıp final seviye, skor, güven, tehdit tipi
@@ -330,7 +329,7 @@ async function adjudicateRisk(apiKey, evidencePack, model) {
 
     const instructions = [
         'You are a senior email security adjudicator with 15+ years of experience.',
-        'You receive a structured evidence pack from automated rule engines, threat intelligence (OTX), VirusTotal and an optional prior AI analysis.',
+        'You receive a structured evidence pack from automated rule engines, VirusTotal and an optional prior AI analysis.',
         'Your job: synthesize the evidence into a SINGLE coherent verdict (level + score + confidence + reasoning).',
         'Be conservative on borderline cases. If signals contradict, lean toward the higher-confidence sources.',
         'Avoid double-counting: if 3 signals describe the SAME phishing pattern (e.g. lookalike domain + suspicious URL + urgency content), treat as ONE evidence cluster.',

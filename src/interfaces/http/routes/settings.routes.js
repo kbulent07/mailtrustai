@@ -1,5 +1,5 @@
 // ============================================================
-// HTTP routes: API anahtarları, OTX testi, durum, webhook
+// HTTP routes: API anahtarları, durum, webhook
 // ============================================================
 const express = require('express');
 const bcrypt  = require('bcrypt');
@@ -28,7 +28,6 @@ router.post('/settings/keys', async (req, res) => {
     state.vtApiKey     = updateKey(state.vtApiKey,     req.body.vtApiKey);
     state.claudeApiKey = updateKey(state.claudeApiKey, req.body.claudeApiKey);
     state.openaiApiKey = updateKey(state.openaiApiKey, req.body.openaiApiKey);
-    state.otxApiKey    = updateKey(state.otxApiKey,    req.body.otxApiKey);
 
     // Kurucu tarafı model kilidi: .env'de MSA_LOCKED_OPENAI_MODEL set'liyse
     // müşteri admin UI'dan modeli değiştiremez — istek görmezden gelinir.
@@ -61,7 +60,6 @@ router.post('/settings/keys', async (req, res) => {
     saveSettings({ ...current,
         vtApiKey: state.vtApiKey, claudeApiKey: state.claudeApiKey,
         openaiApiKey: state.openaiApiKey, openaiModel: state.openaiModel,
-        otxApiKey: state.otxApiKey,
         companyProfile: { ...(current.companyProfile || {}), ...(req.body.companyProfile || {}) },
         // adminPassword KORUNUR — değiştirilmez
         adminPassword: current.adminPassword,
@@ -76,7 +74,6 @@ router.post('/settings/keys', async (req, res) => {
             vtConfigured: !!state.vtApiKey,
             claudeConfigured: !!state.claudeApiKey,
             openaiConfigured: !!state.openaiApiKey,
-            otxConfigured: !!state.otxApiKey,
             openaiModel: state.openaiModel || OPENAI_MODEL,
             companyProfileUpdated: !!req.body.companyProfile
         }
@@ -88,7 +85,6 @@ router.post('/settings/keys', async (req, res) => {
         claudeConfigured:!!state.claudeApiKey,
         openaiConfigured:!!state.openaiApiKey,
         openaiModel:     state.openaiModel || OPENAI_MODEL,
-        otxConfigured:   !!state.otxApiKey,
         companyProfile:  loadSettings().companyProfile || {},
         riskMode:        riskMode
     });
@@ -118,16 +114,6 @@ router.post('/settings/admin-password', requireAdminAuth, async (req, res) => {
     res.json({ success: true });
 });
 
-// OTX bağlantı testi
-router.post('/settings/otx/test', async (req, res) => {
-    const { queryIndicator } = require('../../../integrations/otx');
-    const apiKey = req.body.otxApiKey || state.otxApiKey;
-    if (!apiKey) return res.status(400).json({ error: 'OTX API anahtarı tanımlı değil' });
-    const result = await queryIndicator('IPv4', '8.8.8.8', apiKey);
-    if (result.error) return res.status(400).json({ error: result.error });
-    res.json({ success: true, message: `OTX API bağlantısı başarılı — pulse sayısı: ${result.pulseCount ?? '?'}` });
-});
-
 router.get('/settings/status', (req, res) => {
     const settings = loadSettings();
     const threatIntel = getThreatIntelStats();
@@ -145,7 +131,6 @@ router.get('/settings/status', (req, res) => {
                       || process.env.MSA_CLAUDE_MODEL
                       || 'claude-haiku-4-5-20251001',
         claudeModelLocked,
-        otxConfigured:   !!state.otxApiKey,
         abuseFeedAvailable: !!threatIntel.available,
         abuseFeedUpdatedAt: threatIntel.updatedAt,
         companyProfile:  settings.companyProfile || {},

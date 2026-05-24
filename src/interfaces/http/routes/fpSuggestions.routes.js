@@ -72,7 +72,7 @@ router.post('/fp-suggestions/:domain/approve', (req, res) => {
     const { category, note } = req.body || {};
     const out = approve(decodeURIComponent(req.params.domain), {
         category: category || 'custom',
-        note: note || 'Kullanıcı OTX onayı'
+        note: note || 'Kullanıcı yanlış pozitif onayı'
     });
     if (!out.ok) return res.status(404).json(out);
     res.json(out);

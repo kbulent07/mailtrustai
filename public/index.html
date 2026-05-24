@@ -479,9 +479,6 @@
         <button class="nav-tab" id="navTabScanList" data-fn="showPage" data-arg="scan-list" title="Tarama Geçmişi">
             <span class="nav-tab-icon">📋</span><span class="nav-tab-label">Tarama Geçmişi</span>
         </button>
-        <button class="nav-tab" id="navTabOtxApproval" data-fn="showPage" data-arg="otx-approval" title="OTX Onay">
-            <span class="nav-tab-icon">🛡️</span><span class="nav-tab-label">OTX Onay</span>
-        </button>
     </div>
     <div class="navbar-actions">
         <span class="license-badge free" id="licenseBadge">🆓 Free</span>
@@ -505,7 +502,6 @@
     <button class="mobile-nav-tab" data-fn="showScan_closeMenu" id="mNavTabScan">🔍 Tarama</button>
     <button class="mobile-nav-tab" data-fn="showStats_closeMenu" id="mNavTabStats">📊 İstatistik</button>
     <button class="mobile-nav-tab" data-fn="showScanList_closeMenu" id="mNavTabScanList">📋 Tarama Geçmişi</button>
-    <button class="mobile-nav-tab" data-fn="showOtxApproval_closeMenu" id="mNavTabOtx">🛡️ OTX Onay</button>
     <div class="mobile-nav-divider"></div>
     <div class="mobile-nav-actions">
         <button class="btn btn-ghost btn-sm" data-fn="showLang_closeMenu">🌐 Dil</button>
@@ -937,21 +933,6 @@
 
         <!-- Sayfalama -->
         <div id="scanListPager" style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;flex-wrap:wrap"></div>
-    </div>
-
-    <div id="otxApprovalPanel" class="hidden">
-        <div class="card">
-            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-                <span class="card-title">🛡️ OTX Yanlış Pozitif Onayları</span>
-                <button class="btn btn-ghost btn-sm" data-fn="loadUserFpSuggestions">Yenile</button>
-            </div>
-            <p class="text-muted" style="font-size:13px;line-height:1.6;margin-bottom:14px">
-                IMAP veya tarama raporlarında yanlış pozitif olarak işaretlenen OTX domainleri burada onaylayabilirsiniz.
-                Onaylanan domain güvenilir listeye eklenir ve sonraki taramalarda OTX tehdidi olarak değerlendirilmez.
-            </p>
-            <div id="userFpApprovalStatus" class="text-muted" style="font-size:12px;margin-bottom:10px"></div>
-            <div id="userFpApprovalList"></div>
-        </div>
     </div>
 
     <!-- CONNECTION BAR (IMAP) — üst durum çubuğu; 'Hesap Ekle' butonu IMAP
@@ -1497,18 +1478,6 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label">🛰️ AlienVault OTX API Anahtarı</label>
-                <div style="display:flex;gap:8px;align-items:flex-start">
-                    <input class="form-input" id="otxApiKeyInput" placeholder="AlienVault OTX API anahtarı" style="flex:1">
-                    <button class="btn btn-ghost btn-sm" data-fn="testOtxConnection" style="white-space:nowrap;margin-top:0;height:38px">🔗 Test</button>
-                </div>
-                <div class="text-muted" style="font-size:11px;margin-top:4px">
-                    IP ve domain itibar sorgulama — <a href="https://otx.alienvault.com/api" target="_blank" style="color:#60a5fa">otx.alienvault.com</a> (ücretsiz)
-                </div>
-                <div id="otxTestStatus" style="font-size:12px;margin-top:6px;min-height:16px"></div>
-            </div>
-
-            <div class="form-group">
                 <label class="form-label">🤖 Anthropic Claude API Key</label>
                 <input class="form-input" id="claudeApiKeyInput" placeholder="sk-ant-api03-...">
             </div>
@@ -1697,11 +1666,11 @@
             <div id="serviceActionStatus" class="text-muted" style="font-size:12px"></div>
         </div>
 
-        <!-- ── OTX Güvenilir Domain Listesi ── -->
+        <!-- ── Güvenilir Domain Listesi ── -->
         <div style="border-top:1px solid rgba(255,255,255,0.08);margin-top:20px;padding-top:20px">
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">🛡️ OTX Güvenilir Domain Listesi</div>
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">🛡️ Güvenilir Domain Listesi</div>
             <p class="text-muted" style="font-size:12px;margin-bottom:14px;line-height:1.6">
-                Bu listedeki domainler OTX tehdit sorgusundan muaf tutulur. Yöneticinizden veya bayinizden aldığınız JSON dosyasını buradan yükleyebilirsiniz.<br>
+                Bu listedeki domainler yanlış pozitif tehdit eşleşmelerinden muaf tutulur. Yöneticinizden veya bayinizden aldığınız JSON dosyasını buradan yükleyebilirsiniz.<br>
                 <span style="color:#fb923c">Varsayılan import modu: sadece ekle — mevcut domainleriniz silinmez.</span>
             </p>
 
@@ -1936,7 +1905,7 @@
     </div>
 </div>
 
-<!-- LİSTE DETAY MODALİ (VT tespitleri / OTX domain listesi) -->
+<!-- LİSTE DETAY MODALİ (VT tespitleri) -->
 <div class="modal-overlay hidden" id="listDetailModal" onclick="if(event.target===this)closeListDetailModal()">
     <div class="modal" style="max-width:860px;width:95vw;max-height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden">
         <!-- Başlık -->

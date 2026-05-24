@@ -12,7 +12,7 @@ function calculateScore(headerResult, contentResult, linkResult, attachmentResul
         ...linkResult.findings, ...attachmentResult.findings
     ];
 
-    // Skor (ham kural motoru çıktısı) ile seviye (findings/AI/OTX/VT'den
+    // Skor (ham kural motoru çıktısı) ile seviye (findings/AI/VT'den
     // zorlanmış olabilir) BAĞIMSIZ tutuluyor. Daha önce clampScoreToLevel ile
     // skoru seviyeye yapay olarak çeken hack kaldırıldı — iki sayı farklı
     // şeyleri ölçüyor ve UI bunu açıkça gösteriyor.
@@ -51,12 +51,6 @@ function forcedLevelFromFindings(findings = []) {
     const vtCritical         = findings.some(f => f.category === 'virusTotal' && f.severity === 'critical');
     const vtWarning          = findings.some(f => f.category === 'virusTotal' && f.severity === 'warning');
 
-    // ── OTX itibar sinyalleri ─────────────────────────────
-    // OTX "malicious" verdict → yüksek risk (high) seviyesine zorla
-    // OTX "suspicious" verdict → orta risk (medium) seviyesine zorla
-    const otxCritical = findings.some(f => f.category === 'otx' && f.severity === 'critical');
-    const otxWarning  = findings.some(f => f.category === 'otx' && f.severity === 'warning');
-
     const gatewayMalware = findings.some((finding) =>
         finding.category === 'attachment'
         && finding.severity === 'critical'
@@ -76,9 +70,9 @@ function forcedLevelFromFindings(findings = []) {
     if (gatewayMalware)                                      return 'high';
     if (aiIndicatesCriticalFraud && aiConfidence >= 70)      return 'high';
     if (aiIndicatesMediumFraud && aiConfidence >= 75 && aiRedFlags >= 2) return 'medium';
-    if (vtCritical || otxCritical || criticalAbuse)          return 'high';
+    if (vtCritical || criticalAbuse)                         return 'high';
     if (criticalAttachment || criticalLink)                  return 'medium';
-    if (vtWarning || otxWarning || warningAttachment || warningLink || warningAbuse) return 'low';
+    if (vtWarning || warningAttachment || warningLink || warningAbuse) return 'low';
     return 'safe';
 }
 
@@ -103,7 +97,7 @@ function levelRank(level) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// KAPSAMLI SEVİYE — result objesindeki tüm sinyalleri (findings, OTX, VT, AI)
+// KAPSAMLI SEVİYE — result objesindeki tüm sinyalleri (findings, VT, AI)
 // dikkate alarak final seviyeyi belirler. reportBuilder.effectiveReportLevel
 // ile aynı sonucu döner; analizör bunu sonuca yazınca web UI ile e-posta raporu
 // her zaman aynı seviyeyi gösterir.
@@ -113,14 +107,12 @@ function effectiveLevelFromResult(result) {
     const findingLevel = _levelFromFindings(result.findings || []);
     const aiLevel      = _levelFromAi(result.openaiAnalysis);
     const vtLevel      = _levelFromVirusTotal(result.virusTotal || []);
-    const otxLevel     = _levelFromOtx(result.otxData);
 
     const maxRank = Math.max(
         levelRank(baseLevel),
         levelRank(findingLevel),
         levelRank(aiLevel),
-        levelRank(vtLevel),
-        levelRank(otxLevel)
+        levelRank(vtLevel)
     );
     return ['safe', 'low', 'medium', 'high'][maxRank] || 'safe';
 }
@@ -146,13 +138,6 @@ function _levelFromVirusTotal(entries) {
     return 'safe';
 }
 
-function _levelFromOtx(otxData) {
-    if (!otxData?.indicators) return 'safe';
-    if (otxData.indicators.some(i => i.verdict === 'malicious'))  return 'high';
-    if (otxData.indicators.some(i => i.verdict === 'suspicious')) return 'medium';
-    return 'safe';
-}
-
 // ────────────────────────────────────────────────────────────────
 // [DEPRECATED] clampScoreToLevel — Skor ile seviye farklı şeyleri ölçüyor;
 // skoru seviyeye yapay olarak çekmek dürüstlük problemiydi. UI artık iki
@@ -165,7 +150,7 @@ function clampScoreToLevel(score /*, level */) {
 // ────────────────────────────────────────────────────────────────
 // Seviyenin neden ham skordan farklı olduğunu açıklayan kısa metin döner.
 // Web UI ve e-posta raporu bunu kullanıcıya gösterir.
-// Dönen: { reason: 'OTX phishing kampanyası ...', sources: ['otx', 'ai'] } veya null
+// Dönen: { reason: 'VirusTotal'de ... + AI ...', sources: ['virustotal', 'ai'] } veya null
 // ────────────────────────────────────────────────────────────────
 function levelEscalationReason(result) {
     const score = Number(result?.score || 0);
@@ -176,18 +161,6 @@ function levelEscalationReason(result) {
 
     const reasons = [];
     const sources = [];
-
-    // OTX
-    const otxIndicators = result?.otxData?.indicators || [];
-    const otxMalicious = otxIndicators.filter(i => i.verdict === 'malicious');
-    const otxSuspicious = otxIndicators.filter(i => i.verdict === 'suspicious');
-    if (otxMalicious.length) {
-        reasons.push(`OTX tehdit istihbaratında ${otxMalicious.length} zararlı gösterge işaretli`);
-        sources.push('otx');
-    } else if (otxSuspicious.length) {
-        reasons.push(`OTX tehdit istihbaratında ${otxSuspicious.length} şüpheli gösterge işaretli`);
-        sources.push('otx');
-    }
 
     const abuseMatches = result?.abuseData?.matches || [];
     if (abuseMatches.length) {

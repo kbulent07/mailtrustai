@@ -11,7 +11,6 @@ document.addEventListener('DOMContentLoaded', () => {
         'showScan_closeMenu':           () => { showPage('scan');         closeMobileMenu(); },
         'showStats_closeMenu':          () => { showPage('stats');        closeMobileMenu(); },
         'showScanList_closeMenu':       () => { showPage('scan-list');    closeMobileMenu(); },
-        'showOtxApproval_closeMenu':    () => { showPage('otx-approval');closeMobileMenu(); },
         'showLicense_closeMenu':        () => { showLicenseModal();        closeMobileMenu(); },
         'showSettings_closeMenu':       () => { showSettings();            closeMobileMenu(); },
         'showLang_closeMenu':           () => { toggleLang();              closeMobileMenu(); },

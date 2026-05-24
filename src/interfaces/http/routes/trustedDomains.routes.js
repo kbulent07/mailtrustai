@@ -1,5 +1,5 @@
 // ============================================================
-// HTTP routes: Trusted (OTX whitelist) domain yönetimi
+// HTTP routes: Trusted (yanlış pozitif beyaz listesi) domain yönetimi
 // Admin guard: requireAdminAuth
 // ============================================================
 const express = require('express');
