@@ -92,6 +92,11 @@ GERI YUKLEME:
 
 NOT: .env ve customer-data.tar.gz HER ZAMAN BIRLIKTE saklanmalidir.
      Yalniz biri kurtulursa eski sifrelenmis dosyalar acilamaz.
+
+DIKKAT: Bu yedek \$INSTALL_DIR/backups/ icindedir.
+  Tam kaldirma oncesi bu klasoru baska bir yere KOPYALAYIN,
+  aksi halde yedek de silinir.
+  Ornek: cp -r /opt/mailtrustai/backups /home/kullanici/mailtrustai-yedek
 ================================================================
 EOF
 

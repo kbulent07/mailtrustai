@@ -100,6 +100,11 @@ $readmeLines = @(
     "",
     "NOT: .env ve customer-data.tar.gz HER ZAMAN BIRLIKTE saklanmalidir.",
     "     Yalniz biri kurtulursa eski sifrelenmis dosyalar acilamaz.",
+    "",
+    "DIKKAT: Bu yedek C:\MailTrustAI\backups\ icindedir.",
+    "  Tam kaldirma (uninstall) oncesi bu klasoru baska bir yere KOPYALAYIN,",
+    "  aksi halde yedek de silinir.",
+    "  Ornek: xcopy /E /I C:\MailTrustAI\backups D:\YedeklerimAlin",
     "================================================================"
 )
 $readmeLines | Set-Content -Path $readmePath -Encoding utf8
