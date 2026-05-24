@@ -219,7 +219,7 @@ router.post('/admin/change-password', adminAuth, asyncH(async (req, res) => {
         return res.status(400).json({ error: 'Yeni şifre en az 8 karakter olmalı' });
     }
 
-    const ok = await _verifyLoginSecret(currentSecret);
+    const ok = await _verifySuperAdminSecret(currentSecret);
     if (!ok) {
         await audit('admin', 'admin.password.change.fail', null, { reason: 'bad-current' });
         return res.status(403).json({ error: 'Mevcut şifre/token hatalı' });
