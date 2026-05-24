@@ -25,7 +25,7 @@ $TaskName   = "CustomerWeeklyBackup"
 $FullName   = "$TaskFolder$TaskName"
 
 $RepoRoot    = (Resolve-Path "$PSScriptRoot\..\..").Path
-$ScriptPath  = Join-Path $RepoRoot "scripts\backup\backup-customer.ps1"
+$ScriptPath  = Join-Path $RepoRoot "scripts\backup\backup-customer-windows.ps1"
 $TargetDir   = Join-Path $RepoRoot "backups\auto-weekly"
 $LogFile     = Join-Path $RepoRoot "logs\backup-customer.log"
 $WrapperFile = Join-Path $RepoRoot "scripts\backup\_runner.ps1"

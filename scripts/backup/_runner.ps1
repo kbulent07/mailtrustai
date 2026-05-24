@@ -1,7 +1,10 @@
-﻿Start-Transcript -Path "C:\Users\bulent.keklik.IT2\Documents\Codex\projeler\mainpaketler\logs\backup-customer.log" -Append
+﻿# Bu dosya schedule-taskscheduler.ps1 tarafindan otomatik olusturulur.
+# Manuel duzenleme yapmayin — schedule-taskscheduler.ps1 -Remove + yeniden kur.
+Start-Transcript -Path "C:\MailTrustAI\backups\backup-customer.log" -Append
 try {
     & powershell.exe -ExecutionPolicy Bypass -NonInteractive `
-        -File "C:\Users\bulent.keklik.IT2\Documents\Codex\projeler\mainpaketler\scripts\backup-windows-customer.ps1" -TargetDir "C:\Users\bulent.keklik.IT2\Documents\Codex\projeler\mainpaketler\backups\auto-weekly"
+        -File "C:\mailtrustai-source\scripts\backup\backup-customer-windows.ps1" `
+        -TargetDir "C:\MailTrustAI\backups\auto-weekly"
 } finally {
     Stop-Transcript
 }

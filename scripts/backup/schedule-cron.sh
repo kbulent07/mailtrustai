@@ -36,8 +36,8 @@ CRON_SCHEDULE="0 2 * * 0"
 CRON_TAG_CUSTOMER="# mailtrustai-customer-weekly-backup"
 CRON_TAG_SERVER="# mailtrustai-server-weekly-backup"
 
-CRON_LINE_CUSTOMER="${CRON_SCHEDULE} bash '${REPO_ROOT}/scripts/backup/backup-customer.sh' '${CUSTOMER_WEEKLY_DIR}' >> '${REPO_ROOT}/logs/backup-customer.log' 2>&1 ${CRON_TAG_CUSTOMER}"
-CRON_LINE_SERVER="${CRON_SCHEDULE} bash '${REPO_ROOT}/scripts/backup/backup-server.sh' '${SERVER_WEEKLY_DIR}' >> '${REPO_ROOT}/logs/backup-server.log' 2>&1 ${CRON_TAG_SERVER}"
+CRON_LINE_CUSTOMER="${CRON_SCHEDULE} bash '${REPO_ROOT}/scripts/backup/backup-customer-ubuntu.sh' '${CUSTOMER_WEEKLY_DIR}' >> '${REPO_ROOT}/logs/backup-customer.log' 2>&1 ${CRON_TAG_CUSTOMER}"
+CRON_LINE_SERVER="${CRON_SCHEDULE} bash '${REPO_ROOT}/scripts/backup/backup-server-ubuntu.sh' '${SERVER_WEEKLY_DIR}' >> '${REPO_ROOT}/logs/backup-server.log' 2>&1 ${CRON_TAG_SERVER}"
 
 # Log klasörünü oluştur
 mkdir -p "${REPO_ROOT}/logs"
