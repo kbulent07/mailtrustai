@@ -386,9 +386,18 @@ async function resumePersistedMonitors() {
     if (!entries.length) return;
 
     const accounts = loadCredentials();
+    // Credentials boş gelirse (şifreleme anahtarı değişmiş / dosya bozuk) tüm
+    // kayıtları silme — bu geçici bir durum olabilir. Sadece uyar ve atla.
+    const credsMissing = accounts.length === 0 && entries.length > 0;
+    if (credsMissing) {
+        console.warn('[AutoMonitor] credentials.enc okunamadı veya boş — auto-monitor kayıtları korunuyor, başlatma atlanıyor.');
+        return;
+    }
     for (const entry of entries) {
         const account = accounts.find(a => a.email === entry.email);
         if (!account) {
+            // Hesap gerçekten silinmişse (credentials var ama bu email yok) kaldır.
+            // credentials tamamen boş gelince buraya düşmeyiz (yukarıdaki guard).
             console.warn(`[AutoMonitor] Kayıtlı IMAP hesabı bulunamadı, siliniyor: ${entry.email}`);
             removeAutoMonitor(entry.email);
             continue;
