@@ -292,7 +292,7 @@ if (Test-Path $InstallRoot) {
 # ============================================================================
 Step "5/5  Musteri kurulum scripti baslatiliyor..."
 
-$InstallScript = Join-Path $InstallRoot 'install\client\install_client_windows_setup.ps1'
+$InstallScript = Join-Path $InstallRoot 'install\client\windows\setup.ps1'
 if (-not (Test-Path $InstallScript)) {
     Fatal "Kurulum scripti bulunamadi: $InstallScript"
 }

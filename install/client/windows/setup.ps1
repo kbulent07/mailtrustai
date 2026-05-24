@@ -332,7 +332,7 @@ Step "Compose dosyası hazırlanıyor..."
 
 # Repo kökünü bul
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepoRoot    = (Resolve-Path (Join-Path $ScriptDir '..\..')).Path
+$RepoRoot    = (Resolve-Path (Join-Path $ScriptDir '..\..\..')).Path
 $SourceCompose = Join-Path $RepoRoot 'docker-compose.customer.yml'
 
 # Image mod: dış tar dosyası mı, yoksa build mı?
@@ -493,7 +493,7 @@ switch ($Action) {
         $repoPath = $null
         $repoFile = Join-Path $dir '.repo_path'
         if (Test-Path $repoFile) { $repoPath = (Get-Content $repoFile -Raw).Trim() }
-        $upgradeScript = if ($repoPath) { Join-Path $repoPath 'install\client\update_client_windows.ps1' } else { $null }
+        $upgradeScript = if ($repoPath) { Join-Path $repoPath 'install\client\windows\update.ps1' } else { $null }
         if ($upgradeScript -and (Test-Path $upgradeScript)) {
             & powershell -ExecutionPolicy Bypass -File $upgradeScript
         } else {

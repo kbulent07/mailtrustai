@@ -24,11 +24,11 @@ $TaskFolder = "\MailTrustAI\"
 $TaskName   = "CustomerWeeklyBackup"
 $FullName   = "$TaskFolder$TaskName"
 
-$RepoRoot    = (Resolve-Path "$PSScriptRoot\..").Path
-$ScriptPath  = Join-Path $RepoRoot "scripts\backup-windows-customer.ps1"
+$RepoRoot    = (Resolve-Path "$PSScriptRoot\..\..").Path
+$ScriptPath  = Join-Path $RepoRoot "scripts\backup\backup-customer.ps1"
 $TargetDir   = Join-Path $RepoRoot "backups\auto-weekly"
 $LogFile     = Join-Path $RepoRoot "logs\backup-customer.log"
-$WrapperFile = Join-Path $RepoRoot "scripts\_backup-runner.ps1"
+$WrapperFile = Join-Path $RepoRoot "scripts\backup\_runner.ps1"
 
 New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "logs") | Out-Null
 

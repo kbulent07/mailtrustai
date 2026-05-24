@@ -99,7 +99,7 @@ Cozumler:
 Write-Host "[1/3] Inno Setup bulundu: $IsccPath" -ForegroundColor Green
 
 # ─── 2) Cikti dizini hazirla ────────────────────────────────
-$RepoRoot   = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$RepoRoot   = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $DistDir    = Join-Path $RepoRoot 'dist'
 $IssFile    = Join-Path $PSScriptRoot 'MailTrustAIClient.iss'
 

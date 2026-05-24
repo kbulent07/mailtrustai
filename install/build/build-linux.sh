@@ -56,12 +56,12 @@ PAYLOAD_DIR=$(mktemp -d -t msa-installer-XXXXXX)
 trap 'rm -rf "$PAYLOAD_DIR"' EXIT
 
 echo "[build] payload hazirlaniyor: $PAYLOAD_DIR"
-mkdir -p "$PAYLOAD_DIR/install/client" "$PAYLOAD_DIR/install/server"
+mkdir -p "$PAYLOAD_DIR/install/client/linux"
 
-# Client + server install scriptlerini kopyala (kurulum, guncelleme, kaldirma)
-cp "$SCRIPT_DIR/install_client_ubuntu.sh"   "$PAYLOAD_DIR/install/client/"
-cp "$SCRIPT_DIR/update_client_ubuntu.sh"    "$PAYLOAD_DIR/install/client/"
-cp "$SCRIPT_DIR/uninstall_client_ubuntu.sh" "$PAYLOAD_DIR/install/client/"
+# Client install scriptlerini kopyala (kurulum, guncelleme, kaldirma)
+cp "$REPO_ROOT/install/client/linux/install.sh"   "$PAYLOAD_DIR/install/client/linux/"
+cp "$REPO_ROOT/install/client/linux/update.sh"    "$PAYLOAD_DIR/install/client/linux/"
+cp "$REPO_ROOT/install/client/linux/uninstall.sh" "$PAYLOAD_DIR/install/client/linux/"
 
 # Surum dosyasi (startup.sh okur)
 echo "$VERSION" > "$PAYLOAD_DIR/VERSION"
@@ -109,9 +109,9 @@ fi
 
 # Hedef script
 case "$MODE" in
-    install)   TARGET="$THIS_DIR/install/client/install_client_ubuntu.sh" ;;
-    update)    TARGET="$THIS_DIR/install/client/update_client_ubuntu.sh" ;;
-    uninstall) TARGET="$THIS_DIR/install/client/uninstall_client_ubuntu.sh" ;;
+    install)   TARGET="$THIS_DIR/install/client/linux/install.sh" ;;
+    update)    TARGET="$THIS_DIR/install/client/linux/update.sh" ;;
+    uninstall) TARGET="$THIS_DIR/install/client/linux/uninstall.sh" ;;
     *) echo -e "${RED}Bilinmeyen mod: $MODE${NC}" >&2; exit 1 ;;
 esac
 
@@ -142,11 +142,11 @@ if [[ "$MODE" == "install" ]]; then
     fi
 
     # Payload icindeki en guncel scriptlerle override et (release'in pack ettigi versiyon)
-    cp -f "$THIS_DIR/install/client/"*.sh "$REPO_DEST/install/client/" 2>/dev/null || true
+    cp -f "$THIS_DIR/install/client/linux/"*.sh "$REPO_DEST/install/client/linux/" 2>/dev/null || true
 
     echo -e "${GREEN}>>> Kurulum scripti tetikleniyor...${NC}"
     cd "$REPO_DEST"
-    exec bash "install/client/install_client_ubuntu.sh"
+    exec bash "install/client/linux/install.sh"
 fi
 
 # Update/uninstall: kurulu repo'yu kullan

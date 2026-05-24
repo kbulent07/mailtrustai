@@ -99,4 +99,4 @@ fi
 info "Musteri kurulumu baslatiliyor..."
 printf '\n'
 cd "$INSTALL_DIR"
-exec bash install/client/install_client_ubuntu.sh "$@"
+exec bash install/client/linux/install.sh "$@"

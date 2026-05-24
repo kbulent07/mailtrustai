@@ -223,7 +223,7 @@ if ($ImageFile) {
 } else {
     # MOD B: repo'dan git pull
     try {
-        $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..\..')).Path
+        $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..\..\..')).Path
     } catch {
         Fatal "Repo koku bulunamadi. -ImageFile parametresi ile tar dosyasi belirtin."
     }
@@ -397,7 +397,7 @@ if ($PrevCommit -and $NewCommit -and $PrevCommit -ne $NewCommit) {
     Write-Color "  Rollback (sorun varsa):" 'White'
     Write-Color "  cd `"$RepoRoot`"" 'Cyan'
     Write-Color "  git reset --hard $PrevCommit" 'Cyan'
-    Write-Color "  powershell -ExecutionPolicy Bypass -File install\client\update_client_windows.ps1" 'Cyan'
+    Write-Color "  powershell -ExecutionPolicy Bypass -File install\client\windows\update.ps1" 'Cyan'
     Write-Host ""
 }
 

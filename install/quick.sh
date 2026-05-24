@@ -83,4 +83,4 @@ fi
 info "Sunucu kurulumu baslatiliyor..."
 printf '\n'
 cd "$INSTALL_DIR"
-exec bash install/server/install_server_ubuntu.sh "$@"
+exec bash install/server/install.sh "$@"

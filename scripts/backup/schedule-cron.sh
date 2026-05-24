@@ -23,7 +23,7 @@
 # ============================================================
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MODE="${1:-show}"
 
 # Haftalık yedek hedef klasörleri (sabit isim, üzerine yazılır)
@@ -36,8 +36,8 @@ CRON_SCHEDULE="0 2 * * 0"
 CRON_TAG_CUSTOMER="# mailtrustai-customer-weekly-backup"
 CRON_TAG_SERVER="# mailtrustai-server-weekly-backup"
 
-CRON_LINE_CUSTOMER="${CRON_SCHEDULE} bash '${REPO_ROOT}/scripts/backup-ubuntu-customer.sh' '${CUSTOMER_WEEKLY_DIR}' >> '${REPO_ROOT}/logs/backup-customer.log' 2>&1 ${CRON_TAG_CUSTOMER}"
-CRON_LINE_SERVER="${CRON_SCHEDULE} bash '${REPO_ROOT}/scripts/backup-ubuntu-server.sh' '${SERVER_WEEKLY_DIR}' >> '${REPO_ROOT}/logs/backup-server.log' 2>&1 ${CRON_TAG_SERVER}"
+CRON_LINE_CUSTOMER="${CRON_SCHEDULE} bash '${REPO_ROOT}/scripts/backup/backup-customer.sh' '${CUSTOMER_WEEKLY_DIR}' >> '${REPO_ROOT}/logs/backup-customer.log' 2>&1 ${CRON_TAG_CUSTOMER}"
+CRON_LINE_SERVER="${CRON_SCHEDULE} bash '${REPO_ROOT}/scripts/backup/backup-server.sh' '${SERVER_WEEKLY_DIR}' >> '${REPO_ROOT}/logs/backup-server.log' 2>&1 ${CRON_TAG_SERVER}"
 
 # Log klasörünü oluştur
 mkdir -p "${REPO_ROOT}/logs"
