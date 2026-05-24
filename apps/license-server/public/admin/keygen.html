@@ -688,6 +688,21 @@
     </div>
 </div>
 
+<div id="customScanModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="customScanModalTitle">
+    <div class="modal-card">
+        <h3 id="customScanModalTitle">T9 Özel Kapasite Düzenle</h3>
+        <p class="muted">Müşteri: <strong id="customScanModalCustomer"></strong></p>
+        <p class="muted">Lisans: <code id="customScanModalLicense"></code></p>
+        <label for="customScanModalValue">Aylık tarama kapasitesi</label>
+        <input type="number" id="customScanModalValue" min="1" step="1" autocomplete="off" placeholder="örn: 50000">
+        <div class="modal-btns">
+            <button id="customScanModalCancel">İptal</button>
+            <button id="customScanModalApply" class="primary">Kaydet</button>
+        </div>
+        <div id="customScanModalResult" class="result" role="status" aria-live="polite"></div>
+    </div>
+</div>
+
 <div id="dealerPwModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dealerPwModalTitle">
     <div class="modal-card">
         <h3 id="dealerPwModalTitle">Bayi Parolası</h3>

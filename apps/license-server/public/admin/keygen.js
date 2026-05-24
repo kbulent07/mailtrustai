@@ -948,6 +948,10 @@ function renderManageTable() {
             ? `<button class="action-btn danger" data-action="revoke" data-license="${lic.id}" data-name="${da}">🚫 İptal</button>`
             : `<button class="action-btn ok"    data-action="unrevoke" data-license="${lic.id}" data-name="${da}">✅ Etkinleştir</button>`;
 
+        const t9Btn = lic.tier === 'T9'
+            ? `<button class="action-btn" data-action="customscan" data-license="${lic.id}" data-name="${da}" data-mask="${encodeURIComponent(lic.keyMasked || '')}" data-scan="${lic.monthlyScanCount ?? ''}">⚙ Kapasite</button>`
+            : '';
+
         return `<tr>
             <td><strong>${escapeHtml(it.companyName || it.customerId)}</strong><br>
                 <small class="muted">${escapeHtml(it.customerId)}</small>
@@ -962,6 +966,7 @@ function renderManageTable() {
                 ${revokeBtn}
                 <button class="action-btn" data-action="renew" data-license="${lic.id}" data-name="${da}">⏳ Uzat</button>
                 <button class="action-btn" data-action="hblog" data-license="${lic.id}" data-name="${da}">📡 Log</button>
+                ${t9Btn}
             </td>
         </tr>`;
     }).join('');
@@ -978,6 +983,8 @@ function renderManageTable() {
             btn.addEventListener('click', () => openRenewModal(lid, name));
         } else if (a === 'hblog') {
             btn.addEventListener('click', () => openHeartbeatLog(lid, name));
+        } else if (a === 'customscan') {
+            btn.addEventListener('click', () => openCustomScanModal(lid, name, decodeURIComponent(btn.dataset.mask || ''), btn.dataset.scan));
         }
     });
 }
@@ -1226,6 +1233,44 @@ $('renewModalApply').addEventListener('click', async () => {
     } catch (e) {
         $('renewModalResult').textContent = 'Hata: ' + e.message;
         $('renewModalResult').className   = 'result err';
+    }
+});
+
+// ──── T9 Özel Kapasite Modal ──────────────────────────────────────────────
+let currentCustomScanLicenseId = null;
+
+function openCustomScanModal(licenseId, customerName, mask, currentScan) {
+    currentCustomScanLicenseId = licenseId;
+    $('customScanModalCustomer').textContent = customerName;
+    $('customScanModalLicense').textContent  = mask || licenseId;
+    $('customScanModalValue').value          = currentScan || '';
+    $('customScanModalResult').textContent   = '';
+    $('customScanModalResult').className     = 'result';
+    $('customScanModal').classList.remove('hidden');
+    setTimeout(() => $('customScanModalValue').focus(), 50);
+}
+
+$('customScanModalCancel').addEventListener('click', () => $('customScanModal').classList.add('hidden'));
+$('customScanModal').addEventListener('click', (e) => { if (e.target === $('customScanModal')) $('customScanModal').classList.add('hidden'); });
+
+$('customScanModalApply').addEventListener('click', async () => {
+    const customScanCount = Number($('customScanModalValue').value);
+    if (!Number.isFinite(customScanCount) || customScanCount < 1) {
+        $('customScanModalResult').textContent = 'Geçerli bir pozitif sayı girin.';
+        $('customScanModalResult').className   = 'result err';
+        return;
+    }
+    try {
+        const r = await api(`/api/admin/licenses/${encodeURIComponent(currentCustomScanLicenseId)}/custom-scan`, {
+            method: 'POST', body: { customScanCount }
+        });
+        $('customScanModalResult').textContent = `✓ Kaydedildi. Yeni kapasite: ${r.monthlyScanCount.toLocaleString('tr-TR')}/ay`;
+        $('customScanModalResult').className   = 'result ok';
+        await loadAll();
+        setTimeout(() => $('customScanModal').classList.add('hidden'), 1000);
+    } catch (e) {
+        $('customScanModalResult').textContent = 'Hata: ' + e.message;
+        $('customScanModalResult').className   = 'result err';
     }
 });
 

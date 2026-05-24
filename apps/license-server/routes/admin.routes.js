@@ -354,6 +354,7 @@ router.get('/admin/customers', adminAuth, requirePerm('customers:read'), asyncH(
             l.expires_at   AS expires_at,
             l.grace_days   AS grace_days,
             l.offline_grace_days_override AS offline_override,
+            l.limits_json  AS limits_json,
             (SELECT COUNT(*) FROM licenses lc WHERE lc.customer_id = c.id) AS license_count,
             a.instance_id        AS act_instance_id,
             a.app_version        AS act_app_version,
@@ -404,7 +405,8 @@ router.get('/admin/customers', adminAuth, requirePerm('customers:read'), asyncH(
                 issuedAt:            r.issued_at,
                 expiresAt:           r.expires_at,
                 graceDays:           r.grace_days,
-                offlineGraceOverride: r.offline_override
+                offlineGraceOverride: r.offline_override,
+                monthlyScanCount:    safeJSON(r.limits_json, {}).monthlyScanCount ?? null
             } : null,
             latest: hasAct ? {
                 instanceId:      r.act_instance_id,
@@ -930,6 +932,36 @@ function isMariaCheck() {
     // db.isMaria getter — admin.routes en üstte require edildi
     return require('../db').isMaria;
 }
+
+// POST /api/admin/licenses/:id/custom-scan { customScanCount }
+// Yalnızca T9 (Özel/Custom) tier lisanslar için aylık tarama kapasitesini günceller.
+router.post('/admin/licenses/:id/custom-scan', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {
+    const licenseId = req.params.id;
+    const cs = Number(req.body?.customScanCount);
+    if (!Number.isFinite(cs) || cs <= 0) {
+        return res.status(400).json({ error: 'customScanCount geçerli bir pozitif sayı olmalı' });
+    }
+
+    const license = await get('SELECT id, tier, limits_json FROM licenses WHERE id = ?', [licenseId]);
+    if (!license) return res.status(404).json({ error: 'lisans bulunamadı' });
+    if (license.tier !== 'T9') {
+        return res.status(400).json({ error: 'Bu endpoint yalnızca T9 (Özel) tier lisanslar içindir' });
+    }
+
+    const { getPlan, isAdminOnlyTier } = require('@mailtrustai/license-core');
+    const T9_MAX = parseInt(process.env.MSA_T9_MAX_SCAN_COUNT || '10000000', 10);
+    const clamped = Math.min(cs, T9_MAX);
+    if (clamped !== cs) {
+        console.warn(`[admin] T9 customScanCount=${cs} üst sınır kırpıldı → ${clamped}`);
+    }
+
+    const existing = safeJSON(license.limits_json, {});
+    const newLimits = { ...existing, monthlyScanCount: clamped };
+    await run('UPDATE licenses SET limits_json = ? WHERE id = ?', [JSON.stringify(newLimits), licenseId]);
+    await audit('admin', 'license.custom-scan.update', licenseId, { prev: existing.monthlyScanCount, next: clamped });
+
+    res.json({ ok: true, licenseId, monthlyScanCount: clamped });
+}));
 
 // POST /api/admin/licenses/:id/revoke
 router.post('/admin/licenses/:id/revoke', adminAuth, requirePerm('licenses:write'), asyncH(async (req, res) => {

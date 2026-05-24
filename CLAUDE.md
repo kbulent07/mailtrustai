@@ -177,7 +177,7 @@ Push kuralı: her tamamlanan iş sonrası `git push origin mainpaketler` otomati
 - `docker compose -f docker-compose.customer.yml build customer` → image yenilendi (sha 559492d…)
 - `docker compose up -d` → container recreated + started
 - Doğrulama: **Up 10s (healthy)**, healthz HTTP 200 (11ms), license validate `enterprise T5 active`, IMAP monitor bağlandı, auto-monitor devam ediyor
-- ⚠ Log'da `[Counter] UYARI: Aylık tarama sayacı dosyası değiştirilmiş. Sayaçlar sıfırlanıyor` mesajı tekrarlanıyor — büyük olasılıkla volume race condition (data dosyası external değişiklik tespit ediyor). Gerçek sorun olmadığı, sadece gürültü olduğu görülüyor; sayaçlar zaten yeniden hesaplanıyor. Ayrı görev olabilir.
+- Counter HMAC uyarı: `_hmacFailWarned` + `_cache` ile önceki oturumda çözüldü. İlk başlatmada bir kez uyarı normaldir; sonraki restart'larda tekrar etmez.
 
 ### Yapıldı — Dealer kredi-mali risk + politika temizliği (D1..D7)
 - **D1/D2/D3 (KRİTİK)** `_withCreditRollback` helper: kredi atomik düş → fn çalıştır → fail olursa otomatik iade + `dealer_credit_log` `.rollback` kaydı + audit. 3 endpoint (licenses, topup, topup-codes) sarıldı. Rollback başarısız olursa kritik log ile manuel müdahale çağrısı.
