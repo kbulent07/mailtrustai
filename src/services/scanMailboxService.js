@@ -188,9 +188,13 @@ async function resumeScanMailboxMonitors() {
     if (!enabled.length) return;
 
     console.log(`[ScanMailbox] ${enabled.length} adet etkin monitor yeniden başlatılıyor...`);
-    for (const smb of enabled) {
+    for (let i = 0; i < enabled.length; i++) {
+        const smb = enabled[i];
         // Dışarıdan zaten çalışıyorsa atla
         if (scanMailboxMonitors.get(smb.imapEmail)?.isRunning()) continue;
+        // Eş zamanlı IMAP bağlantılarının sunucu max-conn sınırına çarpmasını
+        // önlemek için ardışık monitörler arasında 3s bekle.
+        if (i > 0) await new Promise(r => setTimeout(r, 3000));
         await startScanMailboxMonitorSupervised(smb);
     }
 }

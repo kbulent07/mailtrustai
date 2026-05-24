@@ -288,10 +288,22 @@ class ScanMailboxMonitor {
         };
     }
 
-    async processPendingRecent() {
+    async processPendingRecent({ _retry = false } = {}) {
         const listed = await listEmails(this.account, 'INBOX', CATCHUP_LIMIT);
         if (!listed.success) {
-            console.error('[ScanMailbox] pending list error:', listed.error);
+            const isTransient = /authenticate|connect|timeout|socket/i.test(listed.error || '');
+            if (isTransient && !_retry) {
+                // Muhtemelen IMAP sunucusu max-conn sınırı — 15s sonra bir kez daha dene
+                console.warn(`[ScanMailbox] pending list geçici hata (${this.account.email}): ${listed.error} — 15s sonra yeniden denenecek`);
+                const t = setTimeout(() => {
+                    this.processPendingRecent({ _retry: true }).catch(e =>
+                        console.error(`[ScanMailbox] pending list retry hatası (${this.account.email}):`, e.message)
+                    );
+                }, 15_000);
+                if (t.unref) t.unref();
+            } else {
+                console.error(`[ScanMailbox] pending list error (${this.account.email}):`, listed.error);
+            }
             return;
         }
 
