@@ -69,6 +69,13 @@ function Assert-NativeOk($cmdLabel) {
     }
 }
 
+function Invoke-NativeSilent {
+    param([scriptblock]$Block)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Block } finally { $ErrorActionPreference = $prev }
+}
+
 # --- Yonetici kontrolu -------------------------------------------------------
 $currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -133,69 +140,33 @@ if ($LASTEXITCODE -ne 0) {
     Fatal "docker compose plugin bulunamadi. Docker Desktop'i guncelleyin."
 }
 
-# --- 3. Otomatik yedek -------------------------------------------------------
-Step "3/7  Otomatik yedekleme..."
+# --- RepoRoot erken hesapla (yedek + build scriptleri icin) ------------------
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepoRoot  = $null
+try {
+    $candidate = (Resolve-Path (Join-Path $ScriptDir '..\..\..')).Path
+    if (Test-Path (Join-Path $candidate '.git')) { $RepoRoot = $candidate }
+} catch { }
 
+# --- 3. Otomatik yedek -------------------------------------------------------
+Step "3/7  Otomatik yedek aliniyor..."
 $BackupDir = Join-Path $InstallDir 'backups'
 New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
 $TS = Get-Date -Format 'yyyyMMdd_HHmmss'
 
-# .env yedegi
-$EnvBackup = Join-Path $BackupDir ".env.pre-upgrade.$TS"
-Copy-Item $EnvFile $EnvBackup -Force
-Ok "Env yedegi: $EnvBackup"
-
-# Yardimci: PS strict mode + ErrorActionPreference=Stop, native exe
-# stderr ciktilarini (docker'in "Unable to find image..." gibi bilgi
-# mesajlari dahil) terminating error olarak gorur. Bu wrapper, native
-# komut suresince Stop'u Continue'ya alir ve trap'in tetiklenmesini onler.
-function Invoke-NativeSilent {
-    param([scriptblock]$Block)
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try { & $Block } finally { $ErrorActionPreference = $prev }
-}
-
-# alpine image'i ilk kullanimda docker stderr'e "Unable to find..." yazar.
-# Backup oncesi sessizce cekelim ki yedek dongusunde stderr gurultusu olmasin.
-Info "alpine image hazirlaniyor (yedekleme arac kutusu)..."
-Invoke-NativeSilent { docker image inspect alpine:latest 2>&1 | Out-Null }
-if ($LASTEXITCODE -ne 0) {
-    Invoke-NativeSilent { docker pull alpine:latest 2>&1 | Out-Null }
-    if ($LASTEXITCODE -ne 0) { Warn "alpine indirilemedi — yedekleme atlanacak." }
-}
-
-# Volume snapshot'lari — hem customer-data hem customer-logs
-function Backup-Volume($volName, $label) {
-    $exists = $false
-    Invoke-NativeSilent {
-        $script:exists = (docker volume ls --format '{{.Name}}' 2>$null |
-            Select-String -Pattern "^$volName$" -Quiet)
+$BackupScript = if ($RepoRoot) { Join-Path $RepoRoot 'scripts\backup\backup-customer-windows.ps1' } else { $null }
+if ($BackupScript -and (Test-Path $BackupScript)) {
+    & powershell.exe -ExecutionPolicy Bypass -NonInteractive -File $BackupScript -InstallDir $InstallDir
+    if ($LASTEXITCODE -ne 0) {
+        Fatal "Yedek alinamadi — guncelleme iptal edildi. Sorunu giderin ve tekrar deneyin."
     }
-    if ($script:exists -or $exists) {
-        Info "$label volume snapshot aliniyor..."
-        $tarName = "$label-pre-upgrade.$TS.tar.gz"
-        Invoke-NativeSilent {
-            docker run --rm `
-                -v "${volName}:/data:ro" `
-                -v "${BackupDir}:/backup" `
-                alpine tar czf "/backup/$tarName" -C /data . 2>&1 | Out-Null
-        }
-        if ($LASTEXITCODE -eq 0) {
-            Ok "$label yedegi: $BackupDir\$tarName"
-        } else {
-            Warn "$label yedegi alinamadi (devam ediliyor)."
-        }
-    }
+} else {
+    Fatal "Backup scripti bulunamadi: $BackupScript`n  Repo dogru kopyalanmis mi? REPO_ROOT: $RepoRoot"
 }
-Backup-Volume "mailtrustai-customer_customer-data" "customer-data"
-Backup-Volume "mailtrustai-customer_customer-logs" "customer-logs"
 
 # --- 4. Yeni surumu hazirla --------------------------------------------------
 Step "4/7  Yeni surum hazirlaniyor..."
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepoRoot  = $null
 $PrevCommit = $null
 $NewCommit  = $null
 
@@ -391,7 +362,7 @@ if ($PrevCommit -and $NewCommit) {
     Write-Color "  Onceki commit : $($PrevCommit.Substring(0,12))" 'Yellow'
     Write-Color "  Yeni commit   : $($NewCommit.Substring(0,12))" 'Yellow'
 }
-Write-Color "  Env yedegi    : $EnvBackup" 'Yellow'
+Write-Color "  Yedek klasoru : $BackupDir" 'Yellow'
 Write-Color "  Log dosyasi   : $UpgradeLog" 'Yellow'
 Write-Host ""
 

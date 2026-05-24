@@ -16,9 +16,11 @@
 set -Euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+INSTALL_DIR="${INSTALL_DIR:-/opt/mailtrustai}"
 
-UPDATE_LOG="/tmp/mailtrustai-client-update-$(date +%Y%m%d-%H%M%S).log"
+mkdir -p "$INSTALL_DIR/backups"
+UPDATE_LOG="$INSTALL_DIR/backups/update-$(date +%Y%m%d-%H%M%S).log"
 exec > >(tee -a "$UPDATE_LOG") 2>&1
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -52,7 +54,6 @@ echo -e "${NC}"
 
 # ----- 1. Kurulum kontrolu -----
 step "1/7  Kurulum tespit ediliyor..."
-INSTALL_DIR="${INSTALL_DIR:-/opt/mailtrustai}"
 ENV_FILE="$INSTALL_DIR/.env"
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.customer.yml"
 
@@ -68,27 +69,14 @@ docker info &>/dev/null || fatal "Docker daemon kapali. systemctl start docker"
 ok "Docker: $(docker --version)"
 
 # ----- 3. Yedek -----
-step "3/7  Otomatik yedek..."
-BACKUP_DIR="$INSTALL_DIR/backups"
-mkdir -p "$BACKUP_DIR"
-TS=$(date +%Y%m%d_%H%M%S)
+step "3/7  Otomatik yedek aliniyor..."
+BACKUP_SCRIPT="$REPO_ROOT/scripts/backup/backup-customer-ubuntu.sh"
 
-cp "$ENV_FILE" "$BACKUP_DIR/.env.pre-update.$TS"
-ok "Env yedegi: $BACKUP_DIR/.env.pre-update.$TS"
+if [[ ! -f "$BACKUP_SCRIPT" ]]; then
+    fatal "Backup scripti bulunamadi: $BACKUP_SCRIPT — guncelleme iptal edildi."
+fi
 
-backup_volume() {
-    local vol="$1" lbl="$2"
-    if docker volume ls --format '{{.Name}}' | grep -q "^${vol}$"; then
-        if docker run --rm -v "${vol}:/data:ro" -v "$BACKUP_DIR":/backup \
-             alpine tar czf "/backup/${lbl}-pre-update.$TS.tar.gz" -C /data . 2>/dev/null; then
-            ok "$lbl yedegi: $BACKUP_DIR/${lbl}-pre-update.$TS.tar.gz"
-        else
-            warn "$lbl yedegi alinamadi (devam)."
-        fi
-    fi
-}
-backup_volume "mailtrustai-customer_customer-data" "customer-data"
-backup_volume "mailtrustai-customer_customer-logs" "customer-logs"
+INSTALL_DIR="$INSTALL_DIR" bash "$BACKUP_SCRIPT" || fatal "Yedek alinamadi — guncelleme iptal edildi."
 
 # ----- 4. Git pull -----
 step "4/7  Repo guncelleniyor..."
@@ -189,6 +177,6 @@ fi
 echo ""
 echo -e "  ${BOLD}Rollback (gerekirse):${NC}"
 echo -e "  ${CYAN}cd $REPO_ROOT && git reset --hard $PREV_COMMIT${NC}"
-echo -e "  ${CYAN}sudo bash $SCRIPT_DIR/update_client_ubuntu.sh${NC}"
+echo -e "  ${CYAN}sudo bash $SCRIPT_DIR/update.sh${NC}"
 echo ""
 hr

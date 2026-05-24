@@ -1,136 +1,107 @@
 #!/usr/bin/env bash
 # ============================================================
-# MailTrustAI Customer — Yedek Alma Scripti
+# MailTrustAI Customer -- Ubuntu/Linux Docker Yedek Scripti
 #
-# Yeni bir kurulum / rebuild / Docker upgrade öncesi çalıştır.
-# Backups klasörüne tarihli .tar.gz arşivler bırakır + .env.docker
-# kopyasını AYRI tutar (en kritik dosya).
+# Kullanim:
+#   bash scripts/backup/backup-customer-ubuntu.sh
+#       -> $INSTALL_DIR/backups/YYYY-MM-DD_HHMMSS/ altina yeni yedek
 #
-# Kullanım:
-#   bash scripts/backup-ubuntu-customer.sh
-#       → backups/YYYY-MM-DD_HHMMSS/ altına yeni yedek
+#   bash scripts/backup/backup-customer-ubuntu.sh /opt/mailtrustai/backups/auto-weekly
+#       -> Belirtilen klasore UZERINE YAZAR (haftalik zamanlayici modu)
 #
-#   bash scripts/backup-ubuntu-customer.sh backups/auto-weekly
-#       → Belirtilen klasöre ÜZERİNE YAZAR (haftalık zamanlayıcı modu)
+#   INSTALL_DIR=/opt/baska bash scripts/backup/backup-customer-ubuntu.sh
+#       -> Farkli kurulum dizini
 # ============================================================
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+INSTALL_DIR="${INSTALL_DIR:-/opt/mailtrustai}"
 TS="$(date +%Y-%m-%d_%H%M%S)"
 
-# İsteğe bağlı 1. argüman: sabit hedef klasör (haftalık üzerine yazma modu)
+# 1. arguman verilmisse hedef dizin (haftalik uzerine yazma modu)
 if [[ -n "${1:-}" ]]; then
-    # Göreceli yol → repo-root'a göre çöz
     if [[ "${1}" = /* ]]; then
         BACKUP_DIR="${1}"
     else
-        BACKUP_DIR="${REPO_ROOT}/${1}"
+        BACKUP_DIR="${INSTALL_DIR}/${1}"
     fi
-    # Eski yedeği temizle (üzerine yaz)
     [[ -d "${BACKUP_DIR}" ]] && rm -rf "${BACKUP_DIR}"
-    mkdir -p "${BACKUP_DIR}"
-    MODE_LABEL="HAFTALIK (üzerine yaz)"
+    MODE_LABEL="HAFTALIK (uzerine yaz)"
 else
-    BACKUP_DIR="${REPO_ROOT}/backups/${TS}"
-    mkdir -p "${BACKUP_DIR}"
+    BACKUP_DIR="${INSTALL_DIR}/backups/${TS}"
     MODE_LABEL="ZAMANLI"
 fi
+mkdir -p "${BACKUP_DIR}"
 
-# Windows Git Bash icin path conversion (cygpath varsa Windows yoluna cevir).
-# Docker Desktop Windows volume mount'larinda gerekli.
-if command -v cygpath >/dev/null 2>&1; then
-    BACKUP_DIR_DOCKER="$(cygpath -w "${BACKUP_DIR}")"
-    export MSYS_NO_PATHCONV=1
-else
-    BACKUP_DIR_DOCKER="${BACKUP_DIR}"
-fi
+echo "==========================================================="
+echo " MailTrustAI Customer Yedek [${MODE_LABEL}] -- ${TS}"
+echo " Kaynak : ${INSTALL_DIR}"
+echo " Hedef  : ${BACKUP_DIR}"
+echo "==========================================================="
 
-echo "═══════════════════════════════════════════════════════════"
-echo " MailTrustAI Customer Yedek [${MODE_LABEL}] — ${TS}"
-echo " Hedef: ${BACKUP_DIR}"
-echo "═══════════════════════════════════════════════════════════"
-
-# ─── 1) .env.docker (EN KRİTİK — anahtarlar burada) ────────────
-if [[ -f "${REPO_ROOT}/.env.docker" ]]; then
-    cp "${REPO_ROOT}/.env.docker" "${BACKUP_DIR}/.env.docker"
-    chmod 600 "${BACKUP_DIR}/.env.docker"
-    echo " ✓ .env.docker kopyalandi (600 perms)"
-else
-    echo " ✗ HATA: .env.docker bulunamadi! Devam edilmiyor."
+# --- 1) .env (EN KRITIK -- lisans + AES secret'lari) -----------
+ENV_FILE="${INSTALL_DIR}/.env"
+if [[ ! -f "${ENV_FILE}" ]]; then
+    echo " HATA: .env bulunamadi: ${ENV_FILE}"
+    echo " Kurulum dizinini INSTALL_DIR env degiskeni ile belirtin."
     exit 1
 fi
+cp "${ENV_FILE}" "${BACKUP_DIR}/.env"
+chmod 600 "${BACKUP_DIR}/.env"
+echo " [OK] .env kopyalandi (600 perms)"
 
-# ─── 2) customer-data volume (msa.db, settings, *.enc) ─────────
-VOLUME_NAME="mailtrustai-customer_customer-data"
-if docker volume inspect "${VOLUME_NAME}" >/dev/null 2>&1; then
+# --- 2) customer-data volume (msa.db, settings, *.enc) ---------
+DATA_VOLUME="mailtrustai-customer_customer-data"
+if docker volume inspect "${DATA_VOLUME}" >/dev/null 2>&1; then
     docker run --rm \
-        -v "${VOLUME_NAME}:/data:ro" \
-        -v "${BACKUP_DIR_DOCKER}:/backup" \
+        -v "${DATA_VOLUME}:/data:ro" \
+        -v "${BACKUP_DIR}:/backup" \
         alpine \
         sh -c "cd /data && tar czf /backup/customer-data.tar.gz ."
-    SIZE=$(du -h "${BACKUP_DIR}/customer-data.tar.gz" | cut -f1)
-    echo " ✓ customer-data.tar.gz olusturuldu (${SIZE})"
+    SIZE="$(du -h "${BACKUP_DIR}/customer-data.tar.gz" | cut -f1)"
+    echo " [OK] customer-data.tar.gz olusturuldu (${SIZE})"
 else
-    echo " ⚠ Volume ${VOLUME_NAME} bulunamadi — atlandi."
+    echo " UYARI: Volume ${DATA_VOLUME} bulunamadi -- atlandi."
 fi
 
-# ─── 3) customer-logs volume (opsiyonel) ───────────────────────
+# --- 3) customer-logs volume (opsiyonel) -----------------------
 LOG_VOLUME="mailtrustai-customer_customer-logs"
 if docker volume inspect "${LOG_VOLUME}" >/dev/null 2>&1; then
     docker run --rm \
         -v "${LOG_VOLUME}:/logs:ro" \
-        -v "${BACKUP_DIR_DOCKER}:/backup" \
+        -v "${BACKUP_DIR}:/backup" \
         alpine \
         sh -c "cd /logs && tar czf /backup/customer-logs.tar.gz . 2>/dev/null || true"
     if [[ -f "${BACKUP_DIR}/customer-logs.tar.gz" ]]; then
-        SIZE=$(du -h "${BACKUP_DIR}/customer-logs.tar.gz" | cut -f1)
-        echo " ✓ customer-logs.tar.gz olusturuldu (${SIZE})"
+        SIZE="$(du -h "${BACKUP_DIR}/customer-logs.tar.gz" | cut -f1)"
+        echo " [OK] customer-logs.tar.gz olusturuldu (${SIZE})"
     fi
 fi
 
-# ─── 4) Yedek metadata (geri yukleme rehberi) ──────────────────
+# --- 4) README.txt ---------------------------------------------
 cat > "${BACKUP_DIR}/README.txt" <<EOF
-MailTrustAI Customer Yedek — ${TS}
+MailTrustAI Customer Yedek -- ${TS}
 ================================================================
 
-Bu klasor SU 3 dosyayi icerir:
-  - .env.docker             → AES sifreleme anahtarlari (KRITIK)
-  - customer-data.tar.gz    → msa.db, settings.json, *.enc dosyalari
-  - customer-logs.tar.gz    → Uygulama loglari (opsiyonel)
+Dosyalar:
+  .env                  -> Lisans + AES secret'lari (KRITIK)
+  customer-data.tar.gz  -> msa.db, settings.json, *.enc
+  customer-logs.tar.gz  -> Uygulama loglari (opsiyonel)
 
-GERI YUKLEME (yeni kurulum sonrasi):
-------------------------------------
-1) Container'i durdur:
-   docker compose --env-file .env.docker -f docker-compose.customer.yml down
+GERI YUKLEME:
+  sudo bash scripts/backup/restore-customer-ubuntu.sh ${BACKUP_DIR}
 
-2) .env.docker'i geri koy:
-   cp ${BACKUP_DIR}/.env.docker /path/to/repo/.env.docker
-   chmod 600 /path/to/repo/.env.docker
-
-3) Volume'u geri yukle:
-   docker volume create mailtrustai-customer_customer-data
-   docker run --rm \\
-     -v mailtrustai-customer_customer-data:/data \\
-     -v ${BACKUP_DIR}:/backup:ro \\
-     alpine \\
-     sh -c "cd /data && tar xzf /backup/customer-data.tar.gz"
-
-4) Container'i baslat:
-   docker compose --env-file .env.docker -f docker-compose.customer.yml up -d
-
-NOT: .env.docker ve customer-data.tar.gz HER ZAMAN BIRLIKTE
-saklanmalidir. Sadece volume'u kurtarip .env.docker'i kaybedersen
-tum .enc dosyalari (license-cache, central-policy, credentials)
-acilamaz hale gelir.
+NOT: .env ve customer-data.tar.gz HER ZAMAN BIRLIKTE saklanmalidir.
+     Yalniz biri kurtulursa eski sifrelenmis dosyalar acilamaz.
 ================================================================
 EOF
 
-# ─── 5) Eski yedekleri raporla ─────────────────────────────────
+# --- 5) Son yedekleri listele ----------------------------------
 echo ""
-echo "Mevcut yedekler:"
-ls -lhd "${REPO_ROOT}/backups/"*/ 2>/dev/null | tail -10 || echo " (henuz yedek yok)"
+echo "Son yedekler:"
+ls -1dt "${INSTALL_DIR}/backups/"*/ 2>/dev/null | head -5 | sed 's|.*/||;s|/||' \
+    | while read -r d; do echo "  $d"; done || echo "  (henuz yedek yok)"
 
 echo ""
-echo "═══════════════════════════════════════════════════════════"
-echo " ✓ Yedekleme tamam: ${BACKUP_DIR}"
-echo "═══════════════════════════════════════════════════════════"
+echo "==========================================================="
+echo " [OK] Yedekleme tamam: ${BACKUP_DIR}"
+echo "==========================================================="
