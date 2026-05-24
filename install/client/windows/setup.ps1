@@ -28,15 +28,15 @@
 
 .EXAMPLE
     # Etkileşimli kurulum (en basit yol):
-    powershell -ExecutionPolicy Bypass -File install\client\install_client_windows_setup.ps1
+    powershell -ExecutionPolicy Bypass -File install\client\windows\setup.ps1
 
     # Parametrelerle:
-    powershell -ExecutionPolicy Bypass -File install\client\install_client_windows_setup.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\windows\setup.ps1 `
         -LicenseKey "MSA-XXXX-XXXX-XXXX" `
         -LicenseServerUrl "http://license.mailtrustai.com:3200"
 
     # Hazır image tar dosyasıyla:
-    powershell -ExecutionPolicy Bypass -File install\client\install_client_windows_setup.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\windows\setup.ps1 `
         -ImageFile "C:\Downloads\mailtrustai-customer.tar"
 #>
 
@@ -57,8 +57,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# --- Log dosyasi (tum cikti $env:TEMP altina kaydedilir) --------------------
-$InstallLog = Join-Path $env:TEMP "mailtrustai-install-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+# --- Log dosyasi (InstallDir\logs\ altina kaydedilir) -----------------------
+New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'logs') | Out-Null
+$InstallLog = Join-Path $InstallDir "logs\install-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 try { Start-Transcript -Path $InstallLog -Append | Out-Null } catch { }
 
 # ─── Yardımcı fonksiyonlar ───────────────────────────────────────────────────
