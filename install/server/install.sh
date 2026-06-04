@@ -5,8 +5,11 @@
 # Kurar: license-server (port 3200) + dealer panel (3100) + MariaDB
 # Gereksinim: Ubuntu 22.04 LTS / 24.04 LTS, Docker 24+, 2 GB RAM
 #
-# Kullanım (repo kök dizininden):
-#   sudo bash install/server/install_server_ubuntu.sh
+# Kullanım:
+#   curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick.sh | sudo bash
+#
+#   veya repo varsa:
+#   sudo bash install/server/install.sh
 #
 # İlk kurulum : Secret'lar otomatik üretilir ve .env dosyasına yazılır.
 # Güncelleme  : Mevcut .env korunur, yalnızca image yeniden derlenir.
@@ -594,12 +597,12 @@ case "${1:-help}" in
     update|upgrade)
         # Tam ozellikli upgrade script'ini cagir (git pull + yedek + rebuild + healthcheck)
         REPO=$(cat "$INSTALL_DIR/.repo_path" 2>/dev/null || echo '')
-        UPGRADE_SCRIPT="$REPO/install/server/upgrade_server_ubuntu.sh"
+        UPGRADE_SCRIPT="$REPO/install/server/update.sh"
         if [[ -n "$REPO" && -f "$UPGRADE_SCRIPT" ]]; then
             exec sudo bash "$UPGRADE_SCRIPT"
         else
             echo "Upgrade script bulunamadi: $UPGRADE_SCRIPT"
-            echo "Manuel: cd $REPO && git pull && sudo bash install/server/upgrade_server_ubuntu.sh"
+            echo "Manuel: cd $REPO && git pull && sudo bash install/server/update.sh"
             exit 1
         fi
         ;;
@@ -737,7 +740,7 @@ else
     echo -e "     ${CYAN}cd $REPO_ROOT${NC}"
     echo -e "     ${CYAN}$DOCKER_COMPOSE_CMD --env-file $ENV_FILE -f docker-compose.server.yml build 2>&1 | tail -50${NC}"
     echo -e "  2. Duzeltip yeniden calistirin:"
-    echo -e "     ${CYAN}sudo bash install/server/install_server_ubuntu.sh${NC}"
+    echo -e "     ${CYAN}sudo bash install/server/install.sh${NC}"
     echo -e "  ${GREEN}Not: .env dosyasi basariyla olusturuldu, bir sonraki calistirmada korunacak.${NC}"
     echo ""
 fi

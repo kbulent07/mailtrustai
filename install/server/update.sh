@@ -9,11 +9,11 @@
 #   - Git repo guncellenir, Docker image'lar yeniden derlenir
 #   - Servisler graceful restart edilir
 #
-# Kullanim (repo kok dizininden):
-#   sudo bash install/server/upgrade_server_ubuntu.sh
+# Kullanim:
+#   sudo bash install/server/update.sh
 #
 # Otomatik mod (cron icin):
-#   sudo UNATTENDED=true bash install/server/upgrade_server_ubuntu.sh
+#   sudo UNATTENDED=true bash install/server/update.sh
 # ============================================================
 set -Euo pipefail
 
