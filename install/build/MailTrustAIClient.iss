@@ -117,9 +117,8 @@ var
   g_Purge:       Boolean;
   g_RemoveDocker: Boolean;
 
-// Kaldirma baslamadan once iki soru sor:
-//   1) Veriler silinsin mi?
-//   2) Docker Desktop kaldirilsin mi?
+// Kaldirma baslamadan once iki soru sor.
+// InitializeUninstall() uninstall baslamadan hemen once cagrilir.
 function InitializeUninstall(): Boolean;
 var
   answer: Integer;
@@ -140,7 +139,7 @@ begin
 
   // --- Soru 2: Docker Desktop ---
   answer := MsgBox(
-    'Docker Desktop da kaldirılsın mı?' + #13#10 + #13#10 +
+    'Docker Desktop da kaldirilsin mi?' + #13#10 + #13#10 +
     'EVET  - winget ile Docker Desktop kaldirilir.' + #13#10 +
     '        DIKKAT: Sistemde Docker kullanan baska uygulama varsa' + #13#10 +
     '        onlar da etkilenir!' + #13#10 + #13#10 +
