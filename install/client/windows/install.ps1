@@ -268,7 +268,8 @@ if (Test-Path $InstallRoot) {
         try {
             git fetch origin $Branch
             if ($LASTEXITCODE -ne 0) { Fatal "git fetch basarisiz." }
-            git checkout $Branch 2>&1 | Out-Null
+            git checkout --quiet $Branch
+            if ($LASTEXITCODE -ne 0) { Fatal "git checkout basarisiz: $Branch" }
             git pull --ff-only origin $Branch
             if ($LASTEXITCODE -ne 0) { Fatal "git pull basarisiz (divergent history?)." }
             Ok "Repo guncel: $(git rev-parse --short HEAD)"
