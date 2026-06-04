@@ -322,8 +322,6 @@ $fingerprintSection
     }
 
     Ok ".env oluşturuldu → $EnvFile"
-    Info "İlk kurulum token'ı: $setupToken"
-    Info "Kurulum URL'i: http://localhost:$Port/?setup_token=$setupToken"
 } else {
     Ok ".env mevcut → $EnvFile"
 }
@@ -634,13 +632,10 @@ Write-Color "  Uygulama Adresi   : http://localhost:$Port" 'Cyan'
 
 # Setup token göster
 if (-not $SkipEnv) {
-    $st = Select-String 'MSA_SETUP_TOKEN=(.+)' $EnvFile | ForEach-Object { $_.Matches[0].Groups[1].Value }
-    if ($st) {
-        Write-Host ""
-        Write-Color "  İlk Admin Kurulumu:" 'Yellow'
-        Write-Color "  http://localhost:$Port/?setup_token=$st" 'Cyan'
-        Write-Color "  (Bu URL'yi tarayıcıda açın ve admin hesabınızı oluşturun)" 'Yellow'
-    }
+    Write-Host ""
+    Write-Color "  İlk Admin Kurulumu:" 'Yellow'
+    Write-Color "  http://localhost:$Port" 'Cyan'
+    Write-Color "  (Tarayıcıda açın — e-posta ve şifrenizi doğrudan oluşturun)" 'Yellow'
 }
 
 Write-Host ""

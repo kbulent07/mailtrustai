@@ -64,32 +64,11 @@ router.post('/customer/setup', async (req, res) => {
             });
         }
 
-        // İlk kurulum hijack koruması: localhost VEYA MSA_SETUP_TOKEN
-        const ipRaw = String(req.ip || req.connection?.remoteAddress || '');
+        // İlk kurulum: admin henüz yokken token gerekmez — form direkt açılır.
+        // (Yukarıdaki isCustomerInitialized() kontrolü geçmişse admin yok demektir.)
+        const ipRaw  = String(req.ip || req.connection?.remoteAddress || '');
         const isLocal = /^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1|localhost)$/i.test(ipRaw);
-        const expectedToken = process.env.MSA_SETUP_TOKEN || '';
-        const providedToken = String(
-            req.headers['x-setup-token'] ||
-            req.query?.setup_token ||
-            req.body?.setupToken ||
-            ''
-        );
-        const tokenMatch = _tokenEquals(expectedToken, providedToken);
-
-        if (!isLocal && !tokenMatch) {
-            // Debug log: 403 nedenini docker logs ile görebilmek için (token'lar maskeli)
-            const _mask = (s) => s ? (String(s).slice(0, 4) + '...' + String(s).slice(-4) + ` (len=${String(s).length})`) : '<empty>';
-            console.warn('[Setup-403] ip=' + ipRaw +
-                ' expected=' + _mask(expectedToken) +
-                ' provided=' + _mask(providedToken) +
-                ' src=' + (req.headers['x-setup-token'] ? 'header' :
-                           req.query?.setup_token ? 'query' :
-                           req.body?.setupToken ? 'body' : 'none'));
-            return res.status(403).json({
-                error: 'İlk kurulum yalnızca localhost veya geçerli MSA_SETUP_TOKEN ile yapılabilir.',
-                hint: 'Sunucu .env dosyasına MSA_SETUP_TOKEN ekleyin ve URL\'ye ?setup_token=... ekleyin.'
-            });
-        }
+        console.log(`[Setup] İlk admin kurulumu başlatıldı — ip=${ipRaw} (${isLocal ? 'localhost' : 'remote'})`);
 
         const email    = String(req.body?.email || '').trim().toLowerCase();
         const password = String(req.body?.password || '');
@@ -109,7 +88,7 @@ router.post('/customer/setup', async (req, res) => {
         const token = customerAuth.createCustomerToken({
             email: admin.email, role: 'admin', imapEmail: null
         });
-        console.log(`[Setup] İlk müşteri admin oluşturuldu: ${admin.email} (kaynak: ${isLocal ? 'localhost' : 'setup-token'})`);
+        console.log(`[Setup] İlk müşteri admin oluşturuldu: ${admin.email} (kaynak: ${isLocal ? 'localhost' : 'remote'})`);
         cleanupInitialCredsFile();
         clearPersistedSetupToken(); // admin oluştu → kalıcı setup-token'ı sil (sızıntı yüzeyini kapat)
         res.json({ success: true, token, expiresIn: 12 * 3600, email: admin.email, role: 'admin' });
