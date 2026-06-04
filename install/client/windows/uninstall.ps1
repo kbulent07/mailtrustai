@@ -301,7 +301,7 @@ if (-not $Purge) {
     Write-Color "  Veriler korundu: $InstallDir" 'Yellow'
     Write-Color ""
     Write-Color "  Yeniden kurmak için:" 'White'
-    Write-Color "  powershell -ExecutionPolicy Bypass -File install\client\install_client_windows_setup.ps1" 'Cyan'
+    Write-Color "  MailTrustAI-Client-Setup-*.exe" 'Cyan'
 }
 
 Write-Host ""

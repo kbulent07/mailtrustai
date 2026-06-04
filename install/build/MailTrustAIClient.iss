@@ -62,8 +62,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 ; Bootstrap PS1 temp'e kopyalanir — repo klonlandiktan sonra silinir.
-; setup.ps1 klonlanan repo'dan cagrilir, buraya gerek yok.
 Source: "..\client\windows\install.ps1"; DestDir: "{tmp}"; DestName: "install.ps1"; Flags: deleteafterinstall ignoreversion
+; Uninstall script {app}'e kalici kopyalanir — repo silinse bile calisir.
+Source: "..\client\windows\uninstall.ps1"; DestDir: "{app}"; DestName: "uninstall.ps1"; Flags: ignoreversion
 
 [Registry]
 ; Repo kok dizinini kayit defterine yaz. Kaldirma sirasinda
@@ -97,22 +98,51 @@ Filename: "powershell.exe"; \
 Filename: "http://localhost:3000"; Description: "MailTrustAI Kontrol Paneli'ni ac"; Tasks: openbrowser; Flags: shellexec postinstall skipifsilent
 
 [UninstallRun]
-; Kaldirma sirasinda repo koku kayit defterinden okunarak uninstall
-; script'i soft modda (container durdur, .env/volume koru) cagrilir.
-; Tam temizlik icin kullanici uninstall_client_windows.bat'i calistirabilir.
+; {app}\uninstall.ps1 kurulum sirasinda kopyalanir — repo olsa da olmasa da calisir.
+; Purge karari InitializeUninstall() wizard'indan gelir (GetPurgeFlag getter).
 Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{reg:HKLM\Software\MailTrustAI\Client,RepoRoot}\install\client\windows\uninstall.ps1"" -Unattended"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\uninstall.ps1"" -Unattended {code:GetPurgeFlag}"; \
   RunOnceId: "MailTrustAIUninstall"; \
-  Flags: runhidden
+  Flags: waituntilterminated
 
 [Code]
 // ────────────────────────────────────────────────────────────
 // Wizard ek sayfalari: Lisans Anahtari + License Server URL
+// Uninstall: veri silme secimi
 // ────────────────────────────────────────────────────────────
 var
   LicensePage:   TInputQueryWizardPage;
   ServerURLPage: TInputQueryWizardPage;
   InfoPage:      TOutputMsgWizardPage;
+  g_Purge:       Boolean;
+
+// Kaldirma baslamadan once kullaniciya sor: veriler silinsin mi?
+function InitializeUninstall(): Boolean;
+var
+  answer: Integer;
+begin
+  Result := True;
+  g_Purge := False;
+
+  answer := MsgBox(
+    'MailTrustAI verilerini de silmek istiyor musunuz?' + #13#10 + #13#10 +
+    'EVET  - Tum veriler kalici olarak silinir:' + #13#10 +
+    '        mail gecmisi, msa.db, ayarlar, .env, yedekler' + #13#10 + #13#10 +
+    'HAYIR - Sadece konteyner durdurulur.' + #13#10 +
+    '        Veriler korunur; yeniden kurulumda devam edilir.',
+    mbConfirmation, MB_YESNO);
+
+  g_Purge := (answer = IDYES);
+end;
+
+// [UninstallRun] Parameters icinde {code:GetPurgeFlag} olarak kullanilir
+function GetPurgeFlag(Param: String): String;
+begin
+  if g_Purge then
+    Result := '-Purge -DeleteBackups -RemoveImage'
+  else
+    Result := '';
+end;
 
 procedure InitializeWizard();
 begin
