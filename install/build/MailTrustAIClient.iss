@@ -35,8 +35,7 @@ DefaultDirName={autopf}\MailTrustAI
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=no
 
-LicenseFile=LICENSE.txt
-OutputDir=..\dist
+OutputDir=..\..\dist
 OutputBaseFilename=MailTrustAI-Client-Setup-{#MyAppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -62,11 +61,9 @@ Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-; PS1'ler temp'e kopyalanir, kurulum bittikten sonra silinir.
-; Bunlar mevcut install/client/*.ps1 dosyalarinin AYNISIDIR — Inno
-; build sirasinda repo'dan cekiliyor (build script'iyle senkron).
-Source: "..\install\client\install_client_windows.ps1";       DestDir: "{tmp}"; Flags: deleteafterinstall ignoreversion
-Source: "..\install\client\install_client_windows_setup.ps1"; DestDir: "{tmp}"; Flags: deleteafterinstall ignoreversion
+; Bootstrap PS1 temp'e kopyalanir — repo klonlandiktan sonra silinir.
+; setup.ps1 klonlanan repo'dan cagrilir, buraya gerek yok.
+Source: "..\client\windows\install.ps1"; DestDir: "{tmp}"; DestName: "install.ps1"; Flags: deleteafterinstall ignoreversion
 
 [Registry]
 ; Repo kok dizinini kayit defterine yaz. Kaldirma sirasinda
@@ -91,10 +88,10 @@ Name: "{autodesktop}\MailTrustAI"; Filename: "http://localhost:3000"; Tasks: des
 ; degerlerle cagir. Cikti kullaniciya gosterilmek icin runascurrentuser
 ; yerine waituntilterminated kullaniyoruz.
 Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{tmp}\install_client_windows.ps1"" -LicenseKey ""{code:GetLicense}"" -LicenseServerUrl ""{code:GetServerURL}"" -InstallRoot ""{code:GetRepoRoot}"""; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{tmp}\install.ps1"" -LicenseKey ""{code:GetLicense}"" -LicenseServerUrl ""{code:GetServerURL}"" -InstallRoot ""{code:GetRepoRoot}"""; \
   WorkingDir: "{tmp}"; \
-  StatusMsg: "MailTrustAI kuruluyor (Docker indirme dahil 5-15 dk surebilir)..."; \
-  Flags: waituntilterminated runhidden
+  StatusMsg: "MailTrustAI kuruluyor... (Docker indirme dahil 5-15 dk surebilir, lutfen bekleyin)"; \
+  Flags: waituntilterminated
 
 ; Kurulum sonrasi tarayicida ac (gorev secildiyse)
 Filename: "http://localhost:3000"; Description: "MailTrustAI Kontrol Paneli'ni ac"; Tasks: openbrowser; Flags: shellexec postinstall skipifsilent
@@ -104,7 +101,7 @@ Filename: "http://localhost:3000"; Description: "MailTrustAI Kontrol Paneli'ni a
 ; script'i soft modda (container durdur, .env/volume koru) cagrilir.
 ; Tam temizlik icin kullanici uninstall_client_windows.bat'i calistirabilir.
 Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{reg:HKLM\Software\MailTrustAI\Client,RepoRoot}\install\client\uninstall_client_windows.ps1"" -Unattended"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{reg:HKLM\Software\MailTrustAI\Client,RepoRoot}\install\client\windows\uninstall.ps1"" -Unattended"; \
   RunOnceId: "MailTrustAIUninstall"; \
   Flags: runhidden
 
@@ -147,7 +144,7 @@ begin
     'Varsayilan deger MailTrustAI merkezi sunucusudur. ' +
     'Farkli bir license-server kullanacaksaniz URL''i degistirebilirsiniz.');
   ServerURLPage.Add('URL:', False);
-  ServerURLPage.Values[0] := 'http://licence.mailtrustai.com:3200';
+  ServerURLPage.Values[0] := 'http://license.mailtrustai.com:3200';
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
