@@ -115,15 +115,20 @@ var
   ServerURLPage: TInputQueryWizardPage;
   InfoPage:      TOutputMsgWizardPage;
   g_Purge:       Boolean;
+  g_RemoveDocker: Boolean;
 
-// Kaldirma baslamadan once kullaniciya sor: veriler silinsin mi?
+// Kaldirma baslamadan once iki soru sor:
+//   1) Veriler silinsin mi?
+//   2) Docker Desktop kaldirilsin mi?
 function InitializeUninstall(): Boolean;
 var
   answer: Integer;
 begin
   Result := True;
   g_Purge := False;
+  g_RemoveDocker := False;
 
+  // --- Soru 1: Veri ---
   answer := MsgBox(
     'MailTrustAI verilerini de silmek istiyor musunuz?' + #13#10 + #13#10 +
     'EVET  - Tum veriler kalici olarak silinir:' + #13#10 +
@@ -131,17 +136,30 @@ begin
     'HAYIR - Sadece konteyner durdurulur.' + #13#10 +
     '        Veriler korunur; yeniden kurulumda devam edilir.',
     mbConfirmation, MB_YESNO);
-
   g_Purge := (answer = IDYES);
+
+  // --- Soru 2: Docker Desktop ---
+  answer := MsgBox(
+    'Docker Desktop da kaldirılsın mı?' + #13#10 + #13#10 +
+    'EVET  - winget ile Docker Desktop kaldirilir.' + #13#10 +
+    '        DIKKAT: Sistemde Docker kullanan baska uygulama varsa' + #13#10 +
+    '        onlar da etkilenir!' + #13#10 + #13#10 +
+    'HAYIR - Docker Desktop korunur (onerilir).',
+    mbConfirmation, MB_YESNO);
+  g_RemoveDocker := (answer = IDYES);
 end;
 
 // [UninstallRun] Parameters icinde {code:GetPurgeFlag} olarak kullanilir
 function GetPurgeFlag(Param: String): String;
+var
+  flags: String;
 begin
+  flags := '';
   if g_Purge then
-    Result := '-Purge -DeleteBackups -RemoveImage'
-  else
-    Result := '';
+    flags := flags + ' -Purge -DeleteBackups -RemoveImage';
+  if g_RemoveDocker then
+    flags := flags + ' -RemoveDocker';
+  Result := Trim(flags);
 end;
 
 procedure InitializeWizard();
