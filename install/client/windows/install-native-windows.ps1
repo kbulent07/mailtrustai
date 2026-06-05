@@ -271,20 +271,30 @@ Info "InstallDir=$InstallDir | Port=$Port | URL=$LicenseServerUrl"
 # 4/9  Repo klon/guncelle
 # ============================================================
 Step "4/9  Kaynak kod hazirlaniyor: $InstallDir ($Branch)"
-if (Test-Path (Join-Path $InstallDir '.git')) {
-    Info "Mevcut repo guncelleniyor..."
-    git -C $InstallDir fetch --depth 1 origin $Branch
-    git -C $InstallDir checkout -q $Branch
-    git -C $InstallDir reset --hard "origin/$Branch"
+# NOT: 'git clone' bos olmayan dizine izin vermez; bu script en basta
+# $InstallDir\logs olusturdugu icin clone basarisiz olurdu. Bu yuzden
+# init+fetch+checkout kullaniyoruz — bos veya icinde logs/ olan dizinde de calisir.
+New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+if (-not (Test-Path (Join-Path $InstallDir '.git'))) {
+    Info "Repo indiriliyor (init+fetch+checkout)..."
+    git -C $InstallDir init -q
+    if ($LASTEXITCODE -ne 0) { Fatal "git init basarisiz." }
 } else {
-    if ((Test-Path $InstallDir) -and (Get-ChildItem $InstallDir -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'logs' })) {
-        Fatal "$InstallDir bos degil ve git repo'su degil. Once bosaltin veya silin."
-    }
-    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-    git clone --depth 1 -b $Branch $RepoUrl $InstallDir
+    Info "Mevcut repo guncelleniyor..."
 }
+git -C $InstallDir remote remove origin 2>$null | Out-Null
+git -C $InstallDir remote add origin $RepoUrl
+git -C $InstallDir fetch --depth 1 origin $Branch
+if ($LASTEXITCODE -ne 0) { Fatal "git fetch basarisiz. Internet baglantisini kontrol edin." }
+git -C $InstallDir checkout -f -B $Branch FETCH_HEAD
+if ($LASTEXITCODE -ne 0) { Fatal "git checkout basarisiz." }
 Set-Location $InstallDir
 Ok "Kaynak hazir: $(git -C $InstallDir rev-parse --short HEAD 2>$null)"
+
+# Repo gercekten cekildi mi? (sessiz hatalari yakala)
+if (-not (Test-Path (Join-Path $InstallDir 'package.json'))) {
+    Fatal "package.json bulunamadi - kaynak cekilemedi. '$InstallDir' icindekileri silip tekrar deneyin."
+}
 
 New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'data')    | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'logs')    | Out-Null
