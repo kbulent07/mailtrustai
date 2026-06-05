@@ -140,7 +140,12 @@ function Resolve-GitExe {
 }
 function Get-NodeMajorFrom($exe) {
     if (-not $exe) { return 0 }
-    try { return [int]((& $exe -p 'process.versions.node.split(".")[0]') 2>$null) } catch { return 0 }
+    try {
+        # 'node --version' -> "v24.16.0"; major'u regex ile al (en saglam yontem).
+        $v = (& $exe --version 2>$null | Select-Object -First 1)
+        if ($v -and ($v -match 'v?(\d+)\.')) { return [int]$matches[1] }
+    } catch { }
+    return 0
 }
 
 Write-Host ""
