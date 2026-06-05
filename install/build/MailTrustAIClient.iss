@@ -186,7 +186,7 @@ begin
 
   // 3) License-server URL sayfasi — varsayilan mailtrustai.com altyapisi
   ServerURLPage := CreateInputQueryPage(LicensePage.ID,
-    'License Server URL',
+    'Lisans Sunucusu URL',
     'Lisans dogrulamasi yapilacak adres',
     'Varsayilan deger MailTrustAI merkezi sunucusudur. ' +
     'Farkli bir license-server kullanacaksaniz URL''i degistirebilirsiniz.');

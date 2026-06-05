@@ -177,7 +177,6 @@ if ($LASTEXITCODE -ne 0) {
 Ok "Docker daemon calisiyor."
 
 # Compose
-$composeCmd = 'docker compose'
 docker compose version 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Fatal "docker compose plugin bulunamadi. Docker Desktop'i guncelleyin (4.x+)."
@@ -197,7 +196,7 @@ if (-not $LicenseKey) {
 # Override: -LicenseServerUrl parametresi veya prompt'ta yeni URL girilebilir.
 $DefaultLicenseServerUrl = 'http://licence.mailtrustai.com:3200'
 if (-not $LicenseServerUrl) {
-    $LicenseServerUrl = Read-Input "License-server URL'i" $DefaultLicenseServerUrl
+    $LicenseServerUrl = Read-Input "Lisans sunucusu URL'i" $DefaultLicenseServerUrl
     if (-not $LicenseServerUrl) { $LicenseServerUrl = $DefaultLicenseServerUrl }
 }
 $LicenseServerUrl = $LicenseServerUrl.TrimEnd('/')

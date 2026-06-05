@@ -5,11 +5,11 @@
 # Kaldirir: license-server + dealer panel + MariaDB konteynerlari
 #
 # Kullanim (interaktif):
-#   sudo bash install/server/uninstall_server_ubuntu.sh
+#   sudo bash install/server/uninstall.sh
 #
 # Otomasyon (cron / CI):
-#   sudo UNATTENDED=true PURGE_DATA=false bash uninstall_server_ubuntu.sh
-#   sudo UNATTENDED=true PURGE_DATA=true KEEP_BACKUPS=true bash uninstall_server_ubuntu.sh
+#   sudo UNATTENDED=true PURGE_DATA=false bash install/server/uninstall.sh
+#   sudo UNATTENDED=true PURGE_DATA=true KEEP_BACKUPS=true bash install/server/uninstall.sh
 #
 # Env varsayilanlari:
 #   UNATTENDED      = false  (true ise hicbir soru sorulmaz)
@@ -199,8 +199,8 @@ if [[ "$DELETE_DATA" == "false" ]]; then
     echo -e "  ${YELLOW}  Veriler korundu: $INSTALL_DIR${NC}"
     echo -e "  ${YELLOW}  MariaDB volume'ları silinmedi.${NC}"
     echo ""
-    echo -e "  Yeniden kurmak için:"
-    echo -e "  ${CYAN}  sudo bash install/server/install_server_ubuntu.sh${NC}"
+    echo -e "  Yeniden kurmak icin:"
+    echo -e "  ${CYAN}  sudo bash install/server/install.sh${NC}"
     echo ""
 fi
 

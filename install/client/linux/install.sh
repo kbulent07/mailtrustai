@@ -6,18 +6,18 @@
 # Ubuntu 22.04+ uzerinde kurar.
 #
 # Kullanim (interaktif):
-#   sudo bash install/client/install_client_ubuntu.sh
+#   sudo bash install/client/linux/install.sh
 #
 # Tek satir parametreli:
 #   sudo LICENSE_KEY="MTAI-PRO-XXXX" \  # LICENSE_SERVER_URL opsiyonel — bos brakirsaniz \
 #   #                                     varsayilan http://licence.mailtrustai.com:3200 kullanilir
-#       bash install/client/install_client_ubuntu.sh
+#       bash install/client/linux/install.sh
 #
 # Sirayla yapar:
 #   1) Ubuntu kontrolu
 #   2) Docker varsa atlanir; yoksa resmi depodan kurulur
 #   3) Repo bulunma kontrolu (git'in calistigi dizinden anlasilir)
-#   4) Lisans anahtari + license-server URL sorulur (interaktif/env var)
+#   4) Lisans anahtari + lisans sunucusu URL sorulur (interaktif/env var)
 #   5) Guvenli .env uretilir (openssl rand)
 #   6) docker compose -f docker-compose.customer.yml build + up
 #   7) Container saglik kontrolu
@@ -25,7 +25,7 @@
 set -Euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # --- Log dosyasi -----------------------------------------------------------
 INSTALL_LOG="/tmp/mailtrustai-client-install-$(date +%Y%m%d-%H%M%S).log"
@@ -148,13 +148,13 @@ if [[ -z "${LICENSE_KEY:-}" ]]; then
 fi
 [[ -n "${LICENSE_KEY:-}" ]] || fatal "Lisans anahtari zorunludur. (Non-interactive modda LICENSE_KEY=... olarak gecin.)"
 
-# License-server URL — sabit default mailtrustai.com altyapisina baglanir.
+# Lisans sunucusu URL — sabit default mailtrustai.com altyapisina baglanir.
 # Override icin LICENSE_SERVER_URL env'den verilebilir veya interaktif soruda
 # baska bir URL yazilabilir.
 DEFAULT_LICENSE_SERVER_URL="http://licence.mailtrustai.com:3200"
 if [[ -z "${LICENSE_SERVER_URL:-}" ]]; then
     if [[ "$IS_INTERACTIVE" == "true" ]]; then
-        read -rp "  License-server URL [${DEFAULT_LICENSE_SERVER_URL}]: " LICENSE_SERVER_URL || LICENSE_SERVER_URL=""
+        read -rp "  Lisans sunucusu URL [${DEFAULT_LICENSE_SERVER_URL}]: " LICENSE_SERVER_URL || LICENSE_SERVER_URL=""
     fi
     # Bos kaldiysa default kullan (hem interaktif hem non-interactive)
     LICENSE_SERVER_URL="${LICENSE_SERVER_URL:-$DEFAULT_LICENSE_SERVER_URL}"
@@ -236,9 +236,9 @@ if [[ "$SKIP_ENV" == "false" ]]; then
         printf 'MSA_ENC_PASSWORD=%s\n'         "$ENC_PASSWORD"
         printf 'MSA_ENC_SALT=%s\n'             "$ENC_SALT"
         printf 'MSA_LICENSE_SECRET=%s\n\n'     "$LICENSE_SECRET"
-        printf '# === Ilk Kurulum Token i ===\n'
-        printf '# http://localhost:%s/?setup_token=%s\n' "$CUSTOMER_PORT" "$SETUP_TOKEN"
-        printf 'MSA_SETUP_TOKEN=%s\n\n'        "$SETUP_TOKEN"
+        printf '# === Ilk Kurulum ===\n'
+        printf '# Tarayicida http://localhost:%s adresini acin, admin e-posta ve sifrenizi olusturun.\n' "$CUSTOMER_PORT"
+        printf '\n'
         printf '# === Port & Ortam ===\n'
         printf 'CUSTOMER_PORT=%s\n' "$CUSTOMER_PORT"
         printf 'NODE_ENV=production\n'

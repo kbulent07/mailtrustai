@@ -165,7 +165,7 @@ fi
 INSTALL_DIR="${INPUT_DIR:-${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}}"
 
 if [[ "$IS_INTERACTIVE" == "true" ]]; then
-    read -rp "  Sunucu domain veya IP (or: license.firma.com ya da 1.2.3.4): " SERVER_HOST_INPUT || SERVER_HOST_INPUT=""
+    read -rp "  Sunucu domain veya IP (or: licence.firma.com ya da 1.2.3.4): " SERVER_HOST_INPUT || SERVER_HOST_INPUT=""
     SERVER_HOST="${SERVER_HOST_INPUT:-${SERVER_HOST:-}}"
 else
     SERVER_HOST="${SERVER_HOST:-}"
@@ -175,7 +175,7 @@ if [[ -z "${SERVER_HOST:-}" ]]; then
 fi
 
 if [[ "$IS_INTERACTIVE" == "true" ]]; then
-    read -rp "  License-server port [3200]: " LS_PORT_INPUT || LS_PORT_INPUT=""
+    read -rp "  Lisans sunucusu portu [3200]: " LS_PORT_INPUT || LS_PORT_INPUT=""
     LS_PORT="${LS_PORT_INPUT:-${LS_PORT:-3200}}"
 else
     LS_PORT="${LS_PORT:-3200}"
