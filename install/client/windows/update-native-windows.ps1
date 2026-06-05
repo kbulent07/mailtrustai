@@ -54,7 +54,9 @@ if (-not (Test-Path (Join-Path $InstallDir '.git'))) { Fatal "$InstallDir bir gi
 if (-not (Test-Path $EnvFile)) { Fatal ".env bulunamadi: $EnvFile" }
 
 $NssmExe = Join-Path $InstallDir 'nssm.exe'
-if (-not (Test-Path $NssmExe)) { Fatal "nssm.exe bulunamadi: $NssmExe. Kurulum bozulmus olabilir." }
+# Servis modunu tespit et: nssm.exe varsa NSSM, yoksa Zamanlanmis Gorev.
+$ServiceMode = if (Test-Path $NssmExe) { 'nssm' } else { 'task' }
+Info "Servis modu: $ServiceMode"
 
 Set-Location $InstallDir
 
@@ -104,7 +106,13 @@ Ok "Guvenlik kontrolu basarili."
 
 # 5. Servis restart
 Step "5/6  Servis yeniden baslatiliyor..."
-& $NssmExe restart $ServiceName | Out-Null
+if ($ServiceMode -eq 'nssm') {
+    & $NssmExe restart $ServiceName | Out-Null
+} else {
+    Stop-ScheduledTask  -TaskName $ServiceName -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    Start-ScheduledTask -TaskName $ServiceName
+}
 Ok "Servis yeniden baslatildi."
 
 # 6. Saglik

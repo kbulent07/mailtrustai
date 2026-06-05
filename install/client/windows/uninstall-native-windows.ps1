@@ -65,22 +65,38 @@ if ($Purge -and -not $Unattended) {
 # --- Servisi durdur/kaldir ---
 Hr
 $NssmExe = Join-Path $InstallDir 'nssm.exe'
+# Iki mod da temizlenir: NSSM/sc Windows Service VE Zamanlanmis Gorev.
+$removed = $false
+
+# 1) Windows Service (NSSM ile kurulduysa)
 $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($svc) {
-    Info "Servis durduruluyor/kaldiriliyor: $ServiceName"
+    Info "Windows Service durduruluyor/kaldiriliyor: $ServiceName"
     if (Test-Path $NssmExe) {
         & $NssmExe stop $ServiceName 2>$null | Out-Null
         & $NssmExe remove $ServiceName confirm 2>$null | Out-Null
     } else {
-        # NSSM yoksa sc.exe ile
         & sc.exe stop $ServiceName 2>$null | Out-Null
         Start-Sleep -Seconds 2
         & sc.exe delete $ServiceName 2>$null | Out-Null
     }
     Start-Sleep -Seconds 2
-    Ok "Servis kaldirildi."
-} else {
-    Warn "Servis bulunamadi: $ServiceName (zaten kaldirilmis olabilir)."
+    Ok "Windows Service kaldirildi."
+    $removed = $true
+}
+
+# 2) Zamanlanmis Gorev (NSSM indirilemediginde kullanilan yedek)
+$task = Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
+if ($task) {
+    Info "Zamanlanmis Gorev durduruluyor/kaldiriliyor: $ServiceName"
+    Stop-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false -ErrorAction SilentlyContinue
+    Ok "Zamanlanmis Gorev kaldirildi."
+    $removed = $true
+}
+
+if (-not $removed) {
+    Warn "Servis/gorev bulunamadi: $ServiceName (zaten kaldirilmis olabilir)."
 }
 
 # --- Firewall kurallari ---

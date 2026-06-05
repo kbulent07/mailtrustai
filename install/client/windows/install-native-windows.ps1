@@ -418,55 +418,87 @@ $fp
     Ok ".env olusturuldu."
 }
 
-# --- NSSM indir ---
-$NssmExe = Join-Path $InstallDir 'nssm.exe'
-if (-not (Test-Path $NssmExe)) {
-    Info "NSSM indiriliyor (Windows Service yoneticisi)..."
-    $tmpZip = Join-Path $env:TEMP "nssm-$(Get-Random).zip"
-    $tmpDir = Join-Path $env:TEMP "nssm-$(Get-Random)"
-    try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $NssmUrl -OutFile $tmpZip -UseBasicParsing -TimeoutSec 60
-        Expand-Archive -Path $tmpZip -DestinationPath $tmpDir -Force
-        $arch = if ([Environment]::Is64BitOperatingSystem) { 'win64' } else { 'win32' }
-        $found = Get-ChildItem $tmpDir -Recurse -Filter 'nssm.exe' | Where-Object { $_.FullName -match "\\$arch\\" } | Select-Object -First 1
-        if (-not $found) { $found = Get-ChildItem $tmpDir -Recurse -Filter 'nssm.exe' | Select-Object -First 1 }
-        if (-not $found) { throw "Arsiv icinde nssm.exe bulunamadi." }
-        Copy-Item $found.FullName $NssmExe -Force
-        Ok "NSSM hazir: $NssmExe"
-    } catch {
-        Fatal "NSSM indirilemedi: $($_.Exception.Message). Internet baglantisini kontrol edin."
-    } finally {
-        Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
-        Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+# --- Servis kurulumu: NSSM (tercih) ya da Zamanlanmis Gorev (yedek) ---
+$NodeExe    = if ($script:NodeExe) { $script:NodeExe } else { (Get-Command node).Source }
+$serverArgs = '--use-system-ca apps\customer\server.js'
+$NssmExe    = Join-Path $InstallDir 'nssm.exe'
+$LogFile    = Join-Path $InstallDir 'logs\service.log'
+
+# NSSM'yi birden cok kaynaktan + retry ile indir. Basarisizsa $false doner.
+function Get-Nssm([string]$Dest) {
+    if (Test-Path $Dest) { return $true }
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+    $urls = @('https://nssm.cc/release/nssm-2.24.zip',
+              'https://nssm.cc/ci/nssm-2.24-101-g897c7ad.zip')
+    $arch = if ([Environment]::Is64BitOperatingSystem) { 'win64' } else { 'win32' }
+    foreach ($u in $urls) {
+        for ($try = 1; $try -le 2; $try++) {
+            $tmpZip = Join-Path $env:TEMP "nssm-$(Get-Random).zip"
+            $tmpDir = Join-Path $env:TEMP "nssm-$(Get-Random)"
+            try {
+                Invoke-WebRequest -Uri $u -OutFile $tmpZip -UseBasicParsing -TimeoutSec 45
+                Expand-Archive -Path $tmpZip -DestinationPath $tmpDir -Force
+                $found = Get-ChildItem $tmpDir -Recurse -Filter 'nssm.exe' | Where-Object { $_.FullName -match "\\$arch\\" } | Select-Object -First 1
+                if (-not $found) { $found = Get-ChildItem $tmpDir -Recurse -Filter 'nssm.exe' | Select-Object -First 1 }
+                if ($found) { Copy-Item $found.FullName $Dest -Force; return $true }
+            } catch {
+                Warn ("NSSM indirme denemesi basarisiz: {0}" -f $_.Exception.Message)
+            } finally {
+                Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
+                Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Seconds 2
+        }
     }
+    return $false
 }
 
-$NodeExe = if ($script:NodeExe) { $script:NodeExe } else { (Get-Command node).Source }
-$serverRel = 'apps\customer\server.js'
-
-# Mevcut servisi temizle
-$existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($existing) {
-    Info "Mevcut servis durduruluyor/kaldiriliyor..."
-    & $NssmExe stop $ServiceName 2>$null | Out-Null
-    & $NssmExe remove $ServiceName confirm 2>$null | Out-Null
-    Start-Sleep -Seconds 2
+Info "Windows Service kuruluyor..."
+Info "NSSM indiriliyor (Windows Service yoneticisi)..."
+$script:ServiceMode = 'task'
+if (Get-Nssm $NssmExe) {
+    $script:ServiceMode = 'nssm'
+    Ok "NSSM hazir."
+    if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+        & $NssmExe stop $ServiceName 2>$null | Out-Null
+        & $NssmExe remove $ServiceName confirm 2>$null | Out-Null
+        Start-Sleep -Seconds 2
+    }
+    & $NssmExe install $ServiceName $NodeExe $serverArgs | Out-Null
+    & $NssmExe set $ServiceName AppDirectory $InstallDir | Out-Null
+    & $NssmExe set $ServiceName AppStdout $LogFile | Out-Null
+    & $NssmExe set $ServiceName AppStderr $LogFile | Out-Null
+    & $NssmExe set $ServiceName AppRotateFiles 1 | Out-Null
+    & $NssmExe set $ServiceName AppRotateBytes 10485760 | Out-Null
+    & $NssmExe set $ServiceName Start SERVICE_AUTO_START | Out-Null
+    & $NssmExe set $ServiceName AppEnvironmentExtra NODE_ENV=production | Out-Null
+    & $NssmExe set $ServiceName DisplayName "MailTrustAI Customer (native)" | Out-Null
+    & $NssmExe set $ServiceName Description "MailTrustAI musteri uygulamasi (Node.js, Docker'siz)" | Out-Null
+    & $NssmExe start $ServiceName | Out-Null
+    Ok "Windows Service (NSSM) kuruldu ve baslatildi: $ServiceName"
+} else {
+    Warn "NSSM indirilemedi (nssm.cc erisilemiyor). Zamanlanmis Gorev (Scheduled Task) ile devam ediliyor."
+    # Eski gorev/servis temizligi
+    schtasks /Delete /TN $ServiceName /F 2>$null | Out-Null
+    if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+        & sc.exe stop $ServiceName 2>$null | Out-Null; Start-Sleep -Seconds 2; & sc.exe delete $ServiceName 2>$null | Out-Null
+    }
+    # node'u loglari dosyaya yazan bir wrapper .bat ile calistir (stdout yakalanir).
+    $RunBat = Join-Path $InstallDir 'run-service.bat'
+    Set-Content -Path $RunBat -Encoding Default -Value @"
+@echo off
+cd /d "$InstallDir"
+"$NodeExe" $serverArgs >> "$LogFile" 2>&1
+"@
+    $action    = New-ScheduledTaskAction -Execute $RunBat -WorkingDirectory $InstallDir
+    $trigger   = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
+                    -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+    Register-ScheduledTask -TaskName $ServiceName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    Start-ScheduledTask -TaskName $ServiceName
+    Ok "Zamanlanmis Gorev kuruldu ve baslatildi (SYSTEM, acilista + cokunce yeniden baslatma): $ServiceName"
 }
-
-Info "Servis kuruluyor: $ServiceName"
-& $NssmExe install $ServiceName $NodeExe "--use-system-ca $serverRel" | Out-Null
-& $NssmExe set $ServiceName AppDirectory $InstallDir            | Out-Null
-& $NssmExe set $ServiceName AppStdout (Join-Path $InstallDir 'logs\service.log') | Out-Null
-& $NssmExe set $ServiceName AppStderr (Join-Path $InstallDir 'logs\service.log') | Out-Null
-& $NssmExe set $ServiceName AppRotateFiles 1                    | Out-Null
-& $NssmExe set $ServiceName AppRotateBytes 10485760             | Out-Null
-& $NssmExe set $ServiceName Start SERVICE_AUTO_START            | Out-Null
-& $NssmExe set $ServiceName AppEnvironmentExtra NODE_ENV=production | Out-Null
-& $NssmExe set $ServiceName DisplayName "MailTrustAI Customer (native)" | Out-Null
-& $NssmExe set $ServiceName Description "MailTrustAI musteri uygulamasi (Node.js, Docker'siz)" | Out-Null
-& $NssmExe start $ServiceName | Out-Null
-Ok "Windows Service kuruldu ve baslatildi: $ServiceName"
 
 # --- Firewall ---
 foreach ($p in @($Port)) {
@@ -498,13 +530,29 @@ param([string]`$Action='help')
 `$svc  = '$ServiceName'
 `$dir  = '$InstallDir'
 `$port = $Port
+`$mode = '$($script:ServiceMode)'   # 'nssm' veya 'task'
 `$nssm = Join-Path `$dir 'nssm.exe'
+`$log  = Join-Path `$dir 'logs\service.log'
+
+function Get-SvcState {
+    if (`$mode -eq 'nssm') {
+        `$s = Get-Service `$svc -ErrorAction SilentlyContinue
+        if (`$s) { return [string]`$s.Status }
+        return 'absent'
+    } else {
+        `$t = Get-ScheduledTask -TaskName `$svc -ErrorAction SilentlyContinue
+        if (`$t) { return [string]`$t.State }
+        return 'absent'
+    }
+}
+function Test-SvcRunning { return ((Get-SvcState) -eq 'Running') }
+
 switch (`$Action) {
-    'start'   { & `$nssm start `$svc }
-    'stop'    { & `$nssm stop `$svc }
-    'restart' { & `$nssm restart `$svc }
-    'status'  { Get-Service `$svc | Format-List Name,Status,StartType }
-    'logs'    { Get-Content (Join-Path `$dir 'logs\service.log') -Tail 200 -Wait }
+    'start'   { if (`$mode -eq 'nssm') { & `$nssm start `$svc } else { Start-ScheduledTask -TaskName `$svc } }
+    'stop'    { if (`$mode -eq 'nssm') { & `$nssm stop `$svc }  else { Stop-ScheduledTask -TaskName `$svc } }
+    'restart' { if (`$mode -eq 'nssm') { & `$nssm restart `$svc } else { Stop-ScheduledTask -TaskName `$svc -ErrorAction SilentlyContinue; Start-Sleep 2; Start-ScheduledTask -TaskName `$svc } }
+    'status'  { Write-Host ("mode=`$mode  state=" + (Get-SvcState)) }
+    'logs'    { if (Test-Path `$log) { Get-Content `$log -Tail 200 -Wait } else { Write-Host "Log dosyasi yok: `$log" } }
     'update'  { & powershell -ExecutionPolicy Bypass -File (Join-Path `$dir 'install\client\windows\update-native-windows.ps1') }
     'backup'  {
         `$ts = Get-Date -Format 'yyyyMMdd_HHmmss'; `$b = Join-Path `$dir 'backups'
@@ -514,26 +562,25 @@ switch (`$Action) {
     }
     'version' {
         Write-Host ("git    : " + (git -C `$dir rev-parse --abbrev-ref HEAD 2>`$null) + " @ " + (git -C `$dir rev-parse --short HEAD 2>`$null))
-        Write-Host ("node   : " + (node --version))
-        Write-Host ("service: " + (Get-Service `$svc).Status)
+        Write-Host ("node   : " + (node --version 2>`$null))
+        Write-Host ("service: `$mode / " + (Get-SvcState))
     }
     'health'  {
         `$http='000'
         try { `$r = Invoke-WebRequest "http://localhost:`$port/healthz" -TimeoutSec 3 -UseBasicParsing; `$http=[string]`$r.StatusCode } catch {}
-        `$st = (Get-Service `$svc -ErrorAction SilentlyContinue).Status
-        `$ok = if (`$http -eq '200' -and `$st -eq 'Running') { 'true' } else { 'false' }
-        Write-Output ('{0}"ok":{1},"service":"{2}","http_status":"{3}"{4}' -f '{', `$ok, `$st, `$http, '}')
+        `$run = if (Test-SvcRunning) { 'true' } else { 'false' }
+        `$ok  = if (`$http -eq '200' -and `$run -eq 'true') { 'true' } else { 'false' }
+        Write-Output ('{0}"ok":{1},"mode":"{2}","running":{3},"http_status":"{4}"{5}' -f '{', `$ok, `$mode, `$run, `$http, '}')
         if (`$ok -ne 'true') { exit 1 }
     }
     'doctor'  {
         Write-Host "=== MailTrustAI Customer (native) Diyagnostik ==="
-        `$s = Get-Service `$svc -ErrorAction SilentlyContinue
-        Write-Host ("[1] Servis : " + (if (`$s) { `$s.Status } else { 'YOK' }))
+        Write-Host ("[1] Servis : `$mode / " + (Get-SvcState))
         Write-Host ("[2] Node   : " + (node --version 2>`$null))
         try { `$r = Invoke-WebRequest "http://localhost:`$port/healthz" -TimeoutSec 3 -UseBasicParsing; Write-Host "[3] /healthz: `$(`$r.Content)" } catch { Write-Host "[3] /healthz: CEVAP YOK" }
         Write-Host ("[4] .env   : " + (if (Test-Path (Join-Path `$dir '.env')) { 'var' } else { 'YOK' }))
     }
-    default   { Write-Host "Kullanim: mailtrustai-native-ctl.ps1 {start|stop|restart|status|logs|update|backup|version|health|doctor}" }
+    default   { Write-Host "Kullanim: mailtrustai-native-ctl.ps1 {start|stop|restart|status|logs|update|backup|version|health|doctor}  (mode=`$mode)" }
 }
 "@
 Set-Content -Path $CtlPs -Value $ctl -Encoding UTF8
@@ -566,7 +613,11 @@ if (-not $SkipEnv) {
     Write-Color "  (Tarayicida acin - e-posta ve sifrenizi olusturun)" 'Yellow'
 }
 Write-Host ""
-Write-Color "  Servis   : $ServiceName (services.msc)" 'White'
+if ($script:ServiceMode -eq 'nssm') {
+    Write-Color "  Servis   : $ServiceName (NSSM, services.msc)" 'White'
+} else {
+    Write-Color "  Servis   : $ServiceName (Zamanlanmis Gorev, taskschd.msc)" 'White'
+}
 Write-Color "  .env     : $EnvFile" 'Yellow'
 Write-Color "  Yonetim  : $CtlBat status|logs|restart|update|backup" 'White'
 Write-Host ""
