@@ -20,7 +20,7 @@ installer/
 1. **Hoşgeldin** + bilgi sayfası (ne yapılacağı özeti)
 2. **EULA** kabul
 3. **Lisans Anahtarı** girişi (zorunlu)
-4. **License-Server URL** girişi (varsayılan `https://license.mailtrustai.com`)
+4. **License-Server URL** girişi (varsayılan `https://licence.mailtrustai.com`)
 5. Kurulum: `install_client_windows.ps1` bootstrap'ı parametrelerle çağrılır
    - Git for Windows (yoksa winget ile)
    - Docker Desktop (yoksa winget ile — yeniden başlatma gerekebilir)

@@ -270,7 +270,7 @@ POST /api/dealer/licenses {customerId:"musteri-x", plan:"pro", tier:"T5", validD
 → { licenseKey:"MTAI-PRO-...", remainingCredits:99 }
 
 # 6) Müşteri: license key'i .env.docker'a koyup customer container'ı başlatır
-MSA_LICENSE_KEY=MTAI-PRO-...   →  license.mailtrustai.com'a aktive olur
+MSA_LICENSE_KEY=MTAI-PRO-...   →  licence.mailtrustai.com'a aktive olur
 ```
 
 ---

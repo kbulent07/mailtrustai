@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     MailTrustAI — Windows Müşteri Kurulum Betiği
@@ -11,7 +11,7 @@
     Bayinizden aldığınız lisans anahtarı (ör: MSA-XXXX-XXXX-XXXX).
 
 .PARAMETER LicenseServerUrl
-    License-server'ın genel URL'i (ör: http://license.mailtrustai.com:3200).
+    License-server'ın genel URL'i (ör: http://licence.mailtrustai.com:3200).
 
 .PARAMETER InstallDir
     Kurulum dizini. Varsayılan: C:\MailTrustAI
@@ -33,7 +33,7 @@
     # Parametrelerle:
     powershell -ExecutionPolicy Bypass -File install\client\windows\setup.ps1 `
         -LicenseKey "MSA-XXXX-XXXX-XXXX" `
-        -LicenseServerUrl "http://license.mailtrustai.com:3200"
+        -LicenseServerUrl "http://licence.mailtrustai.com:3200"
 
     # Hazır image tar dosyasıyla:
     powershell -ExecutionPolicy Bypass -File install\client\windows\setup.ps1 `
@@ -195,7 +195,7 @@ if (-not $LicenseKey) {
 
 # License-server URL — sabit default mailtrustai.com altyapisina baglanir.
 # Override: -LicenseServerUrl parametresi veya prompt'ta yeni URL girilebilir.
-$DefaultLicenseServerUrl = 'http://license.mailtrustai.com:3200'
+$DefaultLicenseServerUrl = 'http://licence.mailtrustai.com:3200'
 if (-not $LicenseServerUrl) {
     $LicenseServerUrl = Read-Input "License-server URL'i" $DefaultLicenseServerUrl
     if (-not $LicenseServerUrl) { $LicenseServerUrl = $DefaultLicenseServerUrl }

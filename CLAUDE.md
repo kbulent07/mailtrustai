@@ -51,10 +51,10 @@ npm run up:customer
 ## Domain (üretim)
 | Subdomain | → | Kim |
 |-----------|---|-----|
-| `license.mailtrustai.com` | localhost:3200 | Müşteri container'ları (lisans/heartbeat) |
+| `licence.mailtrustai.com` | localhost:3200 | Müşteri container'ları (lisans/heartbeat) |
 | `bayi.mailtrustai.com` | localhost:3100 | Bayiler (panel) |
 
-Reverse proxy/TLS: `deploy/Caddyfile.example` (otomatik LE) veya `deploy/nginx-server.conf.example`. Müşteri install scriptleri (`install/client/*`) default `license.mailtrustai.com:3200` kullanır — **kanonik yazım `license` (İngilizce)**, `licence` değil.
+Reverse proxy/TLS: `deploy/Caddyfile.example` (otomatik LE) veya `deploy/nginx-server.conf.example`. Müşteri install scriptleri (`install/client/*`) default `licence.mailtrustai.com:3200` kullanır — **kanonik yazım `license` (İngilizce)**, `licence` değil.
 
 ## Test
 ```bash

@@ -10,7 +10,7 @@
 #
 # Tek satir parametreli:
 #   sudo LICENSE_KEY="MTAI-PRO-XXXX" \  # LICENSE_SERVER_URL opsiyonel — bos brakirsaniz \
-#   #                                     varsayilan http://license.mailtrustai.com:3200 kullanilir
+#   #                                     varsayilan http://licence.mailtrustai.com:3200 kullanilir
 #       bash install/client/install_client_ubuntu.sh
 #
 # Sirayla yapar:
@@ -151,7 +151,7 @@ fi
 # License-server URL — sabit default mailtrustai.com altyapisina baglanir.
 # Override icin LICENSE_SERVER_URL env'den verilebilir veya interaktif soruda
 # baska bir URL yazilabilir.
-DEFAULT_LICENSE_SERVER_URL="http://license.mailtrustai.com:3200"
+DEFAULT_LICENSE_SERVER_URL="http://licence.mailtrustai.com:3200"
 if [[ -z "${LICENSE_SERVER_URL:-}" ]]; then
     if [[ "$IS_INTERACTIVE" == "true" ]]; then
         read -rp "  License-server URL [${DEFAULT_LICENSE_SERVER_URL}]: " LICENSE_SERVER_URL || LICENSE_SERVER_URL=""

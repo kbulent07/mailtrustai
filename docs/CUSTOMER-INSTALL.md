@@ -15,7 +15,7 @@ Erişim: `http://<host>:3000`
 
 | Değişken | Açıklama |
 |----------|----------|
-| `MSA_LICENSE_REMOTE_URL`  | Merkezi license-server adresi (ör: `https://license.mailtrustai.com`) |
+| `MSA_LICENSE_REMOTE_URL`  | Merkezi license-server adresi (ör: `https://licence.mailtrustai.com`) |
 | `MSA_CENTRAL_SYNC_URL`    | Sync host'u (genelde aynı host) |
 | `MSA_CENTRAL_SYNC_ENABLED`| `true` → heartbeat ve policy pull açık |
 | `MSA_HEARTBEAT_INTERVAL_SECONDS` | Varsayılan 300 |

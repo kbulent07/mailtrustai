@@ -8,7 +8,7 @@
 #   sudo systemctl reload caddy
 #
 # DNS A kayıtları (DNS sağlayıcınızda):
-#   license.mailtrustai.com   → SUNUCU_IP
+#   licence.mailtrustai.com   → SUNUCU_IP
 #   bayi.mailtrustai.com      → SUNUCU_IP
 #
 # Firewall (UFW):
@@ -20,7 +20,7 @@
 #   - Müşteri/bayi API'si  → /api/*
 #   - Merkezi yönetim SPA  → /admin/* (yalnız sizin IP'niz erişebilir)
 #   - Sağlık kontrolü      → /healthz
-license.mailtrustai.com {
+licence.mailtrustai.com {
     encode gzip
 
     reverse_proxy localhost:3200 {

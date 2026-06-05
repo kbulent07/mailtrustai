@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     MailTrustAI - Windows Musteri Sifirdan Kurulum Bootstrap
@@ -31,7 +31,7 @@
     # Tek satir parametreli (LicenseServerUrl opsiyonel — bos kalirsa default kullanilir):
     powershell -ExecutionPolicy Bypass -File install_client_windows.ps1 `
         -LicenseKey "MTAI-PRO-XXXX-XXXX"
-    # Default license-server: http://license.mailtrustai.com:3200
+    # Default license-server: http://licence.mailtrustai.com:3200
     # Farkli sunucuya baglanmak icin: -LicenseServerUrl "https://baska.sirket.com"
 #>
 

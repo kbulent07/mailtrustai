@@ -192,7 +192,7 @@ Bayi panel'e giriş: `http://<sunucu>:3100` — kullanıcı `bayi-01`, parola yu
 Admin paneli, license-server'ın `/admin` path'inde barındırılır:
 
 ```
-http(s)://license.mailtrustai.com/admin
+http(s)://licence.mailtrustai.com/admin
 ```
 
 Giriş: `.env.docker`'da tanımladığınız `ADMIN_PANEL_TOKEN` değeri.
@@ -215,7 +215,7 @@ Panel sekmeleri:
 
 | Subdomain | Yönlenir | Kim kullanır |
 |-----------|----------|--------------|
-| `license.mailtrustai.com` | localhost:3200 | Müşteri customer container'ları (lisans/heartbeat) |
+| `licence.mailtrustai.com` | localhost:3200 | Müşteri customer container'ları (lisans/heartbeat) |
 | `bayi.mailtrustai.com`    | localhost:3100 | Bayi/satıcı (panel arayüzü) |
 | `mailtrustai.com`         | landing/optional | Genel sayfa |
 
@@ -244,7 +244,7 @@ sudo apt install -y nginx certbot python3-certbot-nginx
 sudo cp /opt/mailtrustai/deploy/nginx-server.conf.example /etc/nginx/sites-available/mailtrustai
 sudo ln -s /etc/nginx/sites-available/mailtrustai /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d license.mailtrustai.com -d bayi.mailtrustai.com
+sudo certbot --nginx -d licence.mailtrustai.com -d bayi.mailtrustai.com
 ```
 
 > 🔐 **Admin panel IP kısıtlaması (nginx):** `nginx-server.conf.example` içindeki `/admin` location bloğuna ofis/VPN IP'nizi ekleyin:
@@ -306,8 +306,8 @@ git checkout mainpaketler
 cp .env.docker.example .env.docker
 # .env.docker dosyasında DOLDUR:
 #   MSA_LICENSE_KEY=MTAI-PRO-XXXX-XXXX           ← bayiden gelen
-#   MSA_LICENSE_REMOTE_URL=https://license.mailtrustai.com
-#   MSA_CENTRAL_SYNC_URL=https://license.mailtrustai.com
+#   MSA_LICENSE_REMOTE_URL=https://licence.mailtrustai.com
+#   MSA_CENTRAL_SYNC_URL=https://licence.mailtrustai.com
 #   MSA_LOCAL_ENCRYPTION_KEY=$(openssl rand -hex 32)  ← lokal şifreleme için
 ```
 
@@ -628,6 +628,6 @@ npm run test:docker:rebuild  # --no-cache build + run
 
 > 💡 **Hızlı Başlangıç (Sunucu):** `cp .env.docker.example .env.docker` → 5 secret üret (LICENSE_SIGNING_SECRET, DEALER_API_SECRET, DEALER_SESSION_SECRET, **ADMIN_PANEL_TOKEN**, MARIADB_PASSWORD) → `npm run up:server` → `bootstrap.js create-dealer` → bayi panele gir (`http://<sunucu>:3100`).
 >
-> 💡 **Admin Paneli:** `http(s)://license.mailtrustai.com/admin` — `ADMIN_PANEL_TOKEN` ile giriş. Yeni bayi ekleme, lisans yönetimi, audit log.
+> 💡 **Admin Paneli:** `http(s)://licence.mailtrustai.com/admin` — `ADMIN_PANEL_TOKEN` ile giriş. Yeni bayi ekleme, lisans yönetimi, audit log.
 >
 > 💡 **Hızlı Başlangıç (Müşteri):** bayiden lisans key'i al → `cp .env.docker.example .env.docker` → `MSA_LICENSE_KEY` + `MSA_LICENSE_REMOTE_URL` doldur → `npm run up:customer`.
