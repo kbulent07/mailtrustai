@@ -48,7 +48,11 @@ param(
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+# NOT: 'Continue' — bu script git/npm/node/nssm gibi cok sayida native komut
+# calistiriyor. 'Stop' olsaydi bu komutlarin stderr'e yazmasi (git clone progress,
+# npm/node uyarilari) trap'i tetikleyip kurulumu yanlislikla bozardi. Native
+# komut hatalari $LASTEXITCODE ile acikca kontrol ediliyor.
+$ErrorActionPreference = 'Continue'
 
 $RepoUrl      = 'https://github.com/kbulent07/mailtrustai.git'
 $Branch       = 'mainpaketler'
@@ -127,21 +131,30 @@ function Git-Candidates {
     ) | Where-Object { $_ } | Select-Object -Unique
 }
 function Resolve-NodeExe {
-    $c = Get-Command node.exe -ErrorAction SilentlyContinue
-    if ($c) { return $c.Source }
+    # ONCE gercek kurulum dizinleri — boylece WindowsApps'teki 0-byte 'node.exe'
+    # App Execution Alias stub'i (calistirinca bos cikti verir) atlanir.
     foreach ($p in (Node-Candidates)) { if (Test-Path $p) { return $p } }
+    $c = Get-Command node.exe -ErrorAction SilentlyContinue
+    if ($c -and ($c.Source -notmatch 'WindowsApps')) { return $c.Source }
     return $null
 }
 function Resolve-GitExe {
-    $c = Get-Command git.exe -ErrorAction SilentlyContinue
-    if ($c) { return $c.Source }
     foreach ($p in (Git-Candidates)) { if (Test-Path $p) { return $p } }
+    $c = Get-Command git.exe -ErrorAction SilentlyContinue
+    if ($c -and ($c.Source -notmatch 'WindowsApps')) { return $c.Source }
     return $null
 }
 function Get-NodeMajorFrom($exe) {
-    if (-not $exe) { return 0 }
+    if (-not $exe -or -not (Test-Path $exe)) { return 0 }
+    # 1) node.exe gomulu surum bilgisi — process CALISTIRMADAN okur (en saglam,
+    #    EAP/stderr/PATH sorunlarindan etkilenmez).
     try {
-        # 'node --version' -> "v24.16.0"; major'u regex ile al (en saglam yontem).
+        $pv = (Get-Item $exe).VersionInfo.ProductVersion
+        if (-not $pv) { $pv = (Get-Item $exe).VersionInfo.FileVersion }
+        if ($pv -and ($pv -match '(\d+)\.')) { return [int]$matches[1] }
+    } catch { }
+    # 2) Fallback: 'node --version' -> "v24.16.0"
+    try {
         $v = (& $exe --version 2>$null | Select-Object -First 1)
         if ($v -and ($v -match 'v?(\d+)\.')) { return [int]$matches[1] }
     } catch { }
