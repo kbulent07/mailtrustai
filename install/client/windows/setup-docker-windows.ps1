@@ -28,15 +28,15 @@
 
 .EXAMPLE
     # Etkileşimli kurulum (en basit yol):
-    powershell -ExecutionPolicy Bypass -File install\client\windows\setup.ps1
+    powershell -ExecutionPolicy Bypass -File install\client\windows\setup-docker-windows.ps1
 
     # Parametrelerle:
-    powershell -ExecutionPolicy Bypass -File install\client\windows\setup.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\windows\setup-docker-windows.ps1 `
         -LicenseKey "MSA-XXXX-XXXX-XXXX" `
         -LicenseServerUrl "http://licence.mailtrustai.com:3200"
 
     # Hazır image tar dosyasıyla:
-    powershell -ExecutionPolicy Bypass -File install\client\windows\setup.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\windows\setup-docker-windows.ps1 `
         -ImageFile "C:\Downloads\mailtrustai-customer.tar"
 #>
 
@@ -487,7 +487,7 @@ switch ($Action) {
         $repoPath = $null
         $repoFile = Join-Path $dir '.repo_path'
         if (Test-Path $repoFile) { $repoPath = (Get-Content $repoFile -Raw).Trim() }
-        $upgradeScript = if ($repoPath) { Join-Path $repoPath 'install\client\windows\update.ps1' } else { $null }
+        $upgradeScript = if ($repoPath) { Join-Path $repoPath 'install\client\windows\update-docker-windows.ps1' } else { $null }
         if ($upgradeScript -and (Test-Path $upgradeScript)) {
             & powershell -ExecutionPolicy Bypass -File $upgradeScript
         } else {

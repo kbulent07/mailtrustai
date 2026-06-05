@@ -89,7 +89,7 @@ BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd)"
 
 [[ -f "$COMPOSE_FILE" ]] \
     || fatal "Compose dosyasi bulunamadi: $COMPOSE_FILE
-  Once taze kurulum yapin: bash install/client/linux/install.sh"
+  Once taze kurulum yapin: bash install/client/linux/install-docker-ubuntu.sh"
 
 echo ""
 echo " Kaynak : $BACKUP_DIR"

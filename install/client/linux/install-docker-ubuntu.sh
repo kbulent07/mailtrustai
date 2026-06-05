@@ -6,12 +6,12 @@
 # Ubuntu 22.04+ uzerinde kurar.
 #
 # Kullanim (interaktif):
-#   sudo bash install/client/linux/install.sh
+#   sudo bash install/client/linux/install-docker-ubuntu.sh
 #
 # Tek satir parametreli:
 #   sudo LICENSE_KEY="MTAI-PRO-XXXX" \  # LICENSE_SERVER_URL opsiyonel — bos brakirsaniz \
 #   #                                     varsayilan http://licence.mailtrustai.com:3200 kullanilir
-#       bash install/client/linux/install.sh
+#       bash install/client/linux/install-docker-ubuntu.sh
 #
 # Sirayla yapar:
 #   1) Ubuntu kontrolu
@@ -356,7 +356,7 @@ case "\${1:-help}" in
     logs)    \$DC logs -f --tail=200 ;;
     update|upgrade)
         REPO=\$(cat "\$DIR/.repo_path" 2>/dev/null || echo '')
-        UPD="\$REPO/install/client/linux/update.sh"
+        UPD="\$REPO/install/client/linux/update-docker-ubuntu.sh"
         if [[ -n "\$REPO" && -f "\$UPD" ]]; then
             exec sudo bash "\$UPD"
         else

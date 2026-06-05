@@ -1,19 +1,21 @@
 ; ============================================================
-; MailTrustAI Client - Windows Installer (Inno Setup 6+)
+; MailTrustAI Client - Windows Installer (DOCKER) (Inno Setup 6+)
 ; ============================================================
-; Bu betik mevcut install_client_windows.ps1 bootstrap script'ini
+; Bu betik install-docker-windows.ps1 bootstrap script'ini
 ; cagirarak Docker Desktop + Git + repo klonu + container build
 ; islemlerini yapar. Kullanici sadece lisans key + server URL
 ; girer, gerisi otomatik.
 ;
-; Derleme:
-;   .\installer\build-installer.ps1 -InstallIfMissing
+; NATIVE (Docker'siz) surum: MailTrustAIClient-native.iss
+;
+; Derleme (her ikisi birden):
+;   .\build-windows.ps1 -InstallIfMissing
 ;
 ; Veya manuel:
-;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\MailTrustAIClient.iss
+;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" MailTrustAIClient-docker.iss
 ; ============================================================
 
-#define MyAppName         "MailTrustAI Client"
+#define MyAppName         "MailTrustAI Client (Docker)"
 #define MyAppVersion      "2.0.0"
 #define MyAppPublisher    "MailTrustAI"
 #define MyAppURL          "https://github.com/kbulent07/mailtrustai"
@@ -36,7 +38,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=no
 
 OutputDir=..\..\dist
-OutputBaseFilename=MailTrustAI-Client-Setup-{#MyAppVersion}
+OutputBaseFilename=MailTrustAI-Client-Docker-Setup-{#MyAppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -62,9 +64,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 ; Bootstrap PS1 temp'e kopyalanir — repo klonlandiktan sonra silinir.
-Source: "..\client\windows\install.ps1"; DestDir: "{tmp}"; DestName: "install.ps1"; Flags: deleteafterinstall ignoreversion
+Source: "..\client\windows\install-docker-windows.ps1"; DestDir: "{tmp}"; DestName: "install.ps1"; Flags: deleteafterinstall ignoreversion
 ; Uninstall script {app}'e kalici kopyalanir — repo silinse bile calisir.
-Source: "..\client\windows\uninstall.ps1"; DestDir: "{app}"; DestName: "uninstall.ps1"; Flags: ignoreversion
+Source: "..\client\windows\uninstall-docker-windows.ps1"; DestDir: "{app}"; DestName: "uninstall.ps1"; Flags: ignoreversion
 
 [Registry]
 ; Repo kok dizinini kayit defterine yaz. Kaldirma sirasinda

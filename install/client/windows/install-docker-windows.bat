@@ -24,14 +24,14 @@ if %errorlevel% neq 0 (
 )
 
 REM --- PS1 dosyasi yaninda mi? Yoksa GitHub'dan indir ---
-set "PS1_PATH=%~dp0install.ps1"
+set "PS1_PATH=%~dp0install-docker-windows.ps1"
 
 if not exist "%PS1_PATH%" (
-    echo install.ps1 bulunamadi. GitHub'dan indiriliyor...
+    echo install-docker-windows.ps1 bulunamadi. GitHub'dan indiriliyor...
     powershell -ExecutionPolicy Bypass -NoProfile -Command ^
-        "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/client/windows/install.ps1' -OutFile '%PS1_PATH%'"
+        "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/client/windows/install-docker-windows.ps1' -OutFile '%PS1_PATH%'"
     if not exist "%PS1_PATH%" (
-        echo HATA: install.ps1 indirilemedi. Internet baglantinizi kontrol edin.
+        echo HATA: install-docker-windows.ps1 indirilemedi. Internet baglantinizi kontrol edin.
         pause
         exit /b 1
     )

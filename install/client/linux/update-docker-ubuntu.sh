@@ -8,10 +8,10 @@
 #   - git pull --ff-only + docker compose build + restart
 #
 # Kullanim:
-#   sudo bash install/client/linux/update.sh
+#   sudo bash install/client/linux/update-docker-ubuntu.sh
 #
 # Otomasyon:
-#   sudo UNATTENDED=true bash install/client/linux/update.sh
+#   sudo UNATTENDED=true bash install/client/linux/update-docker-ubuntu.sh
 # ============================================================
 set -Euo pipefail
 
@@ -58,7 +58,7 @@ ENV_FILE="$INSTALL_DIR/.env"
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.customer.yml"
 
 [[ -d "$INSTALL_DIR" && -f "$ENV_FILE" && -f "$COMPOSE_FILE" ]] \
-    || fatal "Kurulum eksik. Once: sudo bash install/client/linux/install.sh"
+    || fatal "Kurulum eksik. Once: sudo bash install/client/linux/install-docker-ubuntu.sh"
 
 ok "Kurulum : $INSTALL_DIR"
 
@@ -177,6 +177,6 @@ fi
 echo ""
 echo -e "  ${BOLD}Rollback (gerekirse):${NC}"
 echo -e "  ${CYAN}cd $REPO_ROOT && git reset --hard $PREV_COMMIT${NC}"
-echo -e "  ${CYAN}sudo bash $SCRIPT_DIR/update.sh${NC}"
+echo -e "  ${CYAN}sudo bash $SCRIPT_DIR/update-docker-ubuntu.sh${NC}"
 echo ""
 hr

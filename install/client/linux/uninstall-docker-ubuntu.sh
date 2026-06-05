@@ -8,11 +8,11 @@
 #      + bu betik tarafindan kurulan Docker (marker varsa) tamamen silinir
 #
 # Kullanim (interaktif menu):
-#   sudo bash install/client/linux/uninstall.sh
+#   sudo bash install/client/linux/uninstall-docker-ubuntu.sh
 #
 # Otomasyon:
-#   sudo MODE=soft bash install/client/linux/uninstall.sh
-#   sudo MODE=full UNATTENDED=true bash install/client/linux/uninstall.sh
+#   sudo MODE=soft bash install/client/linux/uninstall-docker-ubuntu.sh
+#   sudo MODE=full UNATTENDED=true bash install/client/linux/uninstall-docker-ubuntu.sh
 # ============================================================
 set -Euo pipefail
 
@@ -137,7 +137,7 @@ if [[ "$MODE" == "soft" ]]; then
     info "  - Volume'lar (mailtrustai-customer_customer-data, customer-logs)"
     info "  - Docker ve sistem paketleri"
     echo ""
-    info "Yeniden kurmak icin: sudo bash install/client/linux/install.sh"
+    info "Yeniden kurmak icin: sudo bash install/client/linux/install-docker-ubuntu.sh"
     info "                      (mevcut .env korunur, secret'lar dokunulmaz)"
     echo ""
     exit 0

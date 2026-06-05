@@ -103,10 +103,13 @@ Write-Host "[1/3] Inno Setup bulundu: $IsccPath" -ForegroundColor Green
 # ─── 2) Cikti dizini hazirla ────────────────────────────────
 $RepoRoot   = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $DistDir    = Join-Path $RepoRoot 'dist'
-$IssFile    = Join-Path $PSScriptRoot 'MailTrustAIClient.iss'
-
-if (-not (Test-Path $IssFile)) {
-    throw "ISS dosyasi bulunamadi: $IssFile"
+# Hem DOCKER hem NATIVE installer'i derle.
+$IssFiles   = @(
+    (Join-Path $PSScriptRoot 'MailTrustAIClient-docker.iss'),
+    (Join-Path $PSScriptRoot 'MailTrustAIClient-native.iss')
+)
+foreach ($iss in $IssFiles) {
+    if (-not (Test-Path $iss)) { throw "ISS dosyasi bulunamadi: $iss" }
 }
 
 if (-not (Test-Path $DistDir)) {
@@ -122,21 +125,23 @@ Write-Host ''
 
 Push-Location $PSScriptRoot
 try {
-    if ($VerbosePreference -eq 'Continue') {
-        & $IsccPath $IssFile
-    } else {
-        # Sessiz mod: yalniz hata ve uyari satirlarini goster
-        & $IsccPath /Qp $IssFile
+    foreach ($iss in $IssFiles) {
+        Write-Host ("  -> Derleniyor: {0}" -f (Split-Path $iss -Leaf)) -ForegroundColor Yellow
+        if ($VerbosePreference -eq 'Continue') {
+            & $IsccPath $iss
+        } else {
+            # Sessiz mod: yalniz hata ve uyari satirlarini goster
+            & $IsccPath /Qp $iss
+        }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host ''
+            Write-Host ("DERLEME BASARISIZ ({0}, exit={1})" -f (Split-Path $iss -Leaf), $LASTEXITCODE) -ForegroundColor Red
+            Pop-Location
+            exit $LASTEXITCODE
+        }
     }
-    $exitCode = $LASTEXITCODE
 } finally {
     Pop-Location
-}
-
-if ($exitCode -ne 0) {
-    Write-Host ''
-    Write-Host "DERLEME BASARISIZ (exit=$exitCode)" -ForegroundColor Red
-    exit $exitCode
 }
 
 # ─── Cikti ozeti ────────────────────────────────────────────

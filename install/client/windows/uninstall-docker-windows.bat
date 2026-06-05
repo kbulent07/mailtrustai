@@ -26,8 +26,8 @@ if %errorlevel% neq 0 (
 )
 
 REM --- PS1'i bul (oncelik sirasi: repo, ayni klasor, indir) ---
-set "PS1_REPO=C:\mailtrustai-source\install\client\windows\uninstall.ps1"
-set "PS1_LOCAL=%~dp0uninstall.ps1"
+set "PS1_REPO=C:\mailtrustai-source\install\client\windows\uninstall-docker-windows.ps1"
+set "PS1_LOCAL=%~dp0uninstall-docker-windows.ps1"
 set "PS1_PATH="
 
 if exist "%PS1_REPO%"  set "PS1_PATH=%PS1_REPO%"
@@ -37,7 +37,7 @@ if not defined PS1_PATH (
     echo uninstall_client_windows.ps1 bulunamadi. GitHub'dan indiriliyor...
     set "PS1_PATH=%PS1_LOCAL%"
     powershell -ExecutionPolicy Bypass -NoProfile -Command ^
-        "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/client/windows/uninstall.ps1' -OutFile '!PS1_PATH!'"
+        "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/client/windows/uninstall-docker-windows.ps1' -OutFile '!PS1_PATH!'"
     if not exist "!PS1_PATH!" (
         echo HATA: uninstall_client_windows.ps1 indirilemedi. Internet baglantinizi kontrol edin.
         pause
