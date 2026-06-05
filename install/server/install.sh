@@ -209,7 +209,7 @@ hr
 ENV_FILE="$INSTALL_DIR/.env"
 
 # ─── 3b. RESET MOD — her seye sifirdan baslama ──────────────
-# Kullanim: sudo RESET=true bash install_server_ubuntu.sh
+# Kullanim: sudo RESET=true bash install/server/install.sh
 # Tum container'lar + volume'lar + $INSTALL_DIR icerigi (yedekler haric) silinir.
 # Access denied / volume mismatch sorunlarini tek komutla cozer.
 if [[ "${RESET:-false}" == "true" ]]; then

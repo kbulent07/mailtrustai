@@ -245,7 +245,6 @@ if (-not $SkipEnv) {
     $encPassword  = New-RandomHex 32
     $encSalt      = New-RandomHex 16
     $licSecret    = New-RandomHex 32
-    $setupToken   = New-RandomHex 24
     $localEncKey  = New-RandomHex 32
 
     # Fingerprint kaynaklarini host'tan oku — Linux paritelik.
@@ -292,11 +291,8 @@ MSA_ENC_PASSWORD=$encPassword
 MSA_ENC_SALT=$encSalt
 MSA_LICENSE_SECRET=$licSecret
 
-# === İlk Kurulum Token'ı ===
-# Tarayıcıdan ilk admin kurulumu için:
-#   http://localhost:$Port/?setup_token=$setupToken
-# Kurulum tamamlandıktan sonra bu satırı boşaltabilirsiniz.
-MSA_SETUP_TOKEN=$setupToken
+# === İlk Kurulum ===
+# Tarayicida http://localhost:$Port adresini acin, admin e-posta ve sifrenizi dogrudan olusturun.
 
 # === Port & Ortam ===
 CUSTOMER_PORT=$Port

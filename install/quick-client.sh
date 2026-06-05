@@ -5,7 +5,7 @@
 # Hicbir on-gereksinim olmadan calistirilabilir. Sirayla:
 #   1) git + docker (yoksa kurar)
 #   2) Repo'yu klonlar / gunceller
-#   3) install_client_ubuntu.sh'i calistirir (musteri Docker, port 3000)
+#   3) install/client/linux/install.sh'i calistirir (musteri Docker, port 3000)
 #
 # KULLANIM (interaktif — lisans/URL sorulur):
 #   curl -fsSL https://raw.githubusercontent.com/kbulent07/mailtrustai/mainpaketler/install/quick-client.sh | sudo bash
@@ -32,7 +32,7 @@ TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 INSTALL_DIR="${INSTALL_DIR:-${TARGET_HOME:-/root}/mailtrustai}"
 
 # ─── CLI argumanlarini env'e cevir ──────────────────────────
-# install_client_ubuntu.sh LICENSE_KEY / LICENSE_SERVER_URL / CUSTOMER_PORT
+# install/client/linux/install.sh LICENSE_KEY / LICENSE_SERVER_URL / CUSTOMER_PORT
 # env'lerini okuyor; --license= gibi bayraklari bunlara map ediyoruz.
 for arg in "$@"; do
     case "$arg" in

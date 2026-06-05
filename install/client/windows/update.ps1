@@ -23,14 +23,14 @@
 
 .EXAMPLE
     # Klasik (interaktif, repo'dan):
-    powershell -ExecutionPolicy Bypass -File install\client\update_client_windows.ps1
+    powershell -ExecutionPolicy Bypass -File install\client\windows\update.ps1
 
     # Yeni image tar dosyasiyla:
-    powershell -ExecutionPolicy Bypass -File install\client\update_client_windows.ps1 `
+    powershell -ExecutionPolicy Bypass -File install\client\windows\update.ps1 `
         -ImageFile "C:\Downloads\mailtrustai-customer-v2.tar"
 
     # Otomasyon (Task Scheduler):
-    powershell -ExecutionPolicy Bypass -File install\client\update_client_windows.ps1 -Unattended
+    powershell -ExecutionPolicy Bypass -File install\client\windows\update.ps1 -Unattended
 #>
 
 [CmdletBinding()]

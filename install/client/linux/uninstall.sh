@@ -8,16 +8,16 @@
 #      + bu betik tarafindan kurulan Docker (marker varsa) tamamen silinir
 #
 # Kullanim (interaktif menu):
-#   sudo bash install/client/uninstall_client_ubuntu.sh
+#   sudo bash install/client/linux/uninstall.sh
 #
 # Otomasyon:
-#   sudo MODE=soft bash install/client/uninstall_client_ubuntu.sh
-#   sudo MODE=full UNATTENDED=true bash install/client/uninstall_client_ubuntu.sh
+#   sudo MODE=soft bash install/client/linux/uninstall.sh
+#   sudo MODE=full UNATTENDED=true bash install/client/linux/uninstall.sh
 # ============================================================
 set -Euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -137,7 +137,7 @@ if [[ "$MODE" == "soft" ]]; then
     info "  - Volume'lar (mailtrustai-customer_customer-data, customer-logs)"
     info "  - Docker ve sistem paketleri"
     echo ""
-    info "Yeniden kurmak icin: sudo bash $SCRIPT_DIR/install_client_ubuntu.sh"
+    info "Yeniden kurmak icin: sudo bash install/client/linux/install.sh"
     info "                      (mevcut .env korunur, secret'lar dokunulmaz)"
     echo ""
     exit 0

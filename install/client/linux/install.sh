@@ -356,7 +356,7 @@ case "\${1:-help}" in
     logs)    \$DC logs -f --tail=200 ;;
     update|upgrade)
         REPO=\$(cat "\$DIR/.repo_path" 2>/dev/null || echo '')
-        UPD="\$REPO/install/client/update_client_ubuntu.sh"
+        UPD="\$REPO/install/client/linux/update.sh"
         if [[ -n "\$REPO" && -f "\$UPD" ]]; then
             exec sudo bash "\$UPD"
         else
@@ -475,9 +475,9 @@ fi
 echo -e "${NC}"
 
 if [[ "$HEALTH_OK" == "true" ]] && [[ "$SKIP_ENV" == "false" ]]; then
-    SETUP_TOKEN_VAL=$(grep ^MSA_SETUP_TOKEN= "$ENV_FILE" | cut -d= -f2)
     echo -e "  ${BOLD}Ilk Admin Kurulumu:${NC}"
-    echo -e "  ${CYAN}http://localhost:${CUSTOMER_PORT}/?setup_token=${SETUP_TOKEN_VAL}${NC}"
+    echo -e "  ${CYAN}http://localhost:${CUSTOMER_PORT}${NC}"
+    echo -e "  Tarayicida ayin, e-posta ve sifrenizi dogrudan olusturun."
     echo ""
 fi
 

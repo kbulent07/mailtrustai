@@ -72,7 +72,7 @@ INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 
 if [[ ! -d "$INSTALL_DIR" ]] || [[ ! -f "$INSTALL_DIR/.env" ]]; then
     fatal "Kurulum bulunamadi: $INSTALL_DIR/.env yok. Ilk kurulum icin:
-    sudo bash $SCRIPT_DIR/install_server_ubuntu.sh"
+    sudo bash install/server/install.sh"
 fi
 
 ENV_FILE="$INSTALL_DIR/.env"
@@ -99,7 +99,7 @@ else
         else
             warn "License-server /healthz cevap vermiyor."
             warn "Onerilen: once kurulumu duzeltin"
-            warn "  sudo RESET=true bash install/server/install_server_ubuntu.sh"
+            warn "  sudo RESET=true bash install/server/install.sh"
             if [[ "${UNATTENDED:-false}" == "true" ]]; then
                 fatal "Pre-flight saglik kontrolu basarisiz (UNATTENDED). SKIP_HEALTH_CHECK=true ile gecebilirsiniz."
             fi
@@ -281,6 +281,6 @@ echo -e "  Log           : ${YELLOW}$UPGRADE_LOG${NC}"
 echo ""
 echo -e "  ${BOLD}Rollback (sorun varsa):${NC}"
 echo -e "  ${CYAN}cd $REPO_ROOT && git reset --hard $PREV_COMMIT${NC}"
-echo -e "  ${CYAN}sudo bash $SCRIPT_DIR/upgrade_server_ubuntu.sh${NC}"
+echo -e "  ${CYAN}sudo bash install/server/update.sh${NC}"
 echo ""
 hr
