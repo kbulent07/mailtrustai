@@ -100,6 +100,39 @@ function Refresh-Path {
     $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
                 [System.Environment]::GetEnvironmentVariable('Path','User')
 }
+function Add-DirToPath([string]$dir) {
+    if ($dir -and (Test-Path $dir) -and (($env:Path -split ';') -notcontains $dir)) {
+        $env:Path = "$dir;$env:Path"
+    }
+}
+# node.exe'yi PATH'te degilse bilinen kurulum dizinlerinde de arar (winget kurulumu
+# sonrasi elevated oturum PATH'i yenilemese bile bulunsun).
+function Resolve-NodeExe {
+    $c = Get-Command node.exe -ErrorAction SilentlyContinue
+    if ($c) { return $c.Source }
+    $cands = @(
+        (Join-Path $env:ProgramFiles 'nodejs\node.exe'),
+        "${env:ProgramFiles(x86)}\nodejs\node.exe",
+        (Join-Path $env:LOCALAPPDATA 'Programs\nodejs\node.exe')
+    )
+    foreach ($p in $cands) { if ($p -and (Test-Path $p)) { return $p } }
+    return $null
+}
+function Resolve-GitExe {
+    $c = Get-Command git.exe -ErrorAction SilentlyContinue
+    if ($c) { return $c.Source }
+    $cands = @(
+        (Join-Path $env:ProgramFiles 'Git\cmd\git.exe'),
+        "${env:ProgramFiles(x86)}\Git\cmd\git.exe",
+        (Join-Path $env:LOCALAPPDATA 'Programs\Git\cmd\git.exe')
+    )
+    foreach ($p in $cands) { if ($p -and (Test-Path $p)) { return $p } }
+    return $null
+}
+function Get-NodeMajorFrom($exe) {
+    if (-not $exe) { return 0 }
+    try { return [int]((& $exe -p 'process.versions.node.split(".")[0]') 2>$null) } catch { return 0 }
+}
 
 Write-Host ""
 Write-Color "  ==============================================================" 'Cyan'
@@ -128,46 +161,53 @@ try {
 # 1/9  Node.js 22
 # ============================================================
 Step "1/9  Node.js kontrol ediliyor..."
-function Get-NodeMajor {
-    if (Get-Command node -ErrorAction SilentlyContinue) {
-        try { return [int]((node -p 'process.versions.node.split(".")[0]') 2>$null) } catch { return 0 }
-    }
-    return 0
-}
-$nodeMajor = Get-NodeMajor
+$nodeExe = Resolve-NodeExe
+$nodeMajor = Get-NodeMajorFrom $nodeExe
 if ($nodeMajor -ge 22) {
-    Ok "Node.js mevcut: $(node --version)"
+    Add-DirToPath (Split-Path $nodeExe)
+    Ok "Node.js mevcut: $(& $nodeExe --version)"
 } else {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Fatal "Node.js >=22 yok ve winget bulunamadi. Node 22 LTS'i elle kurun: https://nodejs.org"
     }
     Info "Node.js 22 LTS kuruluyor (winget OpenJS.NodeJS.LTS)..."
-    winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    & winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
+    $ErrorActionPreference = $prevEAP
     Refresh-Path
-    $nodeMajor = Get-NodeMajor
+    $nodeExe = Resolve-NodeExe
+    $nodeMajor = Get-NodeMajorFrom $nodeExe
     if ($nodeMajor -lt 22) {
-        Fatal "Node.js kuruldu ama PATH'de gorunmuyor/eski. PowerShell'i kapatip tekrar deneyin."
+        Fatal "Node.js bulunamadi veya 22'den eski. Node 22+ kurun (https://nodejs.org) ve tekrar deneyin."
     }
-    Ok "Node.js kuruldu: $(node --version)"
+    Add-DirToPath (Split-Path $nodeExe)
+    Ok "Node.js hazir: $(& $nodeExe --version)"
 }
+$script:NodeExe = $nodeExe
 
 # ============================================================
 # 2/9  Git
 # ============================================================
 Step "2/9  Git kontrol ediliyor..."
-if (Get-Command git -ErrorAction SilentlyContinue) {
-    Ok "Git mevcut: $(git --version)"
+$gitExe = Resolve-GitExe
+if ($gitExe) {
+    Add-DirToPath (Split-Path $gitExe)
+    Ok "Git mevcut: $(& $gitExe --version)"
 } else {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Fatal "Git yok ve winget bulunamadi. Git'i elle kurun: https://git-scm.com/download/win"
     }
     Info "Git kuruluyor (winget Git.Git)..."
-    winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    & winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
+    $ErrorActionPreference = $prevEAP
     Refresh-Path
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        Fatal "Git kuruldu ama PATH'de yok. PowerShell'i yeniden baslatip tekrar deneyin."
+    $gitExe = Resolve-GitExe
+    if (-not $gitExe) {
+        Fatal "Git bulunamadi. Git'i elle kurun (https://git-scm.com/download/win) ve tekrar deneyin."
     }
-    Ok "Git kuruldu: $(git --version)"
+    Add-DirToPath (Split-Path $gitExe)
+    Ok "Git hazir: $(& $gitExe --version)"
 }
 
 # ============================================================
@@ -357,7 +397,7 @@ if (-not (Test-Path $NssmExe)) {
     }
 }
 
-$NodeExe = (Get-Command node).Source
+$NodeExe = if ($script:NodeExe) { $script:NodeExe } else { (Get-Command node).Source }
 $serverRel = 'apps\customer\server.js'
 
 # Mevcut servisi temizle
