@@ -107,26 +107,35 @@ function Add-DirToPath([string]$dir) {
 }
 # node.exe'yi PATH'te degilse bilinen kurulum dizinlerinde de arar (winget kurulumu
 # sonrasi elevated oturum PATH'i yenilemese bile bulunsun).
-function Resolve-NodeExe {
-    $c = Get-Command node.exe -ErrorAction SilentlyContinue
-    if ($c) { return $c.Source }
-    $cands = @(
+function Node-Candidates {
+    # ProgramW6432: 32-bit process'ten bile gercek 64-bit "Program Files".
+    @(
+        "$env:ProgramW6432\nodejs\node.exe",
+        'C:\Program Files\nodejs\node.exe',
         (Join-Path $env:ProgramFiles 'nodejs\node.exe'),
         "${env:ProgramFiles(x86)}\nodejs\node.exe",
         (Join-Path $env:LOCALAPPDATA 'Programs\nodejs\node.exe')
-    )
-    foreach ($p in $cands) { if ($p -and (Test-Path $p)) { return $p } }
+    ) | Where-Object { $_ } | Select-Object -Unique
+}
+function Git-Candidates {
+    @(
+        "$env:ProgramW6432\Git\cmd\git.exe",
+        'C:\Program Files\Git\cmd\git.exe',
+        (Join-Path $env:ProgramFiles 'Git\cmd\git.exe'),
+        "${env:ProgramFiles(x86)}\Git\cmd\git.exe",
+        (Join-Path $env:LOCALAPPDATA 'Programs\Git\cmd\git.exe')
+    ) | Where-Object { $_ } | Select-Object -Unique
+}
+function Resolve-NodeExe {
+    $c = Get-Command node.exe -ErrorAction SilentlyContinue
+    if ($c) { return $c.Source }
+    foreach ($p in (Node-Candidates)) { if (Test-Path $p) { return $p } }
     return $null
 }
 function Resolve-GitExe {
     $c = Get-Command git.exe -ErrorAction SilentlyContinue
     if ($c) { return $c.Source }
-    $cands = @(
-        (Join-Path $env:ProgramFiles 'Git\cmd\git.exe'),
-        "${env:ProgramFiles(x86)}\Git\cmd\git.exe",
-        (Join-Path $env:LOCALAPPDATA 'Programs\Git\cmd\git.exe')
-    )
-    foreach ($p in $cands) { if ($p -and (Test-Path $p)) { return $p } }
+    foreach ($p in (Git-Candidates)) { if (Test-Path $p) { return $p } }
     return $null
 }
 function Get-NodeMajorFrom($exe) {
@@ -174,11 +183,19 @@ if ($nodeMajor -ge 22) {
     $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     & winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
     $ErrorActionPreference = $prevEAP
-    Refresh-Path
-    $nodeExe = Resolve-NodeExe
+    # MSI PATH yazimi + dosya commit'i biraz gecikebilir — kisa retry.
+    $nodeExe = $null
+    for ($i = 0; $i -lt 6 -and -not $nodeExe; $i++) {
+        Start-Sleep -Seconds 2
+        Refresh-Path
+        $nodeExe = Resolve-NodeExe
+    }
     $nodeMajor = Get-NodeMajorFrom $nodeExe
     if ($nodeMajor -lt 22) {
-        Fatal "Node.js bulunamadi veya 22'den eski. Node 22+ kurun (https://nodejs.org) ve tekrar deneyin."
+        Warn "Node.js otomatik bulunamadi. Aranan yollar:"
+        foreach ($p in (Node-Candidates)) { Warn ("  {0} : {1}" -f $p, (Test-Path $p)) }
+        Warn ("  PATH'te node.exe: {0}" -f [bool](Get-Command node.exe -ErrorAction SilentlyContinue))
+        Fatal "Node.js bulunamadi veya 22'den eski. Yeni bir PowerShell penceresi acip scripti tekrar calistirin (PATH yenilensin) ya da Node 22+'i elle kurun: https://nodejs.org"
     }
     Add-DirToPath (Split-Path $nodeExe)
     Ok "Node.js hazir: $(& $nodeExe --version)"
